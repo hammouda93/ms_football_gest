@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <title>Tableau de bord</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Tableau de bord</h1>
+        <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-3">Créer une nouvelle vidéo</a>
+        <table class="table mt-3">
+            <thead>
+                <tr>
+                    <th>Joueur</th>
+                    <th>Éditeur</th>
+                    <th>Statut</th>
+                    <th>Deadline</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for video in videos %}
+                    <tr>
+                        <td>{{ video.player.name }}</td>
+                        <td>{{ video.editor.user.username }}</td>
+                        <td>{{ video.status }}</td>
+                        <td>{{ video.deadline }}</td>
+                        <td>
+                            <a href="{% url 'video_status' video.id %}" class="btn btn-info">Voir le statut</a>
+                            <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning">Modifier le statut</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
