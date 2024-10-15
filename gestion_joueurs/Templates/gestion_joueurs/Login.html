@@ -1,18 +1,19 @@
+{% load crispy_forms_tags %}
+<!-- templates/gestion_joueurs/login.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <title>Connexion Éditeur</title>
+    <title>Connexion</title>
 </head>
 <body>
-    <div class="container">
-        <h1>Connexion Éditeur Vidéo</h1>
+    <div class="container mt-5">
+        <h1>Connexion</h1>
         <form method="POST">
             {% csrf_token %}
-            {{ form.as_p }}
+            {{ form|crispy }}  <!-- Utiliser Crispy Forms pour le rendu du formulaire -->
             <button type="submit" class="btn btn-primary">Se connecter</button>
         </form>
-        <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
     </div>
 </body>
 </html>

@@ -1,30 +1,38 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <title>Mettre à jour le statut de la vidéo</title>
-</head>
-<body>
-    <div class="container">
-        <h1>Mettre à jour le statut de la vidéo pour {{ video.player.name }}</h1>
-        <form method="POST">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="status">Statut</label>
-                <select name="status" class="form-control" id="status">
-                    <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="delivered">Delivered</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="comment">Commentaire</label>
-                <textarea name="comment" class="form-control" id="comment" rows="3"></textarea>
-            </div>
-            <button type="submit" class="btn btn-primary">Mettre à jour</button>
-        </form>
-        <a href="{% url 'video_status' video.id %}" class="btn btn-secondary mt-3">Retour au statut de la vidéo</a>
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Mettre à jour le statut de la vidéo{% endblock %}
+
+{% block content %}
+<h1>Mettre à jour le statut de la vidéo pour {{ video.player.name }}</h1>
+
+{% if messages %}
+    <div class="alert alert-info">
+        {% for message in messages %}
+            {{ message }}
+        {% endfor %}
     </div>
-</body>
-</html>
+{% endif %}
+
+<form method="POST">
+    {% csrf_token %}
+    
+    <div class="form-group">
+        <label for="status">Statut</label>
+        <select name="status" class="form-control" id="status">
+            <option value="pending" {% if video.status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="in_progress" {% if video.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+            <option value="completed" {% if video.status == 'completed' %}selected{% endif %}>Completed</option>
+            <option value="delivered" {% if video.status == 'delivered' %}selected{% endif %}>Delivered</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="comment">Commentaire</label>
+        <textarea name="comment" class="form-control" id="comment" rows="3" placeholder="Ajoutez un commentaire ici..."></textarea>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Mettre à jour</button>
+</form>
+
+<a href="{% url 'video_status' video.id %}" class="btn btn-secondary mt-3">Retour au statut de la vidéo</a>
+{% endblock %}

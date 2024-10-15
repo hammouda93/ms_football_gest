@@ -1,0 +1,20 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}  <!-- Charger les tags Crispy Forms -->
+
+{% block title %}Modifier Joueur{% endblock %}
+{% block content %}
+    <h1>Modifier les Informations du Joueur</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    
+    <form method="POST">
+        {% csrf_token %}
+        {{ form|crispy }}  <!-- Utiliser Crispy Forms pour le rendu du formulaire -->
+        <button type="submit" class="btn btn-primary">Mettre à jour le Joueur</button>
+    </form>
+    
+    <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
+{% endblock %}

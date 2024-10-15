@@ -1,0 +1,13 @@
+python manage.py makemigrations
+python manage.py migrate
+python manage.py runserver
+
+
+je vais vous donner les fichiers models.py, views.py et signals.py 
+
+je veux ajouter un module pour la gestion financière pour cela je veux 
+gestion des payement de l'avance et du payement de la vidéo par un joueur 
+possibilité de sauvegarder le payement des editeurs videos lorsqu'il on deliveré une video 
+la possibilité de gestion des charges et des depense exp(acheter un disque dur ou un logiciel de tracking des joueurs)
+des outils statistique dans un tableau de bord pour la gestion financiere 
+comment proceder  

@@ -1,12 +1,9 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <title>Statut de la vidéo</title>
-</head>
-<body>
-    <div class="container">
-        <h1>Statut de la vidéo pour {{ video.player.name }}</h1>
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Statut de la vidéo{% endblock %}
+
+{% block content %}
+<h1>Statut de la vidéo pour {{ video.player.name }}</h1>
         <p>Statut: {{ video.status }}</p>
         <p>Deadline: {{ video.deadline }}</p>
 
@@ -24,7 +21,7 @@
                 {% for history in video.status_history.all %}
                     <tr>
                         <td>{{ history.status }}</td>
-                        <td>{{ history.editor.name }}</td>
+                        <td>{{ video.editor.user.username }}</td>
                         <td>{{ history.changed_at }}</td>
                         <td>{{ history.comment }}</td>
                     </tr>
@@ -34,6 +31,4 @@
 
         <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning">Modifier le statut</a>
         <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
-    </div>
-</body>
-</html>
+{% endblock %}

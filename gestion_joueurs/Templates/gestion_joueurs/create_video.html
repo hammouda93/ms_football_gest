@@ -1,76 +1,76 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <script>
-        function toggleForms() {
-            const newPlayerForm = document.getElementById('new-player-form');
-            const existingPlayerForm = document.getElementById('existing-player-form');
-            const videoForm = document.getElementById('video-form');
-            if (document.getElementById('add-new-player').checked) {
-                newPlayerForm.style.display = 'block';
-                existingPlayerForm.style.display = 'none';
-                videoForm.style.display = 'none'; // Masquer le formulaire vidéo au début
-            } else {
-                newPlayerForm.style.display = 'none';
-                existingPlayerForm.style.display = 'block';
-                videoForm.style.display = 'none'; // Masquer le formulaire vidéo au début
-            }
-        }
-    </script>
-    <title>Créer Vidéo Highlight</title>
-</head>
-<body>
-    <div class="container">
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}
+{% block title %}Créer Vidéo Highlight{% endblock %}
 
-        {% if messages %}
-            <div>
-                {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+{% block content %}
+<div class="container mt-4">
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    {% if video_form.errors %}
+        <div class="alert alert-danger">
+            <strong>Veuillez corriger les erreurs suivantes :</strong>
+            <ul>
+                {% for field, errors in video_form.errors.items %}
+                    <li>{{ field }}: {{ errors|join:", " }}</li>
                 {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+    
+    <h1 class="mb-4">Créer Vidéo Highlight</h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Ajouter un Nouveau Joueur</h5>
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div id="new-player-form" style="display: block;">
+                            {{ player_form|crispy }}  <!-- Use crispy for form rendering -->
+                            <div class="d-flex justify-content-between align-items-center mt-4">
+                                <button type="submit" name="add_player" class="btn btn-primary">
+                                    <i class="fas fa-user-plus"></i> Ajouter et Créer Vidéo Highlight
+                                </button>
+                                <div class="ml-2">
+                                    <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                                        <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                                    </a>
+                                </div>
+                                
+                            </div>
+                            
+                            
+                        </div>
+                    </form>
+                </div>
             </div>
-        {% endif %}
-        {% if video_form.errors %}
-            <div class="alert alert-danger">
-                <strong>Veuillez corriger les erreurs suivantes :</strong>
-                <ul>
-                    {% for field, errors in video_form.errors.items %}
-                        <li>{{ field }}: {{ errors|join:", " }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        {% endif %}
-        <h1>Créer Vidéo Highlight</h1>
-        <form method="POST">
-            {% csrf_token %}
-            <div>
-                <label>
-                    <input type="radio" id="add-new-player" name="player_choice" value="new" onclick="toggleForms()" checked>
-                    Ajouter un nouveau joueur
-                </label>
-            </div>
-
-            <!-- Formulaire pour ajouter un nouveau joueur -->
-            <div id="new-player-form" style="display: block;">
-                {{ player_form.as_p }}
-                <button type="submit" name="add_player" class="btn btn-primary">Ajouter et Créer Vidéo Highlight</button>
-            </div>
-        </form>
+        </div>
 
         {% if new_player_added %}
-            <h2>Ajouter une Vidéo pour {{ added_player.name }} </h2>
-            <form method="POST">
-                {% csrf_token %}
-                {{ video_form.as_p }}
-                <button type="submit" name="create_video" class="btn btn-primary">Créer Vidéo Highlight NV</button>
-                <input type="hidden" name="player" value="{{ added_player.id }}">  <!-- Passer l'ID du joueur -->
-            </form>
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Ajouter une Vidéo pour {{ added_player.name }}</h5>
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ video_form|crispy }}  <!-- Use crispy for video form -->
+                        
+                        <button type="submit" name="create_video" class="btn btn-primary">
+                            <i class="fas fa-video"></i> Créer Vidéo Highlight NV
+                        </button>
+                        <input type="hidden" name="player" value="{{ added_player.id }}">
+                    </form>
+                </div>
+            </div>
+        </div>
         {% endif %}
-
-        <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
     </div>
-</body>
-</html> 
-
-
-
+</div>
+{% endblock %}
