@@ -9,15 +9,18 @@ from django.utils import timezone
 
 
 class PlayerForm(forms.ModelForm):
+    date_of_birth = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
+        required=False,
+    )
     class Meta:
         model = Player
-        fields = ['name', 'age','league', 'club','whatsapp_number']
+        fields = ['name','date_of_birth','league', 'club','whatsapp_number']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['name'].widget.attrs['placeholder'] = "Entrez le nom du joueur"
         self.fields['club'].widget.attrs['placeholder'] = "Entrez le club du joueur"
-        self.fields['age'].widget.attrs['placeholder'] = "Âge (doit être non-négatif)"
         self.fields['whatsapp_number'].widget.attrs['placeholder'] = "Numéro WhatsApp (+999999999999 ou 999999999)"
         
         # Pour le champ de la ligue
@@ -25,6 +28,15 @@ class PlayerForm(forms.ModelForm):
 
 class VideoForm(forms.ModelForm):
     
+    SEASONS = [
+        ('2022/2023', '2022/2023'),
+        ('2023/2024', '2023/2024'),
+        ('2024/2025', '2024/2025'),  # Default value
+        ('2025/2026', '2025/2026'),
+    ]
+
+    season = forms.ChoiceField(choices=SEASONS, initial='2024/2025')
+
     deadline = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
         input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
@@ -32,7 +44,7 @@ class VideoForm(forms.ModelForm):
     )
     class Meta:
         model = Video
-        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info']
+        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info', 'season']
     
     editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=True)
 
@@ -76,3 +88,10 @@ class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
         fields = ['player', 'video', 'amount', 'payment_type']
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['player'].widget.attrs['placeholder'] = "Sélectionnez un joueur"
+        self.fields['video'].widget.attrs['placeholder'] = "Sélectionnez une vidéo"
+        self.fields['amount'].widget.attrs['placeholder'] = "Montant du paiement"
+        self.fields['payment_type'].widget.attrs['placeholder'] = "Type de paiement"

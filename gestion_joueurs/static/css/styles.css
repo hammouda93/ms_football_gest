@@ -28,3 +28,18 @@
 .text-warning {
     color: orange;  /* Texte orange pour les deadlines dans les trois jours */
 }
+
+.small-table th, .small-table td {
+    padding: 0.25rem;  /* Réduit le padding des cellules */
+    font-size: 0.8rem; /* Réduit la taille de la police */
+}
+
+.btn-sm {
+    padding: 0.2rem 0.4rem; /* Réduit le padding des boutons */
+    font-size: 0.75rem; /* Réduit la taille de la police des boutons */
+}
+
+.small-table .btn {
+    padding: 0.2rem 0.4rem; /* Réduit le padding pour tous les boutons dans le tableau */
+    font-size: 0.75rem; /* Réduit la taille de la police des boutons */
+}

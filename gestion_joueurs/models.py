@@ -3,6 +3,7 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
+from datetime import date
 
 
 
@@ -17,6 +18,7 @@ class Player(models.Model):
     name = models.CharField(max_length=100, default="", verbose_name="Player Name")
     club = models.CharField(max_length=100, default="", verbose_name="Club Name")
     email = models.EmailField(default="", verbose_name="Email Address")
+    date_of_birth = models.DateField(blank=True, null=True)
     age = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0)], verbose_name="Age")
     whatsapp_number = models.CharField(
         max_length=15, 
@@ -34,6 +36,13 @@ class Player(models.Model):
         default='L1',  # Définir la valeur par défaut à "Ligue 1 Tunisie"
         verbose_name="League",
     )
+    def save(self, *args, **kwargs):
+        # Automatically calculate age from date_of_birth before saving
+        if self.date_of_birth:
+            today = date.today()
+            self.age = today.year - self.date_of_birth.year - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+        super().save(*args, **kwargs)
+
     def get_league_name(self):
         """Return the name of the league based on the league code."""
         return dict(self.LEAGUE_CHOICES).get(self.league, 'Unknown League')
@@ -66,13 +75,21 @@ class Video(models.Model):
     deadline = models.DateField(validators=[validate_deadline])
     video_link = models.URLField(blank=True, null=True)
     info = models.TextField(blank=True, null=True, verbose_name="Info", help_text="Additional information about the video.")
-      
+    SEASONS = [
+        ('2022/2023', '2022/2023'),
+        ('2023/2024', '2023/2024'),
+        ('2024/2025', '2024/2025'),
+        ('2025/2026', '2025/2026'),
+    ]
+    
+    season = models.CharField(max_length=10, choices=SEASONS, default='2024/2025')
+
     def remaining_balance(self):
         """Calculates the remaining balance after advance payment."""
         return self.total_payment - self.advance_payment
     
     def __str__(self):
-        return f"Video for {self.player.name} by {self.editor.user.username}"
+        return f"Video for {self.player.name} by {self.editor.user.username} ({self.season})"
 
 
 class VideoStatusHistory(models.Model):
@@ -88,7 +105,7 @@ class VideoStatusHistory(models.Model):
 
 class Payment(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
-    video = models.ForeignKey(Video, on_delete=models.CASCADE)
+    video = models.ForeignKey(Video, on_delete=models.CASCADE,related_name='payments')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_date = models.DateField(auto_now_add=True)
     payment_type = models.CharField(max_length=50, choices=[('advance', 'Advance'), ('final', 'Final')])

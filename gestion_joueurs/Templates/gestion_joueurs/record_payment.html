@@ -1,13 +1,41 @@
 {% extends "gestion_joueurs/base.html" %}
+{% load crispy_forms_tags %}
 
 {% block content %}
 <div class="container">
     <h2>Enregistrer un Paiement</h2>
-    
-    <form method="POST">
+
+    {% if form.errors %}
+        <div class="alert alert-danger">
+            <strong>Veuillez corriger les erreurs suivantes :</strong>
+            <ul>
+                {% for field in form %}
+                    {% for error in field.errors %}
+                        <li>{{ field.label }}: {{ error }}</li>
+                    {% endfor %}
+                {% endfor %}
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="GET" class="form-group">
+        <label for="playerSelect">Sélectionnez un Joueur:</label>
+        <select id="playerSelect" name="player_id" class="form-control" onchange="this.form.submit()">
+            <option value="">Choisissez un joueur</option>
+            {% for player in players %}
+                <option value="{{ player.id }}" {% if player.id|stringformat:"s" == selected_player_id %}selected{% endif %}>{{ player.name }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <form method="POST" class="form-group">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn btn-primary">Enregistrer le Paiement</button>
+        {{ form|crispy }}
+
+        <button type="submit" class="btn btn-primary mt-3">Enregistrer le Paiement</button>
     </form>
 
     <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au Tableau de Bord</a>

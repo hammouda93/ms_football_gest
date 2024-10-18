@@ -3,7 +3,7 @@ python manage.py migrate
 python manage.py runserver
 
 
-je vais vous donner les fichiers models.py, views.py et signals.py 
+je vais vous donner les fichiers models.py, forms.py, views.py et signals.py 
 
 je veux ajouter un module pour la gestion financière pour cela je veux 
 gestion des payement de l'avance et du payement de la vidéo par un joueur 
@@ -11,3 +11,19 @@ possibilité de sauvegarder le payement des editeurs videos lorsqu'il on deliver
 la possibilité de gestion des charges et des depense exp(acheter un disque dur ou un logiciel de tracking des joueurs)
 des outils statistique dans un tableau de bord pour la gestion financiere 
 comment proceder  
+
+
+1. Filtrer les Joueurs
+Dans ta vue où tu gères l'enregistrement du paiement, tu dois filtrer les joueurs pour n'afficher que ceux qui n'ont pas payé le montant total de la vidéo.
+2. Filtrer les Vidéos par Joueur
+Lors de la sélection d'un joueur, tu devrais afficher toutes les vidéos associées à ce joueur.
+3. Afficher le Montant Restant à Payer
+Lors de l'enregistrement du paiement, il faut afficher le montant restant à payer et limiter l'entrée pour s'assurer qu'elle ne dépasse pas ce montant.
+
+
+
+modification 
+un joueur peut avoir un ou plus video 
+lors de la saisie d'une nouvelle video , lorsquon saisie un nom de joueur on  cherche dans la base si le joueur existe (recherche au fur et a mesure quand tape une nouvelle lettre)
+une liste de joueurs filtré s'affiche pour choisir le joueur soluhaité 
+apres quona choisie le nom apparait dans l'input nom du joueur dans le formulaire d'ajout d'un nouveau joueur
