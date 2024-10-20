@@ -15,31 +15,32 @@ from django.http import JsonResponse
 def create_video_highlight(request):
     player_form = PlayerForm()
     video_form = VideoForm(user=request.user)
-    player = None  # Initialize player to None
+    player = None
     selected_player_id = request.POST.get('selected_player_id')
+
+    # Débogage : afficher la valeur de selected_player_id
+    print(f'Selected Player ID: {selected_player_id}')
 
     if request.method == 'POST':
         if 'add_player' in request.POST:
-            # Get player ID from the hidden input
-            
-            if selected_player_id:  # Si un joueur a été sélectionné
+            if selected_player_id:
                 try:
-                    # Récupérer le joueur existant et mettre à jour ses infos
                     player = Player.objects.get(id=selected_player_id)
-                    player_form = PlayerForm(request.POST, instance=player)  # Lier le formulaire au joueur existant
+                    player_form = PlayerForm(request.POST, instance=player)  # Lier au joueur existant
                     if player_form.is_valid():
                         player_form.save()  # Mettre à jour les infos du joueur
                         messages.success(request, "Les informations du joueur ont été mises à jour avec succès !")
+                    else:
+                        messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
                 except Player.DoesNotExist:
                     messages.error(request, "Le joueur sélectionné n'existe pas.")
-            else:  # Si aucun joueur n'a été sélectionné, créer un nouveau joueur
+            else:
                 player_form = PlayerForm(request.POST)
                 if player_form.is_valid():
                     player = player_form.save()  # Enregistrer le nouveau joueur
                     messages.success(request, "Le nouveau joueur a été ajouté avec succès !")
 
-            # Prepare the video form and render the page again
-            video_form = VideoForm(user=request.user)  # Reset the video form
+            video_form = VideoForm(user=request.user)  # Réinitialiser le formulaire vidéo
             return render(request, 'gestion_joueurs/create_video.html', {
                 'video_form': video_form,
                 'player_form': player_form,
@@ -56,9 +57,8 @@ def create_video_highlight(request):
                     video = video_form.save(commit=False)
                     video.player = Player.objects.get(id=player_id)
                     
-                    # Obtenir ou créer l'éditeur
-                    editor, created = VideoEditor.objects.get_or_create(user=request.user)
-                    video.editor = editor  # Assurez-vous que l'éditeur est une instance de VideoEditor
+                    editor, _ = VideoEditor.objects.get_or_create(user=request.user)
+                    video.editor = editor
                     
                     video.save()
                     messages.success(request, "La vidéo a été créée avec succès !")
@@ -200,28 +200,50 @@ def register_video_editor(request):
 @login_required
 def edit_player(request, player_id):
     player = get_object_or_404(Player, id=player_id)
+    videos = Video.objects.filter(player=player).prefetch_related('status_history')  # Utiliser le related_name
+
+    # Ajouter le dernier statut pour chaque vidéo
+    for video in videos:
+        video.last_status = video.status_history.order_by('-changed_at').first()  # Accéder au bon nom
+
     if request.method == 'POST':
         form = PlayerForm(request.POST, instance=player)
         if form.is_valid():
             form.save()
             messages.success(request, "Les informations du joueur ont été mises à jour avec succès.")
-            return redirect('dashboard')  # Rediriger vers le tableau de bord ou une autre page
+            return redirect('dashboard')
     else:
         form = PlayerForm(instance=player)
-    return render(request, 'gestion_joueurs/edit_player.html', {'form': form, 'player': player})
+
+    return render(request, 'gestion_joueurs/edit_player.html', {
+        'form': form,
+        'player': player,
+        'videos': videos,
+    })
 
 @login_required
 def edit_video(request, video_id):
     video = get_object_or_404(Video, id=video_id)
+    video_status_history = video.status_history.all()  # Utiliser le related_name
+    payments = video.payments.all()  # Assure-toi que le modèle Payment a la relation correcte
+
     if request.method == 'POST':
-        form = VideoForm(request.POST, instance=video, user=request.user)  # Passer l'utilisateur ici
+        form = VideoForm(request.POST, instance=video, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
             return redirect('dashboard')
     else:
-        form = VideoForm(instance=video, user=request.user)  # Passer l'utilisateur ici
-    return render(request, 'gestion_joueurs/edit_video.html', {'form': form, 'video': video})  # Assurez-vous que "form" est bien passé
+        form = VideoForm(instance=video, user=request.user)
+
+    return render(request, 'gestion_joueurs/edit_video.html', {
+        'form': form,
+        'video': video,
+        'video_status_history': video_status_history,
+        'payments': payments,
+    })
+
+
 
 @login_required
 def record_payment(request):

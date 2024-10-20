@@ -1,5 +1,5 @@
 {% extends 'gestion_joueurs/base.html' %}
-{% load crispy_forms_tags %}  <!-- Charger les tags Crispy Forms -->
+{% load crispy_forms_tags %}
 
 {% block title %}Modifier Joueur{% endblock %}
 {% block content %}
@@ -9,12 +9,72 @@
             <div class="alert alert-{{ message.tags }}">{{ message }}</div>
         {% endfor %}
     {% endif %}
-    
-    <form method="POST">
-        {% csrf_token %}
-        {{ form|crispy }}  <!-- Utiliser Crispy Forms pour le rendu du formulaire -->
-        <button type="submit" class="btn btn-primary">Mettre à jour le Joueur</button>
-    </form>
-    
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Modifier le Joueur</h5>
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ form|crispy }}  
+                        <button type="submit" class="btn btn-primary">Mettre à jour le Joueur</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">La liste des Vidéos de {{ player.name }}</h5>
+                    {% if videos %}
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Saison</th>
+                                    <th>Club</th>
+                                    <th>Status</th>
+                                    <th>Date Création/Livraison</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for video in videos %}
+                                    <tr>
+                                        <td>{{ video.season }}</td>
+                                        <td>{{ video.player.club }}</td>
+                                        <td>
+                                            {% if video.last_status %}
+                                                {{ video.last_status.status }}
+                                            {% else %}
+                                                Aucun statut
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if video.last_status %}
+                                                {{ video.last_status.changed_at|date:"d-m-Y" }}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'edit_video' video.id %}" class="btn btn-warning btn-sm">
+                                                <i class="fas fa-edit"></i> 
+                                            </a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucune vidéo trouvée pour ce joueur.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
 {% endblock %}
+

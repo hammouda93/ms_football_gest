@@ -6,6 +6,7 @@ from django.utils import timezone
 
 @receiver(post_save, sender=Video)
 def create_video_status_history(sender, instance, created, **kwargs):
+    user = instance.editor.user if instance.editor and instance.editor.user else None
     if created:
         VideoStatusHistory.objects.create(
             video=instance,
@@ -27,6 +28,7 @@ def create_video_status_history(sender, instance, created, **kwargs):
                 editor=instance.editor,
                 status=instance.status,
                 changed_at=timezone.now(),
+                created_by=user,
                 comment=comment
             )
 
@@ -94,3 +96,11 @@ def update_payment_for_video(sender, instance, created, **kwargs):
     # Créer les paiements en une seule opération
     if payments:
         Payment.objects.bulk_create(payments)
+
+@receiver(post_save, sender=Video)
+def set_league_and_club(sender, instance, created, **kwargs):
+    if created:
+        player = instance.player
+        instance.league = player.league
+        instance.club = player.club
+        instance.save(update_fields=['league', 'club'])

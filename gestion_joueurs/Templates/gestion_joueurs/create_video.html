@@ -42,7 +42,8 @@
                         {{ player_form|crispy }}
                         
                         <!-- Hidden input to store selected player ID -->
-                        <input type="hidden" name="selected_player_id" id="selectedPlayerId">
+                        <input type="hidden" name="selected_player_id" id="selectedPlayerId" 
+                            value="{% if added_player %}{{ added_player.id }}{% endif %}">
                     
                         <div class="d-flex justify-content-between align-items-center mt-4">
                             <button type="submit" name="add_player" class="btn btn-primary">
@@ -107,6 +108,7 @@ document.getElementById('playerName').addEventListener('input', function() {
                         document.getElementById('id_league').value = player.league; // League
                         document.getElementById('id_club').value = player.club; // Club
                         document.getElementById('id_whatsapp_number').value = player.whatsapp_number; // WhatsApp number
+                        document.getElementById('selectedPlayerId').value = player.id; // Update the selected player ID
 
                         resultsContainer.style.display = 'none'; // Hide the results
                     };

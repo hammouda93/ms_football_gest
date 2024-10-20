@@ -1,18 +1,65 @@
 {% extends 'gestion_joueurs/base.html' %}
-{% load crispy_forms_tags %}  <!-- Charger les tags Crispy Forms -->
+{% load crispy_forms_tags %}
 
-{% block title %}Modifier La Vidéo{% endblock %}
+{% block title %}Modifier La Vidéo - {{ video.player.name }}{% endblock %}
 {% block content %}
-<h1>Modifier les Informations de la Vidéo</h1>
+<h1>Modifier la Vidéo de {{ video.player.name }}</h1>
     {% if messages %}
         {% for message in messages %}
             <div class="alert alert-{{ message.tags }}">{{ message }}</div>
         {% endfor %}
     {% endif %}
+    
     <form method="POST">
         {% csrf_token %}
-        {{ form|crispy }}  <!-- Utiliser Crispy Forms pour le rendu du formulaire -->
-        <button type="submit" class="btn btn-primary">Mettre à jour la Vidéo</button>
+        {{ form|crispy }}  
+        <button type="submit" class="btn btn-primary" aria-label="Mettre à jour la vidéo">Mettre à jour la Vidéo</button>
     </form>
-    <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>    
+    
+    <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
+    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-info mt-3">Modifier le joueur</a> 
+
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Historique des Statuts</h5>
+                    {% if video_status_history %}
+                        <ul class="list-group">
+                            {% for status in video_status_history %}
+                                <li class="list-group-item">
+                                    <strong>Status :</strong> {{ status.status }} 
+                                    <br>
+                                    <strong>Date :</strong> {{ status.changed_at|date:"d-m-Y" }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p>Aucun historique de statut disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Informations de Paiement</h5>
+                    {% if payments %}
+                        <ul class="list-group">
+                            {% for payment in payments %}
+                                <li class="list-group-item">
+                                    <strong>Montant :</strong> {{ payment.amount }} 
+                                    <br>
+                                    <strong>Date de Paiement :</strong> {{ payment.date|date:"d-m-Y" }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p>Aucune information de paiement disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}

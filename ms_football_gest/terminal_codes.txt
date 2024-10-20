@@ -3,6 +3,13 @@ python manage.py migrate
 python manage.py runserver
 
 
+git status
+git add .
+git commit -m "Mise à jour : description des changements"
+git push origin master
+
+
+
 je vais vous donner les fichiers models.py, forms.py, views.py et signals.py 
 
 je veux ajouter un module pour la gestion financière pour cela je veux 

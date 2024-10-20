@@ -69,9 +69,6 @@
             <tr>
                 <td>
                     {{ video.player.name }}
-                    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-success btn-sm">
-                        <i class="fas fa-edit"></i>
-                    </a>
                 </td>
                 <td>{{ video.editor.user.username }}</td>
                 <td>
@@ -83,9 +80,12 @@
                 <td class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
                     {{ video.deadline|date:"d/m/Y" }}
                 </td>
-                <td>{{ video.player.get_league_name }}</td>
+                <td>{{ video.get_league_name }}</td>
                 <td>
                     <div class="btn-group" role="group">
+                        <a href="{% url 'edit_player' video.player.id %}" class="btn btn-success btn-sm">
+                            <i class="fas fa-edit"></i>
+                        </a>
                         <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Voir le statut">
                             <i class="fas fa-eye"></i>
                         </a>
