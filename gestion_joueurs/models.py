@@ -118,6 +118,27 @@ class VideoStatusHistory(models.Model):
     def __str__(self):
         return f"{self.status} by {self.editor.user.username} on {self.changed_at} for {self.video}"
 
+    
+class Invoice(models.Model):
+    video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
+    invoice_date = models.DateField(auto_now_add=True)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20, choices=[
+        ('paid', 'Paid'),
+        ('unpaid', 'Unpaid'),
+        ('partially_paid', 'Partially Paid'),
+    ], default='unpaid')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Virement bancaire'),
+        ('la_poste', 'La poste'),
+    ], blank=True, null=True)
+    
+    def __str__(self):
+        return f"Invoice for {self.video} - Status: {self.status}"
+
 
 class Payment(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
@@ -129,38 +150,27 @@ class Payment(models.Model):
         ('final', 'Final'),
         ('partial', 'Partial'),  # Ajout d'une option pour les paiements partiels
     ])
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Virement bancaire'),
+        ('la_poste', 'La poste'),
+    ], blank=True, null=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     remaining_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    method = models.CharField(max_length=50, choices=[
-        ('cash', 'Cash'),
-        ('bank_transfer', 'Bank Transfer'),
-        ('credit_card', 'Credit Card'),
-    ], blank=True, null=True)  # Méthode de paiement
+    invoice = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
 
     def __str__(self):
         return f"{self.player.name} - {self.amount} ({self.payment_type})"
-    
-class Invoice(models.Model):
-    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='invoices')
-    invoice_date = models.DateField(auto_now_add=True)
-    due_date = models.DateField()  # Date limite pour le paiement
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    status = models.CharField(max_length=20, choices=[
-        ('paid', 'Paid'),
-        ('unpaid', 'Unpaid'),
-        ('partially_paid', 'Partially Paid'),
-        ('overdue', 'Overdue'),  # Ajout d'un statut pour les factures en retard
-    ], default='unpaid')
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)  # Utilisateur ayant créé la facture
-    payment_method = models.CharField(max_length=50, choices=[
-        ('cash', 'Cash'),
-        ('bank_transfer', 'Bank Transfer'),
-        ('credit_card', 'Credit Card'),
-    ], blank=True, null=True)
-    
+
+class PaymentHistory(models.Model):
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
+    amount_before = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_after = models.DecimalField(max_digits=10, decimal_places=2)
+    changed_at = models.DateTimeField(auto_now_add=True)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
     def __str__(self):
-        return f"Invoice for {self.video} - Status: {self.status}"
+        return f"Change in Payment {self.payment.id} on {self.changed_at}"
 
 class Expense(models.Model):
     description = models.CharField(max_length=255)
@@ -178,6 +188,7 @@ class Expense(models.Model):
     def __str__(self):
         return f"{self.description} - {self.amount}"
     
+
 class FinancialReport(models.Model):
     report_date = models.DateField(auto_now_add=True)
     total_income = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -199,12 +210,3 @@ class PaymentCategory(models.Model):
     def __str__(self):
         return self.name
     
-class PaymentHistory(models.Model):
-    payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
-    amount_before = models.DecimalField(max_digits=10, decimal_places=2)
-    amount_after = models.DecimalField(max_digits=10, decimal_places=2)
-    changed_at = models.DateTimeField(auto_now_add=True)
-    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return f"Change in Payment {self.payment.id} on {self.changed_at}"

@@ -1,7 +1,7 @@
 from django.urls import path
 #from .views import dashboard, create_video_request, video_status, update_video_status, register_video_editor, user_login, user_logout
-from .views import dashboard, create_video_highlight, video_status, update_video_status, register_video_editor,search_players 
-from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance
+from .views import dashboard, create_video_highlight, video_status, update_video_status, register_video_editor,search_players,view_invoices,view_payments 
+from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance,create_invoice
 
 urlpatterns = [
     path('', dashboard, name='dashboard'),
@@ -13,10 +13,12 @@ urlpatterns = [
     path('video/edit/<int:video_id>/', edit_video, name='edit_video'),
     path('login/', user_login, name='user_login'),
     path('logout/', user_logout, name='user_logout'),
-    path('dashboard/', dashboard, name='dashboard'),
     path('payment/record/', record_payment, name='record_payment'),
+    path('record_payment/<int:video_id>/', record_payment, name='record_payment'),
+    path('invoice/create/', create_invoice, name='create_invoice'),  # Nouvelle URL pour créer une facture
+    path('payments/', view_payments, name='view_payments'),  # Nouvelle URL pour voir les paiements
+    path('invoices/', view_invoices, name='view_invoices'),  # Nouvelle URL pour voir les factures
     path('get_videos/<int:player_id>/', get_videos_by_player, name='get_videos'),
     path('get_balance/<int:video_id>/', get_remaining_balance, name='get_balance'),
     path('search_players/', search_players, name='search_players'),
-    
 ]

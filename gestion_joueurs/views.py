@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment
-from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm
+from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice
+from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm, InvoiceForm
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
@@ -243,37 +243,62 @@ def edit_video(request, video_id):
         'payments': payments,
     })
 
-
-
 @login_required
-def record_payment(request):
+def record_payment(request, video_id):
+    video = get_object_or_404(Video, id=video_id)
+    player = video.player
+
+    # Fetch all payments related to the video
+    payments = Payment.objects.filter(video=video)
+
+    # Get the last invoice for the video
+    last_invoice = Invoice.objects.filter(video=video).order_by('-invoice_date').first()
+
+    # Calculate the remaining amount based on the last invoice
+    if last_invoice:
+        remaining_amount = last_invoice.total_amount - last_invoice.amount_paid
+    else:
+        remaining_amount = 0.00
+
     if request.method == 'POST':
         form = PaymentForm(request.POST)
         if form.is_valid():
             payment = form.save(commit=False)
-            payment.created_by = request.user
-            payment.save()
-            messages.success(request, "Paiement enregistré avec succès.")
-            return redirect('dashboard')
+            payment.video = video
+            payment.player = player
+            payment.created_by = request.user  # Set the user who created the payment
+            payment.invoice_id = last_invoice.id
+
+            # Update the invoice based on the new payment
+            if last_invoice:
+                # Add the new payment amount to the invoice
+                last_invoice.amount_paid += payment.amount
+                last_invoice.status = (
+                    'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount 
+                    else 'paid'
+                )
+                last_invoice.save()  # Save the updated invoice
+
+                # Calculate the new remaining balance for the payment
+                payment.remaining_balance = last_invoice.total_amount - last_invoice.amount_paid
+            else:
+                # If no invoice exists, handle accordingly (e.g., create a new invoice)
+                payment.remaining_balance = remaining_amount  # Keep the logic as needed
+
+            payment.save()  # Save the payment after all attributes are set
+
+            messages.success(request, "Le paiement a été enregistré avec succès.")
+            return redirect('view_payments')
     else:
         form = PaymentForm()
 
-    players = Player.objects.all()
-    player_id = request.GET.get('player_id')  # Récupérer le player_id à partir des paramètres GET
-
-    # Si un joueur est sélectionné, filtrer les vidéos correspondantes
-    if player_id:
-        videos = Video.objects.filter(player_id=player_id)
-    else:
-        videos = Video.objects.none()  # Aucun vidéo par défaut
-
-    # Mettre à jour le queryset du champ vidéo
-    form.fields['video'].queryset = videos
-
     return render(request, 'gestion_joueurs/record_payment.html', {
         'form': form,
-        'players': players,
-        'selected_player_id': player_id,
+        'player': player,
+        'video': video,
+        'payments': payments,
+        'last_invoice': last_invoice,
+        'remaining_amount': remaining_amount,
     })
 
 @login_required
@@ -288,10 +313,30 @@ def get_remaining_balance(request, video_id):
     remaining_balance = video.total_payment - video.advance_payment
     return JsonResponse({'remaining_balance': remaining_balance})
 
+@login_required
 def search_players(request):
     query = request.GET.get('q', '')
     players = Player.objects.filter(name__icontains=query).values('id', 'name', 'date_of_birth', 'league', 'club', 'whatsapp_number')[:10]
     return JsonResponse({'players': list(players)})
 
+@login_required
+def create_invoice(request):
+    if request.method == 'POST':
+        form = InvoiceForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('view_invoices')
+    else:
+        form = InvoiceForm()
+    return render(request, 'gestion_joueurs/create_invoice.html', {'form': form})
 
+@login_required
+def view_payments(request):
+    payments = Payment.objects.all()
+    return render(request, 'gestion_joueurs/view_payments.html', {'payments': payments})
+
+@login_required
+def view_invoices(request):
+    invoices = Invoice.objects.all()
+    return render(request, 'gestion_joueurs/view_invoices.html', {'invoices': invoices})
 

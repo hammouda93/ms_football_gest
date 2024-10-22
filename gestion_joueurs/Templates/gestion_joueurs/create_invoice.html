@@ -1,0 +1,12 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Créer une Facture{% endblock %}
+
+{% block content %}
+<h1>Créer une Facture</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form|crispy }}
+</form>
+{% endblock %}

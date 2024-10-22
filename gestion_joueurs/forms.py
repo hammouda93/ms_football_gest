@@ -1,5 +1,5 @@
 from django import forms
-from .models import Video, Player, VideoEditor, Payment
+from .models import Video, Player, VideoEditor, Payment,Invoice
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from crispy_forms.helper import FormHelper
@@ -87,11 +87,20 @@ class VideoEditorRegistrationForm(UserCreationForm):
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        fields = ['player', 'video', 'amount', 'payment_type']
+        fields = ['payment_type', 'amount', 'payment_method']
         
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['player'].widget.attrs['placeholder'] = "Sélectionnez un joueur"
-        self.fields['video'].widget.attrs['placeholder'] = "Sélectionnez une vidéo"
         self.fields['amount'].widget.attrs['placeholder'] = "Montant du paiement"
         self.fields['payment_type'].widget.attrs['placeholder'] = "Type de paiement"
+
+class InvoiceForm(forms.ModelForm):
+    class Meta:
+        model = Invoice
+        fields = ['video', 'total_amount', 'payment_method']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.add_input(Submit('submit', 'Créer la Facture'))

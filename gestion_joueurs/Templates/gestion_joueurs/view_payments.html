@@ -1,0 +1,29 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Voir les Paiements{% endblock %}
+
+{% block content %}
+<h1>Paiements</h1>
+<table>
+    <tr>
+        <th>Joueur</th>
+        <th>Vidéo</th>
+        <th>Montant</th>
+        <th>Type de Paiement</th>
+        <th>Date</th>
+    </tr>
+    {% for payment in payments %}
+    <tr>
+        <td>{{ payment.player.name }}</td>
+        <td>{{ payment.video }}</td>
+        <td>{{ payment.amount }}</td>
+        <td>{{ payment.payment_type }}</td>
+        <td>{{ payment.payment_date }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="5">Aucun paiement trouvé.</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
