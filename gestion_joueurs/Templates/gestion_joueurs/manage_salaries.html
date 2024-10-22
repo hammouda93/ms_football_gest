@@ -1,0 +1,36 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Gestion des Salaires{% endblock %}
+
+{% block content %}
+<h1>Liste des Salaires</h1>
+
+<form method="POST" class="mb-4">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-primary">Ajouter un Salaire</button>
+</form>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Utilisateur</th>
+            <th>Montant</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for salary in salaries %}
+        <tr>
+            <td>{{ salary.user.username }}</td>
+            <td>{{ salary.amount }}</td>
+            <td>{{ salary.date|date:"d/m/Y" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="3">Aucun salaire enregistré.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

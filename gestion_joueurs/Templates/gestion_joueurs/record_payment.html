@@ -3,9 +3,29 @@
 
 {% block content %}
 <div class="container">
-    <h2>Enregistrer un Paiement pour {{ player.name }} </h2>
-    <h3>{{ video }}</h3>
-
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>Enregistrer un Paiement pour {{ player.name }} </h2>
+            <h3>{{ video }}</h3>
+        </div>
+        <div>
+            {% if last_invoice %}
+                <strong>
+                    Dernière Facture: 
+                    <span class="{% if last_invoice.status == 'paid' %}text-success{% else %}text-danger{% endif %}">
+                        {{ last_invoice.total_amount }}
+                    </span>
+                    {% if last_invoice.status == 'paid' %}
+                        <i class="fas fa-check-circle text-success" aria-hidden="true"></i> Validé ({{ last_invoice.amount_paid }})
+                    {% else %}
+                        <i class="fas fa-times-circle text-danger" aria-hidden="true"></i> Non Payé ({{ remaining_amount }})
+                    {% endif %}
+                </strong>
+            {% else %}
+                <strong>Aucune Facture Disponible</strong>
+            {% endif %}
+        </div>
+    </div>
     <div class="row">
         <!-- Carte pour le formulaire de paiement -->
         <div class="col-md-6">
@@ -62,7 +82,7 @@
                             <input type="number" id="amount" name="amount" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="paymentType">Methode de Payement</label>
+                            <label for="paymentMethod">Méthode de Paiement</label>
                             <select id="paymentMethod" name="payment_method" class="form-control">
                                 <option value="cash">CASH</option> 
                                 <option value="bank_transfer">Virement Bancaire</option>
@@ -70,68 +90,83 @@
                             </select>
                         </div>
                         <button type="submit" class="btn btn-primary mt-3">Enregistrer le Paiement</button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au Tableau de Bord</a>
                     </form>
-
-                    <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au Tableau de Bord</a>
                 </div>
             </div>
         </div>
 
-        <!-- Carte pour l'historique des paiements -->
+        <!-- Partie 2 : Carte historique et carte facture côte à côte -->
         <div class="col-md-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5>Historique des Paiements</h5>
-                </div>
-                <div class="card-body">
-                    {% if payments %}
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Montant</th>
-                                    <th>Date</th>
-                                    <th>Reste</th>
-                                    <th>Créé Par</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for payment in payments %}
-                                    <tr>
-                                        <td>{{ payment.amount }}</td>
-                                        <td>{{ payment.payment_date|date:"d/m/Y" }}</td>
-                                        <td>{{ payment.remaining_balance }}</td>
-                                        <td>{{ payment.created_by.username }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    {% else %}
-                        <div class="alert alert-warning" role="alert">
-                            Aucun paiement enregistré.
+            <div class="row">
+                <!-- Carte pour l'historique des paiements -->
+                <div class="col-12 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Historique des Paiements</h5>
                         </div>
-                    {% endif %}
+                        <div class="card-body">
+                            {% if payments %}
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Montant</th>
+                                            <th>Date</th>
+                                            <th>Reste</th>
+                                            <th>Créé Par</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for payment in payments %}
+                                            <tr>
+                                                <td>{{ payment.amount }}</td>
+                                                <td>{{ payment.payment_date|date:"d/m/Y" }}</td>
+                                                <td>{{ payment.remaining_balance }}</td>
+                                                <td>{{ payment.created_by.username }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% else %}
+                                <div class="alert alert-warning" role="alert">
+                                    Aucun paiement enregistré.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Carte pour la dernière facture -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Dernière Facture</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if last_invoice %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Montant Total:</strong> {{ last_invoice.total_amount }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Montant Payé:</strong> {{ last_invoice.amount_paid }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Statut:</strong> {{ last_invoice.status }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Date d'Émission:</strong> {{ last_invoice.invoice_date|date:"d/m/Y" }}</p>
+                                </div>
+                            </div>
+                            {% else %}
+                                <div class="alert alert-warning" role="alert">
+                                    Aucune facture disponible.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Carte pour la dernière facture -->
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>Dernière Facture</h5>
-        </div>
-        <div class="card-body">
-            {% if last_invoice %}
-                <p><strong>ID de la Facture:</strong> {{ last_invoice.id }}</p>
-                <p><strong>Montant Total:</strong> {{ last_invoice.total_amount }}</p>
-                <p><strong>Montant Payé:</strong> {{ last_invoice.amount_paid }}</p>
-                <p><strong>Statut:</strong> {{ last_invoice.status }}</p>
-                <p><strong>Date d'Émission:</strong> {{ last_invoice.invoice_date|date:"d/m/Y" }}</p>
-            {% else %}
-                <div class="alert alert-warning" role="alert">
-                    Aucune facture disponible.
-                </div>
-            {% endif %}
         </div>
     </div>
 </div>
@@ -189,4 +224,3 @@
     });
 </script>
 {% endblock %}
-

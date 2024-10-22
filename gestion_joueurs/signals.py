@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import Video, VideoStatusHistory, Player, Payment, Invoice
+from .models import Video, VideoStatusHistory, Player, Payment, Invoice, Salary, Expense
 from django.utils import timezone
 from decimal import Decimal
 from django.db import transaction
@@ -100,3 +100,19 @@ def set_league_and_club(sender, instance, created, **kwargs):
         instance.league = player.league
         instance.club = player.club
         instance.save(update_fields=['league', 'club'])
+
+
+@receiver(post_save, sender=Salary)
+def create_expense_for_salary(sender, instance, created, **kwargs):
+    if created:
+        Expense.objects.create(
+            description=f"Salaire pour {instance.user.username}",
+            amount=instance.amount,
+            date=instance.date,
+            created_by=instance.created_by,
+            category='salary',
+            salary=instance  # Lier la dépense au salaire
+        )
+
+
+

@@ -1,0 +1,26 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block content %}
+<h2>Mes Dépenses</h2>
+<table>
+    <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Montant</th>
+        <th>Catégorie</th>
+        <th>Actions</th>
+    </tr>
+    {% for expense in expenses %}
+    <tr>
+        <td>{{ expense.date }}</td>
+        <td>{{ expense.description }}</td>
+        <td>{{ expense.amount }}</td>
+        <td>{{ expense.category }}</td>
+        <td>
+            <a href="{% url 'edit_expense' expense.id %}">Modifier</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+<a href="{% url 'add_expense' %}">Ajouter une Dépense</a>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block content %}
+<h2>Modifier la Dépense: {{ expense.description }}</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Modifier</button>
+</form>
+{% endblock %}

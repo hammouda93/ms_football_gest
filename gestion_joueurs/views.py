@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice
-from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm, InvoiceForm
+from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice,Expense,Salary
+from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm, InvoiceForm,ExpenseForm
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
@@ -302,6 +302,20 @@ def record_payment(request, video_id):
     })
 
 @login_required
+def get_videos_by_editor(request):
+    editor_id = request.GET.get('editor_id')
+
+    # Filter videos by editor and exclude those with salary_paid_status as 'paid'
+    videos = Video.objects.filter(
+        editor_id=editor_id
+    ).exclude(
+        salary_paid_status=Video.SalaryPaidStatusChoices.PAID  # Ensure this matches your enum or choice field
+    ).values('id', 'player__name')  # Select only the fields you need
+
+    video_list = list(videos)  # Convert to list for JSON response
+    return JsonResponse({'videos': video_list})
+
+@login_required
 def get_videos_by_player(request, player_id):
     videos = Video.objects.filter(player_id=player_id)
     video_data = [{'id': video.id, 'info': video.info} for video in videos]
@@ -340,3 +354,63 @@ def view_invoices(request):
     invoices = Invoice.objects.all()
     return render(request, 'gestion_joueurs/view_invoices.html', {'invoices': invoices})
 
+@login_required
+def add_expense(request):
+    videos = []
+    editors = VideoEditor.objects.all()  # Récupérer tous les éditeurs vidéo
+
+    if request.user.is_authenticated and hasattr(request.user, 'videoeditor'):
+        videos = Video.objects.filter(editor=request.user.videoeditor)
+
+    if request.method == 'POST':
+        form = ExpenseForm(request.POST)
+        if form.is_valid():
+            expense = form.save(commit=False)
+            expense.created_by = request.user  # Associer la dépense à l'utilisateur
+            expense.save()
+
+            # Si la catégorie est "salary", créer un enregistrement de salaire
+            if expense.category == 'salary':
+                salary_amount = form.cleaned_data.get('amount')  # Montant de la dépense
+                video_id = request.POST.get('video')  # ID de la vidéo sélectionnée
+                editor_id = request.POST.get('editor')  # ID de l'éditeur sélectionné
+
+                if salary_amount and video_id and editor_id:
+                    Salary.objects.create(
+                        user_id=editor_id,  # L'éditeur sélectionné
+                        amount=salary_amount,
+                        expense=expense,  # Lier le salaire à la dépense
+                        video_id=video_id  # Lier la vidéo à l'enregistrement de salaire
+                    )
+
+            return redirect('view_expenses')
+    else:
+        form = ExpenseForm()
+
+    return render(request, 'gestion_joueurs/add_expense.html', {
+        'form': form,
+        'videos': videos,
+        'editors': editors  # Passer la liste des éditeurs au template
+    })
+
+@login_required
+def edit_expense(request, expense_id):
+    expense = get_object_or_404(Expense, id=expense_id, created_by=request.user)
+    if request.method == 'POST':
+        form = ExpenseForm(request.POST, instance=expense)
+        if form.is_valid():
+            form.save()
+            return redirect('view_expenses')
+    else:
+        form = ExpenseForm(instance=expense)
+    return render(request, 'gestion_joueurs/edit_expense.html', {'form': form, 'expense': expense})
+
+@login_required
+def view_expenses(request):
+    expenses = Expense.objects.filter(created_by=request.user).order_by('-date')
+    return render(request, 'gestion_joueurs/view_expenses.html', {'expenses': expenses})
+
+
+def manage_salaries(request):
+    salaries = Salary.objects.all().order_by('-date')
+    return render(request, 'gestion_joueurs/manage_salaries.html', {'salaries': salaries})

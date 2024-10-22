@@ -67,6 +67,10 @@ class Video(models.Model):
         IN_PROGRESS = 'in_progress', 'In Progress'
         COMPLETED = 'completed', 'Completed'
         DELIVERED = 'delivered', 'Delivered'
+    class SalaryPaidStatusChoices(models.TextChoices):
+        NOT_PAID = 'not_paid', 'Not Paid'
+        PARTIALLY_PAID = 'partially_paid', 'Partially Paid'
+        PAID = 'paid', 'Paid'
     LEAGUE_CHOICES = [
         ('L1', 'Ligue 1 Tunisie'),
         ('L2', 'Ligue 2 Tunisie'),
@@ -95,7 +99,14 @@ class Video(models.Model):
         choices=LEAGUE_CHOICES,
         default='L1',  # Définir la valeur par défaut à "Ligue 1 Tunisie"
         verbose_name="League",
-    )   
+    )
+    salary_paid_status = models.CharField(
+        max_length=20,
+        choices=SalaryPaidStatusChoices.choices,
+        default=SalaryPaidStatusChoices.NOT_PAID,  # Default value set to Not Paid
+        verbose_name="Salary Payment Status"
+    )
+    
     def remaining_balance(self):
         """Calculates the remaining balance after advance payment."""
         return self.total_payment - self.advance_payment
@@ -172,6 +183,16 @@ class PaymentHistory(models.Model):
     def __str__(self):
         return f"Change in Payment {self.payment.id} on {self.changed_at}"
 
+class Salary(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(auto_now_add=True)
+    video = models.ForeignKey('Video', on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_creator')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.amount} on {self.date}"
+
 class Expense(models.Model):
     description = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -184,7 +205,7 @@ class Expense(models.Model):
         ('equipment', 'Equipment'),
         ('other', 'Other'),
     ], default='other')  # Catégorie de la dépense
-
+    salary = models.ForeignKey('Salary', on_delete=models.SET_NULL, null=True, blank=True)
     def __str__(self):
         return f"{self.description} - {self.amount}"
     

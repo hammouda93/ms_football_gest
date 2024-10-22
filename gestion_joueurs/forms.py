@@ -1,5 +1,5 @@
 from django import forms
-from .models import Video, Player, VideoEditor, Payment,Invoice
+from .models import Video, Player, VideoEditor, Payment,Invoice, Expense
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from crispy_forms.helper import FormHelper
@@ -104,3 +104,26 @@ class InvoiceForm(forms.ModelForm):
         self.helper = FormHelper()
         self.helper.form_method = 'post'
         self.helper.add_input(Submit('submit', 'Créer la Facture'))
+
+
+class ExpenseForm(forms.ModelForm):
+    date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
+        required=False,
+    )
+    video = forms.ModelChoiceField(queryset=Video.objects.none(), required=False)
+    class Meta:
+        model = Expense
+        fields = ['amount', 'date', 'category','description', 'video']  # Ajout de category
+        salary_amount = forms.DecimalField(required=False, decimal_places=2, max_digits=10)
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.fields['amount'].widget.attrs['placeholder'] = "Montant"
+        self.fields['description'].widget.attrs['placeholder'] = "Description"
+        if user and hasattr(user, 'videoeditor'):
+            self.fields['video'].queryset = Video.objects.filter(editor=user.videoeditor)
+
+        

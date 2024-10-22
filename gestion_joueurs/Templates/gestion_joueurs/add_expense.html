@@ -1,0 +1,109 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block content %}
+<h2>Ajouter une Dépense</h2>
+<form method="POST" action="{% url 'add_expense' %}">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="description">Description</label>
+        <input type="text" class="form-control" id="description" name="description" required>
+    </div>
+    <div class="form-group">
+        <label for="amount">Montant</label>
+        <input type="number" class="form-control" id="amount" name="amount" required>
+    </div>
+    <div class="form-group">
+        <label for="category">Catégorie</label>
+        <select id="category" name="category" class="form-control" required>
+            <option value="">Sélectionnez une catégorie</option>
+            <option value="marketing">Marketing</option>
+            <option value="operational">Opérationnel</option>
+            <option value="salary">Salaire</option>
+            <option value="equipment">Équipement</option>
+            <option value="other">Autre</option>
+        </select>
+    </div>
+
+    <div id="editor-select" class="form-group" style="display: none;">
+        <label for="editor">Sélectionner un éditeur :</label>
+        <select name="editor" id="editor" class="form-control">
+            <option value="">-- Choisissez un éditeur --</option>
+            {% for editor in editors %}
+                <option value="{{ editor.id }}">{{ editor.user.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div id="video-select" class="form-group" style="display: none;">
+        <label for="video">Sélectionner une vidéo :</label>
+        <select name="video" id="video" class="form-control">
+            <option value="">-- Choisissez une vidéo --</option>
+        </select>
+    </div>
+    
+    <div id="salary-input" class="form-group" style="display: none;">
+        <label for="salary_amount">Montant à payer</label>
+        <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" readonly>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Ajouter Dépense</button>
+</form>
+
+<script>
+    document.getElementById('category').addEventListener('change', function() {
+        var salaryInput = document.getElementById('salary-input');
+        var editorSelect = document.getElementById('editor-select');
+        var amountInput = document.getElementById('amount');
+
+        if (this.value === 'salary') {
+            salaryInput.style.display = 'block';
+            editorSelect.style.display = 'block';
+        } else {
+            salaryInput.style.display = 'none';
+            editorSelect.style.display = 'none';
+            document.getElementById('video-select').style.display = 'none'; // Hide video select
+        }
+
+        // Sync the salary input with the amount input
+        amountInput.addEventListener('input', function() {
+            if (salaryInput.style.display === 'block') {
+                document.getElementById('salary_amount').value = this.value;
+            }
+        });
+    });
+
+    document.getElementById('editor').addEventListener('change', function() {
+        var videoSelect = document.getElementById('video-select');
+        var editorId = this.value;
+
+        // Reset video selection
+        videoSelect.style.display = 'none'; // Hide initially
+        videoSelect.querySelector('select').innerHTML = '<option value="">-- Choisissez une vidéo --</option>'; // Reset options
+
+        if (editorId) {
+            fetch(`/gestion_joueurs/expenses/get_videos/?editor_id=${editorId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.videos && data.videos.length > 0) {
+                    videoSelect.style.display = 'block'; // Show the select element
+                    const select = videoSelect.querySelector('select');
+                    data.videos.forEach(video => {
+                        const option = document.createElement('option');
+                        option.value = video.id; // ID de la vidéo
+                        option.textContent = video.player__name; // Nom du joueur ou autre information que vous souhaitez afficher
+                        select.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('There was a problem with the fetch operation:', error);
+            });
+        }
+    });
+</script>
+{% endblock %}
