@@ -194,7 +194,7 @@ class Salary(models.Model):
         return f"{self.user.username} - {self.amount} on {self.date}"
 
 class Expense(models.Model):
-    description = models.CharField(max_length=255)
+    description = models.CharField(max_length=255, null=True, blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField(default=timezone.now)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)

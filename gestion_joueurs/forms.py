@@ -109,14 +109,19 @@ class InvoiceForm(forms.ModelForm):
 class ExpenseForm(forms.ModelForm):
     date = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
-        input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
+        input_formats=['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%m/%d/%y', '%d/%m/%Y'],
         required=False,
     )
     video = forms.ModelChoiceField(queryset=Video.objects.none(), required=False)
+    salary_amount = forms.DecimalField(required=False, decimal_places=2, max_digits=10)
+    salary_paid_status = forms.ChoiceField(choices=[
+        ('partially_paid', 'Une avance'),
+        ('paid', 'Paiement Total'),
+    ], required=False)
+
     class Meta:
         model = Expense
-        fields = ['amount', 'date', 'category','description', 'video']  # Ajout de category
-        salary_amount = forms.DecimalField(required=False, decimal_places=2, max_digits=10)
+        fields = ['amount', 'date', 'category', 'description', 'video', 'salary_amount', 'salary_paid_status']
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)

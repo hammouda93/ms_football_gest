@@ -102,7 +102,7 @@ def set_league_and_club(sender, instance, created, **kwargs):
         instance.save(update_fields=['league', 'club'])
 
 
-@receiver(post_save, sender=Salary)
+""" @receiver(post_save, sender=Salary)
 def create_expense_for_salary(sender, instance, created, **kwargs):
     if created:
         Expense.objects.create(
@@ -112,7 +112,7 @@ def create_expense_for_salary(sender, instance, created, **kwargs):
             created_by=instance.created_by,
             category='salary',
             salary=instance  # Lier la dépense au salaire
-        )
+        ) """
 
 
 

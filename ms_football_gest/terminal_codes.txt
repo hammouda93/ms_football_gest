@@ -1,11 +1,3 @@
-<select name="video" id="video" class="form-control"><option value="">-- Choisissez une vidéo --</option><option value="84">Amine Haboubi</option><option value="85">mohamed salah mhedhebi</option><option value="86">chiheb jbeli</option></select>
-
-
-
-
-
-
-
 
 python manage.py makemigrations
 python manage.py migrate

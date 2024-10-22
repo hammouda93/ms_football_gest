@@ -19,10 +19,6 @@
             <option value="other">Autre</option>
         </select>
     </div>
-    <div class="form-group">
-        <label for="amount">Montant</label>
-        <input type="number" class="form-control" id="amount" name="amount" required>
-    </div>
     <div id="editor-select" class="form-group" style="display: none;">
         <label for="editor">Sélectionner un éditeur :</label>
         <select name="editor" id="editor" class="form-control">
@@ -40,9 +36,13 @@
         </select>
     </div>
     
+    <div class="form-group">
+        <label for="amount">Montant</label>
+        <input type="number" class="form-control" id="amount" name="amount" required>
+    </div>
     <div id="salary-input" class="form-group" style="display: none;">
         <label for="salary_amount">Montant à payer</label>
-        <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" readonly>
+        <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" hidden>
     
         <label for="salary_paid_status">Statut de salaire payé</label>
         <select name="salary_paid_status" id="salary_paid_status" class="form-control">
@@ -58,7 +58,6 @@
     document.getElementById('category').addEventListener('change', function() {
         var salaryInput = document.getElementById('salary-input');
         var editorSelect = document.getElementById('editor-select');
-        var amountInput = document.getElementById('amount');
 
         if (this.value === 'salary') {
             salaryInput.style.display = 'block';
@@ -68,13 +67,16 @@
             editorSelect.style.display = 'none';
             document.getElementById('video-select').style.display = 'none'; // Hide video select
         }
+    });
 
-        // Sync the salary input with the amount input
-        amountInput.addEventListener('input', function() {
-            if (salaryInput.style.display === 'block') {
-                document.getElementById('salary_amount').value = this.value;
-            }
-        });
+    var amountInput = document.getElementById('amount');
+    var salaryAmountInput = document.getElementById('salary_amount');
+
+    amountInput.addEventListener('input', function() {
+        if (document.getElementById('salary-input').style.display === 'block') {
+            salaryAmountInput.value = this.value; // Sync amount to salary amount
+            console.log("Syncing salary_amount with amount:", this.value); // Debugging
+        }
     });
 
     document.getElementById('editor').addEventListener('change', function() {
@@ -99,10 +101,13 @@
                     const select = videoSelect.querySelector('select');
                     data.videos.forEach(video => {
                         const option = document.createElement('option');
-                        option.value = video.id; // ID de la vidéo
-                        option.textContent = video.player__name; // Nom du joueur ou autre information que vous souhaitez afficher
+                        option.value = video.id; // Ensure this is the ID
+                        option.textContent = video.player__name; // Display player or relevant info
                         select.appendChild(option);
                     });
+                    console.log("Videos populated:", data.videos); // Debugging
+                } else {
+                    console.log("No videos found for this editor."); // Debugging
                 }
             })
             .catch(error => {
