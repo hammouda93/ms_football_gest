@@ -356,41 +356,45 @@ def view_invoices(request):
 
 @login_required
 def add_expense(request):
-    videos = []
-    editors = VideoEditor.objects.all()  # Récupérer tous les éditeurs vidéo
-
-    if request.user.is_authenticated and hasattr(request.user, 'videoeditor'):
-        videos = Video.objects.filter(editor=request.user.videoeditor)
+    editors = VideoEditor.objects.all()  # Get all video editors
+    videos = Video.objects.all()  # Get all videos
 
     if request.method == 'POST':
-        form = ExpenseForm(request.POST)
+        form = ExpenseForm(request.POST, user=request.user)  # Pass user here
         if form.is_valid():
             expense = form.save(commit=False)
-            expense.created_by = request.user  # Associer la dépense à l'utilisateur
+            expense.created_by = request.user  # Associate the expense with the user
             expense.save()
 
-            # Si la catégorie est "salary", créer un enregistrement de salaire
+            # If the category is "salary", create a salary record
             if expense.category == 'salary':
-                salary_amount = form.cleaned_data.get('amount')  # Montant de la dépense
-                video_id = request.POST.get('video')  # ID de la vidéo sélectionnée
-                editor_id = request.POST.get('editor')  # ID de l'éditeur sélectionné
-
+                salary_amount = form.cleaned_data.get('salary_amount')  # Get the salary amount
+                video_id = form.cleaned_data.get('video')  # ID of the selected video
+                editor_id = form.cleaned_data.get('editor')  # ID of the selected editor
+                salary_paid_status = form.cleaned_data.get('salary_paid_status')  # Get the salary paid status
+                
                 if salary_amount and video_id and editor_id:
-                    Salary.objects.create(
-                        user_id=editor_id,  # L'éditeur sélectionné
+                    salary = Salary.objects.create(
+                        user_id=editor_id,
                         amount=salary_amount,
-                        expense=expense,  # Lier le salaire à la dépense
-                        video_id=video_id  # Lier la vidéo à l'enregistrement de salaire
+                        video_id=video_id,
+                        created_by=request.user
                     )
 
+                    # Update the salary_paid_status of the corresponding video
+                    Video.objects.filter(id=video_id).update(salary_paid_status=salary_paid_status)
+
             return redirect('view_expenses')
+        else:
+            print("Form errors:", form.errors)  # Print form errors for debugging
+            messages.error(request, "There was an error with your submission. Please check the form.")
     else:
-        form = ExpenseForm()
+        form = ExpenseForm(user=request.user)  # Pass user here
 
     return render(request, 'gestion_joueurs/add_expense.html', {
         'form': form,
-        'videos': videos,
-        'editors': editors  # Passer la liste des éditeurs au template
+        'videos': videos,  # Pass the list of videos to the template
+        'editors': editors  # Pass the list of editors to the template
     })
 
 @login_required

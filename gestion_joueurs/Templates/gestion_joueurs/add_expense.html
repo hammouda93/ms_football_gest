@@ -9,10 +9,6 @@
         <input type="text" class="form-control" id="description" name="description" required>
     </div>
     <div class="form-group">
-        <label for="amount">Montant</label>
-        <input type="number" class="form-control" id="amount" name="amount" required>
-    </div>
-    <div class="form-group">
         <label for="category">Catégorie</label>
         <select id="category" name="category" class="form-control" required>
             <option value="">Sélectionnez une catégorie</option>
@@ -23,7 +19,10 @@
             <option value="other">Autre</option>
         </select>
     </div>
-
+    <div class="form-group">
+        <label for="amount">Montant</label>
+        <input type="number" class="form-control" id="amount" name="amount" required>
+    </div>
     <div id="editor-select" class="form-group" style="display: none;">
         <label for="editor">Sélectionner un éditeur :</label>
         <select name="editor" id="editor" class="form-control">
@@ -44,6 +43,12 @@
     <div id="salary-input" class="form-group" style="display: none;">
         <label for="salary_amount">Montant à payer</label>
         <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" readonly>
+    
+        <label for="salary_paid_status">Statut de salaire payé</label>
+        <select name="salary_paid_status" id="salary_paid_status" class="form-control">
+            <option value="partially_paid">Une avance</option>
+            <option value="paid">Payement Total</option>
+        </select>
     </div>
     
     <button type="submit" class="btn btn-primary">Ajouter Dépense</button>

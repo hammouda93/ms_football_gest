@@ -1,5 +1,5 @@
 from django import forms
-from .models import Video, Player, VideoEditor, Payment,Invoice, Expense
+from .models import Video, Player, VideoEditor, Payment,Invoice, Expense, Salary
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from crispy_forms.helper import FormHelper
@@ -126,4 +126,8 @@ class ExpenseForm(forms.ModelForm):
         if user and hasattr(user, 'videoeditor'):
             self.fields['video'].queryset = Video.objects.filter(editor=user.videoeditor)
 
-        
+class SalaryForm(forms.ModelForm):
+    class Meta:
+        model = Salary
+        fields = ['amount','video']  # Include the salary_paid_status field
+    video = forms.ModelChoiceField(queryset=Video.objects.all())
