@@ -383,6 +383,7 @@ def add_expense(request):
                     salary = Salary.objects.create(
                         user_id=request.user.id,  # Assuming the salary is linked to the user creating the expense
                         amount=salary_amount,
+                        video_id =video_id,
                         created_by=request.user
                     )
                     expense.salary = salary  # Link the salary to the expense
