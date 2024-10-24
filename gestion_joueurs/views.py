@@ -310,7 +310,7 @@ def get_videos_by_editor(request):
         editor_id=editor_id
     ).exclude(
         salary_paid_status=Video.SalaryPaidStatusChoices.PAID  # Ensure this matches your enum or choice field
-    ).values('id', 'player__name')  # Select only the fields you need
+    ).values('id', 'player__name','season')  # Select only the fields you need
 
     video_list = list(videos)  # Convert to list for JSON response
     return JsonResponse({'videos': video_list})
@@ -416,24 +416,78 @@ def add_expense(request):
         'videos': videos,
         'editors': editors
     })
+
+
+
 @login_required
 def edit_expense(request, expense_id):
-    expense = get_object_or_404(Expense, id=expense_id, created_by=request.user)
+    expense = get_object_or_404(Expense, id=expense_id)
+    form = ExpenseForm(instance=expense, user=request.user)
+
+    salary = None
+    video = None
+    video_editor = None
+
+    if expense.salary:
+        salary = expense.salary
+        video = salary.video
+        if video:
+            video_editor = video.editor
+
+        form.fields['salary_amount'].initial = salary.amount if expense.category == 'salary' else None
+        form.fields['video'].initial = video.id if video else None
+        form.fields['video_editor'].initial = video_editor.id if video_editor else None
+        form.fields['salary_paid_status'].initial = video.salary_paid_status if video else None
+
+    form.fields['date'].initial = expense.date.strftime('%Y-%m-%d')
+
     if request.method == 'POST':
-        form = ExpenseForm(request.POST, instance=expense)
+        form = ExpenseForm(request.POST, user=request.user)
         if form.is_valid():
-            form.save()
+            expense.amount = form.cleaned_data['amount']
+            expense.date = form.cleaned_data['date']
+            expense.category = form.cleaned_data['category']
+            expense.description = form.cleaned_data['description']
+
+            # Check if category is salary before updating salary details
+            if expense.category == 'salary' and salary:
+                salary.amount = form.cleaned_data['salary_amount']
+                salary.video = form.cleaned_data['video']
+                salary.date = form.cleaned_data['date']
+                salary.save()
+
+            expense.save()
+            if video:
+                    Video.objects.filter(id=video.id).update(salary_paid_status=form.cleaned_data.get('salary_paid_status'))
+                    print(f"Salary created with ID: {salary.id}")  
             return redirect('view_expenses')
-    else:
-        form = ExpenseForm(instance=expense)
-    return render(request, 'gestion_joueurs/edit_expense.html', {'form': form, 'expense': expense})
+
+    videos = Video.objects.all()
+    return render(request, 'gestion_joueurs/edit_expense.html', {
+        'form': form,
+        'expense': expense,
+        'videos': videos,
+        'salary': salary,
+        'video': video,
+        'video_editor': video_editor,
+    })
+
+
+
 
 @login_required
 def view_expenses(request):
     expenses = Expense.objects.filter(created_by=request.user).order_by('-date')
     return render(request, 'gestion_joueurs/view_expenses.html', {'expenses': expenses})
 
-
+@login_required
 def manage_salaries(request):
     salaries = Salary.objects.all().order_by('-date')
-    return render(request, 'gestion_joueurs/manage_salaries.html', {'salaries': salaries})
+
+    # Fetch the related expense for each salary
+    for salary in salaries:
+        salary.expense = Expense.objects.filter(salary=salary).first()  # Get the first related expense
+
+    return render(request, 'gestion_joueurs/manage_salaries.html', {
+        'salaries': salaries,
+    })

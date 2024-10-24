@@ -1,60 +1,78 @@
 {% extends "gestion_joueurs/base.html" %}
 
 {% block content %}
-<h2>Ajouter une Dépense</h2>
-<form method="POST" action="{% url 'add_expense' %}">
-    {% csrf_token %}
-    <div class="form-group">
-        <label for="description">Description</label>
-        <input type="text" class="form-control" id="description" name="description" required>
-    </div>
-    <div class="form-group">
-        <label for="category">Catégorie</label>
-        <select id="category" name="category" class="form-control" required>
-            <option value="">Sélectionnez une catégorie</option>
-            <option value="marketing">Marketing</option>
-            <option value="operational">Opérationnel</option>
-            <option value="salary">Salaire</option>
-            <option value="equipment">Équipement</option>
-            <option value="other">Autre</option>
-        </select>
-    </div>
-    <div id="editor-select" class="form-group" style="display: none;">
-        <label for="editor">Sélectionner un éditeur :</label>
-        <select name="editor" id="editor" class="form-control">
-            <option value="">-- Choisissez un éditeur --</option>
-            {% for editor in editors %}
-                <option value="{{ editor.id }}">{{ editor.user.username }}</option>
-            {% endfor %}
-        </select>
-    </div>
+<div class="container">
+    <h2 class="mt-4 mb-3 text-center">Ajouter une Dépense</h2>
     
-    <div id="video-select" class="form-group" style="display: none;">
-        <label for="video">Sélectionner une vidéo :</label>
-        <select name="video" id="video" class="form-control">
-            <option value="">-- Choisissez une vidéo --</option>
-        </select>
-    </div>
-    
-    <div class="form-group">
-        <label for="amount">Montant</label>
-        <input type="number" class="form-control" id="amount" name="amount" required>
-    </div>
-    <div id="salary-input" class="form-group" style="display: none;">
-        <label for="salary_amount">Montant à payer</label>
-        <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" hidden>
-    
-        <label for="salary_paid_status">Statut de salaire payé</label>
-        <select name="salary_paid_status" id="salary_paid_status" class="form-control">
-            <option value="partially_paid">Une avance</option>
-            <option value="paid">Payement Total</option>
-        </select>
-    </div>
-    
-    <button type="submit" class="btn btn-primary">Ajouter Dépense</button>
-</form>
+    <form method="POST" action="{% url 'add_expense' %}">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="description">Description</label>
+            <input type="text" class="form-control" id="description" name="description" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="category">Catégorie</label>
+            <select id="category" name="category" class="form-control" required>
+                <option value="">Sélectionnez une catégorie</option>
+                <option value="marketing">Marketing</option>
+                <option value="operational">Opérationnel</option>
+                <option value="salary">Salaire</option>
+                <option value="equipment">Équipement</option>
+                <option value="other">Autre</option>
+            </select>
+        </div>
+        
+        <div id="editor-select" class="form-group" style="display: none;">
+            <label for="editor">Sélectionner un éditeur :</label>
+            <select name="editor" id="editor" class="form-control">
+                <option value="">-- Choisissez un éditeur --</option>
+                {% for editor in editors %}
+                    <option value="{{ editor.id }}">{{ editor.user.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="video-select" class="form-group" style="display: none;">
+            <label for="video">Sélectionner une vidéo :</label>
+            <select name="video" id="video" class="form-control">
+                <option value="">-- Choisissez une vidéo --</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="amount">Montant</label>
+            <input type="number" class="form-control" id="amount" name="amount" required>
+        </div>
+        
+        <div id="salary-input" class="form-group" style="display: none;">
+            <label for="salary_amount" hidden>Montant à payer</label>
+            <input type="number" class="form-control" id="salary_amount" name="salary_amount" placeholder="Montant à payer" hidden>
+            
+            <label for="salary_paid_status">Type de salaire</label>
+            <select name="salary_paid_status" id="salary_paid_status" class="form-control">
+                <option value="partially_paid">Une avance</option>
+                <option value="paid">Paiement Total</option>
+            </select>
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-block">Ajouter Dépense</button>
+    </form>
+</div>
 
 <script>
+    document.querySelector('form').addEventListener('submit', function(event) {
+        var editorSelect = document.getElementById('editor');
+        var videoSelect = document.getElementById('video');
+        
+        // Check if an editor is selected and no video is selected
+        if (editorSelect.value && !videoSelect.value) {
+            event.preventDefault(); // Prevent form submission
+            alert("Veuillez sélectionner une vidéo pour cet éditeur."); // Alert message
+        }
+    });
+
     document.getElementById('category').addEventListener('change', function() {
         var salaryInput = document.getElementById('salary-input');
         var editorSelect = document.getElementById('editor-select');
@@ -102,7 +120,7 @@
                     data.videos.forEach(video => {
                         const option = document.createElement('option');
                         option.value = video.id; // Ensure this is the ID
-                        option.textContent = video.player__name; // Display player or relevant info
+                        option.textContent = `${video.player__name} (${video.season})`;
                         select.appendChild(option);
                     });
                     console.log("Videos populated:", data.videos); // Debugging
@@ -114,6 +132,18 @@
                 console.error('There was a problem with the fetch operation:', error);
             });
         }
+
+    });
+    document.getElementById('video').addEventListener('change', function() {
+        var editorSelect = document.getElementById('editor');
+        var selectedEditor = editorSelect.options[editorSelect.selectedIndex].text; // Get the selected editor's name
+        var selectedVideo = this.options[this.selectedIndex].text; // Get the selected video name
+
+        // Update description if category is 'salary'
+        if (document.getElementById('category').value === 'salary') {
+            document.getElementById('description').value = `Salaire pour ${selectedEditor} / ${selectedVideo}`;
+        }
     });
 </script>
 {% endblock %}
+

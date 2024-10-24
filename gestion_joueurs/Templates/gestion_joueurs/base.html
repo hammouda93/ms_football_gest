@@ -1,37 +1,20 @@
 {% load static %}
-<!-- {% load crispy_forms_tags %} -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
     <script>
         $(document).ready(function() {
             $('#id_deadline').datepicker({
-                format: 'yyyy-mm-dd', // Format de la date
+                format: 'yyyy-mm-dd',
                 autoclose: true,
             });
         });
-    </script>
-    <script>
-        function toggleForms() {
-            const newPlayerForm = document.getElementById('new-player-form');
-            const existingPlayerForm = document.getElementById('existing-player-form');
-            const videoForm = document.getElementById('video-form');
-            if (document.getElementById('add-new-player').checked) {
-                newPlayerForm.style.display = 'block';
-                existingPlayerForm.style.display = 'none';
-                videoForm.style.display = 'none'; // Masquer le formulaire vidéo au début
-            } else {
-                newPlayerForm.style.display = 'none';
-                existingPlayerForm.style.display = 'block';
-                videoForm.style.display = 'none'; // Masquer le formulaire vidéo au début
-            }
-        }
     </script>
     
     <title>{% block title %}Votre Titre{% endblock %}</title>
@@ -42,7 +25,7 @@
         <a class="navbar-brand" href="{% url 'dashboard' %}">Votre Logo</a>
         <div class="collapse navbar-collapse">
             <ul class="navbar-nav mr-auto">
-                <!-- Autres liens de navigation -->
+                <!-- Other navigation links -->
             </ul>
             <div class="form-inline my-2 my-lg-0">
                 {% if user.is_authenticated %}
@@ -57,8 +40,89 @@
         </div>
     </nav>
 
-    <div class="container mt-4">
-        {% block content %}{% endblock %}
+    <div class="d-flex">
+        <div class="bg-light sidebar" style="width: 260px; height: 100vh; position: fixed; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);">
+            <ul class="nav flex-column p-3">
+                <li class="nav-item mb-3">
+                    <a class="nav-link btn btn-primary text-white" href="{% url 'create_video_request' %}">
+                        <i class="fas fa-video"></i> Nouvelle Vidéo
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'dashboard/' %}active{% endif %}" href="{% url 'dashboard' %}">
+                        <i class="fas fa-tachometer-alt"></i> Tableau de bord
+                    </a>
+                </li>
+                <li class="nav-item">
+                    {% url 'view_payments' as view_payments_url %}
+                    <a class="nav-link {% if request.path == view_payments_url %}active{% endif %}" data-toggle="collapse" href="#paymentSubmenu" role="button" aria-expanded="false" aria-controls="paymentSubmenu">
+                        <i class="fas fa-dollar-sign"></i> Revenus
+                    </a>
+                    <div class="collapse {% if request.path == view_payments_url %}show{% endif %}" id="paymentSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_payments_url %}active{% endif %}" href="{{ view_payments_url }}">Voir les Paiements</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    {% url 'add_expense' as add_expense_url %}
+                    {% url 'view_expenses' as view_expenses_url %}
+                    <a class="nav-link {% if request.path == add_expense_url or request.path == view_expenses_url %}active{% endif %}" data-toggle="collapse" href="#expenseSubmenu" role="button" aria-expanded="false" aria-controls="expenseSubmenu">
+                        <i class="fas fa-money-bill-wave"></i> Dépenses
+                    </a>
+                    <div class="collapse {% if request.path == add_expense_url or request.path == view_expenses_url %}show{% endif %}" id="expenseSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == add_expense_url %}active{% endif %}" href="{{ add_expense_url }}">Créer une Dépense</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_expenses_url %}active{% endif %}" href="{{ view_expenses_url }}">Voir les Dépenses</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    {% url 'view_invoices' as view_invoices_url %}
+                    {% url 'create_invoice' as create_invoice_url %}
+                    <a class="nav-link {% if request.path == view_invoices_url or request.path == create_invoice_url %}active{% endif %}" data-toggle="collapse" href="#invoiceSubmenu" role="button" aria-expanded="false" aria-controls="invoiceSubmenu">
+                        <i class="fas fa-file-invoice"></i> Factures
+                    </a>
+                    <div class="collapse {% if request.path == view_invoices_url or request.path == create_invoice_url %}show{% endif %}" id="invoiceSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_invoices_url %}active{% endif %}" href="{{ view_invoices_url }}">Voir les Factures</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == create_invoice_url %}active{% endif %}" href="{{ create_invoice_url }}">Créer une Facture</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    {% url 'manage_salaries' as manage_salaries_url %}
+                    {% url 'add_salary' as add_salary_url %}
+                    <a class="nav-link {% if request.path == manage_salaries_url or request.path == add_salary_url %}active{% endif %}" data-toggle="collapse" href="#salarySubmenu" role="button" aria-expanded="false" aria-controls="salarySubmenu">
+                        <i class="fas fa-users"></i> Salaires
+                    </a>
+                    <div class="collapse {% if request.path == manage_salaries_url or request.path == add_salary_url %}show{% endif %}" id="salarySubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == manage_salaries_url %}active{% endif %}" href="{{ manage_salaries_url }}">Gérer les Salaires</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == add_salary_url %}active{% endif %}" href="{{ add_salary_url }}">Ajouter un Salaire</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="container mt-4" style="margin-left: 260px;">
+            {% block content %}{% endblock %}
+        </div>
     </div>
 
     <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>

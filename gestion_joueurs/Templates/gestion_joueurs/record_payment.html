@@ -2,11 +2,11 @@
 {% load crispy_forms_tags %}
 
 {% block content %}
-<div class="container">
+<div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2>Enregistrer un Paiement pour {{ player.name }} </h2>
-            <h3>{{ video }}</h3>
+            <h2>Enregistrer un Paiement pour {{ player.name }}</h2>
+            <h3 class="text-muted">{{ video }}</h3>
         </div>
         <div>
             {% if last_invoice %}
@@ -26,8 +26,9 @@
             {% endif %}
         </div>
     </div>
+    
     <div class="row">
-        <!-- Carte pour le formulaire de paiement -->
+        <!-- Card for Payment Form -->
         <div class="col-md-6">
             <div class="card mb-4">
                 <div class="card-header">
@@ -57,11 +58,12 @@
 
                         <div class="alert {% if last_invoice.status == "paid" %}alert-success{% else %}alert-info{% endif %}">
                             {% if last_invoice.status == "paid" %}
-                                <strong>le joueur a payé le montant total <strong id="remainingAmount" hidden>{{ remaining_amount }}</strong> </strong>
+                                <strong>Le joueur a payé le montant total <strong id="remainingAmount" hidden>{{ remaining_amount }}</strong></strong>
                             {% else %}
                                 Montant restant à payer: <strong id="remainingAmount">{{ remaining_amount }}</strong>
                             {% endif %}
                         </div>
+
                         <div class="form-group">
                             <label for="paymentType">Type de Paiement</label>
                             <select id="paymentType" name="payment_type" class="form-control">
@@ -77,10 +79,12 @@
                                 {% endif %}
                             </select>
                         </div>
+
                         <div class="form-group">
                             <label for="amount">Montant du Paiement</label>
                             <input type="number" id="amount" name="amount" class="form-control" required>
                         </div>
+
                         <div class="form-group">
                             <label for="paymentMethod">Méthode de Paiement</label>
                             <select id="paymentMethod" name="payment_method" class="form-control">
@@ -89,17 +93,18 @@
                                 <option value="la_poste">Par Poste</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-primary mt-3">Enregistrer le Paiement</button>
-                        <a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au Tableau de Bord</a>
+
+                        <button type="submit" class="btn btn-primary btn-block mt-3">Enregistrer le Paiement</button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-block mt-3">Retour au Tableau de Bord</a>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- Partie 2 : Carte historique et carte facture côte à côte -->
+        <!-- Payment History and Last Invoice Cards Side by Side -->
         <div class="col-md-6">
             <div class="row">
-                <!-- Carte pour l'historique des paiements -->
+                <!-- Card for Payment History -->
                 <div class="col-12 mb-4">
                     <div class="card">
                         <div class="card-header">
@@ -136,7 +141,7 @@
                     </div>
                 </div>
 
-                <!-- Carte pour la dernière facture -->
+                <!-- Card for Last Invoice -->
                 <div class="col-12">
                     <div class="card">
                         <div class="card-header">

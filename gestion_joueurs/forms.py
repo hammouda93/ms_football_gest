@@ -118,10 +118,11 @@ class ExpenseForm(forms.ModelForm):
         ('partially_paid', 'Une avance'),
         ('paid', 'Paiement Total'),
     ], required=False)
+    video_editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=False)  # Add this field
 
     class Meta:
         model = Expense
-        fields = ['amount', 'date', 'category', 'description', 'video', 'salary_amount', 'salary_paid_status']
+        fields = ['amount', 'date', 'category', 'description', 'video', 'salary_amount', 'salary_paid_status','video_editor']
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)

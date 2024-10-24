@@ -1,10 +1,116 @@
 {% extends "gestion_joueurs/base.html" %}
+{% load crispy_forms_tags %}
 
 {% block content %}
-<h2>Modifier la Dépense: {{ expense.description }}</h2>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Modifier</button>
-</form>
+<div class="container">
+    <h2 class="mt-4 mb-3 text-center">Modifier la Dépense</h2>
+    <h5 class="text-center text-muted">{{ expense.description }}</h5>
+    <div class="text-center mb-4">
+        <span class="badge badge-secondary">{{ video }}</span> 
+        <span class="badge badge-primary">By {{ video_editor.user.username }}</span>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="form-group">
+            <label for="amount">Montant</label>
+            <input type="number" name="amount" id="amount" value="{{ form.amount.value }}" class="form-control" required>
+        </div>
+
+        <div class="form-group">
+            {{ form.date|as_crispy_field }}  <!-- Using Crispy for the date input -->
+        </div>
+
+        <div class="form-group">
+            <select name="category" id="category" class="form-control" hidden>
+                {% if expense.category == 'salary' %}
+                    <option value="salary" selected>Salaire</option>
+                {% else %}
+                    <option value="marketing" {% if expense.category == 'marketing' %}selected{% endif %}>Marketing</option>
+                    <option value="operational" {% if expense.category == 'operational' %}selected{% endif %}>Opérationnel</option>
+                    <option value="equipment" {% if expense.category == 'equipment' %}selected{% endif %}>Équipement</option>
+                    <option value="other" {% if expense.category == 'other' %}selected{% endif %}>Autre</option>
+                {% endif %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <input type="text" name="description" id="description" value="{{ form.description.value }}" class="form-control" required>
+        </div>
+
+        <div id="salary-fields" style="display: {% if expense.category == 'salary' %}block{% else %}none{% endif %};">
+            <div class="form-group">
+                <input type="number" name="salary_amount" id="salary_amount" value="{{ form.salary_amount.value }}" class="form-control" {% if expense.category == 'salary' %}required{% endif %} hidden>
+            </div>
+
+            <div class="form-group">
+                <select name="video_editor" id="video_editor" class="form-control" hidden>
+                    <option value="">-- Choisissez un éditeur --</option>
+                    {% for editor in form.video_editor.field.queryset %}
+                        <option value="{{ editor.id }}" {% if editor.id == video_editor.id %}selected{% endif %}>{{ editor.user.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <select name="video" id="video" class="form-control" hidden>
+                    <option value="">-- Choisissez une vidéo --</option>
+                    {% for video in videos %}
+                        <option value="{{ video.id }}" {% if video.id == video.id %}selected{% endif %}>{{ video }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="salary_paid_status">Statut de salaire payé</label>
+                <select name="salary_paid_status" id="salary_paid_status" class="form-control">
+                    <option value="partially_paid" {% if form.salary_paid_status.value == 'partially_paid' %}selected{% endif %}>Une avance</option>
+                    <option value="paid" {% if form.salary_paid_status.value == 'paid' %}selected{% endif %}>Paiement Total</option>
+                </select>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Modifier</button>
+    </form>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var categorySelect = document.getElementById('category');
+        var salaryFields = document.getElementById('salary-fields');
+        var salaryAmountInput = document.getElementById('salary_amount');
+        var amountInput = document.getElementById('amount');
+
+        function toggleCategoryOptions() {
+            if (categorySelect.value === 'salary') {
+                categorySelect.innerHTML = '<option value="salary" selected>Salaire</option>';
+                salaryFields.style.display = 'block';
+                salaryAmountInput.setAttribute('required', 'required');
+            } else {
+                categorySelect.innerHTML = `
+                    <option value="marketing" {% if expense.category == 'marketing' %}selected{% endif %}>Marketing</option>
+                    <option value="operational" {% if expense.category == 'operational' %}selected{% endif %}>Opérationnel</option>
+                    <option value="equipment" {% if expense.category == 'equipment' %}selected{% endif %}>Équipement</option>
+                    <option value="other" {% if expense.category == 'other' %}selected{% endif %}>Autre</option>
+                `;
+                salaryFields.style.display = 'none';
+                salaryAmountInput.removeAttribute('required');
+                salaryAmountInput.value = '';
+            }
+        }
+
+        function updateSalaryAmount() {
+            if (categorySelect.value === 'salary') {
+                salaryAmountInput.value = amountInput.value;
+            }
+        }
+
+        // Initial check on page load
+        toggleCategoryOptions();
+
+        // Event listener for category change
+        categorySelect.addEventListener('change', toggleCategoryOptions);
+        amountInput.addEventListener('input', updateSalaryAmount);
+    });
+</script>
 {% endblock %}

@@ -43,3 +43,28 @@
     padding: 0.2rem 0.4rem; /* Réduit le padding pour tous les boutons dans le tableau */
     font-size: 0.75rem; /* Réduit la taille de la police des boutons */
 }
+
+.sidebar {
+    background-color: #f8f9fa;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: width 0.3s;
+}
+.sidebar .nav-link {
+    border-radius: 5px;
+    margin-bottom: 10px;
+    transition: background-color 0.3s, color 0.3s;
+}
+.sidebar .nav-link:hover {
+    background-color: #007bff;
+    color: #fff;
+}
+.sidebar .nav-link.active {
+    background-color: #007bff;
+    color: #fff;
+}
+.sidebar .nav-link i {
+    margin-right: 8px;
+}
+.sidebar .nav-item {
+    padding: 5px 10px;
+}

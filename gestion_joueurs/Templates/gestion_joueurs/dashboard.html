@@ -3,18 +3,13 @@
 {% block title %}Tableau de bord{% endblock %}
 
 {% block content %}
-<h1>Listes des vidéos</h1>
-<div class="d-flex justify-content-between align-items-center mt-4">
-    <a href="{% url 'create_video_request' %}" class="btn btn-primary ml-2">Créer une nouvelle vidéo</a>
-    <a href="{% url 'view_payments' %}" class="btn btn-secondary ml-2">Voir les Paiements</a>
-    <a href="{% url 'view_invoices' %}" class="btn btn-warning ml-2">Voir les Factures</a>    
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Listes des Vidéos</h1>
+    <a href="{% url 'create_video_request' %}" class="btn btn-primary">
+        <i class="fas fa-video"></i> Nouvelle Vidéo
+    </a>
 </div>
-<div class="d-flex justify-content-between align-items-center mt-4">
-    <a href="{% url 'manage_salaries' %}" class="btn btn-info ml-2">Gérer les Salaires</a>
-    <a href="{% url 'add_expense' %}" class="btn btn-success ml-2">Ajouter une Dépense</a>
-    <a href="{% url 'view_expenses' %}" class="btn btn-info ml-2">Voir les Dépenses</a>
-</div>
-<form method="GET" class="mb-3 mt-4" id="filter-form">
+<form method="GET" class="mb-3" id="filter-form">
     <div class="form-row">
         <div class="col">
             <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par joueur ou éditeur" value="{{ request.GET.search }}">
@@ -44,10 +39,10 @@
                 <option value="L1" {% if request.GET.league == "L1" %}selected{% endif %}>Ligue 1 Tunisie</option>
                 <option value="L2" {% if request.GET.league == "L2" %}selected{% endif %}>Ligue 2 Tunisie</option>
                 <option value="LY" {% if request.GET.league == "LY" %}selected{% endif %}>Libye</option>
-                <option value="OC" {% if request.GET.league == "OC" %}selected{% endif %}>Other Country</option>
+                <option value="OC" {% if request.GET.league == "OC" %}selected{% endif %}>Autre Pays</option>
             </select>
         </div>
-        <div class="col">
+        <div class="col-auto">
             <button type="submit" class="btn btn-secondary">Filtrer</button>
         </div>
     </div>
@@ -58,62 +53,61 @@
 {% endfor %}
 
 {% if videos %}
-<table class="table table-striped table-bordered table-hover mt-3 small-table">
-    <thead class="thead-light">
-        <tr>
-            <th scope="col">Joueur</th>
-            <th scope="col">Éditeur</th>
-            <th scope="col">Statut</th>
-            <th scope="col">Deadline</th>
-            <th scope="col">Ligue</th>
-            <th scope="col">Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for video in videos %}
+    <table class="table table-striped table-bordered table-hover mt-3 small-table">
+        <thead class="thead-light">
             <tr>
-                <td>
-                    {{ video.player.name }}
-                </td>
-                <td>{{ video.editor.user.username }}</td>
-                <td>
-                    <span class="badge 
-                        {% if video.status == 'completed' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">
-                        {{ video.status }}
-                    </span>
-                </td>
-                <td class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
-                    {{ video.deadline|date:"d/m/Y" }}
-                </td>
-                <td>{{ video.get_league_name }}</td>
-                <td>
-                    <div class="btn-group" role="group">
-                        <a href="{% url 'edit_player' video.player.id %}" class="btn btn-success btn-sm">
-                            <i class="fas fa-edit"></i>
-                        </a>
-                        <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Voir le statut">
-                            <i class="fas fa-eye"></i>
-                        </a>
-                        <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning btn-sm" title="Modifier le statut">
-                            <i class="fas fa-sync-alt"></i>
-                        </a>
-                        <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo">
-                            <i class="fas fa-pencil-alt"></i>
-                        </a>
-                        <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement">
-                            <i class="fas fa-dollar-sign"></i>
-                        </a>
-                    </div>
-                </td>
+                <th scope="col">Joueur</th>
+                <th scope="col">Éditeur</th>
+                <th scope="col">Statut</th>
+                <th scope="col">Deadline</th>
+                <th scope="col">Ligue</th>
+                <th scope="col" class="text-center">Action</th>
             </tr>
-        {% endfor %}
-    </tbody>
-</table>
+        </thead>
+        <tbody>
+            {% for video in videos %}
+                <tr>
+                    <td>{{ video.player.name }}</td>
+                    <td>{{ video.editor.user.username }}</td>
+                    <td>
+                        <span class="badge 
+                            {% if video.status == 'completed' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">
+                            {{ video.status }}
+                        </span>
+                    </td>
+                    <td class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
+                        {{ video.deadline|date:"d/m/Y" }}
+                    </td>
+                    <td>{{ video.get_league_name }}</td>
+                    <td class="text-center">
+                        <div class="btn-group" role="group">
+                            <a href="{% url 'edit_player' video.player.id %}" class="btn btn-success btn-sm" title="Modifier le joueur">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Voir le statut">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning btn-sm" title="Modifier le statut">
+                                <i class="fas fa-sync-alt"></i>
+                            </a>
+                            <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo">
+                                <i class="fas fa-pencil-alt"></i>
+                            </a>
+                            <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement">
+                                <i class="fas fa-dollar-sign"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 {% else %}
     <div class="alert alert-warning" role="alert">
         Aucune vidéo à afficher.
     </div>
 {% endif %}
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const filterForm = document.getElementById('filter-form');
@@ -131,16 +125,18 @@
         searchInput.addEventListener('input', function() {
             const searchValue = this.value;
 
-            // On attend un court instant pour minimiser le nombre de requêtes
             clearTimeout(window.searchTimeout);
             window.searchTimeout = setTimeout(() => {
                 const url = new URL(window.location.href);
                 url.searchParams.set('search', searchValue);
-                window.location.href = url; // Redirige vers l'URL mise à jour
-            }, 600); // 300ms d'attente
+                window.location.href = url;
+            }, 600); // 600ms delay
         });
     });
 </script>
 {% endblock %}
+
+
+
 
 
