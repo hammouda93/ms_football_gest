@@ -1,0 +1,313 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}
+{% load video_filters %}
+{% block title %}Voir la Vidéo - {{ video.player.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            <div class="row d-flex justify-content-center">
+                <h5 class="text-center text-muted mr-2">{{ video }}</h5>
+                {% if user.is_authenticated and user.is_superuser %}
+                    {% if last_invoice.status == 'paid' %}
+                        <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                    {% else %}
+                        <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class="text-center">
+                <span class="badge badge-secondary">{{ video.status }}</span>
+                {% if user.is_authenticated %}
+                    {% if user.is_superuser %}
+                        <span class="badge badge-warning">Échéance: {{ video.deadline|date:"d-m-Y" }}</span>
+                        {% if video.deadline < today %}
+                            <span class="badge badge-alert">Échéance En retard: {{ video.deadline|date:"d-m-Y" }}</span>
+                        {% endif %}
+                    {% else %}
+                        {% if modified_deadline %}
+                            <span class="badge badge-warning">Échéance: {{ modified_deadline|date:"d-m-Y" }}</span>
+                            {% if modified_deadline < today %}
+                                <span class="badge badge-warning">Échéance En retard: {{ modified_deadline|date:"d-m-Y" }}</span>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+                {% if user.is_authenticated and user.is_superuser %}
+                    <span class="badge badge-primary">Total Paiement: {{ video.total_payment }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Card for video display -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    {% if video.status == 'delivered' or video.status == 'completed' %}
+                        <div class="mb-4">
+                            <h5 class="text-center">Regarder la Vidéo</h5>
+                            {% if video.video_link%}
+                                <iframe width="100%" height="315" src="https://www.youtube.com/embed/{{ video.video_link|extract_video_id }}" frameborder="0" allowfullscreen></iframe>
+                            {% else %}
+                                <h5 class="text-center">Merci d'ajouter le lien de la vidéo pour visualiser la vidéo</h5>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <h5 class="text-center">La video est en cours d'edition revenez lorsque la video est livrée pour la visualiser </h5>
+                    {% endif %}
+            
+                    <div class="mb-4">
+                        <h5 class="text-center mt-3"></h5>
+                        <ul class="list-group text-center">
+                            {% if not user.is_superuser %}
+                            <li class="list-group-item" style="color: black;">
+                                <div class="row d-flex justify-content-center">
+                                    <strong>Prime de la video : </strong>
+                                    {% if video.salary_paid_status == 'paid' %}
+                                        <i class="fas fa-check-circle text-success mt-1 ml-1 "  aria-hidden="true"></i> 
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger mt-1 ml-1" aria-hidden="true"></i>
+                                    {% endif %}
+                                </div>
+                            </li>
+                            {%endif%}
+                            <li class="list-group-item" style="color: black;">
+                                <strong>Nom Du joueur: </strong> {{ video.player }}
+                            </li>
+                            <li class="list-group-item" style="color: black;">
+                                <strong>Date de création:</strong> {{ video.video_creation_date|date:"d-m-Y" }}
+                            </li>
+                            {% if user.is_authenticated and user.is_superuser %}
+                                <li class="list-group-item" style="color: black;">
+                                    <strong>League:</strong> {{ video.get_league_name }}
+                                </li>
+                                <li class="list-group-item" style="color: black;">
+                                    <strong>Club: </strong> {{ video.club }}
+                                </li>
+                                <li class="list-group-item" style="color: black;">
+                                    <strong>saison:</strong> {{ video.season }}
+                                </li>
+                            {%endif%}
+                            {% if video.info %}
+                                <li class="list-group-item" style="color: black;">
+                                    <strong style="color: red;">NB: </strong> {{ video.info }} {% if user.is_superuser %} ({{ video.player.whatsapp_number }}) {% endif %}
+                                </li>
+                            {%else%}
+                                <li class="list-group-item" style="color: black;">
+                                    <strong style="color: red;">Rien a signaler</strong> {% if user.is_superuser %} ({{ video.player.whatsapp_number }}) {% endif %}
+                                </li>
+                            {%endif%}
+
+                        </ul>
+                    </div>
+
+                    <div class="d-flex justify-content-between mt-3">
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
+                        {% if user.is_authenticated and user.is_superuser %}
+                            <a href="{% url 'edit_video' video.id %}" class="btn btn-info">Modifier la vidéo</a>
+                            <a href="{% url 'record_payment' video.id %}" class="btn btn-success">Ajouter un payement</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if user.is_authenticated and user.is_superuser %}
+        <!-- Card for payment and status history -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <h5 class="text-center  mr-2">Historique des Statuts</h5>
+                    {% if video_status_history %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>
+                                    <th>Date de Changement</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for status in video_status_history %}
+                                    <tr>
+                                        <td>{{ status.changed_at|date:"d-m-Y" }}</td>
+                                        <td>{{ status.status }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucun historique de statut disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Card for payment history -->
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <div class="row d-flex justify-content-center">
+                        <h5 class="text-center  mr-2">Informations de Paiement</h5>
+                        {% if video.invoices.status == 'paid' %}
+                            <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                        {% else %}
+                            <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    {% if payments %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>
+                                    <th>Date de Paiement</th>
+                                    <th>Type de Paiement</th>
+                                    <th>Montant</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                    <tr>
+                                        <td>{{ payment.payment_date|date:"d-m-Y" }}</td>
+                                        <td>{{ payment.payment_type }}</td>
+                                        <td>{{ payment.amount }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucune information de paiement disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% if video.editor.user.is_superuser  %}
+            
+            {% else %}
+                <!-- Card for Collaborator Payment (Paiement Collaborateur) -->         
+                <div class="card mb-4">
+                    <div class="card-body" style="color: black;">
+                        <div class="row d-flex justify-content-center">
+                            <h5 class="text-center  mr-2">Paiement Collaborateur</h5>
+                            {% if video.salary_paid_status == 'paid' %}
+                                <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                            {% else %}
+                                <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                            {% endif %}
+                        </div>
+                        
+                        {% if salaries %}
+                            <table class="table table-striped small-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date de Paiement</th>
+                                        <th>Montant</th>
+                                        <th>Dépense Associée</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for salary in salaries %}
+                                        <tr>
+                                            <td>{{ salary.date|date:"d-m-Y" }}</td>
+                                            <td>{{ salary.amount }}</td>
+                                            <td>
+                                                {% if salary.expense %}
+                                                    {{ salary.expense.description }} - {{ salary.expense.amount }}
+                                                {% else %}
+                                                    Aucune dépense liée.
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p>Aucune information de paiement collaborateur disponible.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %} 
+        </div>
+        {%else%}
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <h5 class="card-title">Infos relative a cette video</h5>
+                    <div class="mb-4">
+                        <h5 class="text-center mt-3"></h5>
+                        <ul class="list-group text-center">
+                            <li class="list-group-item" style="color: black;">
+                                <strong>League:</strong> {{ video.get_league_name }}
+                            </li>
+                            <li class="list-group-item" style="color: black;">
+                                <strong>Club: </strong> {{ video.club }}
+                            </li>
+                            <li class="list-group-item" style="color: black;">
+                                <strong>Saison: </strong> {{ video.season }}
+                            </li>
+                            {% if video.info %}
+                            <li class="list-group-item" style="color: black;">
+                                <strong style="color: red;">NB:</strong> {{ video.Info }} 
+                            </li>
+                            {%else%}
+                            <li class="list-group-item" style="color: black;">
+                                <strong style="color: red;">Rien a signaler</strong> {{ video.Info }}
+                            </li>
+                            {%endif%}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+
+{% if user.is_authenticated %}
+    {% if user.is_superuser %}
+        {% if video.status == 'delivered' or video.status == 'completed'%}
+            {% if video.deadline|date:"Y-m-d" < today %}
+                <div class="alert alert-sucess text-center">La vidéo est prete et livrée avant le deadline </div>
+            {% else %}
+                <div class="alert alert-info text-center">La vidéo doit etre livrée comme prevue </div>
+            {% endif %}
+        {%else%}
+            <div class="alert alert-info text-center">
+                Attention : La vidéo doit être prête avant le {{ video.deadline|date:"d-m-Y" }}.
+            </div>
+            {% if video.deadline < today %}
+                <div class="alert alert-warning text-center">
+                    Attention : La vidéo est en retard ! Elle devait être prête avant le {{ video.deadline|date:"d-m-Y" }}.
+                </div>
+            {% endif %}
+        {%endif%}
+        
+    {% else %}
+        {% if modified_deadline %}
+            {% if video.status == 'delivered' or video.status == 'completed'%}
+                {% if video.deadline|date:"Y-m-d" < today %}
+                    <div class="alert alert-sucess text-center">La vidéo est prete et livrée avant le deadline </div>
+                {% else %}
+                    <div class="alert alert-info text-center">La vidéo doit  etre livrée comme prevue </div>
+                {% endif %}
+            {%else%}
+                <div class="alert alert-info text-center">
+                    Attention : La vidéo doit être prête avant le {{ modified_deadline|date:"d-m-Y" }}.
+                </div>
+                {% if modified_deadline < today %}
+                    <div class="alert alert-warning text-center">
+                        Attention : La vidéo est en retard ! Elle devait être prête avant le {{ modified_deadline|date:"d-m-Y" }}.
+                    </div>
+                {% endif %}
+            {%endif%}
+        {%endif%}
+    {% endif %}
+{% endif %}
+</div>
+{% endblock %}

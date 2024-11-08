@@ -1,0 +1,64 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Mettre à jour le statut de la vidéo{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center">
+            <h2 class="mb-0">Mettre à jour le statut de la vidéo</h2>
+            <h5 class="text-muted">{{ video }}</h5>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                <div class="alert alert-info">
+                    {% for message in messages %}
+                        {{ message }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="editor" value="{{ video.editor.id }}">
+                <div class="form-group">
+                    <label for="status">Statut</label>
+                    <select name="status" class="form-control" id="status" onchange="toggleVideoLink()">
+                        <option value="pending" {% if video.status == 'pending' %}selected{% endif %}>En attente</option>
+                        <option value="in_progress" {% if video.status == 'in_progress' %}selected{% endif %}>En cours</option>
+                        <option value="completed_collab" {% if video.status == 'completed_collab' %}selected{% endif %}>Fini par le collaborateur</option>
+                        {% if request.user.is_superuser %}
+                        <option value="completed" {% if video.status == 'completed' %}selected{% endif %}>Fini</option>
+                        <option value="delivered" {% if video.status == 'delivered' %}selected{% endif %}>Livré</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <div class="form-group" id="video-link-container" style="display: {% if video.status == 'delivered' %}block{% else %}none{% endif %};">
+                    <label for="video_link">Lien de la vidéo</label>
+                    <input type="url" name="video_link" class="form-control" id="video_link" placeholder="Entrez l'URL de la vidéo" value="{% if video.status == 'delivered' %}{{ video.video_link }}{% else %}{% endif %}">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Mettre à jour</button>
+                <a href="{% url 'video_status' video.id %}" class="btn btn-secondary btn-block mt-3">Retour au statut de la vidéo</a>
+            </form>            
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleVideoLink() {
+        const statusSelect = document.getElementById('status');
+        const videoLinkContainer = document.getElementById('video-link-container');
+        
+        if (statusSelect.value === 'delivered') {
+            videoLinkContainer.style.display = 'block';
+        } else {
+            videoLinkContainer.style.display = 'none';
+        }
+    }
+    
+    // Call the function on page load to set initial visibility
+    document.addEventListener('DOMContentLoaded', toggleVideoLink);
+</script>
+{% endblock %}

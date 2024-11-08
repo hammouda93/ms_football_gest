@@ -1,0 +1,165 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h1>Factures</h1>
+            <a href="{% url 'create_invoice' %}" class="btn btn-primary mb-0 mt-0">
+                <i class="fas fa-plus"></i> Créer une Facture
+            </a>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="mb-3" id="filter-form">
+                <input type="hidden" name="tab" value="{{ tab }}">
+                <div class="form-row">
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" 
+                               placeholder="Rechercher par vidéo" 
+                               value="{{ search_query }}">
+                    </div>
+                    <div class="col">
+                        <select id="status-select" name="status" class="form-control">
+                            <option value="">Tous les statuts de factures</option>
+                            <option value="paid" {% if status_filter == "paid" %}selected{% endif %}>Payé</option>
+                            <option value="unpaid" {% if status_filter == "unpaid" %}selected{% endif %}>Impayé</option>
+                            <option value="partially_paid" {% if status_filter == "partially_paid" %}selected{% endif %}>Partiellement payé</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select id="video-status-select" name="video_status" class="form-control">
+                            <option value="">Tous les statuts de vidéo</option>
+                            <option value="pending" {% if video_status_filter == "pending" %}selected{% endif %}>En attente</option>
+                            <option value="in_progress" {% if video_status_filter == "in_progress" %}selected{% endif %}>En cours</option>
+                            <option value="completed_collab" {% if video_status_filter == "completed_collab" %}selected{% endif %}>Complété (Collab)</option>
+                            <option value="completed" {% if video_status_filter == "completed" %}selected{% endif %}>Complété</option>
+                            <option value="delivered" {% if video_status_filter == "delivered" %}selected{% endif %}>Livré</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Tabs for Invoice Categories -->
+            <ul class="nav nav-tabs" id="invoiceTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link {% if tab == 'not_delivered' %}active{% endif %}" 
+                       href="?tab=not_delivered&search={{ search_query }}&status={{ status_filter }}&video_status={{ video_status_filter }}">
+                       Videos Non Livrées ({{ not_delivered_invoices_count }})
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if tab == 'delivered' %}active{% endif %}" 
+                       href="?tab=delivered&search={{ search_query }}&status={{ status_filter }}&video_status={{ video_status_filter }}">
+                       Videos Livrées ({{ delivered_invoices_count }})
+                    </a>
+                </li>
+            </ul>
+
+            {% if invoices %}
+                <table class="table table-striped table-bordered table-hover small-table mt-3">
+                    <thead class="thead-light">
+                        <tr>
+                            <th scope="col">Vidéo</th>
+                            <th scope="col">Montant Total</th>
+                            <th scope="col">Montant Payé</th>
+                            <th scope="col">Statut de la Facture</th>
+                            <th scope="col">Statut de la Vidéo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td>{{ invoice.video }}</td>
+                            <td>{{ invoice.total_amount }}</td>
+                            <td>{{ invoice.amount_paid }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if invoice.status == 'paid' %}badge-success{% elif invoice.status == 'unpaid' %}badge-danger{% else %}badge-warning{% endif %}">
+                                    {{ invoice.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if invoice.video.status == 'completed' %}badge-success{% elif invoice.video.status == 'delivered' %}badge-info{% elif invoice.video.status == 'pending' %}badge-warning{% else %}badge-secondary{% endif %}">
+                                    {{ invoice.video.get_status_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Aucune facture trouvée.
+                </div>
+            {% endif %}
+
+            <nav>
+                <ul class="pagination justify-content-center pagination-sm">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.video_status %}&video_status={{ request.GET.video_status }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}" aria-label="Première">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.video_status %}&video_status={{ request.GET.video_status }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}" aria-label="Précédent">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+            
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+            
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.video_status %}&video_status={{ request.GET.video_status }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}" aria-label="Suivant">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.video_status %}&video_status={{ request.GET.video_status }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}" aria-label="Dernière">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const statusSelect = document.getElementById('status-select');
+        const videoStatusSelect = document.getElementById('video-status-select');
+
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+
+        statusSelect.addEventListener('change', function() {
+            filterForm.submit(); // Submit the form when the status is changed
+        });
+
+        videoStatusSelect.addEventListener('change', function() {
+            filterForm.submit(); // Submit the form when the video status is changed
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,309 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/styles.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet"> <!-- Google Font -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#id_deadline').datepicker({
+                format: 'yyyy-mm-dd',
+                autoclose: true,
+            });
+
+            // Check localStorage for sidebar state
+            if (localStorage.getItem('sidebarVisible') === 'false') {
+                $('.sidebar').removeClass('active').addClass('closed');
+                $('#sidebarToggle i').removeClass('fa-chevron-left').addClass('fa-chevron-right');
+            }
+
+            $('#sidebarToggle').on('click', function() {
+                $('.sidebar').toggleClass('closed');
+                if ($('.sidebar').hasClass('closed')) {
+                    $('#sidebarToggle i').removeClass('fa-chevron-left').addClass('fa-chevron-right');
+                    localStorage.setItem('sidebarVisible', 'false');
+                } else {
+                    $('#sidebarToggle i').removeClass('fa-chevron-right').addClass('fa-chevron-left');
+                    localStorage.setItem('sidebarVisible', 'true');
+                }
+            });
+        });
+    
+        // Function to mark notifications as read
+        function markAsRead(notificationId) {
+            $.ajax({
+                url: "{% url 'mark_notification_as_read' 0 %}".replace('0', notificationId),
+                type: "POST",
+                data: {
+                    'csrfmiddlewaretoken': '{{ csrf_token }}',
+                },
+                success: function(response) {
+                    $(`#notification-${notificationId}`).remove();
+                    updateNotificationCount(response.unread_count);
+                },
+                error: function(xhr) {
+                    console.error('Error marking notification as read:', xhr);
+                }
+            });
+        }
+    
+        // Function to update notification count display
+        function updateNotificationCount(unreadCount) {
+            const badge = $('#notificationDropdown .badge');
+            if (unreadCount === 0) {
+                badge.remove();
+                if ($('.dropdown-item').length === 0) {
+                    $('.dropdown-menu').append('<a class="dropdown-item" href="#">Aucune notification.</a>');
+                }
+            } else {
+                if (badge.length) {
+                    badge.text(unreadCount);
+                } else {
+                    $('#notificationDropdown').append(`<span class="badge badge-danger">${unreadCount}</span>`);
+                }
+            }
+        }
+    </script>
+    <style>
+        .sidebar {
+            width: 260px; /* Sidebar width */
+            height: 100vh; /* Full height */
+            position: fixed; /* Keep it fixed */
+            left: 0; /* Start shown */
+            top: 53px; /* Adjusted for navbar height */
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+            transition: left 0.3s ease; /* Smooth transition */
+            
+        }
+
+        .sidebar.active {
+            left: 0; /* Slide in */
+        }
+
+        .sidebar.closed {
+            left: -260px; /* Hide the sidebar */
+        }
+
+        #sidebarToggle {
+            position: absolute;
+            top: 50%; /* Center vertically */
+            right: -10px; /* Stick to the right edge */
+            transform: translateY(-50%); /* Adjust to center */
+            transition: right 0.3s ease; /* Smooth transition for the button */
+        }
+
+        .sidebar.closed #sidebarToggle {
+            right: -30px; /* Position outside when closed */
+        }
+        body {
+            font-family: 'Roboto', sans-serif; /* Main font for body */
+        }
+        .navbar {
+            padding: 0.5rem 1rem; /* Reduce padding for a thinner navbar */
+            height: 50px; /* Set a fixed height */
+        }
+        .small-table th, .small-table td {
+            padding: 0.20rem;  /* Réduit le padding des cellules */
+            font-size: 0.8rem; /* Réduit la taille de la police */
+        }
+
+        .small-table .btn {
+            padding: 0.1rem 0.3rem; /* Réduit le padding pour tous les boutons dans le tableau */
+            font-size: 0.75rem; /* Réduit la taille de la police des boutons */
+        }
+    </style>
+
+    
+    <title>{% block title %}Votre Titre{% endblock %}</title>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <a class="navbar-brand" href="{% url 'dashboard' %}">
+            <img src="{% static 'gestion_joueurs/images/logoMS.png' %}" alt="Logo" style="height: 40px; width: auto;">
+            <span class="brand-name mt-2">MS Solution</span>
+        </a>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav mr-auto">
+                <!-- Other navigation links -->
+            </ul>
+            <div class="form-inline my-2 my-lg-0">
+                {% if user.is_authenticated %}
+                    <!-- Centre de notification -->
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-toggle mr-2" type="button" id="notificationDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-bell"></i>
+                            {% if notifications.count %} 
+                                <span class="badge badge-danger">{{ notifications.count }}</span>
+                            {% endif %}
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="notificationDropdown">
+                            {% for notification in notifications %}
+                                <div class="dropdown-item d-flex justify-content-between align-items-center" id="notification-{{ notification.id }}">
+                                    <span>
+                                        <a href="{% if notification %}{% url 'view_notification' notification.id %}{% else %}#{% endif %}" 
+                                           onclick="markAsRead({{ notification.id }})">
+                                           {{ notification.message }}
+                                        </a>
+                                    </span>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="markAsRead({{ notification.id }})">Mark as Read</button>
+                                </div>
+                            {% empty %}
+                                <a class="dropdown-item" href="#">Aucune notification.</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+    
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-toggle" type="button" id="userDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-user-circle"></i> {{ user.username }}
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="userDropdown">
+                            <a class="dropdown-item" href="{% url 'view_profile' %}">Voir Profil</a>
+                            <a class="dropdown-item" href="{% url 'user_logout' %}">Déconnexion</a>
+                            <div class="dropdown-divider"></div>
+                            <a class="dropdown-item" href="{% url 'notification_list' %}">
+                                <i class="fas fa-list"></i> Centre de notifications
+                            </a>
+                            {% if user.is_superuser %}            
+                                <a class="dropdown-item" href="{% url 'register_video_editor' %}">
+                                    <i class="fas fa-user-plus"></i> Créer Éditeur Vidéo
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <a href="{% url 'user_login' %}" class="btn btn-outline-primary my-2 my-sm-0">Connexion</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="d-flex">
+        <div class=" sidebar" style="width: 260px; height: 100vh; position: fixed; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);">
+            <button id="sidebarToggle" class="btn btn-secondary">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <ul class="nav flex-column p-3">
+                {% if request.user.is_superuser %}
+                <li class="nav-item mb-3">
+                    <a class="nav-link btn btn-primary text-white" href="{% url 'create_video_request' %}">
+                        <i class="fas fa-video"></i> Nouvelle Vidéo
+                    </a>
+                </li>
+                {%endif%}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'dashboard/' %}active{% endif %}" href="{% url 'dashboard' %}">
+                        <i class="fas fa-tachometer-alt"></i> Tableau de bord
+                    </a>
+                </li>
+                {% if request.user.is_superuser %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'statistics/' %}active{% endif %}" href="{% url 'statistical_dashboard' %}">
+                        <i class="fas fa-chart-pie"></i> Tableau de bord Statistique
+                    </a>
+                </li>
+                {%endif%}
+                {% if request.user.is_superuser %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'players/' %}active{% endif %}" href="{% url 'player_dashboard' %}">
+                        <i class="fas fa-users"></i> Liste des Joueurs
+                    </a>
+                </li>
+                <li class="nav-item">
+                    {% url 'view_payments' as view_payments_url %}
+                    {% url 'view_invoices' as view_invoices_url %}
+                    {% url 'non_video_income_list' as non_video_income_list_url %}
+                    <a class="nav-link {% if request.path == view_payments_url or request.path == view_invoices_url %}active{% endif %}" data-toggle="collapse" href="#paymentSubmenu" role="button" aria-expanded="false" aria-controls="paymentSubmenu">
+                        <i class="fas fa-dollar-sign"></i> Revenus
+                    </a>
+                    <div class="collapse {% if request.path == view_payments_url or request.path == view_invoices_url %}show{% endif %}" id="paymentSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_invoices_url %}active{% endif %}" href="{{ view_invoices_url }}">Factures Videos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == non_video_income_list_url %}active{% endif %}" href="{{ non_video_income_list_url }}">
+                                    <i class="fas fa-wallet"></i> Revenus Non-Vidéo
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_payments_url %}active{% endif %}" href="{{ view_payments_url }}">Details Paiements</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    {% url 'add_expense' as add_expense_url %}
+                    {% url 'view_expenses' as view_expenses_url %}
+                    <a class="nav-link {% if request.path == add_expense_url or request.path == view_expenses_url %}active{% endif %}" data-toggle="collapse" href="#expenseSubmenu" role="button" aria-expanded="false" aria-controls="expenseSubmenu">
+                        <i class="fas fa-money-bill-wave"></i> Dépenses
+                    </a>
+                    <div class="collapse {% if request.path == add_expense_url or request.path == view_expenses_url %}show{% endif %}" id="expenseSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <!-- <li class="nav-item">
+                                <a class="nav-link {% if request.path == add_expense_url %}active{% endif %}" href="{{ add_expense_url }}">Créer une Dépense</a>
+                            </li> -->
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == view_expenses_url %}active{% endif %}" href="{{ view_expenses_url }}">Voir les Dépenses</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                {% url 'financial_report_list' as financial_report_list_url %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == financial_report_list_url %}active{% endif %}" href="{{ financial_report_list_url }}">
+                        <i class="fas fa-chart-line"></i> Rapports Financiers
+                    </a>
+                </li>
+                <!-- <li class="nav-item">
+                    {% url 'create_invoice' as create_invoice_url %}
+                    <a class="nav-link {% if request.path ==  create_invoice_url %}active{% endif %}" data-toggle="collapse" href="#invoiceSubmenu" role="button" aria-expanded="false" aria-controls="invoiceSubmenu">
+                        <i class="fas fa-file-invoice"></i> Factures
+                    </a>
+                    <div class="collapse {% if request.path == create_invoice_url %}show{% endif %}" id="invoiceSubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == create_invoice_url %}active{% endif %}" href="{{ create_invoice_url }}">Créer une Facture</a>
+                            </li>
+                        </ul>
+                    </div>
+                </li> -->
+                {%endif%}
+                <li class="nav-item">
+                    {% url 'manage_salaries' as manage_salaries_url %}
+                    {% url 'add_salary' as add_salary_url %}
+                    <a class="nav-link {% if request.path == manage_salaries_url or request.path == add_salary_url %}active{% endif %}" data-toggle="collapse" href="#salarySubmenu" role="button" aria-expanded="false" aria-controls="salarySubmenu">
+                        <i class="fas fa-users"></i> Salaires
+                    </a>
+                    <div class="collapse {% if request.path == manage_salaries_url or request.path == add_salary_url %}show{% endif %}" id="salarySubmenu">
+                        <ul class="nav flex-column ml-3">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == manage_salaries_url %}active{% endif %}" href="{{ manage_salaries_url }}">Gérer les Salaires</a>
+                            </li>
+                            <!-- <li class="nav-item">
+                                <a class="nav-link {% if request.path == add_salary_url %}active{% endif %}" href="{{ add_salary_url }}">Ajouter un Salaire</a>
+                            </li> -->
+                        </ul>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="container" style="margin-left: 260px;">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html>

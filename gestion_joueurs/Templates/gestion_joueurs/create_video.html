@@ -1,0 +1,141 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}
+{% block title %}Créer Vidéo Highlight{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Card for the title -->
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            <h1 class="mb-0">Création d'une nouvelle vidéo</h1>
+        </div>
+    </div>
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+    <!-- Card for player selection and video creation -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0 text-center">Ajouter ou Sélectionner un Joueur</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="playerFormContainer">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="playerName"><strong>Vérifier le nom du joueur:</strong></label>
+                            <input type="text" id="playerName" class="form-control" placeholder="Rechercher un joueur..." autocomplete="off">
+                            <div id="playerResults" class="list-group" style="position: absolute; z-index: 1000; display: none;"></div>
+                        </div>
+                    
+                        <!-- Only include the player_form fields other than 'name' -->
+                        {{ player_form|crispy }}
+                        
+                        <!-- Hidden input to store selected player ID -->
+                        <input type="hidden" name="selected_player_id" id="selectedPlayerId" 
+                            value="{% if added_player %}{{ added_player.id }}{% endif %}">
+                    
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <button type="submit" name="add_player" class="btn btn-primary">
+                                <i class="fas fa-user-plus"></i> Ajouter et Créer Vidéo Highlight
+                            </button>
+                            <div class="ml-2">
+                                <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        {% if new_player_added %}
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Ajouter une Vidéo pour {{ added_player.name }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST">
+                            {% csrf_token %}
+                            {{ video_form|crispy }}  
+                            <input type="hidden" name="player" value="{{ added_player.id }}">
+                            
+                            <button type="submit" name="create_video" class="btn btn-primary">
+                                <i class="fas fa-video"></i> Créer Vidéo Highlight NV
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('playerName').addEventListener('input', function() {
+    var query = this.value;
+    var resultsContainer = document.getElementById('playerResults');
+
+    if (query.length < 2) {
+        resultsContainer.style.display = 'none';
+        return;
+    }
+
+    fetch(`/gestion_joueurs/search_players/?q=${query}`)
+        .then(response => response.json())
+        .then(data => {
+            resultsContainer.innerHTML = '';
+            if (data.players.length > 0) {
+                data.players.forEach(player => {
+                    var item = document.createElement('a');
+                    item.className = 'list-group-item list-group-item-action';
+                    item.innerText = `${player.name} (${player.date_of_birth})`;
+                    item.href = '#';
+                    item.onclick = function() {
+                        // Populate the hidden player form fields with the selected player's information
+                        document.getElementById('id_name').value = player.name; // Player name
+                        document.getElementById('id_date_of_birth').value = player.date_of_birth; // Date of birth
+                        document.getElementById('id_league').value = player.league; // League
+                        document.getElementById('id_club').value = player.club; // Club
+                        document.getElementById('id_whatsapp_number').value = player.whatsapp_number; // WhatsApp number
+                        document.getElementById('selectedPlayerId').value = player.id; // Update the selected player ID
+                        // Automatically check the client fidèles checkbox
+                        document.getElementById('id_client_fidel').checked = true;
+                        resultsContainer.style.display = 'none'; // Hide the results
+                    };
+                    resultsContainer.appendChild(item);
+                });
+                resultsContainer.style.display = 'block';
+            } else {
+                resultsContainer.style.display = 'none';
+            }
+        });
+});
+
+// Handle focus out event to manage form visibility
+document.getElementById('playerName').addEventListener('blur', function() {
+    var query = this.value;
+    var playerFormContainer = document.getElementById('playerFormContainer');
+    var playerName = this.value;
+    if (playerName) {
+        document.getElementById('id_name').value = playerName; // Populate the Player Name field
+    }
+    if (!query) {
+        playerFormContainer.innerHTML = `{{ player_form|crispy|safe }}`; // Reset the form if input is empty
+    }
+});
+</script>
+
+<style>
+    #playerName {
+        border: 2px solid blue; /* Change to your preferred color */
+    }
+
+    #playerName:focus {
+        border-color: darkblue; /* Color when focused */
+    }
+</style>
+{% endblock %}

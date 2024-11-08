@@ -1,0 +1,22 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Créer une Facture{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mt-4 mb-3 text-center">Créer une Facture</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="card mb-4">
+            <div class="card-body">
+                {{ form|crispy }}
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Créer la Facture</button>
+        <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-block">Retour au tableau de bord</a>
+    </form>
+</div>
+{% endblock %}

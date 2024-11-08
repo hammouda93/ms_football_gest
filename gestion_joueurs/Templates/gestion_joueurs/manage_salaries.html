@@ -1,0 +1,154 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Gestion des Salaires{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h1 class="text-center">Liste des Salaires</h1>
+            {% if request.user.is_superuser %}
+            <div class="text-center">
+                <a href="{% url 'add_expense' %}" class="btn btn-primary">Payer un Collaborateur <i class="fas fa-plus"></i></a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <form method="GET" class="mb-3" id="filter-form">
+                <div class="form-row">
+                    {% if request.user.is_superuser %}
+                    <div class="col">
+                        <select name="user" class="form-control" id="user">
+                            <option value="">Tous les Utilisateurs</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if user.id|stringformat:"s" == selected_user_id %}selected{% endif %}>{{ user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <div class="col">
+                        <select name="user" class="form-control" id="user" disabled>
+                            <option value="{{ request.user.id }}">{{ request.user.username }}</option>
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par description" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                    </div>
+                </div>
+            </form>
+
+            {% if salaries %}
+            <div class="table-responsive">
+                <table class="table table-striped table-bordered table-hover small-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Utilisateur</th>
+                            <th>Montant</th>
+                            <th>Date</th>
+                            <th>Dépense Associée</th>
+                            {% if request.user.is_superuser %}
+                            <th>Actions</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for salary in salaries %}
+                        <tr>
+                            <td>{{ salary.user.username }}</td>
+                            <td>{{ salary.amount }}</td>
+                            <td>{{ salary.date|date:"d/m/Y" }}</td>
+                            <td>
+                                {% if salary.expense %}
+                                    {{ salary.expense.description }} - {{ salary.expense.amount }}
+                                {% else %}
+                                    Aucune dépense liée.
+                                {% endif %}
+                            </td>
+                            {% if request.user.is_superuser %}
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'edit_expense' salary.expense.id %}" class="btn btn-warning btn-sm" title="Modifier le Salaire">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </div>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <!-- Pagination Controls -->
+            <nav>
+                <ul class="pagination justify-content-center pagination-sm">
+                    {% if salaries.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if search_description %}&search={{ search_description }}{% endif %}{% if selected_user_id %}&user={{ selected_user_id }}{% endif %}" aria-label="Première">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ salaries.previous_page_number }}{% if search_description %}&search={{ search_description }}{% endif %}{% if selected_user_id %}&user={{ selected_user_id }}{% endif %}" aria-label="Précédente">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    <!-- Current page / Total pages -->
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ salaries.number }} / {{ salaries.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if salaries.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ salaries.next_page_number }}{% if search_description %}&search={{ search_description }}{% endif %}{% if selected_user_id %}&user={{ selected_user_id }}{% endif %}" aria-label="Suivante">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ salaries.paginator.num_pages }}{% if search_description %}&search={{ search_description }}{% endif %}{% if selected_user_id %}&user={{ selected_user_id }}{% endif %}" aria-label="Dernière">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Aucun salaire enregistré.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const userSelect = document.getElementById('user');
+
+        const submitForm = () => {
+            filterForm.submit();
+        };
+
+        {% if request.user.is_superuser %}
+        userSelect.addEventListener('change', submitForm);
+        {% endif %}
+        
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+    });
+</script>
+{% endblock %}

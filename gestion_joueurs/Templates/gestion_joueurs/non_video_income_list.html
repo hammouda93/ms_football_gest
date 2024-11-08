@@ -1,0 +1,135 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block title %}Tableau de bord des Revenus Non-Vidéo{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h1>Revenus Non-Vidéo ({{incomes_count}})</h1>
+            <a href="{% url 'add_non_video_income' %}" class="btn btn-success mb-0 mt-0">
+                <i class="fas fa-plus"></i> Ajouter un Revenus Non-Vidéo
+            </a>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            <form method="GET" class="mb-3" id="filter-form">
+                <div class="form-row">
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par description" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col">
+                        <select id="category-select" name="category" class="form-control">
+                            <option value="">Toutes les catégories</option>
+                            {% for choice in non_video_income_categories %}
+                                <option value="{{ choice.0 }}" {% if choice.0 == category %}selected{% endif %}>{{ choice.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                    </div>
+                </div>
+            </form>
+
+            {% if non_video_incomes %}
+                <table class="table table-striped table-bordered table-hover mt-3 small-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Montant</th>
+                            <th scope="col">Catégorie</th>
+                            <th scope="col" class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for income in non_video_incomes %}
+                        <tr>
+                            <td>{{ income.date|date:"d/m/Y" }}</td>
+                            <td>{{ income.description }}</td>
+                            <td>{{ income.amount }}</td>
+                            <td>{{ income.get_category_display }}</td>
+                            <td class="text-center">
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'edit_non_video_income' income.id %}" class="btn btn-warning btn-sm" title="Modifier">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Aucun revenu non-vidéo enregistré.
+                </div>
+            {% endif %}
+            <!-- Pagination -->
+            <nav>
+                <ul class="pagination justify-content-center pagination-sm">
+                    {% if non_video_incomes.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}" aria-label="Première">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ non_video_incomes.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}" aria-label="Précédent">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ non_video_incomes.number }} / {{ non_video_incomes.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if non_video_incomes.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ non_video_incomes.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}" aria-label="Suivant">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ non_video_incomes.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}" aria-label="Dernière">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const categorySelect = document.getElementById('category-select');
+
+        const submitForm = () => {
+            filterForm.submit();
+        };
+
+        categorySelect.addEventListener('change', submitForm);
+
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+    });
+</script>
+{% endblock %}

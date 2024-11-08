@@ -1,0 +1,14 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block content %}
+<h1>Centre de Notifications</h1>
+<ul>
+    {% for notification in notifications %}
+        <li {% if notification.is_read %}class="read"{% endif %}>
+            {{ notification.message }} - {{ notification.created_at }}
+        </li>
+    {% empty %}
+        <li>Aucune notification.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

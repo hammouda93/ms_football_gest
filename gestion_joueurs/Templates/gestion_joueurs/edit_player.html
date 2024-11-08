@@ -1,0 +1,95 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Modifier Joueur{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <!-- Card for the title -->
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            <h1 class="mb-0">Modifier les Informations du Joueur</h1>
+            <h5 class="text-muted">{{ player }}</h5>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Card for player modification -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0 text-center">Modifier le Joueur</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ form|crispy }}  
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Mettre à jour le Joueur
+                            </button>
+                            <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card for videos -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0 text-center">La liste des Vidéos de {{ player.name }}</h5>
+                </div>
+                <div class="card-body">
+                    {% if videos %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Saison</th>
+                                        <th>Club</th>
+                                        <th>Status</th>
+                                        <th>Date Création/Livraison</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for video in videos %}
+                                        <tr>
+                                            <td>{{ video.season }}</td>
+                                            <td>{{ video.club }}</td>
+                                            <td>
+                                                {% if video.last_status %}
+                                                    {{ video.last_status.status }}
+                                                {% else %}
+                                                    Aucun statut
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if video.last_status %}
+                                                    {{ video.last_status.changed_at|date:"d-m-Y" }}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'edit_video' video.id %}" class="btn btn-warning btn-sm">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p>Aucune vidéo trouvée pour ce joueur.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

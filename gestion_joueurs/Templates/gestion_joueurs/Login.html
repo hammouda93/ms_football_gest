@@ -1,0 +1,74 @@
+{% load static %}
+{% load crispy_forms_tags %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    
+    <style>
+        html, body {
+            height: 100%; /* Ensure full height for html and body */
+            margin: 0; /* Remove default margin */
+            position: relative; /* Create a positioning context for the pseudo-element */
+            color: #fff; /* Set default text color */
+        }
+
+        /* Pseudo-element for the background */
+        body::before {
+            content: "";
+            position: fixed; /* Use fixed to cover the entire viewport */
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('/static/gestion_joueurs/images/backgroundMS.jpg'); /* Your background image */
+            background-size: cover; /* Cover the entire area */
+            background-position: center; /* Center the image */
+            background-repeat: no-repeat; /* Prevent repeating */
+            opacity: 0.8; /* Adjust this value for background opacity */
+            z-index: -1; /* Ensure it’s behind other content */
+        }
+
+        .login-container {
+            max-width: 400px; /* Max width for the form */
+            margin: auto; /* Center the form */
+            padding: 20px; /* Padding around the form */
+            background-color: rgba(255, 255, 255, 0.9); /* White with some transparency */
+            border-radius: 8px; /* Rounded corners */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+            margin-top: 100px; /* Space from the top */
+        }
+        
+        h1 {
+            font-size: 24px; /* Heading size */
+            margin-bottom: 20px; /* Space below the heading */
+            text-align: center;
+            color: black; /* Center the heading */
+        }
+
+        .btn-primary {
+            width: 100%; /* Full width button */
+            padding: 10px; /* Padding for button */
+        }
+    </style>
+
+    <title>Connexion</title>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="login-container">
+            <h1>Connexion</h1>
+            <form method="POST">
+                {% csrf_token %}
+                {{ form|crispy }}  <!-- Utiliser Crispy Forms pour le rendu du formulaire -->
+                <button type="submit" class="btn btn-primary">Se connecter</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<!-- view_profile.html -->
+{% extends 'gestion_joueurs/base.html' %}
+
+
+{% block title %}Profil de {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Profil de {{ user.username }}</h1>
+    <p>Email: {{ user.email }}</p>
+    <!-- Add more user details as needed -->
+</div>
+{% endblock %}

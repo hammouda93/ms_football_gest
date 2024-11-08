@@ -1,0 +1,95 @@
+
+python manage.py makemigrations
+python manage.py migrate
+python manage.py runserver
+
+
+git status
+git add .
+git commit -m "Mise à jour : description des changements"
+git push origin master
+
+netstat -ano | findstr :6380 #verify listening port
+
+redis-server --port 6380
+python -m celery -A ms_football_gest  worker --pool=solo -l info                 / python -m celery -A ms_football_gest worker --loglevel=info (better for production)
+python -m celery -A ms_football_gest beat --loglevel=info
+python -m celery -A ms_football_gest flower  (to manage and see the tasks http://localhost:5555/)                     
+
+
+je vais vous donner les fichiers models.py, forms.py, views.py et signals.py 
+
+
+
+
+si on change video.status = completed, verifier si le invoice.status different de paid notifier les supers admin que le joueur (player.whatsapp) doit regler sa situation pour livrer le Video
+    notification dés le changement de vide.status (dans signals.py)
+
+
+super_users = User.objects.filter(is_superuser=True)
+for user in super_users:
+                create_notification(
+
+
+ses task planifiés :
+
+1-task pour notifier les super admin de date of birth player avant un jour de player.date of birth 
+    message inclu que le joueur est fidel (si client fidel) et vip aussi (si client vip) 
+    envoyer la notif une seule fois (if user:
+            existing_notification = Notification.objects.filter(player=player, notification_type='player', sent_at__isnull=False).exists())
+    ne renvoyer une autre notification que dans son prochain anniversaire 
+
+
+2-task pour notifier les super admin si video status = pending avant deux jours et demi du deadline : 
+    si le joueur a payé une avance (invoice.paid_amount>0) notifier les supers admins de contacter le joueur via player.whatsapp pour regler le payement et donner une idée sur le check_video_deadlines
+    si le joueur invoice.paid_amount = 0 notifier les supers admins de contacter le joueur via player.whatsapp pour verifier s'il a encore besoin de la video et lui demander de regler sa sitiuation pour recevoir la video au deadline prevus
+    si le joueur a payé le total (invoice.status = 'paid') notifier les supers admins q'uil faut commencer l'edition de la video immediatement 
+    envoyer une seule fois 
+
+
+
+3-task pour notifier les super admin si video status = (in_progress ou completed_collab)  avant un jours et demi du deadline : 
+    si le joueur a payé une avance (invoice.paid_amount>0) notifier les supers admins de contacter le joueur via player.whatsapp pour regler le payement et donner une idée sur le video.deadline
+    si le joueur invoice.paid_amount = 0 notifier les supers admins de contacter le joueur via player.whatsapp pour lui dire que la video sera bientot finie  lui demander de regler sa sitiuation pour recevoir la video au deadline prevus
+    si le joueur a payé une avance notifier les supers admins que le delai du deadline approche
+    envoyer une seule fois
+    super_users = User.objects.filter(is_superuser=True)
+    for user in super_users:
+                create_notification(
+
+
+
+4-task pour voir si le dead line est passé et le status other than 'delivered'  
+    si comleted et invoice.status other than 'paid' notifier les super admin qu'il faut appeler le joueur via player.whatsapp pour lui dire de 
+    regler le montant total en donnant le montant restant a payer (invoice.total_amount - amount_payed)
+        si status pending or in_progress or completed_collab  notifier les supers admins que le deadline est passé (donner depuis quand) et lui demander de contacter le joueur  
+         renvoyer la notification si today() - notification.sent_at > une semaine
+    si les videos delivered (deadline passés) et qui ne sont pas payé invoice.status different de 'paid' 
+    message doit inclure : il faut contacter le joueur via whatsapp pour lui dire de regler la situation (lemontant restant a payer)(invoice.total_amount - amount_payed)
+    renvoyer la notification si today() - notification.sent_at > une semaine  
+    verifier si video.status completed et dead_line <= today () voir  
+    si le invoice.paid = paid alors notifier les supers admins que la video est finie et en attente de livraison car le  joueurs a payer le montant total
+    si le invoice.paid = unpaid ou unpaid notifier les supers admins que la video est fini mais le joueur doit payer le montant restant de la video (invoice.total_amount - amount_payed)
+    renvoyer la notification si today() - notification.sent_at > une semaine
+
+
+5-task pour notifier les super admin qu'il ont plus de 4 videos a finir avant un meme deadline (notifier avant 2 jours de la date prevus)
+
+
+
+
+
+
+8- Task : apres 3 jours du deadline : 
+    si video delivered et si invoice.status = paid ou partielly paid
+        si paid_salary_status different de paid alors : 
+            si paid_salary_status = unpaid notifier les super-admins de regler le salaire de l'editeur video (le nom) et quil n'a recus aucune prime pour la video correspondante
+            si paid_salary_status = partially_paid notifier les super-admins que l'editeur video (le nom) attend toujours le reste de sa prime pour la video correspondante
+            renvoyer la meme notification with is_read = false si la situation aprés une semaine de sent_at
+
+merci d'inculure l'affichage du whatsapp joueur dans les notification pour ameliorer user-experience
+
+
+selon mes idées merci de me donner les tasks correspondant en tenant compte de ce que je vous ai donné et du meme principe que @shared_task
+def check_video_deadlines(): et aussi donner moi d'autre idée pour faciliter le controle de process video et de payement (je pense q'uil faut ajouter un champs player dans notification)
+assigner notification_type que vous juger juste pour les notifications et si besoin ajouter d'autres cathegorie dans le model.py 

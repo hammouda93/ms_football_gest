@@ -1,0 +1,232 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="mb-0">Enregistrer un Paiement pour {{ player.name }}</h2>
+                <h3 class="text-muted mb-0">{{ video }}</h3>
+            </div>
+            <div>
+                {% if last_invoice %}
+                    <strong style="color: black;">
+                        Dernière Facture: 
+                        <span class="{% if last_invoice.status == 'paid' %}text-success{% else %}text-danger{% endif %}">
+                            {{ last_invoice.total_amount }}
+                        </span>
+                        {% if last_invoice.status == 'paid' %}
+                            <i class="fas fa-check-circle text-success "  aria-hidden="true"></i> Validé ({{ last_invoice.amount_paid }})
+                        {% else %}
+                            <i class="fas fa-times-circle text-danger" aria-hidden="true"></i> Non Payé ({{ remaining_amount }})
+                        {% endif %}
+                    </strong>
+                {% else %}
+                    <strong>Aucune Facture Disponible</strong>
+                {% endif %}
+            </div>
+        </div>
+    </div>   
+    <div class="row">
+        <!-- Card for Payment Form -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Formulaire de Paiement</h5>
+                </div>
+                <div class="card-body">
+                    {% if form.errors %}
+                        <div class="alert alert-danger">
+                            <strong>Veuillez corriger les erreurs suivantes :</strong>
+                            <ul>
+                                {% for field in form %}
+                                    {% for error in field.errors %}
+                                        <li>{{ field.label }}: {{ error }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                                {% for error in form.non_field_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <form id="paymentForm" method="POST" class="form-group">
+                        {% csrf_token %}
+                        <input type="hidden" name="player_name" value="{{ player.name }}">
+                        <input type="hidden" name="video" value="{{ video }}">
+
+                        <div class="alert {% if last_invoice.status == "paid" %}alert-success{% else %}alert-info{% endif %}">
+                            {% if last_invoice.status == "paid" %}
+                                <strong>Le joueur a payé le montant total <strong id="remainingAmount" hidden>{{ remaining_amount }}</strong></strong>
+                            {% else %}
+                                Montant restant à payer: <strong id="remainingAmount">{{ remaining_amount }}</strong>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="paymentType">Type de Paiement</label>
+                            <select id="paymentType" name="payment_type" class="form-control">
+                                {% if remaining_amount > 0 %}
+                                    {% if last_invoice.amount_paid > 0 %}
+                                        <option value="partial">Partiel</option> 
+                                    {% else %}
+                                        <option value="advance">Avance</option>
+                                    {% endif %}
+                                    <option value="final">Final</option>
+                                {% else %}
+                                    <option value="final">Final</option>
+                                {% endif %}
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="amount">Montant du Paiement</label>
+                            <input type="number" id="amount" name="amount" class="form-control" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="paymentMethod">Méthode de Paiement</label>
+                            <select id="paymentMethod" name="payment_method" class="form-control">
+                                <option value="cash">CASH</option> 
+                                <option value="bank_transfer">Virement Bancaire</option>
+                                <option value="la_poste">Par Poste</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block mt-3">Enregistrer le Paiement</button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-block mt-3">Retour au Tableau de Bord</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment History and Last Invoice Cards Side by Side -->
+        <div class="col-md-6">
+            <div class="row">
+                <!-- Card for Payment History -->
+                <div class="col-12 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Historique des Paiements</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if payments %}
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Montant</th>
+                                            <th>Type de payement</th>
+                                            <th>Créé Par</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for payment in payments %}
+                                            <tr>
+                                                <td>{{ payment.payment_date|date:"d/m/Y" }}</td>
+                                                <td>{{ payment.amount }}</td>
+                                                <td>{{ payment.payment_type }}</td>
+                                                <td>{{ payment.created_by.username }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% else %}
+                                <div class="alert alert-warning" role="alert">
+                                    Aucun paiement enregistré.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card for Last Invoice -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Dernière Facture</h5>
+                        </div>
+                        <div class="card-body" style="color: black;">
+                            {% if last_invoice %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Montant Total:</strong> {{ last_invoice.total_amount }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Montant Payé:</strong> {{ last_invoice.amount_paid }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Statut:</strong> {{ last_invoice.status }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Date d'Émission:</strong> {{ last_invoice.invoice_date|date:"d/m/Y" }}</p>
+                                </div>
+                            </div>
+                            {% else %}
+                                <div class="alert alert-warning" role="alert">
+                                    Aucune facture disponible.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const remainingAmountElement = document.getElementById('remainingAmount');
+        const amountInput = document.getElementById('amount');
+        const paymentTypeSelect = document.getElementById('paymentType');
+        const form = document.getElementById('paymentForm');
+        const lastInvoiceAmountPaid = parseFloat('{{ last_invoice.amount_paid }}') || 0;
+
+        // Initialize payment type based on amount paid
+        if (lastInvoiceAmountPaid === 0) {
+            paymentTypeSelect.value = 'advance'; // Default to advance if amount paid is 0
+        }
+
+        // Update input based on selected payment type
+        paymentTypeSelect.addEventListener('change', function() {
+            if (this.value === 'final') {
+                amountInput.value = remainingAmountElement.innerText;
+            } else {
+                amountInput.value = '';
+            }
+        });
+
+        // Check amount and adjust payment type
+        amountInput.addEventListener('input', function() {
+            const amount = parseFloat(this.value);
+            const remainingAmount = parseFloat(remainingAmountElement.innerText);
+            
+            if (amount < remainingAmount) {
+                if (lastInvoiceAmountPaid === 0) {
+                    paymentTypeSelect.value = 'advance'; // Set to advance if amount paid is 0
+                } else {
+                    paymentTypeSelect.value = 'partial'; // Set to partial if amount paid is not 0
+                }
+            } else {
+                paymentTypeSelect.value = 'final'; // Set to final if amount exceeds or equals remaining
+            }
+        });
+
+        // Confirm before submitting
+        form.addEventListener('submit', function(event) {
+            const amount = parseFloat(amountInput.value);
+            const remainingAmount = parseFloat(remainingAmountElement.innerText);
+
+            if (amount > remainingAmount) {
+                const confirmMessage = "Vous avez reçu plus d'argent que le montant total. Voulez-vous confirmer la transaction ?";
+                if (!confirm(confirmMessage)) {
+                    event.preventDefault();
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Modifier La Vidéo - {{ video.player.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            <h5 class="text-center text-muted">{{ video }}</h5>
+            <div class="text-center">
+                <span class="badge badge-secondary">{{ video.status }}</span>
+                <span class="badge badge-primary">Total Paiement: {{ video.total_payment }}</span>
+                <span class="badge badge-warning">Échéance: {{ video.deadline }}</span>
+            </div>
+        </div>
+    </div>
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    <div class="row">
+        <!-- Card for the form -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ form|crispy }}  
+                        <button type="submit" class="btn btn-primary btn-block mt-3" aria-label="Mettre à jour la vidéo">Mettre à jour la Vidéo</button>
+                        <div class="d-flex justify-content-between mt-3">
+                            <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
+                            <a href="{% url 'edit_player' video.player.id %}" class="btn btn-info">Modifier le joueur</a> 
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card for payment and status history -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <h5 class="text-center  mr-2">Historique des Statuts</h5>
+                    {% if video_status_history %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>                           
+                                    <th>Date de Changement</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for status in video_status_history %}
+                                    <tr>
+                                        <td>{{ status.changed_at|date:"d-m-Y" }}</td>
+                                        <td>{{ status.status }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucun historique de statut disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Card for payment history -->
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <div class="row d-flex justify-content-center">
+                        <h5 class="text-center  mr-2">Informations de Paiement</h5>
+                        {% if video.invoices.status == 'paid' %}
+                            <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                        {% else %}
+                            <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    
+                    {% if payments %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>                                   
+                                    <th>Date de Paiement</th>
+                                    <th>Type de Paiement</th>
+                                    <th>Montant</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                    <tr>
+                                        <td>{{ payment.payment_date|date:"d-m-Y" }}</td>
+                                        <td>{{ payment.payment_type }}</td>
+                                        <td>{{ payment.amount }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucune information de paiement disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% if video.editor.user.is_superuser  %}
+            
+            {% else %}
+                <!-- Card for Collaborator Payment (Paiement Collaborateur) -->         
+                <div class="card mb-4">
+                    <div class="card-body" style="color: black;">
+                        <div class="row d-flex justify-content-center">
+                            <h5 class="text-center  mr-2">Paiement Collaborateur</h5>
+                            {% if video.salary_paid_status == 'paid' %}
+                                <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                            {% else %}
+                                <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                            {% endif %}
+                        </div>
+                        
+                        {% if salaries %}
+                            <table class="table table-striped small-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date de Paiement</th>
+                                        <th>Montant</th>
+                                        <th>Dépense Associée</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for salary in salaries %}
+                                        <tr>
+                                            <td>{{ salary.date|date:"d-m-Y" }}</td>
+                                            <td>{{ salary.amount }}</td>
+                                            <td>
+                                                {% if salary.expense %}
+                                                    {{ salary.expense.description }} - {{ salary.expense.amount }}
+                                                {% else %}
+                                                    Aucune dépense liée.
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p>Aucune information de paiement collaborateur disponible.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}    
+        </div>
+    </div>
+</div>
+{% endblock %}

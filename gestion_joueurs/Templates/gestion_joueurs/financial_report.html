@@ -1,0 +1,239 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Rapport Financier{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            <h2 class="mb-0">Rapport Financier</h2>
+            <h5 class="text-muted">Analyse des revenus et des dépenses</h5>
+        </div>
+        <div class="card-body">
+            <div class="text-center mb-4">
+                <span class="badge badge-secondary">Date du Rapport: {{ report.report_date }}</span>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col text-center">
+                    <h4>Résumé Financier</h4>
+                    <p><strong>Total Dépenses:</strong> <span class="text-warning">${{ report.total_expenses }}</span></p>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col text-center">
+                    <h4>Revenu Net</h4>
+                    <p class="text-success" style="font-size: 1.5em;">${{ report.net_profit }}</p>
+                    <p><strong>Total Revenus Videos</strong> <span class="text-success">${{ report.total_income }}</span></p>
+                    <p><strong>Autres Revenus </strong> <span>${{ other_income }}</span></p>
+                    <p><strong>Revenus globales </strong> <span class="text-success"><strong>${{ report.global_income }}</strong></span></p>
+                </div>
+                <div class="col text-center">
+                    <h4>Revenu Net (si toutes les factures sont payées)</h4>
+                    <p class="text-danger" style="font-size: 1.5em;">${{ report.net_revenue_if_all_paid }}</p>
+                    <p><strong>Total Revenus (Factures):</strong> <span class="text-info">${{ total_invoice_income }}</span></p>
+                    <p><strong>Payements a collecter</strong> <span class="text-info">${{ report.total_outstanding_income }}</span></p>
+                </div>
+            </div>
+            <h4 class="my-4">Graphique des Revenus et Dépenses</h4>
+            <div class="row mb-4">
+                <div class="col">
+                    <canvas id="financialChart"></canvas>
+                </div>
+            </div>
+
+            <h4 class="my-4">Dépenses par Catégorie</h4>
+            <div class="row mb-4">
+                <div class="col">
+                    <canvas id="expensesChart"></canvas>
+                </div>
+            </div>
+
+            <h4 class="my-4">Salaires par Utilisateur</h4>
+            <div class="row mb-4">
+                <div class="col">
+                    <canvas id="salariesChart"></canvas>
+                </div>
+            </div>
+
+            <h4 class="my-4">Dépenses par Catégorie et Salaires par Utilisateur</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5>Dépenses par Catégorie</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Catégorie</th>
+                                            <th>Montant</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for expense in expenses %}
+                                        <tr>
+                                            <td>{{ expense.category }}</td>
+                                            <td>${{ expense.total }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5>Salaires par Utilisateur</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Utilisateur</th>
+                                            <th>Montant Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for salary in salaries %}
+                                        <tr>
+                                            <td>{{ salary.user__username }}</td>
+                                            <td>${{ salary.total }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Graphique des Revenus et Dépenses
+    const ctx1 = document.getElementById('financialChart').getContext('2d');
+    const financialChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: ['Revenus', 'Dépenses'],
+            datasets: [{
+                label: 'Montant ($)',
+                data: [{{ report.total_income }}, {{ report.total_expenses }}],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.2)',
+                    'rgba(255, 99, 132, 0.2)'
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Montant ($)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Catégories'
+                    }
+                }
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+        }
+    });
+
+    // Graphique des Dépenses par Catégorie
+    const ctx2 = document.getElementById('expensesChart').getContext('2d');
+    const expensesLabels = [{% for expense in expenses %}'{{ expense.category }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+    const expensesData = [{% for expense in expenses %}{{ expense.total }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    
+    const expensesChart = new Chart(ctx2, {
+        type: 'pie',
+        data: {
+            labels: expensesLabels,
+            datasets: [{
+                label: 'Dépenses par Catégorie',
+                data: expensesData,
+                backgroundColor: [
+                    'rgba(255, 159, 64, 0.2)',
+                    'rgba(54, 162, 235, 0.2)',
+                    'rgba(255, 206, 86, 0.2)',
+                    'rgba(75, 192, 192, 0.2)',
+                    'rgba(153, 102, 255, 0.2)'
+                ],
+                borderColor: [
+                    'rgba(255, 159, 64, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+        }
+    });
+
+    // Graphique des Salaires par Utilisateur
+    const ctx3 = document.getElementById('salariesChart').getContext('2d');
+    const salariesLabels = [{% for salary in salaries %}'{{ salary.user__username }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+    const salariesData = [{% for salary in salaries %}{{ salary.total }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    
+    const salariesChart = new Chart(ctx3, {
+        type: 'bar',
+        data: {
+            labels: salariesLabels,
+            datasets: [{
+                label: 'Salaires par Utilisateur ($)',
+                data: salariesData,
+                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                borderColor: 'rgba(153, 102, 255, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Montant ($)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Utilisateurs'
+                    }
+                }
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Statut de la vidéo{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center">
+            <h2 class="mb-0">Statut de la vidéo</h2>
+            <h5 class="text-muted">{{ video }}</h5>   
+        </div>
+        <div class="card-body">
+            <div class="text-center mb-4">
+                <span class="badge badge-secondary">Statut: {{ video.status }}</span>
+                <span class="badge badge-primary">Deadline: {{ video.deadline }}</span>
+            </div>
+
+            <h4 class="mb-3">Historique des Statuts</h4>
+            <table class="table table-bordered small-table">
+                <thead>
+                    <tr>
+                        <th>Statut</th>
+                        <th>Éditeur</th>
+                        <th>Date de Changement</th>
+                        <th>Commentaire</th>
+                        <th>Status changé par</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for history in video.status_history.all %}
+                        <tr>
+                            <td>{{ history.status }}</td>
+                            <td>{{ video.editor.user.username }}</td>
+                            <td>{{ history.changed_at }}</td>
+                            <td>{{ history.comment }}</td>
+                            <td>{{ history.created_by.username }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center">Aucun historique disponible.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="text-center mt-4">
+                <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning">Modifier le statut</a>
+                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
