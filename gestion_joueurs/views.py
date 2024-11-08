@@ -257,7 +257,7 @@ def user_login(request):
 
 def user_logout(request):
     logout(request)
-    return redirect('gestion_joueurs/login.html')
+    return redirect('user_login')
 
 @login_required
 def view_profile(request):
