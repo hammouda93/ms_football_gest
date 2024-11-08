@@ -2,6 +2,7 @@ from celery import shared_task
 from ms_football_gest.celery import app
 from celery import shared_task
 from django.utils import timezone
+from django.db import models
 from .models import Video, Notification ,Player,FinancialReport,Invoice, NonVideoIncome,Expense
 from .utils import create_notification
 import logging
@@ -11,8 +12,7 @@ from django.db.models import Q
 from django.db.models import Sum
 logger = logging.getLogger(__name__)
 
-
-@shared_task
+#@shared_task
 def notify_birthday():
     logger.info("Starting birthday notification task.")
 
@@ -69,7 +69,7 @@ def notify_birthday():
 
 
 
-@shared_task
+#@shared_task
 def notify_pending_videos():
     threshold_time = timezone.now() + timedelta(days=2, hours=12)
     videos = Video.objects.filter(status='pending', deadline__lte=threshold_time)
@@ -111,7 +111,7 @@ def notify_pending_videos():
 
     logger.info("Notification process completed.")
 
-@shared_task
+#@shared_task
 def notify_in_progress_or_completed_collab_videos():
     threshold_time = timezone.now() + timedelta(days=1, hours=12)
     videos = Video.objects.filter(
@@ -156,7 +156,7 @@ def notify_in_progress_or_completed_collab_videos():
     logger.info("Notification process completed.")
 
 
-@shared_task
+#@shared_task
 def notify_past_deadline_status_videos():
     now = timezone.now()
     cutoff_time = now - timezone.timedelta(days=2)  # Set cutoff for 3 days past the deadline
@@ -220,7 +220,7 @@ def notify_past_deadline_status_videos():
 
     logger.info("Past deadline notification process completed.")
 
-@shared_task
+#@shared_task
 def check_video_count():
     # Récupérer les vidéos avec une deadline dans 2 jours et ayant un statut 'pending', 'in_progress', ou 'completed_collab'
     now = timezone.now()
@@ -256,7 +256,7 @@ def check_video_count():
 
 
 
-@shared_task
+#@shared_task
 def notify_salary_due_for_delivered_videos():
     # Calculate the threshold date (2 days after the deadline)
     threshold_date = timezone.now() - timedelta(days=2)
@@ -317,7 +317,7 @@ def notify_salary_due_for_delivered_videos():
 
 
 
-@shared_task
+#@shared_task
 def generate_first_day_of_current_month_report():
     now = timezone.now()
 

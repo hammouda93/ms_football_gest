@@ -14,11 +14,22 @@ from .decorators import superadmin_required
 from .models import Notification
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST 
+from django.views.decorators.csrf import csrf_exempt
 import threading
 from .tasks import add, test_taskk
 from .utils import set_signal_processing
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from .tasks import (
+    notify_birthday,
+    notify_pending_videos,
+    notify_in_progress_or_completed_collab_videos,
+    notify_past_deadline_status_videos,
+    check_video_count,
+    notify_salary_due_for_delivered_videos,
+    generate_first_day_of_current_month_report
+)
+
 
 @superadmin_required
 @login_required
@@ -1351,4 +1362,21 @@ def test_task(request):
     result = add.delay(2,3)
     result1 = test_taskk.delay()
     return render (request, 'gestion_joueurs/test_task.html',{'result': result,'result1':result1}) """
+@csrf_exempt
+def run_all_tasks(request):
+    if request.method == 'POST':
+        try:
+            notify_birthday()
+            notify_pending_videos()
+            notify_in_progress_or_completed_collab_videos()
+            notify_past_deadline_status_videos()
+            check_video_count()
+            notify_salary_due_for_delivered_videos()
+            generate_first_day_of_current_month_report()
 
+            return JsonResponse({'status': 'success', 'message': 'All tasks executed successfully!'})
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid method'})

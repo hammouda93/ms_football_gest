@@ -75,6 +75,25 @@
             }
         }
     </script>
+    <script>
+        function runTasks() {
+            // Trigger AJAX call to the view that runs all tasks
+            fetch("{% url 'run_all_tasks' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Something went wrong!');
+            });
+        }
+    </script>
     <style>
         .sidebar {
             width: 260px; /* Sidebar width */
@@ -180,6 +199,12 @@
                                 <a class="dropdown-item" href="{% url 'register_video_editor' %}">
                                     <i class="fas fa-user-plus"></i> Créer Éditeur Vidéo
                                 </a>
+                                <div class="d-flex align-items-center justify-content-center mt-2">
+                                    <button class="nav-link btn btn-danger text-white text-center btn-sm" onclick="runTasks()">
+                                        <i class="fa fa-cogs mr-1"></i>    Commande Systeme
+                                    </button>
+                                </div>
+                                
                             {% endif %}
                         </div>
                     </div>

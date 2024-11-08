@@ -4,7 +4,7 @@ from .views import dashboard, create_video_highlight, video_status, update_video
 from. views import register_video_editor,search_players,view_invoices,view_payments,manage_salaries,get_videos_by_editor,view_profile,generate_financial_report,view_video
 from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance,create_invoice,StatisticalDashboardView,get_months
 from .views import mark_notification_as_read,test_task, non_video_income_list,add_non_video_income,edit_non_video_income,financial_report_list,view_financial_report,get_days
-from .views import add_notification, notification_list, view_notification
+from .views import add_notification, notification_list, view_notification,run_all_tasks
 
 urlpatterns = [
     path('', dashboard, name='dashboard'),
@@ -45,5 +45,6 @@ urlpatterns = [
     path('test/', test_task, name='test_task'),
     path('non_video_income/', non_video_income_list, name='non_video_income_list'),
     path('non_video_income/add/', add_non_video_income, name='add_non_video_income'),
-    path('non_video_income/edit/<int:pk>/', edit_non_video_income, name='edit_non_video_income')
+    path('non_video_income/edit/<int:pk>/', edit_non_video_income, name='edit_non_video_income'),
+    path('run-tasks/', run_all_tasks, name='run_all_tasks'),
 ]
