@@ -16,7 +16,7 @@ python -m celery -A ms_football_gest  worker --pool=solo -l info                
 python -m celery -A ms_football_gest beat --loglevel=info
 python -m celery -A ms_football_gest flower  (to manage and see the tasks http://localhost:5555/)                     
 
-
+pywin32==307; sys_platform == 'win32'
 je vais vous donner les fichiers models.py, forms.py, views.py et signals.py 
 
 
