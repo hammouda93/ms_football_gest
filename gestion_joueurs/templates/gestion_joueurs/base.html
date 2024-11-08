@@ -250,10 +250,10 @@
                     {% url 'view_payments' as view_payments_url %}
                     {% url 'view_invoices' as view_invoices_url %}
                     {% url 'non_video_income_list' as non_video_income_list_url %}
-                    <a class="nav-link {% if request.path == view_payments_url or request.path == view_invoices_url %}active{% endif %}" data-toggle="collapse" href="#paymentSubmenu" role="button" aria-expanded="false" aria-controls="paymentSubmenu">
+                    <a class="nav-link {% if request.path == view_payments_url or request.path == view_invoices_url or request.path == non_video_income_list_url %}active{% endif %}" data-toggle="collapse" href="#paymentSubmenu" role="button" aria-expanded="false" aria-controls="paymentSubmenu">
                         <i class="fas fa-dollar-sign"></i> Revenus
                     </a>
-                    <div class="collapse {% if request.path == view_payments_url or request.path == view_invoices_url %}show{% endif %}" id="paymentSubmenu">
+                    <div class="collapse {% if request.path == view_payments_url or request.path == view_invoices_url  or request.path == non_video_income_list_url %}show{% endif %}" id="paymentSubmenu">
                         <ul class="nav flex-column ml-3">
                             <li class="nav-item">
                                 <a class="nav-link {% if request.path == view_invoices_url %}active{% endif %}" href="{{ view_invoices_url }}">Factures Videos</a>
