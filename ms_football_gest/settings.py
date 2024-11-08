@@ -13,7 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 from celery.schedules import crontab
-
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,8 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-kx5#*2*9l*64p#o^&zk!++t0m&_(1&bi@+kur$up%=#*ra9m^^'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
+""" DEBUG = True """
+DEBUG = False
 ALLOWED_HOSTS = ['msfootball-1a882b44ed52.herokuapp.com', 'localhost', '127.0.0.1']
 
 
@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'gestion_joueurs',
     'crispy_forms',
     'crispy_bootstrap4',
+    'whitenoise.runserver_nostatic',
 ]
 
 ASGI_APPLICATION = 'MS_FOOTBALL_GEST.asgi.application'
@@ -64,6 +65,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'gestion_joueurs.middleware.CurrentUserMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
 ROOT_URLCONF = 'ms_football_gest.urls'
@@ -105,7 +107,8 @@ DATABASES = {
     }
 }
 
-
+db_from_env = dj_database_url.config(conn_max_age=600)
+DATABASES['default'].update(db_from_env)
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -137,6 +140,9 @@ USE_I18N = True
 USE_TZ = True
 
 
+
+
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 # For Heroku (or other production environments):
