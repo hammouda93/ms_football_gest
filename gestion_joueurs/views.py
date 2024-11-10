@@ -902,7 +902,7 @@ def edit_non_video_income(request, pk):
     return render(request, 'gestion_joueurs/edit_non_video_income.html', {'form': form, 'non_video_income': non_video_income})
 
 # Set up a logger for debugging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('msfootball')
 
 @superadmin_required
 @login_required
