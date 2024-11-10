@@ -926,8 +926,9 @@ def non_video_income_list(request):
     paginator = Paginator(incomes, 20)  # Show 20 items per page
     page_number = request.GET.get('page')  # Get the page number from the URL
     page_obj = paginator.get_page(page_number)
-
+    print(f"NonVideoIncome records: {page_obj}")
     incomes_count = len(incomes)
+    print(f"NonVideoIncome records count : {incomes_count}")
     # Get the category choices
     non_video_income_categories = NonVideoIncome.category_choices
 
