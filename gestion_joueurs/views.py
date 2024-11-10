@@ -908,7 +908,7 @@ def non_video_income_list(request):
     category = request.GET.get('category', '')
 
     # Get all the NonVideoIncome records
-    incomes = NonVideoIncome.objects.all()
+    incomes = NonVideoIncome.objects.all().order_by('-created_at')
 
     # Search filter: search by description
     if search:
@@ -920,7 +920,7 @@ def non_video_income_list(request):
 
     # If you want to display only records for the current user
     if request.user.is_authenticated:
-        incomes = incomes.filter(created_by=request.user).order_by('-created_at')
+        incomes = incomes.filter(created_by=request.user)
 
     # Paginate the filtered query set
     paginator = Paginator(incomes, 20)  # Show 20 items per page
