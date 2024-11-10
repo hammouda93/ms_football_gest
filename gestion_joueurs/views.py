@@ -931,10 +931,6 @@ def non_video_income_list(request):
     
     # Print after applying the category filter
     print(f"Incomes after category filter: {incomes.count()}")
-
-    # If you want to display only records for the current user
-    if request.user.is_authenticated:
-        incomes = incomes.filter(created_by=request.user)
     
     # Print after filtering by user
     print(f"Incomes after user filter (created_by={request.user.id}): {incomes.count()}")
