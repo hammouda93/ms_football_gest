@@ -20,6 +20,7 @@ import threading
 from .tasks import add, test_taskk
 from .utils import set_signal_processing
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+import logging
 from .tasks import (
     notify_birthday,
     notify_pending_videos,
@@ -900,35 +901,52 @@ def edit_non_video_income(request, pk):
 
     return render(request, 'gestion_joueurs/edit_non_video_income.html', {'form': form, 'non_video_income': non_video_income})
 
+# Set up a logger for debugging
+logger = logging.getLogger(__name__)
+
 @superadmin_required
 @login_required
 def non_video_income_list(request):
     # Get the search term and category filter from GET parameters
     search = request.GET.get('search', '')
     category = request.GET.get('category', '')
+    
+    # Log the received parameters for debugging
+    logger.debug(f"Search term: {search}")
+    logger.debug(f"Category filter: {category}")
 
-    # Get all the NonVideoIncome records
+    # Get all NonVideoIncome records, ordered by created_at
     incomes = NonVideoIncome.objects.all().order_by('-created_at')
 
-    # Search filter: search by description
+    # Apply search filter: search by description
     if search:
         incomes = incomes.filter(description__icontains=search)
+        logger.debug(f"After search filter, number of records: {incomes.count()}")
 
-    # Category filter
+    # Apply category filter
     if category:
         incomes = incomes.filter(category=category)
+        logger.debug(f"After category filter, number of records: {incomes.count()}")
 
     # If you want to display only records for the current user
     if request.user.is_authenticated:
         incomes = incomes.filter(created_by=request.user)
+        logger.debug(f"After user filter, number of records: {incomes.count()}")
+
+    # Log the final query set
+    logger.debug(f"Final query: {incomes.query}")
 
     # Paginate the filtered query set
     paginator = Paginator(incomes, 20)  # Show 20 items per page
     page_number = request.GET.get('page')  # Get the page number from the URL
     page_obj = paginator.get_page(page_number)
-    print(f"NonVideoIncome records: {page_obj}")
+
+    # Log the page object and the count of records in this page
+    logger.debug(f"Page {page_obj.number} loaded with {len(page_obj.object_list)} records.")
+
     incomes_count = len(incomes)
-    print(f"NonVideoIncome records count : {incomes_count}")
+    logger.debug(f"Total records: {incomes_count}")
+
     # Get the category choices
     non_video_income_categories = NonVideoIncome.category_choices
 
@@ -936,8 +954,8 @@ def non_video_income_list(request):
         'non_video_incomes': page_obj,
         'search': search,
         'category': category,
-        'non_video_income_categories': non_video_income_categories,  # Pass the categories to the template
-        'incomes_count':incomes_count,
+        'non_video_income_categories': non_video_income_categories,
+        'incomes_count': incomes_count,
     })
 
 
