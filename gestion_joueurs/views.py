@@ -367,6 +367,9 @@ def edit_video(request, video_id):
     video_status_history = video.status_history.all()  # Utiliser le related_name
     payments = video.payments.all()  # Assure-toi que le modèle Payment a la relation correcte
     previous_editor = video.editor
+    # Get the last invoice for the video
+    last_invoice = Invoice.objects.filter(video=video).order_by('-invoice_date').first()
+     
     # Fetch salaries related to the current video
     salaries = Salary.objects.filter(video=video)
     video_paid = video.invoices.status
@@ -376,7 +379,9 @@ def edit_video(request, video_id):
     if request.method == 'POST':
         form = VideoForm(request.POST, instance=video, user=request.user)
         if form.is_valid():
+            last_invoice.total_amount = form.cleaned_data.get('total_payment')
             form.save()
+            last_invoice.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
             return redirect('dashboard')
     else:
