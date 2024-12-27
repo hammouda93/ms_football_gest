@@ -22,7 +22,7 @@ class Player(models.Model):
         ('MF', 'Midfielder'),
         ('FW', 'Forward'),
     ]
-
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, default="", verbose_name="Player Name")
     club = models.CharField(max_length=100, default="", verbose_name="Club Name")
     email = models.EmailField(default="", verbose_name="Email Address")
@@ -96,7 +96,7 @@ class Video(models.Model):
         ('LY', 'Libye'),
         ('OC', 'Other Country'),
     ]
-
+    id = models.AutoField(primary_key=True)
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     editor = models.ForeignKey(VideoEditor, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.PENDING)
@@ -150,6 +150,7 @@ class VideoStatusHistory(models.Model):
 
     
 class Invoice(models.Model):
+    id = models.AutoField(primary_key=True)
     video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
     invoice_date = models.DateField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -171,6 +172,7 @@ class Invoice(models.Model):
 
 
 class Payment(models.Model):
+    id = models.AutoField(primary_key=True)
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='payments')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -193,6 +195,7 @@ class Payment(models.Model):
         return f"{self.player.name} - {self.amount} ({self.payment_type})"
 
 class PaymentHistory(models.Model):
+    id = models.AutoField(primary_key=True)
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
     amount_before = models.DecimalField(max_digits=10, decimal_places=2)
     amount_after = models.DecimalField(max_digits=10, decimal_places=2)
@@ -213,6 +216,7 @@ class Salary(models.Model):
         return f"{self.user.username} - {self.amount} on {self.date}"
 
 class Expense(models.Model):
+    id = models.AutoField(primary_key=True)
     description = models.CharField(max_length=255, null=True, blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField(default=timezone.now)
@@ -266,6 +270,7 @@ class Notification(models.Model):
         ('reminder', 'Reminder'),
         ('update', 'Update'),
     ]
+    id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     message = models.CharField(max_length=255)
     is_read = models.BooleanField(default=False)
