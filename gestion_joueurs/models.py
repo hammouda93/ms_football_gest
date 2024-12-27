@@ -151,7 +151,7 @@ class VideoStatusHistory(models.Model):
     
 class Invoice(models.Model):
     id = models.AutoField(primary_key=True)
-    video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
     invoice_date = models.DateField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -206,6 +206,7 @@ class PaymentHistory(models.Model):
         return f"Change in Payment {self.payment.id} on {self.changed_at}"
 
 class Salary(models.Model):
+    id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField(auto_now_add=True)
@@ -298,7 +299,7 @@ class NonVideoIncome(models.Model):
         ('media', 'Media'),
         ('other', 'Other'),
     ]
-
+    id = models.AutoField(primary_key=True)
     category = models.CharField(max_length=50, choices=category_choices)
     description = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
