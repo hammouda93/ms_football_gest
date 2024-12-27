@@ -150,7 +150,6 @@ class VideoStatusHistory(models.Model):
 
     
 class Invoice(models.Model):
-    id = models.AutoField(primary_key=True)
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
     invoice_date = models.DateField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
