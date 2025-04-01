@@ -6,6 +6,7 @@ from io import BytesIO
 import logging
 import speech_recognition as sr
 import tempfile
+
 # Set up Django settings before importing models
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
 django.setup()
@@ -56,7 +57,7 @@ async def process_voice(update: Update, context: CallbackContext):
                 await update.message.reply_text(f"Received status: {text}")
 
                 # Fetch players based on status
-                players = get_players_by_status(text.lower())
+                players = await get_players_by_status(text.lower())
                 response = "\n".join(players) if players else f"No players found with the status '{text}'."
 
                 # Convert Text to Speech
@@ -89,7 +90,7 @@ async def process_text(update: Update, context: CallbackContext):
         logger.info(f"Received text message: {text}")
 
         # Fetch players based on status
-        players = get_players_by_status(text)
+        players = await get_players_by_status(text)
         response = "\n".join(players) if players else f"No players found with the status '{text}'."
 
         # Convert Text to Speech

@@ -3,6 +3,7 @@ from django.conf import settings
 from .models import Notification,Video
 from django.utils import timezone
 import logging
+from asgiref.sync import sync_to_async  # Fix for async Django ORM queries
 
 
 
@@ -46,15 +47,12 @@ def should_process_signals():
     return getattr(_thread_locals, 'should_process_signals', True)
 
 
-# Function to fetch players based on video status
-def get_players_by_status(status: str):
-    """Fetch players by video status, ensuring normalized input."""
+# Function to fetch players asynchronously
+async def get_players_by_status(status: str):
+    """Fetch players by video status using async-friendly Django ORM calls."""
     try:
-        logger.info(f"Fetching players for status: {status}")  # Debugging
-
-        # Normalize status
+        logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
-        logger.info(f"Normalized status: {normalized_status}")
 
         # Check if status is valid
         valid_statuses = {s.value for s in Video.StatusChoices}
@@ -62,8 +60,8 @@ def get_players_by_status(status: str):
             logger.warning(f"Invalid status: {normalized_status}")
             return [f"Invalid status: '{normalized_status}'. Valid options: {valid_statuses}"]
 
-        # Fetch players
-        videos = Video.objects.filter(status=normalized_status)
+        # Use sync_to_async to call Django ORM safely
+        videos = await sync_to_async(lambda: list(Video.objects.filter(status=normalized_status)))()
         players = [video.player.name for video in videos]
 
         if players:
