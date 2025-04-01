@@ -1410,3 +1410,8 @@ def run_all_tasks(request):
             return JsonResponse({'status': 'error', 'message': str(e)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+
+
+
+
+

@@ -1,9 +1,8 @@
 import threading
 from django.conf import settings
-from .models import Notification
+from .models import Notification,Video
 from django.utils import timezone
 _thread_locals = threading.local()
-
 def get_current_user():
     return getattr(_thread_locals, 'user', None)
 
@@ -31,3 +30,12 @@ def set_signal_processing(should_process):
 
 def should_process_signals():
     return getattr(_thread_locals, 'should_process_signals', True)
+
+
+#Telegram_Bot
+def get_players_by_status(status):
+    """Fetch players whose videos have the given status."""
+    # Query all players whose related video has the given status
+    videos = Video.objects.filter(status=status)
+    players = [video.player.name for video in videos]
+    return players

@@ -30,7 +30,8 @@ SECRET_KEY = 'django-insecure-kx5#*2*9l*64p#o^&zk!++t0m&_(1&bi@+kur$up%=#*ra9m^^
 DEBUG = True
 ALLOWED_HOSTS = ['msfootball-1a882b44ed52.herokuapp.com', 'localhost', '127.0.0.1']
 
-
+# Add your Telegram bot token
+TELEGRAM_BOT_TOKEN = '7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8'
 # Application definition
 
 INSTALLED_APPS = [
