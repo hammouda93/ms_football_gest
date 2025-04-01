@@ -86,6 +86,7 @@ class Video(models.Model):
         COMPLETED_COLLAB = 'completed_collab', 'Completed Collab'
         COMPLETED = 'completed', 'Completed'
         DELIVERED = 'delivered', 'Delivered'
+        PROBLEMATIC = 'problematic', 'Problematic'  # New status
     class SalaryPaidStatusChoices(models.TextChoices):
         NOT_PAID = 'not_paid', 'Not Paid'
         PARTIALLY_PAID = 'partially_paid', 'Partially Paid'

@@ -31,6 +31,8 @@
                         <option value="completed" {% if video.status == 'completed' %}selected{% endif %}>Fini</option>
                         <option value="delivered" {% if video.status == 'delivered' %}selected{% endif %}>Livré</option>
                         {% endif %}
+                        <!-- Hidden Problematic Status -->
+                        <option value="problematic" {% if video.status == 'problematic' %}selected{% endif %} hidden>Problématique</option>
                     </select>
                 </div>
 
@@ -38,15 +40,19 @@
                     <label for="video_link">Lien de la vidéo</label>
                     <input type="url" name="video_link" class="form-control" id="video_link" placeholder="Entrez l'URL de la vidéo" value="{% if video.status == 'delivered' %}{{ video.video_link }}{% else %}{% endif %}">
                 </div>
-
+               
                 <button type="submit" class="btn btn-primary btn-block">Mettre à jour</button>
                 <a href="{% url 'video_status' video.id %}" class="btn btn-secondary btn-block mt-3">Retour au statut de la vidéo</a>
+                 <!-- Button to mark as problematic -->
+                 <button type="button" class="btn btn-danger btn-block mt-3" onclick="confirmProblematic()">Marquer comme problématique</button>
             </form>            
         </div>
     </div>
 </div>
 
 <script>
+    // Call the function on page load to set initial visibility
+    document.addEventListener('DOMContentLoaded', toggleVideoLink);
     function toggleVideoLink() {
         const statusSelect = document.getElementById('status');
         const videoLinkContainer = document.getElementById('video-link-container');
@@ -57,8 +63,12 @@
             videoLinkContainer.style.display = 'none';
         }
     }
-    
-    // Call the function on page load to set initial visibility
-    document.addEventListener('DOMContentLoaded', toggleVideoLink);
+    function confirmProblematic() {
+        if (confirm("Êtes-vous sûr de vouloir marquer cette vidéo comme problématique ?")) {
+            document.getElementById('status').value = 'problematic'; // Change status
+            // Submit the form automatically
+            document.forms[0].submit();
+        }
+    }
 </script>
 {% endblock %}

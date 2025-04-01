@@ -11,6 +11,11 @@
                 <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-0 mt-0">
                     <i class="fas fa-video"></i> Nouvelle Vidéo
                 </a>
+                <a href="?{% if request.GET.show_problematic == 'true' %}{% else %}show_problematic=true{% endif %}" 
+                    class="btn {% if request.GET.show_problematic == 'true' %}btn-secondary{% else %}btn-danger{% endif %}">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    {% if request.GET.show_problematic == 'true' %}Masquer les vidéos problématiques{% else %}Afficher les vidéos problématiques{% endif %}
+                </a>
             {% endif %}
         </div>
         <div class="card-body">

@@ -124,14 +124,19 @@ def create_video_highlight(request):
 
 
 def dashboard(request):
+    # Check if we should show only problematic videos
+    show_only_problematic = request.GET.get('show_problematic') == 'true'
     # Fetch videos based on user type
     if request.user.is_superuser:
-        videos = Video.objects.all().order_by('-video_creation_date')
+        if show_only_problematic:
+            videos = Video.objects.filter(status='problematic').order_by('-video_creation_date')
+        else:
+            videos = Video.objects.exclude(status='problematic').order_by('-video_creation_date')
         selected_editor = request.GET.get('editor')
         if selected_editor:
             videos = videos.filter(editor__user__username=selected_editor)
     elif hasattr(request.user, 'videoeditor'):
-        videos = Video.objects.filter(editor=request.user.videoeditor).order_by('-video_creation_date')
+        videos = Video.objects.filter(editor=request.user.videoeditor).exclude(status='problematic').order_by('-video_creation_date')
     else:
         videos = Video.objects.none()
 
@@ -202,6 +207,7 @@ def dashboard(request):
         'delivered_videos_count': delivered_videos_count,
         'ongoing_videos_count': ongoing_videos_count,
         'editors': editors,  # Pass editors to the template
+        'show_problematic': show_only_problematic,
     })
 
 
@@ -1127,19 +1133,19 @@ def StatisticalDashboardView(request):
     top_loyal_players = Player.objects.annotate(video_count=Count('video')).filter(client_fidel=True).order_by('-video_count')[:3]
 
     # Count of videos in progress
-    total_videos_in_progress = Video.objects.exclude(status='delivered').count()
+    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
     # Count of videos with collaborators (excluding the super admin)
     total_videos_with_collaborators = Video.objects.filter(
         editor__user__is_superuser=False
-    ).exclude(status='delivered').count()
+    ).exclude(status__in=['delivered', 'problematic']).count()
     # Video status distribution (excluding delivered)
-    video_status_distribution_in_progress = Video.objects.exclude(status='delivered').values('status').annotate(count=Count('id'))
+    video_status_distribution_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).values('status').annotate(count=Count('id'))
 
 
 
     # Statistiques des vidéos
     total_videos_delivered = Video.objects.filter(status='delivered').count()
-    total_videos_in_progress = Video.objects.exclude(status='delivered').count()
+    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
     video_status_distribution = Video.objects.values('status').annotate(count=Count('id'))
 
     # Statistiques financières
@@ -1147,11 +1153,16 @@ def StatisticalDashboardView(request):
     total_revenue = Invoice.objects.aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0
     total_invoice_income = 0
     for invoice in Invoice.objects.all():
-        if invoice.amount_paid > invoice.total_amount:
-            total_invoice_income += invoice.amount_paid  # Only add total_amount if amount_paid > total_amount
+        if invoice.video.status == 'problematic':
+        # If the invoice status is problematic, only add the amount_paid
+            total_invoice_income += invoice.amount_paid
         else:
-            total_invoice_income += invoice.total_amount  # Otherwise, add the amount_paid
-    
+            # If the invoice status is not problematic, apply the existing logic
+            if invoice.amount_paid > invoice.total_amount:
+                total_invoice_income += invoice.amount_paid  # Only add amount_paid if it's greater than total_amount
+            else:
+                total_invoice_income += invoice.total_amount  # Otherwise, add the total_amount
+            
     total_outstanding_payments = total_invoice_income - total_revenue
     total_gain = total_revenue - total_expenses
     
@@ -1159,12 +1170,12 @@ def StatisticalDashboardView(request):
     upcoming_deadlines = Video.objects.filter(
         deadline__gte=timezone.now()
     ).exclude(
-        status__in=['completed', 'delivered']
+        status__in=['completed', 'delivered', 'problematic']
     ).order_by('deadline')[:10]
 
     # Récupérer les vidéos avec deadline passée
     past_deadline_videos = Video.objects.filter(deadline__lt=timezone.now()).exclude(
-        status__in=['delivered']).order_by('deadline')
+        status__in=['delivered', 'problematic']).order_by('deadline')
     count_past_deadline_videos = past_deadline_videos.count()
 
     # Rapport financier
@@ -1173,18 +1184,16 @@ def StatisticalDashboardView(request):
 
     # Statistiques des vidéos
     total_videos_delivered = Video.objects.filter(status='delivered').count()
-    total_videos_in_progress = Video.objects.exclude(status='delivered').count()
+    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
 
     # Vidéos en attente de livraison (deadline passé et non livrées)
     total_videos_pending_delivery = Video.objects.filter(
         deadline__lt=timezone.now()
-    ).exclude(
-        status='delivered'
-    ).count()
+    ).exclude(status__in=['delivered', 'problematic']).count()
 
     # Vidéos non finies (statuts différents de 'completed' et 'delivered')
     total_videos_not_finished = Video.objects.exclude(
-        status__in=['completed', 'delivered']
+        status__in=['completed', 'delivered', 'problematic']
     ).filter(deadline__lt=timezone.now()).count()  # Anciens et non finis
 
     # Count of completed collaboration videos
@@ -1195,7 +1204,7 @@ def StatisticalDashboardView(request):
     upcoming_deadlines = Video.objects.filter(
         deadline__gte=timezone.now()
     ).exclude(
-        status__in=['completed', 'delivered']
+        status__in=['completed', 'delivered', 'problematic']
     ).order_by('deadline')[:15]
 
     completed_videos_not_paid = Video.objects.filter(
