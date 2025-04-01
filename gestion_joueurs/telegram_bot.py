@@ -1,20 +1,19 @@
 import os
 import django
 from pydub import AudioSegment
+from gtts import gTTS
+from io import BytesIO
+import logging
+import speech_recognition as sr
 
 # Set up Django settings before importing models
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
 django.setup()
 
-import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-import speech_recognition as sr
-from django.core.management import call_command
-from gtts import gTTS
-from io import BytesIO
-from .models import Player, Video
-from .utils import get_players_by_status  # Assuming the helper function is in utils.py
+from .models import Player, Video  # Make sure these models are correctly imported
+from .utils import get_players_by_status  # Assuming this function exists to get players by status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -84,7 +83,8 @@ async def process_voice(update: Update, context: CallbackContext):
 # Function to handle text status input
 async def process_text(update: Update, context: CallbackContext):
     try:
-        text = update.message.text.lower()
+        text = update.message.text.strip().lower()
+        logger.info(f"Received text message: {text}")
 
         # Process the status
         players = get_players_by_status(text)  # Get players based on the status
@@ -104,7 +104,7 @@ async def process_text(update: Update, context: CallbackContext):
 
 # Set up the Telegram Bot API and application
 def main():
-    bot_token = "YOUR_BOT_TOKEN"  # Replace with your actual bot token
+    bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
 
     # Initialize Application
     application = Application.builder().token(bot_token).build()

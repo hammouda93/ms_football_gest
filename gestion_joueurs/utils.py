@@ -33,9 +33,12 @@ def should_process_signals():
 
 
 #Telegram_Bot
-def get_players_by_status(status):
-    """Fetch players whose videos have the given status."""
-    # Query all players whose related video has the given status
-    videos = Video.objects.filter(status=status)
-    players = [video.player.name for video in videos]
-    return players
+def get_players_by_status(status: str):
+    """Fetch players by video status."""
+    try:
+        # Filter videos by status and return player names
+        videos = Video.objects.filter(status=status)
+        players = [video.player.name for video in videos]  # Assuming 'name' is a field in the Player model
+        return players
+    except Exception as e:
+        return [f"Error fetching players: {str(e)}"]
