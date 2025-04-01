@@ -5,7 +5,7 @@ from gtts import gTTS
 from io import BytesIO
 import logging
 import speech_recognition as sr
-
+import tempfile
 # Set up Django settings before importing models
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
 django.setup()
@@ -80,7 +80,6 @@ async def process_voice(update: Update, context: CallbackContext):
         await update.message.reply_text("Sorry, there was an issue with the voice message.")
         logger.error(f"Error handling voice message: {e}")
 
-# Function to handle text status input
 async def process_text(update: Update, context: CallbackContext):
     try:
         text = update.message.text.strip().lower()
@@ -90,13 +89,27 @@ async def process_text(update: Update, context: CallbackContext):
         players = get_players_by_status(text)  # Get players based on the status
         response = "\n".join(players) if players else f"No players found with the status '{text}'."
 
-        # Convert text response to speech
-        speech = gTTS(text=response, lang="en")
-        bio = BytesIO()
-        speech.save(bio)
-        bio.seek(0)
+        # Convert text to speech using gTTS
+        tts = gTTS(text=response, lang="en")
 
-        await update.message.reply_voice(voice=bio)
+        # Save as MP3 first
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_mp3:
+            tts.save(temp_mp3.name)
+            mp3_path = temp_mp3.name
+
+        # Convert MP3 to OGG using pydub
+        ogg_path = mp3_path.replace(".mp3", ".ogg")
+        audio = AudioSegment.from_mp3(mp3_path)
+        audio.export(ogg_path, format="ogg")
+
+        # Verify file before sending
+        if os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 0:
+            with open(ogg_path, "rb") as voice:
+                await update.message.reply_voice(voice=voice)
+            logger.info(f"Sent voice message successfully: {ogg_path}")
+        else:
+            logger.error("Error: The generated voice file is empty or missing!")
+            await update.message.reply_text("Error generating voice message. Please try again.")
 
     except Exception as e:
         await update.message.reply_text("An unexpected error occurred while processing the text message.")
