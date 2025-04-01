@@ -47,15 +47,13 @@ def should_process_signals():
     return getattr(_thread_locals, 'should_process_signals', True)
 
 
-async def get_players_by_status(status: str):
-    """Fetch players by video status using async-friendly Django ORM calls."""
+def get_players_by_status(status: str):
+    """Fetch players by video status using Django ORM synchronously."""
     try:
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
 
-        # Proper way to use sync_to_async with Django ORM
-        videos = await sync_to_async(list)(Video.objects.filter(status=normalized_status))
-
+        videos = Video.objects.filter(status=normalized_status)
         players = [video.player.name for video in videos]
 
         return players if players else [f"No players found for status '{normalized_status}'."]
