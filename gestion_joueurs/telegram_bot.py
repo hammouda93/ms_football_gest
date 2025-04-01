@@ -13,7 +13,7 @@ django.setup()
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from gestion_joueurs.models import Player, Video
-from .utils import get_players_by_status  # Assuming this function exists to get players by status
+from gestion_joueurs.utils import get_players_by_status  # Assuming this function exists to get players by status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
