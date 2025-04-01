@@ -2,7 +2,6 @@ import os
 import django
 from pydub import AudioSegment
 from gtts import gTTS
-from io import BytesIO
 import logging
 import speech_recognition as sr
 import tempfile
@@ -11,8 +10,8 @@ import tempfile
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
 django.setup()
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram import Update, Bot
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from gestion_joueurs.models import Player, Video
 from gestion_joueurs.utils import get_players_by_status  # Assuming this function exists to get players by status
 
@@ -20,25 +19,13 @@ from gestion_joueurs.utils import get_players_by_status  # Assuming this functio
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize Bot (Replace with your actual bot token)
+BOT_TOKEN = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"
+bot = Bot(token=BOT_TOKEN)
+
 # Define the start command for the bot
 def start(update: Update, context: CallbackContext):
     update.message.reply_text("Welcome! Send me a voice message or text with a status like 'pending', 'in_progress', etc.")
-
-# Function to fetch players based on video status
-def get_players_by_status(status: str):
-    """Fetch players by video status using synchronous Django ORM."""
-    try:
-        logger.info(f"Fetching players for status: {status}")
-        normalized_status = status.strip().lower().replace(" ", "_")
-
-        videos = Video.objects.filter(status=normalized_status)
-        players = [video.player.name for video in videos]
-
-        return players if players else [f"No players found for status '{normalized_status}'."]
-
-    except Exception as e:
-        logger.error(f"Error fetching players: {e}")
-        return [f"Error fetching players: {str(e)}"]
 
 # Function to generate and send voice response
 def send_voice_response(update: Update, response: str):
@@ -137,19 +124,19 @@ def process_voice(update: Update, context: CallbackContext):
 
 # Set up the Telegram Bot API and application
 def main():
-    bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
-
-    # Initialize Application
-    application = Application.builder().token(bot_token).build()
+    # Initialize Updater
+    updater = Updater(token=BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
     # Add command and message handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handler for voice messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handler for text messages
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.voice, process_voice))  # Handler for voice messages
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, process_text))  # Handler for text messages
 
     # Start the bot
     logger.info("Bot is starting...")
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
