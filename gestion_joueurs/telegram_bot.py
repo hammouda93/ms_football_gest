@@ -12,7 +12,7 @@ django.setup()
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from .models import Player, Video  # Make sure these models are correctly imported
+from gestion_joueurs.models import Player, Video
 from .utils import get_players_by_status  # Assuming this function exists to get players by status
 
 # Set up logging
