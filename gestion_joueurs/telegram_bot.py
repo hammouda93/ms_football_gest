@@ -115,6 +115,36 @@ async def process_text(update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
+    
+    if text == "video status":
+        # Provide video status options
+        keyboard = [
+            ["Pending"], ["In Progress"], ["Completed Collab"],
+            ["Completed"], ["Delivered"], ["Problematic"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text("Select a video status:", reply_markup=reply_markup)
+        return
+
+    # Mapping user selection to database status
+    status_mapping = {
+        "pending": "pending",
+        "in progress": "in_progress",
+        "completed collab": "completed_collab",
+        "completed": "completed",
+        "delivered": "delivered",
+        "problematic": "problematic"
+    }
+
+    if text in status_mapping:
+        status = status_mapping[text]
+        players = await get_players_by_status(status)
+        response = "\n".join(players) if players else f"No players found for status '{text}'."
+        await update.message.reply_text(response)
+        await send_voice_response(update, response)
+        return
+    
     if text == "workflow":
         # Provide deadline options
         keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
