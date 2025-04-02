@@ -12,7 +12,7 @@ django.setup()
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,get_videos_by_deadline
+from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,get_videos_by_deadline,get_players_by_invoice_status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -27,7 +27,8 @@ async def start(update: Update, context: CallbackContext):
     await update.message.reply_text(
         "Welcome! Please choose an option:\n\n"
         "🎥 *Video Status*: Check the status of players' videos.\n"
-        "💰 *Payment Status*: Check a player's payment details (eg: richard facture).\n"
+        "💰 *Payment Status*: Check payment status (Paid, Unpaid, Partially Paid).\n"
+        "💰 *Player Invoice*: Check a player's payment details (eg: richard facture).\n"
         "📋 *Workflow*: Check what do you have on the list.\n\n"
         "Simply type or send a voice message with your choice!",
         reply_markup=reply_markup,
@@ -78,11 +79,14 @@ async def process_request(text: str) -> str:
         if text == "video status":
             return "Please type a video status (e.g., 'pending', 'completed')."
 
-        if text == "payment status":
+        if text == "Player Invoice":
             return "Please type the player's name followed by 'facture' (e.g., 'Richard facture')."
         
         if text == "workflow":
             return "Please type 'workflow' and choose the deadline you want (e.g., 'Today')."
+        
+        if text == "Payment Status":
+            return "Please type a video status (Paid, Unpaid, Partially Paid).."
         
         if "facture" in text:
             player_name = text.replace("facture", "").strip()
@@ -118,7 +122,27 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text == "menu":
         await start(update, context)
         return
+    if text == "payment status":
+        keyboard = [["Paid"], ["Unpaid"], ["Partially Paid"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("Select a payment status:", reply_markup=reply_markup)
+        return
 
+    # Map user selection to invoice statuses
+    invoice_status_mapping = {
+        "paid": "paid",
+        "unpaid": "unpaid",
+        "partially paid": "partially_paid"
+    }
+
+    if text in invoice_status_mapping:
+        status = invoice_status_mapping[text]
+        players = await get_players_by_invoice_status(status)
+        response = "\n".join(players) if players else f"No players found with status '{text}'."
+        await update.message.reply_text(response)
+        await send_voice_response(update, response)
+        return
+    
     if text == "video status":
         keyboard = [
             ["Pending"], ["In Progress"], ["Completed Collab"],

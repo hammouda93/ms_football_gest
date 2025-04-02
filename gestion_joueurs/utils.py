@@ -150,3 +150,22 @@ async def get_videos_by_deadline(deadline_filter: str):
     """Run the fetch_videos_by_deadline_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_videos_by_deadline_sync, deadline_filter)
+
+
+def fetch_players_by_invoice_status_sync(status: str):
+    """Fetch players whose invoices have the specified status."""
+    try:
+        invoices = Invoice.objects.filter(status=status)
+        players = [invoice.video.player.name for invoice in invoices if invoice.video and invoice.video.player]
+
+        if players:
+            return players
+        return [f"No players found with invoice status '{status}'."]
+
+    except Exception as e:
+        return [f"Error fetching players: {str(e)}"]
+
+async def get_players_by_invoice_status(status: str):
+    """Run fetch_players_by_invoice_status_sync in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_players_by_invoice_status_sync, status)
