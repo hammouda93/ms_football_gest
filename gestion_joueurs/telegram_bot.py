@@ -27,8 +27,8 @@ async def start(update: Update, context: CallbackContext):
     await update.message.reply_text(
         "Welcome! Please choose an option:\n\n"
         "🎥 *Video Status*: Check the status of players' videos.\n"
-        "💰 *Payment Status*: Check a player's payment details.\n"
-        "💰 *Workflow*: Check what do you have on the list.\n\n"
+        "💰 *Payment Status*: Check a player's payment details (eg: richard facture).\n"
+        "📋 *Workflow*: Check what do you have on the list.\n\n"
         "Simply type or send a voice message with your choice!",
         reply_markup=reply_markup,
     )
@@ -79,7 +79,7 @@ async def process_request(text: str) -> str:
             return "Please type a video status (e.g., 'pending', 'completed')."
 
         if text == "payment status":
-            return "Please type the player's name followed by 'money' (e.g., 'Richard money')."
+            return "Please type the player's name followed by 'facture' (e.g., 'Richard facture')."
         
         if text == "workflow":
             return "Please type 'workflow' and choose the deadline you want (e.g., 'Today')."
@@ -115,7 +115,9 @@ async def process_text(update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
-    
+    if text == "menu":
+        await start(update, context)
+        return
     if text == "video status":
         # Provide video status options
         keyboard = [
@@ -233,6 +235,10 @@ async def process_voice(update: Update, context: CallbackContext):
                 return
 
         user_id = update.message.from_user.id
+        if text == "menu":
+            await start(update, context)
+            return
+        
         if "workflow" in text:
             keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -247,6 +253,37 @@ async def process_voice(update: Update, context: CallbackContext):
             "in two weeks": "2_weeks",
             "in a month": "1_month"
         }
+
+        if text == "video status":
+            # Provide video status options
+            keyboard = [
+                ["Pending"], ["In Progress"], ["Completed Collab"],
+                ["Completed"], ["Delivered"], ["Problematic"]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+            await update.message.reply_text("Select a video status:", reply_markup=reply_markup)
+            return
+
+        # Mapping user selection to database status
+        status_mapping = {
+            "pending": "pending",
+            "in progress": "in_progress",
+            "completed collab": "completed_collab",
+            "completed": "completed",
+            "delivered": "delivered",
+            "problematic": "problematic"
+        }
+
+        if text in status_mapping:
+            status = status_mapping[text]
+            players = await get_players_by_status(status)
+            response = "\n".join(players) if players else f"No players found for status '{text}'."
+            await update.message.reply_text(response)
+            await send_voice_response(update, response)
+            return        
+
+
 
         if text in deadline_mapping:
             deadline_filter = deadline_mapping[text]
