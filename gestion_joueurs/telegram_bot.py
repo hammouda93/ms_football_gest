@@ -75,13 +75,13 @@ async def process_request(text: str) -> str:
         logger.info(f"Processing request: {text}")
 
         if text == "video status":
-            return "Please type a video status (e.g., 'pending', 'approved')."
+            return "Please type a video status (e.g., 'pending', 'completed')."
 
         if text == "payment status":
-            return "Please type the player's name followed by 'invoice' (e.g., 'John Doe invoice')."
+            return "Please type the player's name followed by 'money' (e.g., 'Richard money')."
 
-        if "invoice" in text:
-            player_name = text.replace("invoice", "").strip()
+        if "money" in text:
+            player_name = text.replace("money", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
             response = await get_payment_details(player_name)
         else:
@@ -112,8 +112,8 @@ async def process_text(update: Update, context: CallbackContext):
         await send_voice_response(update, response)
         return
 
-    if "invoice" in text:
-        player_name = text.replace("invoice", "").strip()
+    if "money" in text:
+        player_name = text.replace("money", "").strip()
         possible_players = await search_players(player_name)
 
         if not possible_players:
@@ -162,13 +162,13 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
+            text = recognizer.recognize_google(audio_data).lower().strip()
             logger.info(f"Recognized text from voice: '{text}'")
 
         user_id = update.message.from_user.id
 
-        if "invoice" in text:
-            player_name = text.replace("invoice", "").strip()
+        if "money" in text:
+            player_name = text.replace("money", "").strip()
             possible_players = await search_players(player_name)
 
             if not possible_players:
