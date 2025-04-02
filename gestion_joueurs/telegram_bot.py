@@ -64,7 +64,7 @@ async def send_voice_response(update: Update, response: str):
         logger.error(f"Unexpected error in voice processing: {e}")
         await update.message.reply_text("An unexpected error occurred while processing the voice message.")
 
-# Process Text Message (Now supports invoice queries)
+# Process Text Message (Supports player status & invoice queries)
 async def process_text(update: Update, context: CallbackContext):
     """Handle text messages, including player status and invoice queries."""
     try:
@@ -76,11 +76,11 @@ async def process_text(update: Update, context: CallbackContext):
             player_name = text.replace("invoice", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
 
-            # Fetch payment details
-            response = get_payment_details(player_name)
+            # Fetch payment details asynchronously
+            response = await get_payment_details(player_name)
 
         else:
-            # Fetch players based on status
+            # Fetch players based on status asynchronously
             players = await get_players_by_status(text)
             response = "\n".join(players)
 
@@ -91,7 +91,7 @@ async def process_text(update: Update, context: CallbackContext):
         logger.error(f"Error handling text message: {e}")
         await update.message.reply_text("An unexpected error occurred while processing the text message.")
 
-# Process Voice Message (Now supports invoice queries)
+# Process Voice Message (Supports player status & invoice queries)
 async def process_voice(update: Update, context: CallbackContext):
     """Handle voice messages, including player status and invoice queries."""
     try:
@@ -123,11 +123,11 @@ async def process_voice(update: Update, context: CallbackContext):
                 player_name = text.replace("invoice", "").strip()
                 logger.info(f"Fetching payment details for player: {player_name}")
 
-                # Fetch payment details
-                response = get_payment_details(player_name)
+                # Fetch payment details asynchronously
+                response = await get_payment_details(player_name)
 
             else:
-                # Fetch players based on status
+                # Fetch players based on status asynchronously
                 players = await get_players_by_status(text)
                 response = "\n".join(players)
 
