@@ -3,8 +3,8 @@ from django.conf import settings
 from .models import Notification,Video
 from django.utils import timezone
 import logging
-from asgiref.sync import sync_to_async  # Fix for async Django ORM queries
-
+from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
+import threading
 
 
 
@@ -47,15 +47,13 @@ def should_process_signals():
     return getattr(_thread_locals, 'should_process_signals', True)
 
 
-async def get_players_by_status(status: str):
-    """Fetch players by video status using async-friendly Django ORM calls."""
+def fetch_players_sync(status: str):
+    """Synchronous function to fetch players by video status."""
     try:
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
 
-        # Use sync_to_async properly with thread_sensitive=True
-        videos = await sync_to_async(lambda: list(Video.objects.filter(status=normalized_status)), thread_sensitive=True)()
-
+        videos = list(Video.objects.filter(status=normalized_status))
         players = [video.player.name for video in videos]
 
         logger.info(f"Players found: {players}" if players else f"No players found for status '{normalized_status}'.")
@@ -65,3 +63,8 @@ async def get_players_by_status(status: str):
     except Exception as e:
         logger.error(f"Error fetching players: {e}")
         return [f"Error fetching players: {str(e)}"]
+
+async def get_players_by_status(status: str):
+    """Run the synchronous fetch_players_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_players_sync, status)
