@@ -220,7 +220,16 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
+            # Check if input is for invoice (French) or status (English)
+            try:
+                text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
+                if "facture" in recognizer.recognize_google(audio_data, language="fr-FR").lower().strip():
+                    text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
+                    logger.info("Detected 'facture' (French invoice request).")
+            except sr.UnknownValueError:
+                logger.error("Could not recognize speech in either language.")
+                await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
+                return
 
         await handle_request(text, update, context)
 
@@ -236,7 +245,7 @@ async def process_voice(update: Update, context: CallbackContext):
 
 
 
-        
+
 # Set up the Telegram Bot API and application
 def main():
     bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
