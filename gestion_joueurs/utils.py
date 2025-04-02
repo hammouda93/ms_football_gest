@@ -155,7 +155,7 @@ async def get_videos_by_deadline(deadline_filter: str):
 def fetch_players_by_invoice_status_sync(status: str):
     """Fetch players whose invoices have the specified status."""
     try:
-        invoices = Invoice.objects.filter(status=status)
+        invoices = Invoice.objects.filter(status=status, video__status__exclude='problematic')
         players = [invoice.video.player.name for invoice in invoices if invoice.video and invoice.video.player]
 
         if players:
