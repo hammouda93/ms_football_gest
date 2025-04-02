@@ -80,8 +80,8 @@ async def process_request(text: str) -> str:
         if text == "payment status":
             return "Please type the player's name followed by 'money' (e.g., 'Richard money')."
 
-        if "money" in text:
-            player_name = text.replace("money", "").strip()
+        if "facture" in text:
+            player_name = text.replace("facture", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
             response = await get_payment_details(player_name)
         else:
@@ -112,8 +112,8 @@ async def process_text(update: Update, context: CallbackContext):
         await send_voice_response(update, response)
         return
 
-    if "money" in text:
-        player_name = text.replace("money", "").strip()
+    if "facture" in text:
+        player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
 
         if not possible_players:
@@ -162,13 +162,22 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data).lower().strip()
-            logger.info(f"Recognized text from voice: '{text}'")
+
+            # Check if input is for invoice (French) or status (English)
+            try:
+                text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
+                if "facture" in recognizer.recognize_google(audio_data, language="fr-FR").lower().strip():
+                    text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
+                    logger.info("Detected 'facture' (French invoice request).")
+            except sr.UnknownValueError:
+                logger.error("Could not recognize speech in either language.")
+                await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
+                return
 
         user_id = update.message.from_user.id
 
-        if "money" in text:
-            player_name = text.replace("money", "").strip()
+        if "facture" in text:
+            player_name = text.replace("facture", "").strip()
             possible_players = await search_players(player_name)
 
             if not possible_players:
