@@ -96,3 +96,19 @@ async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
+
+def search_players_sync(partial_name: str):
+    """Search for players whose names contain the given partial name."""
+    try:
+        players = Player.objects.filter(name__icontains=partial_name)[:5]  # Limit to 5 results
+        if not players:
+            return []
+        return [player.name for player in players]
+    
+    except Exception as e:
+        return f"Error fetching players: {str(e)}"
+
+async def search_players(partial_name: str):
+    """Run the synchronous search_players_sync function asynchronously."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, search_players_sync, partial_name)

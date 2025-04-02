@@ -12,7 +12,7 @@ django.setup()
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.utils import get_players_by_status, get_payment_details
+from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -94,20 +94,51 @@ async def process_request(text: str) -> str:
         logger.error(f"Error processing request: {e}")
         return "An unexpected error occurred while processing the request."
 
-# Process Text Messages
-async def process_text(update: Update, context: CallbackContext):
-    """Handle all text-based interactions."""
-    try:
-        text = update.message.text
-        response = await process_request(text)
+# Store ongoing player selections
+pending_player_selections = {}
 
-        # Send both text and voice response
+async def process_text(update: Update, context: CallbackContext):
+    """Handle text interactions, including player search and invoice details."""
+    text = update.message.text.strip().lower()
+    user_id = update.message.from_user.id
+
+    if user_id in pending_player_selections:
+        # User is selecting from player suggestions
+        selected_player = text
+        del pending_player_selections[user_id]  # Remove from pending selections
+        
+        response = await get_payment_details(selected_player)
         await update.message.reply_text(response)
         await send_voice_response(update, response)
+        return
 
-    except Exception as e:
-        logger.error(f"Error handling text message: {e}")
-        await update.message.reply_text("An error occurred while processing the text message.")
+    if "invoice" in text:
+        player_name = text.replace("invoice", "").strip()
+        possible_players = await search_players(player_name)
+
+        if not possible_players:
+            await update.message.reply_text("No players found with that name. Try again.")
+            return
+
+        if len(possible_players) == 1:
+            # If only one match, fetch details directly
+            response = await get_payment_details(possible_players[0])
+            await update.message.reply_text(response)
+            await send_voice_response(update, response)
+        else:
+            # If multiple matches, let the user choose
+            pending_player_selections[user_id] = possible_players
+            keyboard = [[name] for name in possible_players]  # Convert list into keyboard format
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+            await update.message.reply_text(
+                "Multiple players found. Please select one:",
+                reply_markup=reply_markup
+            )
+    else:
+        response = await process_request(text)
+        await update.message.reply_text(response)
+        await send_voice_response(update, response)
 
 # Process Voice Messages
 async def process_voice(update: Update, context: CallbackContext):
