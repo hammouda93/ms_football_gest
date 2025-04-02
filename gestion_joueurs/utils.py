@@ -53,10 +53,12 @@ async def get_players_by_status(status: str):
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
 
-        # Proper way to use sync_to_async with Django ORM
-        videos = await sync_to_async(list)(Video.objects.filter(status=normalized_status))
+        # Use sync_to_async properly with thread_sensitive=True
+        videos = await sync_to_async(lambda: list(Video.objects.filter(status=normalized_status)), thread_sensitive=True)()
 
         players = [video.player.name for video in videos]
+
+        logger.info(f"Players found: {players}" if players else f"No players found for status '{normalized_status}'.")
 
         return players if players else [f"No players found for status '{normalized_status}'."]
 

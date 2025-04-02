@@ -81,6 +81,8 @@ async def process_text(update: Update, context: CallbackContext):
 async def process_voice(update: Update, context: CallbackContext):
     """Handle voice messages."""
     try:
+        logger.info("Received a voice message.")
+        
         voice = update.message.voice
         file = await voice.get_file()
         audio_file_path = "voice.ogg"
