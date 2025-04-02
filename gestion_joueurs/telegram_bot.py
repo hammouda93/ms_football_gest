@@ -145,7 +145,7 @@ async def process_voice(update: Update, context: CallbackContext):
     """Convert voice to text and process the request."""
     try:
         logger.info("Received a voice message.")
-        
+
         voice = update.message.voice
         file = await voice.get_file()
         audio_file_path = "voice.ogg"
@@ -162,13 +162,30 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data).lower()
+            text = recognizer.recognize_google(audio_data).lower().strip()
             logger.info(f"Recognized text from voice: '{text}'")
 
-            # Process request
-            response = await process_request(text)
+        user_id = update.message.from_user.id
 
-            # Send both text and voice response
+        if "invoice" in text:
+            player_name = text.replace("invoice", "").strip()
+            possible_players = await search_players(player_name)
+
+            if not possible_players:
+                await update.message.reply_text("No players found with that name. Try again.")
+                return
+
+            if len(possible_players) == 1:
+                response = await get_payment_details(possible_players[0])
+                await update.message.reply_text(response)
+                await send_voice_response(update, response)
+            else:
+                pending_player_selections[user_id] = possible_players
+                keyboard = [[name] for name in possible_players]
+                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
+        else:
+            response = await process_request(text)
             await update.message.reply_text(response)
             await send_voice_response(update, response)
 
