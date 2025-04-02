@@ -5,7 +5,7 @@ from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
 import threading
-
+from datetime import datetime, timedelta
 
 
 # Configure logging
@@ -112,3 +112,41 @@ async def search_players(partial_name: str):
     """Run the synchronous search_players_sync function asynchronously."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, search_players_sync, partial_name)
+
+
+
+
+
+def fetch_videos_by_deadline_sync(deadline_filter: str):
+    """Fetch videos based on deadline filters."""
+    try:
+        today = datetime.now().date()
+        # Filtering by deadline and excluding 'delivered' and 'problematic' status
+        if deadline_filter == 'past':
+            videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == 'today':
+            videos = Video.objects.filter(deadline=today).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == '3_days':
+            three_days_from_now = today + timedelta(days=3)
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=three_days_from_now).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == '1_week':
+            one_week_from_now = today + timedelta(weeks=1)
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_week_from_now).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == '2_weeks':
+            two_weeks_from_now = today + timedelta(weeks=2)
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=two_weeks_from_now).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == '1_month':
+            one_month_from_now = today + timedelta(days=30)
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_month_from_now).exclude(status__in=['delivered', 'problematic'])
+        else:
+            return ["Invalid deadline filter"]
+
+        return [f"{video.player.name} - {video.deadline}" for video in videos] if videos else ["No videos found for this period."]
+    
+    except Exception as e:
+        return [f"Error fetching videos: {str(e)}"]
+
+async def get_videos_by_deadline(deadline_filter: str):
+    """Run the fetch_videos_by_deadline_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_videos_by_deadline_sync, deadline_filter)

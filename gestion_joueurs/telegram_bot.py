@@ -12,7 +12,7 @@ django.setup()
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players
+from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,get_videos_by_deadline
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -21,13 +21,14 @@ logger = logging.getLogger(__name__)
 # Start Command - Shows options
 async def start(update: Update, context: CallbackContext):
     """Send a welcome message with two choices."""
-    keyboard = [["Video Status"], ["Payment Status"]]
+    keyboard = [["Video Status"], ["Payment Status"], ["Workflow"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
     await update.message.reply_text(
         "Welcome! Please choose an option:\n\n"
         "🎥 *Video Status*: Check the status of players' videos.\n"
-        "💰 *Payment Status*: Check a player's payment details.\n\n"
+        "💰 *Payment Status*: Check a player's payment details.\n"
+        "💰 *Workflow*: Check what do you have on the list.\n\n"
         "Simply type or send a voice message with your choice!",
         reply_markup=reply_markup,
     )
@@ -79,7 +80,10 @@ async def process_request(text: str) -> str:
 
         if text == "payment status":
             return "Please type the player's name followed by 'money' (e.g., 'Richard money')."
-
+        
+        if text == "workflow":
+            return "Please type 'workflow' and choose the deadline you want (e.g., 'Today')."
+        
         if "facture" in text:
             player_name = text.replace("facture", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
@@ -111,7 +115,31 @@ async def process_text(update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
+    if text == "workflow":
+        # Provide deadline options
+        keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
+        await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
+        return
+
+    deadline_mapping = {
+        "a week ago": "past",
+        "today": "today",
+        "in three days": "3_days",
+        "in a week": "1_week",
+        "in two weeks": "2_weeks",
+        "in a month": "1_month"
+    }
+
+    if text in deadline_mapping:
+        deadline_filter = deadline_mapping[text]
+        videos = await get_videos_by_deadline(deadline_filter)
+        response = "\n".join(videos)
+        await update.message.reply_text(response)
+        await send_voice_response(update, response)
+        return
+    
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -175,7 +203,29 @@ async def process_voice(update: Update, context: CallbackContext):
                 return
 
         user_id = update.message.from_user.id
+        if "workflow" in text:
+            keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
+            return
 
+        deadline_mapping = {
+            "a week ago": "past",
+            "today": "today",
+            "in three days": "3_days",
+            "in a week": "1_week",
+            "in two weeks": "2_weeks",
+            "in a month": "1_month"
+        }
+
+        if text in deadline_mapping:
+            deadline_filter = deadline_mapping[text]
+            videos = await get_videos_by_deadline(deadline_filter)
+            response = "\n".join(videos)
+            await update.message.reply_text(response)
+            await send_voice_response(update, response)
+            return
+        
         if "facture" in text:
             player_name = text.replace("facture", "").strip()
             possible_players = await search_players(player_name)
