@@ -2,7 +2,6 @@ import os
 import django
 from pydub import AudioSegment
 from gtts import gTTS
-from io import BytesIO
 import logging
 import speech_recognition as sr
 import tempfile
@@ -11,22 +10,26 @@ import tempfile
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
 django.setup()
 
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.models import Player, Video
-from gestion_joueurs.utils import get_players_by_status,get_payment_details  # Assuming this function exists to get players by status
+from gestion_joueurs.utils import get_players_by_status, get_payment_details
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define the start command for the bot
+# Start Command - Shows options
 async def start(update: Update, context: CallbackContext):
-    """Send a welcome message and inform users about the available features."""
+    """Send a welcome message with two choices."""
+    keyboard = [["Video Status"], ["Payment Status"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
     await update.message.reply_text(
-        "Welcome! Send me a voice message or text with a status like 'pending', 'in_progress', etc.\n\n"
-        "You can also send the name of a player to get their invoice status and amount. "
-        "For example: 'John Doe invoice'."
+        "Welcome! Please choose an option:\n\n"
+        "🎥 *Video Status*: Check the status of players' videos.\n"
+        "💰 *Payment Status*: Check a player's payment details.\n\n"
+        "Simply type or send a voice message with your choice!",
+        reply_markup=reply_markup,
     )
 
 # Function to generate and send voice response
@@ -51,7 +54,7 @@ async def send_voice_response(update: Update, response: str):
         audio = AudioSegment.from_mp3(mp3_path)
         audio.export(ogg_path, format="ogg")
 
-        # Ensure file is valid before sending
+        # Send voice response
         if os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 0:
             with open(ogg_path, "rb") as voice:
                 await update.message.reply_voice(voice=voice)
@@ -64,36 +67,51 @@ async def send_voice_response(update: Update, response: str):
         logger.error(f"Unexpected error in voice processing: {e}")
         await update.message.reply_text("An unexpected error occurred while processing the voice message.")
 
-# Process Text Message (Supports player status & invoice queries)
-async def process_text(update: Update, context: CallbackContext):
-    """Handle text messages, including player status and invoice queries."""
+# Process Text and Voice Messages
+async def process_request(text: str) -> str:
+    """Handles both video status and payment status requests based on input."""
     try:
-        text = update.message.text.strip().lower()
-        logger.info(f"Received text message: {text}")
+        text = text.strip().lower()
+        logger.info(f"Processing request: {text}")
+
+        if text == "video status":
+            return "Please type a video status (e.g., 'pending', 'approved')."
+
+        if text == "payment status":
+            return "Please type the player's name followed by 'invoice' (e.g., 'John Doe invoice')."
 
         if "invoice" in text:
-            # Extract player name (assuming format: "<player_name> invoice")
             player_name = text.replace("invoice", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
-
-            # Fetch payment details asynchronously
             response = await get_payment_details(player_name)
-
         else:
-            # Fetch players based on status asynchronously
             players = await get_players_by_status(text)
             response = "\n".join(players)
 
-        # Send voice response
+        return response if response else "No relevant data found."
+
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        return "An unexpected error occurred while processing the request."
+
+# Process Text Messages
+async def process_text(update: Update, context: CallbackContext):
+    """Handle all text-based interactions."""
+    try:
+        text = update.message.text
+        response = await process_request(text)
+
+        # Send both text and voice response
+        await update.message.reply_text(response)
         await send_voice_response(update, response)
 
     except Exception as e:
         logger.error(f"Error handling text message: {e}")
-        await update.message.reply_text("An unexpected error occurred while processing the text message.")
+        await update.message.reply_text("An error occurred while processing the text message.")
 
-# Process Voice Message (Supports player status & invoice queries)
+# Process Voice Messages
 async def process_voice(update: Update, context: CallbackContext):
-    """Handle voice messages, including player status and invoice queries."""
+    """Convert voice to text and process the request."""
     try:
         logger.info("Received a voice message.")
         
@@ -116,22 +134,11 @@ async def process_voice(update: Update, context: CallbackContext):
             text = recognizer.recognize_google(audio_data).lower()
             logger.info(f"Recognized text from voice: '{text}'")
 
-            await update.message.reply_text(f"Received: {text}")
+            # Process request
+            response = await process_request(text)
 
-            if "invoice" in text:
-                # Extract player name from speech input
-                player_name = text.replace("invoice", "").strip()
-                logger.info(f"Fetching payment details for player: {player_name}")
-
-                # Fetch payment details asynchronously
-                response = await get_payment_details(player_name)
-
-            else:
-                # Fetch players based on status asynchronously
-                players = await get_players_by_status(text)
-                response = "\n".join(players)
-
-            # Send voice response
+            # Send both text and voice response
+            await update.message.reply_text(response)
             await send_voice_response(update, response)
 
     except sr.UnknownValueError:
@@ -146,15 +153,15 @@ async def process_voice(update: Update, context: CallbackContext):
 
 # Set up the Telegram Bot API and application
 def main():
-    bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
+    bot_token = "YOUR_BOT_TOKEN_HERE"  # Replace with your actual bot token
 
     # Initialize Application
     application = Application.builder().token(bot_token).build()
 
     # Add command and message handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handler for voice messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handler for text messages
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handles text messages
+    application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
 
     # Start the bot
     logger.info("Bot is starting...")
