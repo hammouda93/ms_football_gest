@@ -101,35 +101,33 @@ async def process_request(text: str) -> str:
 # Store ongoing player selections
 pending_player_selections = {}
 
-async def process_text(update: Update, context: CallbackContext):
-    """Handle text interactions, including player search and invoice details."""
-    text = update.message.text.strip().lower()
+
+
+async def handle_request(text: str, update: Update, context: CallbackContext):
+    """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
 
     if user_id in pending_player_selections:
-        # User is selecting from player suggestions
         selected_player = text
         del pending_player_selections[user_id]  # Remove from pending selections
-        
         response = await get_payment_details(selected_player)
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
+
     if text == "menu":
         await start(update, context)
         return
+
     if text == "video status":
-        # Provide video status options
         keyboard = [
             ["Pending"], ["In Progress"], ["Completed Collab"],
             ["Completed"], ["Delivered"], ["Problematic"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-
         await update.message.reply_text("Select a video status:", reply_markup=reply_markup)
         return
 
-    # Mapping user selection to database status
     status_mapping = {
         "pending": "pending",
         "in progress": "in_progress",
@@ -146,12 +144,10 @@ async def process_text(update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
-    
+
     if text == "workflow":
-        # Provide deadline options
         keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-
         await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
         return
 
@@ -171,7 +167,7 @@ async def process_text(update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
-    
+
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -181,31 +177,33 @@ async def process_text(update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            # If only one match, fetch details directly
             response = await get_payment_details(possible_players[0])
             await update.message.reply_text(response)
             await send_voice_response(update, response)
         else:
-            # If multiple matches, let the user choose
             pending_player_selections[user_id] = possible_players
-            keyboard = [[name] for name in possible_players]  # Convert list into keyboard format
+            keyboard = [[name] for name in possible_players]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
+        return
 
-            await update.message.reply_text(
-                "Multiple players found. Please select one:",
-                reply_markup=reply_markup
-            )
-    else:
-        response = await process_request(text)
-        await update.message.reply_text(response)
-        await send_voice_response(update, response)
+    response = await process_request(text)
+    await update.message.reply_text(response)
+    await send_voice_response(update, response)
 
-# Process Voice Messages
+
+
+
+
+async def process_text(update: Update, context: CallbackContext):
+    """Handle text messages."""
+    text = update.message.text.strip().lower()
+    await handle_request(text, update, context)
+
 async def process_voice(update: Update, context: CallbackContext):
-    """Convert voice to text and process the request."""
+    """Handle voice messages by converting speech to text and processing."""
     try:
         logger.info("Received a voice message.")
-
         voice = update.message.voice
         file = await voice.get_file()
         audio_file_path = "voice.ogg"
@@ -222,98 +220,9 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
 
-            # Check if input is for invoice (French) or status (English)
-            try:
-                text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
-                if "facture" in recognizer.recognize_google(audio_data, language="fr-FR").lower().strip():
-                    text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
-                    logger.info("Detected 'facture' (French invoice request).")
-            except sr.UnknownValueError:
-                logger.error("Could not recognize speech in either language.")
-                await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
-                return
-
-        user_id = update.message.from_user.id
-        if text == "menu":
-            await start(update, context)
-            return
-        
-        if "workflow" in text:
-            keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
-            return
-
-        deadline_mapping = {
-            "a week ago": "past",
-            "today": "today",
-            "in three days": "3_days",
-            "in a week": "1_week",
-            "in two weeks": "2_weeks",
-            "in a month": "1_month"
-        }
-
-        if text == "video status":
-            # Provide video status options
-            keyboard = [
-                ["Pending"], ["In Progress"], ["Completed Collab"],
-                ["Completed"], ["Delivered"], ["Problematic"]
-            ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-
-            await update.message.reply_text("Select a video status:", reply_markup=reply_markup)
-            return
-
-        # Mapping user selection to database status
-        status_mapping = {
-            "pending": "pending",
-            "in progress": "in_progress",
-            "completed collab": "completed_collab",
-            "completed": "completed",
-            "delivered": "delivered",
-            "problematic": "problematic"
-        }
-
-        if text in status_mapping:
-            status = status_mapping[text]
-            players = await get_players_by_status(status)
-            response = "\n".join(players) if players else f"No players found for status '{text}'."
-            await update.message.reply_text(response)
-            await send_voice_response(update, response)
-            return        
-
-
-
-        if text in deadline_mapping:
-            deadline_filter = deadline_mapping[text]
-            videos = await get_videos_by_deadline(deadline_filter)
-            response = "\n".join(videos)
-            await update.message.reply_text(response)
-            await send_voice_response(update, response)
-            return
-        
-        if "facture" in text:
-            player_name = text.replace("facture", "").strip()
-            possible_players = await search_players(player_name)
-
-            if not possible_players:
-                await update.message.reply_text(f"No players found with the name '{player_name}'. Try again.")
-                return
-
-            if len(possible_players) == 1:
-                response = await get_payment_details(possible_players[0])
-                await update.message.reply_text(response)
-                await send_voice_response(update, response)
-            else:
-                pending_player_selections[user_id] = possible_players
-                keyboard = [[name] for name in possible_players]
-                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-                await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
-        else:
-            response = await process_request(text)
-            await update.message.reply_text(response)
-            await send_voice_response(update, response)
+        await handle_request(text, update, context)
 
     except sr.UnknownValueError:
         logger.error("Speech Recognition could not understand the audio.")
@@ -325,6 +234,9 @@ async def process_voice(update: Update, context: CallbackContext):
         logger.error(f"Unexpected error in voice processing: {e}")
         await update.message.reply_text("An unexpected error occurred while processing the voice message.")
 
+
+
+        
 # Set up the Telegram Bot API and application
 def main():
     bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
