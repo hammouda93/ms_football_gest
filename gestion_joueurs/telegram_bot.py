@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Start Command - Shows options
 async def start(update: Update, context: CallbackContext):
     """Send a welcome message with two choices."""
-    keyboard = [["🎥 Video Status"], ["💰 Payment Status"], ["➕💰 Player Invoice"], ["📋 Workflow"]]
+    keyboard = [["Video Status"], ["Payment Status"], ["Player Invoice"], ["Workflow"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
     await update.message.reply_text(
