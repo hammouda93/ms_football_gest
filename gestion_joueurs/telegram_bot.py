@@ -117,7 +117,7 @@ async def process_text(update: Update, context: CallbackContext):
         possible_players = await search_players(player_name)
 
         if not possible_players:
-            await update.message.reply_text("No players found with that name. Try again.")
+            await update.message.reply_text(f"No players found with the name '{player_name}'. Try again.")
             return
 
         if len(possible_players) == 1:
@@ -162,7 +162,7 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data).lower().strip()
+            text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
             logger.info(f"Recognized text from voice: '{text}'")
 
         user_id = update.message.from_user.id
@@ -172,7 +172,7 @@ async def process_voice(update: Update, context: CallbackContext):
             possible_players = await search_players(player_name)
 
             if not possible_players:
-                await update.message.reply_text("No players found with that name. Try again.")
+                await update.message.reply_text(f"No players found with the name '{player_name}'. Try again.")
                 return
 
             if len(possible_players) == 1:
