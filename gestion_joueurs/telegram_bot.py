@@ -122,6 +122,13 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text == "menu":
         await start(update, context)
         return
+    
+    if text == "player invoice":
+        await update.message.reply_text("Please type the player's name followed by 'facture' (e.g., 'Richard facture').")
+        return
+
+
+
     if text == "payment status":
         keyboard = [["Paid"], ["Unpaid"], ["Partially Paid"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
