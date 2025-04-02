@@ -1,6 +1,6 @@
 import threading
 from django.conf import settings
-from .models import Notification,Video
+from .models import Notification,Video,Invoice,Player
 from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
@@ -68,3 +68,26 @@ async def get_players_by_status(status: str):
     """Run the synchronous fetch_players_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_players_sync, status)
+
+
+
+def fetch_payment_details(player_name: str):
+    """Fetch the payment details of a player."""
+    try:
+        player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
+        video = Video.objects.filter(player=player).first()  # Get the first video linked to the player
+        
+        if not video:
+            return f"No video found for player {player_name}."
+        
+        invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
+        
+        if not invoice:
+            return f"No invoice found for {player_name}'s video."
+        
+        return f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}."
+    
+    except Player.DoesNotExist:
+        return f"No player found with the name {player_name}."
+    except Exception as e:
+        return f"Error fetching payment details: {str(e)}"
