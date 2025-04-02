@@ -71,8 +71,8 @@ async def get_players_by_status(status: str):
 
 
 
-def fetch_payment_details(player_name: str):
-    """Fetch the payment details of a player."""
+def fetch_payment_details_sync(player_name: str):
+    """Synchronous function to fetch the payment details of a player."""
     try:
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
         video = Video.objects.filter(player=player).first()  # Get the first video linked to the player
@@ -91,3 +91,8 @@ def fetch_payment_details(player_name: str):
         return f"No player found with the name {player_name}."
     except Exception as e:
         return f"Error fetching payment details: {str(e)}"
+
+async def get_payment_details(player_name: str):
+    """Run the synchronous fetch_payment_details_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)

@@ -14,7 +14,7 @@ django.setup()
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from gestion_joueurs.models import Player, Video
-from gestion_joueurs.utils import get_players_by_status,fetch_payment_details  # Assuming this function exists to get players by status
+from gestion_joueurs.utils import get_players_by_status,get_payment_details  # Assuming this function exists to get players by status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -77,7 +77,7 @@ async def process_text(update: Update, context: CallbackContext):
             logger.info(f"Fetching payment details for player: {player_name}")
 
             # Fetch payment details
-            response = fetch_payment_details(player_name)
+            response = get_payment_details(player_name)
 
         else:
             # Fetch players based on status
@@ -124,7 +124,7 @@ async def process_voice(update: Update, context: CallbackContext):
                 logger.info(f"Fetching payment details for player: {player_name}")
 
                 # Fetch payment details
-                response = fetch_payment_details(player_name)
+                response = get_payment_details(player_name)
 
             else:
                 # Fetch players based on status
