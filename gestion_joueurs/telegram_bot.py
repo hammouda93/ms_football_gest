@@ -133,11 +133,14 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
         logger.info(f"User data before processing payment: {context.user_data}")
+        logger.info(f"handle_request received text before: handle_payment_confirmation '{text}' (Length: {len(text)})")
         await handle_payment_confirmation(update, context)
         return
     
     if "awaiting_payment" in context.user_data:
         # Call handle_payment_input for payment amount entry
+        logger.info(f"context.user_data in handle_request BEFORE handle_payment_input: {context.user_data}")
+        logger.info(f"handle_request received text before: handle_payment_input '{text}' (Length: {len(text)})")
         await handle_payment_input(update, context)
         return
     
@@ -283,6 +286,7 @@ async def handle_payment_input(update: Update, context: CallbackContext):
         player = context.user_data["selected_player"]
         message = update.message.text if update.message.text else ""
         logging.info(f"Text inside handle_payement_input: '{message}'")
+        logger.info(f"context.user_data in handle_payment_input: {context.user_data}")
         if not message.split():
             logger.warning("Received empty text after voice recognition.")
             await update.message.reply_text("❌ Désolé, je n'ai pas compris le message vocal.")
