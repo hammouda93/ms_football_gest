@@ -133,6 +133,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await handle_payment_input(update, context)
         return
     
+    if "payment_method" in context.user_data:
+        # Call handle_payment_input for payment amount entry
+        await handle_payment_confirmation(update, context)
+        return
+    
     # ✅ Now check "Paiement" after a player is already selected
     if text.lower() == "paiement":
         player_id = context.user_data.get("selected_player_id")  # Get stored player_id
@@ -315,34 +320,37 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
     message = update.message.text.strip().lower()
 
-    if message == "oui":
-        if "awaiting_payment" in context.user_data and "payment_amount" in context.user_data and "payment_method" in context.user_data:
-            player_id = context.user_data["awaiting_payment"]
-            amount = context.user_data["payment_amount"]
-            payment_method = context.user_data["payment_method"]  # Extract payment method from context
+    # Check if the user response is 'oui' or 'non' before proceeding
+    if message in ["oui", "non"]:
+        if message == "oui":
+            # Check if payment details are available in context
+            if "awaiting_payment" in context.user_data and "payment_amount" in context.user_data and "payment_method" in context.user_data:
+                player_id = context.user_data["awaiting_payment"]
+                amount = context.user_data["payment_amount"]
+                payment_method = context.user_data["payment_method"]
 
-            success = await process_payment(player_id, amount, payment_method)  # Pass payment_method to process_payment
+                # Process the payment
+                success = await process_payment(player_id, amount, payment_method)
 
-            if success:
-                await update.message.reply_text("✅ Paiement enregistré avec succès !")
-            else:
-                await update.message.reply_text("❌ Erreur lors de l’enregistrement du paiement.")
-            
-            # Clean up context
-            context.user_data.pop("awaiting_payment", None)
-            context.user_data.pop("payment_amount", None)
-            context.user_data.pop("payment_method", None)  # Clear payment method as well
+                if success:
+                    await update.message.reply_text("✅ Paiement enregistré avec succès !")
+                else:
+                    await update.message.reply_text("❌ Erreur lors de l’enregistrement du paiement.")
+                
+                # Clean up context data after payment processing
+                context.user_data.pop("awaiting_payment", None)
+                context.user_data.pop("payment_amount", None)
+                context.user_data.pop("payment_method", None)
 
-    elif message == "non":
-        context.user_data.clear()
-        await update.message.reply_text("❌ Transaction annulée.")
-        await start(update, context)
-        
-
+        elif message == "non":
+            # Clear user data and cancel the transaction
+            context.user_data.clear()
+            await update.message.reply_text("❌ Transaction annulée.")
+            await start(update, context)
 
     else:
+        # Prompt the user to respond with 'oui' or 'non' if the input is invalid
         await update.message.reply_text("❌ Veuillez répondre par 'Oui' ou 'Non'.")
-
 
 
 
@@ -410,7 +418,6 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handles text messages
     application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
-    application.add_handler(MessageHandler(filters.Regex("^(Oui|Non)$"), handle_payment_confirmation))  # ✅ Added handler for confirmation
 
     # Start the bot
     logger.info("Bot is starting...")
