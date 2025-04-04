@@ -56,7 +56,7 @@ def fetch_players_sync(status: str):
         videos = list(Video.objects.filter(status=normalized_status))
         players = [video.player.name for video in videos]
 
-        logger.info(f"Players found: {players}" if players else f"No players found for status '{normalized_status}'.")
+        logger.info(f"Players found: {players}" if players else f"No players found for this status '{normalized_status}'.")
 
         return players if players else [f"No players found for status '{normalized_status}'."]
 
