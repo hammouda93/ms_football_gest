@@ -289,7 +289,7 @@ async def handle_payment_input(update: Update, context: CallbackContext):
 
             # Prepare the message
             payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
-            await update.message.reply_text(f"Le joueur {player_id} - {amount} TND via {payment_method_name} (avance/final)? Confirmer?")
+            await update.message.reply_text(f"Le joueur {player_id} a payé {amount} TND par {payment_method_name}. Confirmer?")
 
             # Display confirmation buttons
             keyboard = [
@@ -301,7 +301,8 @@ async def handle_payment_input(update: Update, context: CallbackContext):
 
         except ValueError:
             logger.warning(f"User {update.message.from_user.id} entered an invalid amount: {message}")
-            await update.message.reply_text("❌ Veuillez envoyer un montant valide.")
+            context.user_data.clear()
+            await start(update, context)
 
 async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
