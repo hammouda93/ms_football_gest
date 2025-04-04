@@ -5,6 +5,7 @@ from gtts import gTTS
 import logging
 import speech_recognition as sr
 import tempfile
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup,MessageHandler, CallbackQueryHandler, Filters
 
 # Set up Django settings before importing models
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ms_football_gest.settings')
@@ -12,7 +13,8 @@ django.setup()
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,get_videos_by_deadline,get_players_by_invoice_status
+from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,process_payment
+from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -104,9 +106,6 @@ async def process_request(text: str) -> str:
 
 # Store ongoing player selections
 pending_player_selections = {}
-
-
-
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
@@ -199,6 +198,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await send_voice_response(update, response)
         return
 
+        # Invoice Request
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -208,19 +208,88 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            response = await get_payment_details(possible_players[0])
+            response, player_id, video_status = await get_payment_details(possible_players[0])
+
+            # Display payment info with status
             await update.message.reply_text(response)
-            await send_voice_response(update, response)
+
+            # Show Inline Keyboard with options
+            keyboard = [
+                [InlineKeyboardButton("💰 Paiement", callback_data=f"payment_{player_id}")],
+                [InlineKeyboardButton("⚙️ Changer le status", callback_data=f"status_{player_id}")],
+                [InlineKeyboardButton("🏠 Menu", callback_data="menu")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+        
         else:
             pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
+
         return
 
     response = await process_request(text)
     await update.message.reply_text(response)
     await send_voice_response(update, response)
+
+async def button_handler(update: Update, context: CallbackContext):
+    """Handles inline keyboard button clicks."""
+    query = update.callback_query
+    query.answer()
+
+    if query.data.startswith("payment_"):
+        player_id = query.data.split("_")[1]
+        context.user_data["awaiting_payment"] = player_id
+        await query.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
+
+    elif query.data.startswith("status_"):
+        await query.message.reply_text("🚧 Changer le status: (En cours d’implémentation)")
+
+    elif query.data == "menu":
+        await start(update, context)
+
+
+async def handle_payment_input(update: Update, context: CallbackContext):
+    """Handle payment amount input."""
+    if "awaiting_payment" in context.user_data:
+        player_id = context.user_data["awaiting_payment"]
+        message = update.message.text if update.message.text else ""
+
+        try:
+            amount = float(message.split()[0])  # Extract number from message
+            await update.message.reply_text(f"Le joueur {player_id} - {amount} TND (avance/final)? Confirmer?")
+
+            # Add confirmation buttons
+            keyboard = [
+                [InlineKeyboardButton("✅ Oui", callback_data=f"confirm_{player_id}_{amount}")],
+                [InlineKeyboardButton("❌ Non", callback_data="cancel")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
+        
+        except ValueError:
+            await update.message.reply_text("❌ Veuillez envoyer un montant valide.")
+
+async def confirm_payment(update: Update, context: CallbackContext):
+    """Handles payment confirmation."""
+    query = update.callback_query
+    query.answer()
+
+    if query.data.startswith("confirm_"):
+        _, player_id, amount = query.data.split("_")
+        success = await process_payment(player_id, float(amount))
+
+        if success:
+            await query.message.reply_text("✅ Paiement enregistré avec succès !")
+        else:
+            await query.message.reply_text("❌ Erreur lors de l’enregistrement du paiement.")
+
+    elif query.data == "cancel":
+        await query.message.reply_text("❌ Transaction annulée.")
+
+
 
 
 

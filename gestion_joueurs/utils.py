@@ -1,6 +1,6 @@
 import threading
 from django.conf import settings
-from .models import Notification,Video,Invoice,Player
+from .models import Notification,Video,Invoice,Player,Payment
 from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
@@ -75,22 +75,22 @@ def fetch_payment_details_sync(player_name: str):
     """Synchronous function to fetch the payment details of a player."""
     try:
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
-        video = Video.objects.filter(player=player).first()  # Get the first video linked to the player
-        
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
+        video_status = video.status if video else "Unknown"
         if not video:
             return f"No video found for player {player_name}."
-        
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
+        
         
         if not invoice:
             return f"No invoice found for {player_name}'s video."
         
-        return f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}."
-    
+        return f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}.(status: {video_status})"
+        
     except Player.DoesNotExist:
-        return f"No player found with the name {player_name}."
+        return "❌ Joueur introuvable.", None, None
     except Exception as e:
-        return f"Error fetching payment details: {str(e)}"
+        return f"Error fetching payment details: {str(e)}", None, None
 
 async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
@@ -169,3 +169,46 @@ async def get_players_by_invoice_status(status: str):
     """Run fetch_players_by_invoice_status_sync in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_players_by_invoice_status_sync, status)
+
+
+
+
+
+
+#Payment
+def process_payment_sync(player_id: int, amount: float):
+    """Synchronous function to process payment and update the invoice."""
+    try:
+        player = Player.objects.get(id=player_id)
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+        invoice = Invoice.objects.filter(video=video).order_by("-invoice_date").first()
+
+        if not invoice:
+            return False
+
+        payment_type = "final" if invoice.amount_paid + amount >= invoice.total_amount else "advance"
+
+        # Save Payment
+        Payment.objects.create(
+            player=player,
+            video=video,
+            amount=amount,
+            payment_type=payment_type,
+            remaining_balance=max(0, invoice.total_amount - (invoice.amount_paid + amount)),
+            invoice=invoice
+        )
+
+        # Update Invoice
+        invoice.amount_paid += amount
+        invoice.status = "paid" if invoice.amount_paid >= invoice.total_amount else "partially_paid"
+        invoice.save()
+
+        return True
+
+    except Player.DoesNotExist:
+        return False
+
+async def process_payment(player_id: int, amount: float):
+    """Run the synchronous process_payment_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, process_payment_sync, player_id, amount)
