@@ -423,6 +423,7 @@ async def process_voice(update: Update, context: CallbackContext):
 
         # Pass processed text to handle_request
         text = text.strip().lower()
+        text = ' '.join(text.split())
         logger.info(f"Text before sending to handle_request: '{text}'")
         logger.info(f"Text split list: {text.split()}")
         logger.info(f"Text before handling: '{text}' (Length: {len(text)})")
