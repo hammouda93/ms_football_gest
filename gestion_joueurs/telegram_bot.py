@@ -113,8 +113,21 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if user_id in pending_player_selections:
         selected_player = text
         del pending_player_selections[user_id]  # Remove from pending selections
-        response = await get_payment_details(selected_player)
+        response, player_id, video_status = await get_payment_details(selected_player)
+        
+        # Send the text response
         await update.message.reply_text(response)
+        
+        # Prepare and send the inline keyboard for payment and status change options
+        keyboard = [
+            [InlineKeyboardButton("💰 Paiement", callback_data=f"payment_{player_id}")],
+            [InlineKeyboardButton("⚙️ Changer le status", callback_data=f"status_{player_id}")],
+            [InlineKeyboardButton("🏠 Menu", callback_data="menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+
+        # Optionally, send the voice response as well (you should have the `send_voice_response` function defined elsewhere)
         await send_voice_response(update, response)
         return
 

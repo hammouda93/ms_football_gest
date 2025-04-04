@@ -70,33 +70,6 @@ async def get_players_by_status(status: str):
     return await loop.run_in_executor(None, fetch_players_sync, status)
 
 
-
-def fetch_payment_details_sync(player_name: str):
-    """Synchronous function to fetch the payment details of a player."""
-    try:
-        player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
-        video_status = video.status if video else "Unknown"
-        if not video:
-            return f"No video found for player {player_name}."
-        invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
-        
-        
-        if not invoice:
-            return f"No invoice found for {player_name}'s video."
-        
-        return f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}.(status: {video_status})"
-        
-    except Player.DoesNotExist:
-        return "❌ Joueur introuvable.", None, None
-    except Exception as e:
-        return f"Error fetching payment details: {str(e)}", None, None
-
-async def get_payment_details(player_name: str):
-    """Run the synchronous fetch_payment_details_sync function in a separate thread."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
-
 def search_players_sync(partial_name: str):
     """Search for players whose names contain the given partial name."""
     try:
@@ -171,11 +144,33 @@ async def get_players_by_invoice_status(status: str):
     return await loop.run_in_executor(None, fetch_players_by_invoice_status_sync, status)
 
 
-
-
-
-
 #Payment
+def fetch_payment_details_sync(player_name: str):
+    """Synchronous function to fetch the payment details of a player."""
+    try:
+        player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
+        video_status = video.status if video else "Unknown"
+        if not video:
+            return f"No video found for player {player_name}."
+        invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
+        
+        
+        if not invoice:
+            return f"No invoice found for {player_name}'s video."
+        
+        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}.(status: {video_status})"
+        return response, player.id, video_status
+    except Player.DoesNotExist:
+        return "❌ Joueur introuvable.", None, None
+    except Exception as e:
+        return f"Error fetching payment details: {str(e)}", None, None
+
+async def get_payment_details(player_name: str):
+    """Run the synchronous fetch_payment_details_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
+
 def process_payment_sync(player_id: int, amount: float):
     """Synchronous function to process payment and update the invoice."""
     try:
