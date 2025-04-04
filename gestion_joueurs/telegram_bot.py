@@ -133,8 +133,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await handle_payment_input(update, context)
         return
     
-    if "payment_method" in context.user_data:
-        # Call handle_payment_input for payment amount entry
+    if context.user_data.get("awaiting_confirmation"):
         await handle_payment_confirmation(update, context)
         return
     
@@ -297,19 +296,20 @@ async def handle_payment_input(update: Update, context: CallbackContext):
             # Prepare the message
             payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
             await update.message.reply_text(f"{player} ({player_id}) a payé {amount} TND par {payment_method_name}. Confirmer?")
+
+            # Display confirmation buttons
+            keyboard = [
+                [KeyboardButton("Oui")],
+                [KeyboardButton("Non")]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            context.user_data["awaiting_confirmation"] = True  # 👈 Add this
+            await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
+            return
         except ValueError:
             logger.warning(f"User {update.message.from_user.id} entered an invalid amount: {message}")
             context.user_data.clear()
             await start(update, context)
-        # Display confirmation buttons
-        keyboard = [
-            [KeyboardButton("Oui")],
-            [KeyboardButton("Non")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
-
-        
 
 async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
@@ -328,6 +328,7 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
                 success = await process_payment(player_id, amount, payment_method)
                 if success:
                     await update.message.reply_text("✅ Paiement enregistré avec succès !")
+                    context.user_data.pop("awaiting_confirmation", None)
                     context.user_data.pop("awaiting_payment", None)
                     context.user_data.pop("payment_amount", None)
                     context.user_data.pop("payment_method", None)
