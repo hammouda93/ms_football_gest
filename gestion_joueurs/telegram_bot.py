@@ -297,19 +297,19 @@ async def handle_payment_input(update: Update, context: CallbackContext):
             # Prepare the message
             payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
             await update.message.reply_text(f"{player} ({player_id}) a payé {amount} TND par {payment_method_name}. Confirmer?")
-
-            # Display confirmation buttons
-            keyboard = [
-                [KeyboardButton("Oui")],
-                [KeyboardButton("Non")]
-            ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
-
         except ValueError:
             logger.warning(f"User {update.message.from_user.id} entered an invalid amount: {message}")
             context.user_data.clear()
             await start(update, context)
+        # Display confirmation buttons
+        keyboard = [
+            [KeyboardButton("Oui")],
+            [KeyboardButton("Non")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
+
+        
 
 async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
@@ -346,7 +346,6 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
             await start(update, context)
 
     else:
-        logger.error(f"Error processing payment confirmation: {e}")
         # Prompt the user to respond with 'oui' or 'non' if the input is invalid
         await update.message.reply_text("❌ Veuillez répondre par 'Oui' ou 'Non'.")
 
