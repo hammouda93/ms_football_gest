@@ -148,22 +148,32 @@ async def get_players_by_invoice_status(status: str):
 def fetch_payment_details_sync(player_name: str):
     """Synchronous function to fetch the payment details of a player."""
     try:
+        logger.info(f"Fetching payment details for player: {player_name}")
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
+        logger.info(f"Player {player_name} found.")
+
         video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
-        video_status = video.status if video else "Unknown"
         if not video:
+            logger.warning(f"No video found for player {player_name}.")
             return f"No video found for player {player_name}."
+        
+        video_status = video.status
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
         
-        
         if not invoice:
+            logger.warning(f"No invoice found for player {player_name}'s video.")
             return f"No invoice found for {player_name}'s video."
         
-        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}.(status: {video_status})"
+        logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
+        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}. (status: {video_status})"
+        
         return response, player.id, video_status
+
     except Player.DoesNotExist:
+        logger.error(f"Player {player_name} not found.")
         return "❌ Joueur introuvable.", None, None
     except Exception as e:
+        logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
         return f"Error fetching payment details: {str(e)}", None, None
 
 async def get_payment_details(player_name: str):
@@ -174,11 +184,13 @@ async def get_payment_details(player_name: str):
 def process_payment_sync(player_id: int, amount: float):
     """Synchronous function to process payment and update the invoice."""
     try:
+        logger.info(f"Processing payment of {amount} for player {player_id}.")
         player = Player.objects.get(id=player_id)
         video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
         invoice = Invoice.objects.filter(video=video).order_by("-invoice_date").first()
 
         if not invoice:
+            logger.error(f"No invoice found for player {player_id}.")
             return False
 
         payment_type = "final" if invoice.amount_paid + amount >= invoice.total_amount else "advance"
@@ -198,9 +210,14 @@ def process_payment_sync(player_id: int, amount: float):
         invoice.status = "paid" if invoice.amount_paid >= invoice.total_amount else "partially_paid"
         invoice.save()
 
+        logger.info(f"Payment processed successfully for player {player_id}.")
         return True
 
     except Player.DoesNotExist:
+        logger.error(f"Player {player_id} not found.")
+        return False
+    except Exception as e:
+        logger.error(f"Error processing payment for player {player_id}: {str(e)}")
         return False
 
 async def process_payment(player_id: int, amount: float):

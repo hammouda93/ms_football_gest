@@ -90,8 +90,9 @@ async def process_request(text: str) -> str:
             return "Please type 'workflow' and choose the deadline you want (e.g., 'Today')."
         
         if text == "Payment Status":
-            return "Please type a video status (Paid, Unpaid, Partially Paid).."
-        response =""
+            return "Please type a video status (Paid, Unpaid, Partially Paid)."
+        
+        response = ""
         if "facture" in text:
             player_name = text.replace("facture", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
