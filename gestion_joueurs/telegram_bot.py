@@ -410,6 +410,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handles text messages
     application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
+    application.add_handler(MessageHandler(filters.Regex("^(Oui|Non)$"), handle_payment_confirmation))  # ✅ Added handler for confirmation
 
     # Start the bot
     logger.info("Bot is starting...")
