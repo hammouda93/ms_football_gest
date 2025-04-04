@@ -5,7 +5,7 @@ from gtts import gTTS
 import logging
 import speech_recognition as sr
 import tempfile
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageHandler, CallbackQueryHandler, Filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
 
 
