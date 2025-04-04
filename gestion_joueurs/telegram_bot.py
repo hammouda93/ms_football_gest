@@ -146,6 +146,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
 
     if text == "menu":
+        # Reset user data context
+        context.user_data.clear()
         await start(update, context)
         return
     
@@ -263,18 +265,33 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     await send_voice_response(update, response)
 
 async def handle_payment_input(update: Update, context: CallbackContext):
-    """Handle payment amount input."""
+    """Handle payment amount and payment method input."""
     if "awaiting_payment" in context.user_data:
         player_id = context.user_data["awaiting_payment"]
         message = update.message.text if update.message.text else ""
 
         try:
-            amount = float(message.split()[0])  # Extract number from message
-            context.user_data["payment_amount"] = amount  # ✅ Store amount for confirmation
+            # Extract the amount (assuming it's the first number in the message)
+            amount = float(message.split()[0])  # Extract the first number as amount
+            context.user_data["payment_amount"] = amount  # Store amount for confirmation
 
-            logger.info(f"User {update.message.from_user.id} entered payment amount: {amount} for player ID: {player_id}")
-            await update.message.reply_text(f"Le joueur {player_id} - {amount} TND (avance/final)? Confirmer?")
+            # Extract payment method
+            payment_method = "bank_transfer"  # Default method if no specific payment method found
+            if "cash" in message.lower():
+                payment_method = "cash"
+            elif "la poste" in message.lower():
+                payment_method = "la_poste"
 
+            context.user_data["payment_method"] = payment_method  # Store payment method for confirmation
+
+            # Log the amount and payment method
+            logger.info(f"User {update.message.from_user.id} entered payment amount: {amount} and payment method: {payment_method} for player ID: {player_id}")
+
+            # Prepare the message
+            payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
+            await update.message.reply_text(f"Le joueur {player_id} - {amount} TND via {payment_method_name} (avance/final)? Confirmer?")
+
+            # Display confirmation buttons
             keyboard = [
                 [KeyboardButton("Oui")],
                 [KeyboardButton("Non")]
@@ -291,11 +308,12 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
     message = update.message.text.strip().lower()
 
     if message == "oui":
-        if "awaiting_payment" in context.user_data and "payment_amount" in context.user_data:
+        if "awaiting_payment" in context.user_data and "payment_amount" in context.user_data and "payment_method" in context.user_data:
             player_id = context.user_data["awaiting_payment"]
             amount = context.user_data["payment_amount"]
+            payment_method = context.user_data["payment_method"]  # Extract payment method from context
 
-            success = await process_payment(player_id, amount)
+            success = await process_payment(player_id, amount, payment_method)  # Pass payment_method to process_payment
 
             if success:
                 await update.message.reply_text("✅ Paiement enregistré avec succès !")
@@ -305,11 +323,14 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
             # Clean up context
             context.user_data.pop("awaiting_payment", None)
             context.user_data.pop("payment_amount", None)
+            context.user_data.pop("payment_method", None)  # Clear payment method as well
 
     elif message == "non":
+        context.user_data.clear()
         await update.message.reply_text("❌ Transaction annulée.")
-        context.user_data.pop("awaiting_payment", None)
-        context.user_data.pop("payment_amount", None)
+        await start(update, context)
+        
+
 
     else:
         await update.message.reply_text("❌ Veuillez répondre par 'Oui' ou 'Non'.")

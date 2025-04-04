@@ -181,10 +181,10 @@ async def get_payment_details(player_name: str):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
 
-def process_payment_sync(player_id: int, amount: float):
+def process_payment_sync(player_id: int, amount: float, payment_method: str):
     """Synchronous function to process payment and update the invoice."""
     try:
-        logger.info(f"Processing payment of {amount} for player {player_id}.")
+        logger.info(f"Processing payment of {amount} for player {player_id} using {payment_method}.")
         player = Player.objects.get(id=player_id)
         video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
         invoice = Invoice.objects.filter(video=video).order_by("-invoice_date").first()
@@ -195,12 +195,13 @@ def process_payment_sync(player_id: int, amount: float):
 
         payment_type = "final" if invoice.amount_paid + amount >= invoice.total_amount else "advance"
 
-        # Save Payment
+        # Save Payment with payment_method
         Payment.objects.create(
             player=player,
             video=video,
             amount=amount,
             payment_type=payment_type,
+            payment_method=payment_method,  # Include the payment method in the record
             remaining_balance=max(0, invoice.total_amount - (invoice.amount_paid + amount)),
             invoice=invoice
         )
@@ -220,7 +221,7 @@ def process_payment_sync(player_id: int, amount: float):
         logger.error(f"Error processing payment for player {player_id}: {str(e)}")
         return False
 
-async def process_payment(player_id: int, amount: float):
+async def process_payment(player_id: int, amount: float, payment_method: str):
     """Run the synchronous process_payment_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, process_payment_sync, player_id, amount)
+    return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method)
