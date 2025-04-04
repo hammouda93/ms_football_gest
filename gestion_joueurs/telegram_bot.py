@@ -7,7 +7,7 @@ import speech_recognition as sr
 import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup,KeyboardButton
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
-from text_to_num import text2num
+#from text_to_num import text2num
 #from word2number_fr import w2n
 
 
@@ -393,15 +393,6 @@ async def process_voice(update: Update, context: CallbackContext):
                 if any(keyword in fr_text for keyword in ["facture", "dinar", "dinars", "cash", "poste", "virement"]):
                     text = fr_text
                     logger.info(f"Detected French input: {text}")
-
-                    # Convert French number words to digits
-                    try:
-                        text = text2num(text, lang='fr')
-                        logger.info(f"Converted number text: {text}")
-                    except Exception as ne:
-                        logger.warning(f"Number parsing failed: {ne}")
-                else:
-                    logger.info(f"Detected English input: {text}")
             except sr.UnknownValueError:
                 logger.error("Could not recognize speech in either language.")
                 await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
