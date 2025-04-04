@@ -109,40 +109,34 @@ pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
-
+    
+    # Handle player selection first
     if user_id in pending_player_selections:
         selected_player = text
-        del pending_player_selections[user_id]  # Remove from pending selections
+        del pending_player_selections[user_id]  
         response, player_id, video_status = await get_payment_details(selected_player)
-        
-        # Send the text response
-        await update.message.reply_text(response)
-        
-        # Show Reply Keyboard for payment/status change
-        context.user_data["selected_player_id"] = player_id  # Store player ID for future reference
+
+        context.user_data["selected_player_id"] = player_id
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
+
         keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        if text == "Paiement":
-            player_id = context.user_data.get("selected_player_id")
-            logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
-            if player_id:
-                context.user_data["awaiting_payment"] = player_id  # Store that we're waiting for payment input
-                logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
-                await update.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
-            else:
-                logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
-                await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
-            return
 
-        if text == "Changer le status":
-            await update.message.reply_text("🚧 Changer le status: (En cours d’implémentation)")
-            return
-        
+        await update.message.reply_text(response)
         await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-
-        # Optionally, send the voice response as well (you should have the `send_voice_response` function defined elsewhere)
         await send_voice_response(update, response)
+        return  # Exit here so it doesn't process further commands
+
+    # ✅ Now check "Paiement" after a player is already selected
+    if text.lower() == "paiement":
+        player_id = context.user_data.get("selected_player_id")  # Get stored player_id
+        if player_id:
+            context.user_data["awaiting_payment"] = player_id
+            logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
+            await update.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
+        else:
+            logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
+            await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
         return
 
     if text == "menu":
