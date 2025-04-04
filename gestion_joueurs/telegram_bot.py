@@ -120,6 +120,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         
         # Show Reply Keyboard for payment/status change
         context.user_data["selected_player_id"] = player_id  # Store player ID for future reference
+        logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
         keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
@@ -220,17 +221,20 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         if len(possible_players) == 1:
             response, player_id, video_status = await get_payment_details(possible_players[0])
 
-            # Display payment info with status
-            await update.message.reply_text(response)
+            if not player_id:
+                await update.message.reply_text("❌ Player not found or has no invoice.")
+                return
 
             # Store selected player ID
             context.user_data["selected_player_id"] = player_id
+            logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-            # Show Reply Keyboard for payment/status options
+            # Display payment options
             keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text(response)
             await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-        
+
         else:
             pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
@@ -244,16 +248,14 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     await send_voice_response(update, response)
 
     if text == "Paiement":
-        if "selected_player_id" in context.user_data:
-            player_id = context.user_data["selected_player_id"]
+        player_id = context.user_data.get("selected_player_id")
+        if player_id:
             context.user_data["awaiting_payment"] = player_id  # Store that we're waiting for payment input
-
             logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
-
             await update.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
         else:
-            logger.warning(f"User {user_id} attempted 'Paiement' without selecting a player.")
-            await update.message.reply_text("Erreur : Aucun joueur sélectionné.")
+            logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
+            await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
         return
 
     if text == "Changer le status":
@@ -268,13 +270,11 @@ async def handle_payment_input(update: Update, context: CallbackContext):
 
         try:
             amount = float(message.split()[0])  # Extract number from message
-            
-            # Log the payment attempt with the amount and player ID
-            logger.info(f"User {update.message.from_user.id} entered payment amount: {amount} for player ID: {player_id}")
+            context.user_data["payment_amount"] = amount  # ✅ Store amount for confirmation
 
+            logger.info(f"User {update.message.from_user.id} entered payment amount: {amount} for player ID: {player_id}")
             await update.message.reply_text(f"Le joueur {player_id} - {amount} TND (avance/final)? Confirmer?")
 
-            # Add confirmation buttons with regular keyboard
             keyboard = [
                 [KeyboardButton("Oui")],
                 [KeyboardButton("Non")]
@@ -283,26 +283,34 @@ async def handle_payment_input(update: Update, context: CallbackContext):
             await update.message.reply_text("Confirmez la transaction :", reply_markup=reply_markup)
 
         except ValueError:
-            # Log the error when the amount is invalid
             logger.warning(f"User {update.message.from_user.id} entered an invalid amount: {message}")
             await update.message.reply_text("❌ Veuillez envoyer un montant valide.")
-            
+
 async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
     message = update.message.text.strip().lower()
 
     if message == "oui":
-        if "awaiting_payment" in context.user_data:
+        if "awaiting_payment" in context.user_data and "payment_amount" in context.user_data:
             player_id = context.user_data["awaiting_payment"]
-            amount = float(update.message.text.split()[0])  # This assumes amount is being sent along with 'oui'
+            amount = context.user_data["payment_amount"]
+
             success = await process_payment(player_id, amount)
 
             if success:
                 await update.message.reply_text("✅ Paiement enregistré avec succès !")
             else:
                 await update.message.reply_text("❌ Erreur lors de l’enregistrement du paiement.")
+            
+            # Clean up context
+            context.user_data.pop("awaiting_payment", None)
+            context.user_data.pop("payment_amount", None)
+
     elif message == "non":
         await update.message.reply_text("❌ Transaction annulée.")
+        context.user_data.pop("awaiting_payment", None)
+        context.user_data.pop("payment_amount", None)
+
     else:
         await update.message.reply_text("❌ Veuillez répondre par 'Oui' ou 'Non'.")
 
