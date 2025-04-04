@@ -128,14 +128,16 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return  # Exit here so it doesn't process further commands
     
     # ✅ Check for payment input if awaiting payment
+    if context.user_data.get("awaiting_confirmation"):
+        await handle_payment_confirmation(update, context)
+        return
+    
     if "awaiting_payment" in context.user_data:
         # Call handle_payment_input for payment amount entry
         await handle_payment_input(update, context)
         return
     
-    if context.user_data.get("awaiting_confirmation"):
-        await handle_payment_confirmation(update, context)
-        return
+    
     
     # ✅ Now check "Paiement" after a player is already selected
     if text.lower() == "paiement":
