@@ -417,7 +417,7 @@ async def process_voice(update: Update, context: CallbackContext):
         logger.info(f"Final processed text: {text}")
 
         # Pass processed text to handle_request
-        text = update.message.text.strip().lower()
+        text = text.strip().lower()
         await handle_request(text, update, context)
 
     except Exception as e:
