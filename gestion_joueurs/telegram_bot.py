@@ -111,6 +111,7 @@ pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
+    logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
 
     # Handle player selection first
     if user_id in pending_player_selections:
@@ -131,6 +132,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
+        logger.info(f"User data before processing payment: {context.user_data}")
         await handle_payment_confirmation(update, context)
         return
     
@@ -279,7 +281,10 @@ async def handle_payment_input(update: Update, context: CallbackContext):
         player_id = context.user_data["awaiting_payment"]
         player = context.user_data["selected_player"]
         message = update.message.text if update.message.text else ""
-
+        if not message.split():
+            logger.warning("Received empty text after voice recognition.")
+            await update.message.reply_text("❌ Désolé, je n'ai pas compris le message vocal.")
+            return
         try:
             # Extract the amount (assuming it's the first number in the message)
             amount = float(message.split()[0])  # Extract the first number as amount
@@ -418,6 +423,9 @@ async def process_voice(update: Update, context: CallbackContext):
 
         # Pass processed text to handle_request
         text = text.strip().lower()
+        logger.info(f"Text before sending to handle_request: '{text}'")
+        logger.info(f"Text split list: {text.split()}")
+        logger.info(f"Text before handling: '{text}' (Length: {len(text)})")
         await handle_request(text, update, context)
 
     except Exception as e:
