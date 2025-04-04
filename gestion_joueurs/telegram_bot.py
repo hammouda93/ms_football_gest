@@ -109,7 +109,7 @@ pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
-    
+
     # Handle player selection first
     if user_id in pending_player_selections:
         selected_player = text
@@ -126,7 +126,13 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
         await send_voice_response(update, response)
         return  # Exit here so it doesn't process further commands
-
+    
+    # ✅ Check for payment input if awaiting payment
+    if "awaiting_payment" in context.user_data:
+        # Call handle_payment_input for payment amount entry
+        await handle_payment_input(update, context)
+        return
+    
     # ✅ Now check "Paiement" after a player is already selected
     if text.lower() == "paiement":
         player_id = context.user_data.get("selected_player_id")  # Get stored player_id
