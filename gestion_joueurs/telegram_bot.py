@@ -123,6 +123,22 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
         keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        if text == "Paiement":
+            player_id = context.user_data.get("selected_player_id")
+            logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
+            if player_id:
+                context.user_data["awaiting_payment"] = player_id  # Store that we're waiting for payment input
+                logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
+                await update.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
+            else:
+                logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
+                await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
+            return
+
+        if text == "Changer le status":
+            await update.message.reply_text("🚧 Changer le status: (En cours d’implémentation)")
+            return
+        
         await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
 
         # Optionally, send the voice response as well (you should have the `send_voice_response` function defined elsewhere)
@@ -136,8 +152,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text == "player invoice":
         await update.message.reply_text("Please type the player's name followed by 'facture' (e.g., 'Richard facture').")
         return
-
-
 
     if text == "payment status":
         keyboard = [["Paid"], ["Unpaid"], ["Partially Paid"]]
@@ -242,21 +256,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
 
         return
-    if text == "Paiement":
-        player_id = context.user_data.get("selected_player_id")
-        logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
-        if player_id:
-            context.user_data["awaiting_payment"] = player_id  # Store that we're waiting for payment input
-            logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
-            await update.message.reply_text("Envoyez un montant (voix ou texte) pour le paiement.")
-        else:
-            logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
-            await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
-        return
-
-    if text == "Changer le status":
-        await update.message.reply_text("🚧 Changer le status: (En cours d’implémentation)")
-        return
+    
     
     response = await process_request(text)
     await update.message.reply_text(response)
