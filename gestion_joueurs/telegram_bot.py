@@ -249,6 +249,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
     if text == "Paiement":
         player_id = context.user_data.get("selected_player_id")
+        logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
         if player_id:
             context.user_data["awaiting_payment"] = player_id  # Store that we're waiting for payment input
             logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
