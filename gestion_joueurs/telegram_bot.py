@@ -278,11 +278,6 @@ async def handle_payment_input(update: Update, context: CallbackContext):
         message = update.message.text if update.message.text else ""
 
         try:
-            # Check if the message contains a valid number (i.e., a payment amount)
-            if message.lower() in ["oui", "non"]:
-                # Don't try to convert 'oui' or 'non' to a float
-                return  # Let the user confirm their choice in a separate flow
-
             # Extract the amount (assuming it's the first number in the message)
             amount = float(message.split()[0])  # Extract the first number as amount
             context.user_data["payment_amount"] = amount  # Store amount for confirmation
@@ -331,9 +326,11 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
 
                 # Process the payment
                 success = await process_payment(player_id, amount, payment_method)
-
                 if success:
                     await update.message.reply_text("✅ Paiement enregistré avec succès !")
+                    context.user_data.pop("awaiting_payment", None)
+                    context.user_data.pop("payment_amount", None)
+                    context.user_data.pop("payment_method", None)
                 else:
                     await update.message.reply_text("❌ Erreur lors de l’enregistrement du paiement.")
                 
@@ -349,6 +346,7 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
             await start(update, context)
 
     else:
+        logger.error(f"Error processing payment confirmation: {e}")
         # Prompt the user to respond with 'oui' or 'non' if the input is invalid
         await update.message.reply_text("❌ Veuillez répondre par 'Oui' ou 'Non'.")
 
