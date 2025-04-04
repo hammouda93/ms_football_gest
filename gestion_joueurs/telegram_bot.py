@@ -8,6 +8,7 @@ import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup,KeyboardButton
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
 from text2num import text2num, NumberException
+#from word2number_fr import w2n
 
 
 # Set up Django settings before importing models
