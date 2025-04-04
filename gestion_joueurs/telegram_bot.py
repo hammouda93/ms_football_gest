@@ -277,10 +277,12 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
 async def handle_payment_input(update: Update, context: CallbackContext):
     """Handle payment amount and payment method input."""
+    
     if "awaiting_payment" in context.user_data:
         player_id = context.user_data["awaiting_payment"]
         player = context.user_data["selected_player"]
         message = update.message.text if update.message.text else ""
+        logging.info(f"Text inside handle_payement_input: '{message}'")
         if not message.split():
             logger.warning("Received empty text after voice recognition.")
             await update.message.reply_text("❌ Désolé, je n'ai pas compris le message vocal.")
