@@ -242,11 +242,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
 
         return
-
-    response = await process_request(text)
-    await update.message.reply_text(response)
-    await send_voice_response(update, response)
-
     if text == "Paiement":
         player_id = context.user_data.get("selected_player_id")
         logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
@@ -262,6 +257,10 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text == "Changer le status":
         await update.message.reply_text("🚧 Changer le status: (En cours d’implémentation)")
         return
+    
+    response = await process_request(text)
+    await update.message.reply_text(response)
+    await send_voice_response(update, response)
 
 async def handle_payment_input(update: Update, context: CallbackContext):
     """Handle payment amount input."""
