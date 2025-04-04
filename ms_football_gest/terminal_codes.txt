@@ -8,6 +8,7 @@ git status
 git add .
 git commit -m "Mise à jour : description des changements"
 git push origin master
+git reset --hard origin/master (if status is lost)
 
 netstat -ano | findstr :6380 #verify listening port
 

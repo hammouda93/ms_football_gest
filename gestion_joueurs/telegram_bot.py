@@ -7,7 +7,7 @@ import speech_recognition as sr
 import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup,KeyboardButton
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
-from text_to_num import text2num, NumberException
+from text_to_num import text2num
 #from word2number_fr import w2n
 
 
@@ -398,7 +398,7 @@ async def process_voice(update: Update, context: CallbackContext):
                     try:
                         text = text2num(text, lang='fr')
                         logger.info(f"Converted number text: {text}")
-                    except NumberException as ne:
+                    except Exception as ne:
                         logger.warning(f"Number parsing failed: {ne}")
                 else:
                     logger.info(f"Detected English input: {text}")
