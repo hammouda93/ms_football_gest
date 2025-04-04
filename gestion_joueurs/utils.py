@@ -167,14 +167,14 @@ def fetch_payment_details_sync(player_name: str):
         logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
         response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}. (status: {video_status})"
         
-        return response, player.id, video_status
+        return response, player.id, video_status,player.name
 
     except Player.DoesNotExist:
         logger.error(f"Player {player_name} not found.")
-        return "❌ Joueur introuvable.", None, None
+        return "❌ Joueur introuvable.", None, None, None
     except Exception as e:
         logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
-        return f"Error fetching payment details: {str(e)}", None, None
+        return f"Error fetching payment details: {str(e)}", None, None, None
 
 async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""

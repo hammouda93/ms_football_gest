@@ -115,7 +115,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         selected_player = text
         del pending_player_selections[user_id]  
         response, player_id, video_status = await get_payment_details(selected_player)
-
+        context.user_data["selected_player"] = selected_player
         context.user_data["selected_player_id"] = player_id
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
@@ -235,13 +235,14 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            response, player_id, video_status = await get_payment_details(possible_players[0])
+            response, player_id, video_status,player = await get_payment_details(possible_players[0])
 
             if not player_id:
                 await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
 
             # Store selected player ID
+            context.user_data["selected_player"] = player
             context.user_data["selected_player_id"] = player_id
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
@@ -268,9 +269,15 @@ async def handle_payment_input(update: Update, context: CallbackContext):
     """Handle payment amount and payment method input."""
     if "awaiting_payment" in context.user_data:
         player_id = context.user_data["awaiting_payment"]
+        player = context.user_data["selected_player"]
         message = update.message.text if update.message.text else ""
 
         try:
+            # Check if the message contains a valid number (i.e., a payment amount)
+            if message.lower() in ["oui", "non"]:
+                # Don't try to convert 'oui' or 'non' to a float
+                return  # Let the user confirm their choice in a separate flow
+
             # Extract the amount (assuming it's the first number in the message)
             amount = float(message.split()[0])  # Extract the first number as amount
             context.user_data["payment_amount"] = amount  # Store amount for confirmation
@@ -289,7 +296,7 @@ async def handle_payment_input(update: Update, context: CallbackContext):
 
             # Prepare the message
             payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
-            await update.message.reply_text(f"Le joueur {player_id} a payé {amount} TND par {payment_method_name}. Confirmer?")
+            await update.message.reply_text(f"{player} ({player_id}) a payé {amount} TND par {payment_method_name}. Confirmer?")
 
             # Display confirmation buttons
             keyboard = [
