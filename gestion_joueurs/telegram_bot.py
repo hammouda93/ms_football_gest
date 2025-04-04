@@ -96,9 +96,6 @@ async def process_request(text: str) -> str:
             player_name = text.replace("facture", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
             response = await get_payment_details(player_name)
-        else:
-            players = await get_players_by_status(text)
-            response = "\n".join(players)
 
         return response if response else "No relevant data found."
 
