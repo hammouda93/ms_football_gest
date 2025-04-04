@@ -7,6 +7,7 @@ import speech_recognition as sr
 import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup,KeyboardButton
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
+from text2num import text2num, NumberException
 
 
 # Set up Django settings before importing models
@@ -287,7 +288,7 @@ async def handle_payment_input(update: Update, context: CallbackContext):
             payment_method = "bank_transfer"  # Default method if no specific payment method found
             if "cash" in message.lower():
                 payment_method = "cash"
-            elif "la poste" in message.lower():
+            elif "poste" in message.lower():
                 payment_method = "la_poste"
 
             context.user_data["payment_method"] = payment_method  # Store payment method for confirmation
@@ -383,10 +384,23 @@ async def process_voice(update: Update, context: CallbackContext):
             audio_data = recognizer.record(source)
             # Check if input is for invoice (French) or status (English)
             try:
+                # Try English first
                 text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
-                if "facture" in recognizer.recognize_google(audio_data, language="fr-FR").lower().strip():
-                    text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
-                    logger.info("Detected 'facture' (French invoice request).")
+
+                # Try French if invoice/payment words detected
+                fr_text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
+                if any(keyword in fr_text for keyword in ["facture", "dinar", "dinars", "cash", "poste", "virement"]):
+                    text = fr_text
+                    logger.info(f"Detected French input: {text}")
+
+                    # Convert French number words to digits
+                    try:
+                        text = text2num(text, lang='fr')
+                        logger.info(f"Converted number text: {text}")
+                    except NumberException as ne:
+                        logger.warning(f"Number parsing failed: {ne}")
+                else:
+                    logger.info(f"Detected English input: {text}")
             except sr.UnknownValueError:
                 logger.error("Could not recognize speech in either language.")
                 await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
