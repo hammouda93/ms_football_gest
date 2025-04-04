@@ -6,7 +6,7 @@ import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
 import threading
 from datetime import datetime, timedelta
-
+from decimal import Decimal
 
 # Configure logging
 logging.basicConfig(
@@ -193,21 +193,24 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str):
             logger.error(f"No invoice found for player {player_id}.")
             return False
 
-        payment_type = "final" if invoice.amount_paid + amount >= invoice.total_amount else "advance"
+        # Convert amount to Decimal
+        decimal_amount = Decimal(str(amount))  # Use str to preserve precision
+
+        payment_type = "final" if invoice.amount_paid + decimal_amount >= invoice.total_amount else "advance"
 
         # Save Payment with payment_method
         Payment.objects.create(
             player=player,
             video=video,
-            amount=amount,
+            amount=decimal_amount,
             payment_type=payment_type,
-            payment_method=payment_method,  # Include the payment method in the record
-            remaining_balance=max(0, invoice.total_amount - (invoice.amount_paid + amount)),
+            payment_method=payment_method,
+            remaining_balance=max(Decimal('0.00'), invoice.total_amount - (invoice.amount_paid + decimal_amount)),
             invoice=invoice
         )
 
         # Update Invoice
-        invoice.amount_paid += amount
+        invoice.amount_paid += decimal_amount
         invoice.status = "paid" if invoice.amount_paid >= invoice.total_amount else "partially_paid"
         invoice.save()
 
