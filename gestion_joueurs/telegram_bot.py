@@ -141,7 +141,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Call handle_payment_input for payment amount entry
         logger.info(f"context.user_data in handle_request BEFORE handle_payment_input: {context.user_data}")
         logger.info(f"handle_request received text before: handle_payment_input '{text}' (Length: {len(text)})")
-        await handle_payment_input(update, context)
+        await handle_payment_input(update, context,text)
         return
     
     
@@ -278,13 +278,13 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     await update.message.reply_text(response)
     await send_voice_response(update, response)
 
-async def handle_payment_input(update: Update, context: CallbackContext):
+async def handle_payment_input(update: Update, context: CallbackContext,text: str = None):
     """Handle payment amount and payment method input."""
     
     if "awaiting_payment" in context.user_data:
         player_id = context.user_data["awaiting_payment"]
         player = context.user_data["selected_player"]
-        message = update.message.text if update.message.text else ""
+        message = update.message.text if update.message.text else text
         logging.info(f"Text inside handle_payement_input: '{message}'")
         logger.info(f"context.user_data in handle_payment_input: {context.user_data}")
         if not message.split():
