@@ -299,7 +299,7 @@ async def handle_payment_input(update: Update, context: CallbackContext):
 
             # Prepare the message
             payment_method_name = "Cash" if payment_method == "cash" else "La Poste" if payment_method == "la_poste" else "Bank Transfer"
-            await update.message.reply_text(f"{player} ({player_id}) a payé {amount} TND par {payment_method_name}. Confirmer?")
+            await update.message.reply_text(f"{player} a payé {amount} TND par {payment_method_name}. Confirmer?")
 
             # Display confirmation buttons
             keyboard = [
@@ -417,6 +417,7 @@ async def process_voice(update: Update, context: CallbackContext):
         logger.info(f"Final processed text: {text}")
 
         # Pass processed text to handle_request
+        text = update.message.text.strip().lower()
         await handle_request(text, update, context)
 
     except Exception as e:
