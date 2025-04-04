@@ -383,29 +383,42 @@ async def process_voice(update: Update, context: CallbackContext):
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file_path) as source:
             audio_data = recognizer.record(source)
-            # Check if input is for invoice (French) or status (English)
+            if not audio_data:
+                logger.error("Empty audio data received.")
+                await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
+                return
+
             try:
                 # Try English first
                 text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
 
                 # Try French if invoice/payment words detected
                 fr_text = recognizer.recognize_google(audio_data, language="fr-FR").lower().strip()
+
+                if fr_text:
+                    logger.info(f"French detected: {fr_text}")
+                else:
+                    logger.warning("French recognition returned empty text.")
+
                 if any(keyword in fr_text for keyword in ["facture", "dinar", "dinars", "cash", "poste", "virement"]):
                     text = fr_text
                     logger.info(f"Detected French input: {text}")
+
             except sr.UnknownValueError:
                 logger.error("Could not recognize speech in either language.")
                 await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
                 return
+            except sr.RequestError as e:
+                logger.error(f"Speech Recognition service error: {e}")
+                await update.message.reply_text("Speech recognition service is unavailable. Try again later.")
+                return
 
+        # Debugging: Log the final text before passing it
+        logger.info(f"Final processed text: {text}")
+
+        # Pass processed text to handle_request
         await handle_request(text, update, context)
 
-    except sr.UnknownValueError:
-        logger.error("Speech Recognition could not understand the audio.")
-        await update.message.reply_text("Sorry, I couldn't understand the voice message.")
-    except sr.RequestError as e:
-        logger.error(f"Speech Recognition service error: {e}")
-        await update.message.reply_text("Speech recognition service is unavailable. Try again later.")
     except Exception as e:
         logger.error(f"Unexpected error in voice processing: {e}")
         await update.message.reply_text("An unexpected error occurred while processing the voice message.")
