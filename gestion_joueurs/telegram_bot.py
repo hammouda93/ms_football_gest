@@ -91,7 +91,7 @@ async def process_request(text: str) -> str:
         
         if text == "Payment Status":
             return "Please type a video status (Paid, Unpaid, Partially Paid).."
-        
+        response =""
         if "facture" in text:
             player_name = text.replace("facture", "").strip()
             logger.info(f"Fetching payment details for player: {player_name}")
