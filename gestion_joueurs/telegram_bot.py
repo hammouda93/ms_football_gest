@@ -123,7 +123,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         context.user_data["selected_player_id"] = player_id
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-        keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
+        keyboard = [["Paiement"], ["Status"], ["Menu"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
         await update.message.reply_text(response)
@@ -263,7 +263,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
             # Display payment options
-            keyboard = [["Paiement"], ["Changer le status"], ["Menu"]]
+            keyboard = [["Paiement"], ["Status"], ["Menu"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(response)
             await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
@@ -276,7 +276,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
     
-    if text == "Changer le status":
+    if text == "status":
         logger.info("User selected 'Changer le statut'. Fetching video status...")
         player_name = context.user_data.get("selected_player")
         video_status = context.user_data.get("video_status")
