@@ -256,6 +256,8 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         video.save()
         try:
             created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
+            if created_by_user is None:
+                logger.error(f"Aucun utilisateur trouvé pour l'ID correspondant à {user}")
         except User.DoesNotExist:
             logger.error(f"Aucun utilisateur trouvé avec l'ID correspondant à {user}")
         # Log the status change
