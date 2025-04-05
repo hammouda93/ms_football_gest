@@ -1,6 +1,6 @@
 import threading
 from django.conf import settings
-from .models import Notification,Video,Invoice,Player,Payment
+from .models import Notification,Video,Invoice,Player,Payment,VideoStatusHistory
 from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
@@ -228,3 +228,47 @@ async def process_payment(player_id: int, amount: float, payment_method: str):
     """Run the synchronous process_payment_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method)
+
+
+
+
+
+def update_video_status_sync(player_name: str, new_status: str):
+    """Synchronously update the status of the latest video for a given player."""
+    try:
+        logger.info(f"Updating video status for player: {player_name} to {new_status}")
+        player = Player.objects.get(name__iexact=player_name)
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+
+        if not video:
+            logger.warning(f"No video found for player {player_name}.")
+            return f"No video found for player {player_name}."
+        
+        previous_status = video.status
+        video.status = new_status
+        video.save()
+
+        # Log the status change
+        VideoStatusHistory.objects.create(
+            video=video,
+            editor=video.editor,
+            status=new_status,
+            changed_at=timezone.now(),
+            created_by=get_current_user(),
+            comment=f"Status changed from {previous_status} to {new_status}."
+        )
+
+        logger.info(f"Video status updated to {new_status}")
+        return f"✅ Le statut de la vidéo de {player.name} a été mis à jour en '{new_status}'."
+    
+    except Player.DoesNotExist:
+        logger.error(f"Player {player_name} not found.")
+        return "❌ Joueur introuvable."
+    except Exception as e:
+        logger.error(f"Error updating video status: {str(e)}")
+        return f"Error updating video status: {str(e)}"
+
+async def update_video_status(player_name: str, new_status: str):
+    """Run the synchronous update_video_status_sync function in a separate thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status)

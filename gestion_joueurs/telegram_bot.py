@@ -18,7 +18,7 @@ django.setup()
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,process_payment
-from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status
+from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status,update_video_status
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -257,6 +257,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             # Store selected player ID
             context.user_data["selected_player"] = player
             context.user_data["selected_player_id"] = player_id
+            context.user_data["video_status"] = video_status  # Store current video status
+
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
             # Display payment options
@@ -273,7 +275,46 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
     
-    
+    if text == "Changer le statut":
+        player_name = context.user_data.get("selected_player")
+        video_status = context.user_data.get("video_status")
+
+        if not player_name:
+            await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
+            return
+
+        # Display current status and status options
+        await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
+
+        status_options = [
+            ["Pending"], ["In Progress"], ["Completed Collab"],
+            ["Completed"], ["Delivered"], ["Problematic"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("Choisissez un nouveau statut :", reply_markup=reply_markup)
+        # Store state for next interaction
+        context.user_data["awaiting_status_change"] = True
+    elif context.user_data.get("awaiting_status_change"):
+        new_status = text.strip()
+        player_name = context.user_data.get("selected_player")
+
+        if new_status not in ["Pending", "In Progress", "Completed Collab", "Completed", "Delivered", "Problematic"]:
+            await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
+            return
+
+        # Update video status asynchronously
+        update_result = await update_video_status(player_name, new_status)
+
+        # Send response
+        await update.message.reply_text(update_result)
+
+        # Reset state
+        context.user_data["awaiting_status_change"] = False
+
+
+
+
+
     response = await process_request(text)
     await update.message.reply_text(response)
     await send_voice_response(update, response)

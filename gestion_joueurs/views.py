@@ -303,10 +303,6 @@ def update_video_status(request, video_id):
             video.status = new_status
             video.save()
 
-            # Enregistrer l'historique avec l'éditeur
-            """ editor = request.user.videoeditor  # Assurez-vous que l'utilisateur est un VideoEditor
-            VideoStatusHistory.objects.create(video=video, editor=editor, status=new_status, comment=comment) """
-
             messages.success(request, "Le statut de la vidéo a été mis à jour avec succès.")
             return redirect('video_status', video_id=video.id)
         else:
