@@ -276,7 +276,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
     
-    if text == "Changer le statut":
+    if text == "Changer le status":
         logger.info("User selected 'Changer le statut'. Fetching video status...")
         player_name = context.user_data.get("selected_player")
         video_status = context.user_data.get("video_status")
