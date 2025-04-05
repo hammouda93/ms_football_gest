@@ -277,14 +277,18 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
     
     if text == "Changer le statut":
+        logger.info("User selected 'Changer le statut'. Fetching video status...")
         player_name = context.user_data.get("selected_player")
         video_status = context.user_data.get("video_status")
 
         if not player_name:
+            logger.warning("No player selected. Cannot change status.")
             await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
             return
 
-        # Display current status and status options
+        logger.info(f"Current video status for {player_name}: {video_status}")
+
+        # Display current status and options
         await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
 
         status_options = [
@@ -293,27 +297,54 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         ]
         reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text("Choisissez un nouveau statut :", reply_markup=reply_markup)
+
         # Store state for next interaction
         context.user_data["awaiting_status_change"] = True
-    elif context.user_data.get("awaiting_status_change"):
+        logger.info("Awaiting user status selection...")logger.info("User selected 'Changer le statut'. Fetching video status...")
+
+        player_name = context.user_data.get("selected_player")
+        video_status = context.user_data.get("video_status")
+
+        if not player_name:
+            logger.warning("No player selected. Cannot change status.")
+            await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
+            return
+
+        logger.info(f"Current video status for {player_name}: {video_status}")
+
+        # Display current status and options
+        await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
+
+        status_options = [
+            ["Pending"], ["In Progress"], ["Completed Collab"],
+            ["Completed"], ["Delivered"], ["Problematic"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("Choisissez un nouveau statut :", reply_markup=reply_markup)
+
+        # Store state for next interaction
+        context.user_data["awaiting_status_change"] = True
+        logger.info("Awaiting user status selection...")
+    
+    if context.user_data.get("awaiting_status_change"):
         new_status = text.strip()
         player_name = context.user_data.get("selected_player")
 
+        logger.info(f"User selected new status: {new_status} for {player_name}")
+
         if new_status not in ["Pending", "In Progress", "Completed Collab", "Completed", "Delivered", "Problematic"]:
+            logger.warning(f"Invalid status selected: {new_status}")
             await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
             return
 
-        # Update video status asynchronously
+        logger.info(f"Updating video status for {player_name} to {new_status}...")
         update_result = await update_video_status(player_name, new_status)
 
-        # Send response
         await update.message.reply_text(update_result)
+        logger.info(f"Status update result: {update_result}")
 
         # Reset state
         context.user_data["awaiting_status_change"] = False
-
-
-
 
 
     response = await process_request(text)
