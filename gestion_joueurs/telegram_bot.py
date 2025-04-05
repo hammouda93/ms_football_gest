@@ -100,7 +100,7 @@ async def process_request(text: str) -> str:
             logger.info(f"Fetching payment details for player: {player_name}")
             response = await get_payment_details(player_name)
 
-        return response if response else "No relevant data found."
+        return response if response else ""
 
     except Exception as e:
         logger.error(f"Error processing request: {e}")
