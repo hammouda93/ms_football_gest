@@ -254,20 +254,15 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         previous_status = video.status
         video.status = new_status
         video.save()
-        try:
-            created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
-            logger.info(f"utilisateur {created_by_user.username} trouvé pour l'ID {created_by_user.id} correspondant à {user}")
-            if created_by_user is None:
-                logger.error(f"Aucun utilisateur trouvé pour l'ID correspondant à {user}")
-        except User.DoesNotExist:
-            logger.error(f"Aucun utilisateur trouvé avec l'ID correspondant à {user}")
-        # Log the status change
+        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
+        logger.info(f"utilisateur {created_by_user.username} trouvé pour l'ID {created_by_user.id} correspondant à {user}")        
+        
         VideoStatusHistory.objects.create(
             video=video,
             editor=video.editor,
             status=new_status,
             created_by = created_by_user,
-            comment=f"Status changed"
+            comment="Status changed"
         )
         # 🔹 Vérifier si la vidéo est "completed" et si le paiement est réglé
         if new_status == "completed":
