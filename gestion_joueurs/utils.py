@@ -273,7 +273,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         logger.error(f"Error updating video status: {str(e)}")
         return f"Error updating video status: {str(e)}"
 
-async def update_video_status(player_name: str, new_status: str):
+async def update_video_status(player_name: str, new_status: str, user : int):
     """Run the synchronous update_video_status_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status)
