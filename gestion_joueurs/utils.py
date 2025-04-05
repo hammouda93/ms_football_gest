@@ -1,6 +1,6 @@
 import threading
 from django.conf import settings
-from .models import Notification,Video,Invoice,Player,Payment,VideoStatusHistory
+from .models import Notification,Video,Invoice,Player,Payment,VideoStatusHistory,User
 from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
@@ -197,8 +197,8 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str, use
         decimal_amount = Decimal(str(amount))  # Use str to preserve precision
 
         payment_type = "final" if invoice.amount_paid + decimal_amount >= invoice.total_amount else "advance"
-        # Déterminer l'ID du créateur
-        created_by_id = 1 if user == 5853993816 else 2
+        # 🔹 Récupérer l'utilisateur Django en fonction de l'ID Telegram
+        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
         # Save Payment with payment_method
         Payment.objects.create(
             player=player,
@@ -206,7 +206,7 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str, use
             amount=decimal_amount,
             payment_type=payment_type,
             payment_method=payment_method,
-            created_by_id=created_by_id ,
+            created_by_id=created_by_user ,
             remaining_balance=max(Decimal('0.00'), invoice.total_amount - (invoice.amount_paid + decimal_amount)),
             invoice=invoice
         )
@@ -254,15 +254,15 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         previous_status = video.status
         video.status = new_status
         video.save()
-        # Déterminer l'ID du créateur
-        created_by_id = 1 if user == 5853993816 else 2
+        # 🔹 Récupérer l'utilisateur Django en fonction de l'ID Telegram
+        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
         # Log the status change
         VideoStatusHistory.objects.create(
             video=video,
             editor=video.editor,
             status=new_status,
             changed_at=timezone.now(),
-            created_by_id = created_by_id,
+            created_by_id = created_by_user,
             comment=f"Status changed"
         )
 

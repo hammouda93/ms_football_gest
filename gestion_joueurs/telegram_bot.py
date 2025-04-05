@@ -321,10 +321,10 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info(f"User selected new status: {new_status} for {player_name}")
 
         if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered", "problematic"]:
-            logger.warning(f"Invalid status selected: {new_status}")
             if new_status == "status" :
                 return
             else:
+                logger.warning(f"Invalid status selected: {new_status}")
                 await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
                 return
             
