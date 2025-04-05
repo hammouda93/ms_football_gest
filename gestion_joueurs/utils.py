@@ -250,7 +250,8 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         if video.status == new_status:
             logger.info(f"Status is already '{new_status}', no update needed.")
             return f"ℹ️ Le statut est déjà '{new_status}'. Aucune modification effectuée."
-
+        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
+        logger.info(f"utilisateur {created_by_user.username} trouvé pour l'ID {created_by_user.id} correspondant à {user}")
         previous_status = video.status
         video.status = new_status
         video.save()

@@ -9,7 +9,13 @@ from django.contrib.auth.models import User
 from .views import thread_local
 from .utils import should_process_signals  # Import the utility functions
 from django.db.models import Sum
-
+import logging
+# Configure logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=Video)
 def create_video_status_history(sender, instance, created, **kwargs):
@@ -40,6 +46,7 @@ def create_video_status_history(sender, instance, created, **kwargs):
                     create_notification(admin, f"la {instance} est finie, contacter le joueur via {instance.player.whatsapp_number} pour finaliser le payement livrer la vidéo", 'inter_user', video=instance,sent_by=User_Connected,player=instance.player)
 
     else:
+        logger.info("we are in signals.py")
         previous_status = VideoStatusHistory.objects.filter(video=instance).order_by('-changed_at').first()
         previous_editor = getattr(thread_local, 'previous_editor', None)
         new_editor = instance.editor
