@@ -320,10 +320,14 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         logger.info(f"User selected new status: {new_status} for {player_name}")
 
-        if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered", "problematic","status"]:
+        if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered", "problematic"]:
             logger.warning(f"Invalid status selected: {new_status}")
-            await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
-            return
+            if new_status == "status" :
+                return
+            else:
+                await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
+                return
+            
         logger.info(f"Updating video by the user: {bot_user_id}")
         logger.info(f"Updating video status for {player_name} to {new_status}...")
         update_result = await update_video_status(player_name, new_status, bot_user_id)
