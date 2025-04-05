@@ -265,6 +265,48 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
             created_by_id = created_by_user,
             comment=f"Status changed"
         )
+        # 🔹 Vérifier si la vidéo est "completed" et si le paiement est réglé
+        if new_status == "completed":
+            invoice = getattr(video, 'invoices', None)  # Récupérer la facture liée (OneToOneField)
+            if invoice:
+                if invoice.status != 'paid':
+                    # Notifier les super admins
+                    super_admins = User.objects.filter(is_superuser=True)
+                    for admin in super_admins:
+                        create_notification(
+                            recipient=admin,
+                            message=f"📢 La vidéo {video} est terminée. Contactez le joueur via {video.player.whatsapp_number} pour finaliser le paiement et livrer la vidéo.",
+                            notification_type='inter_user',
+                            video=video,
+                            sent_by=created_by_user,
+                            player=video.player
+                        )
+            else:
+                if video.advance_payment < video.total_payment:
+                    # Notifier les super admins
+                    super_admins = User.objects.filter(is_superuser=True)
+                    for admin in super_admins:
+                        create_notification(
+                            recipient=admin,
+                            message=f"📢 La vidéo {video} est terminée. Contactez le joueur via {video.player.whatsapp_number} pour finaliser le paiement et livrer la vidéo.",
+                            notification_type='inter_user',
+                            video=video,
+                            sent_by=created_by_user,
+                            player=video.player
+                        )
+
+        # 🔹 Si la vidéo est "completed_collab", notifier les super admins
+        if new_status == "completed_collab":
+            super_admins = User.objects.filter(is_superuser=True)
+            for admin in super_admins:
+                create_notification(
+                    recipient=admin,
+                    message=f"📌 La vidéo '{video}' a été finalisée par {video.editor.user.username} et attend validation par un administrateur.",
+                    notification_type='inter_user',
+                    video=video,
+                    sent_by=created_by_user,
+                    player=video.player
+                )
 
         logger.info(f"Video status updated to {new_status}")
         return f"✅ Le statut de la vidéo de {player.name} a été mis à jour en '{new_status}'."
