@@ -233,10 +233,11 @@ async def process_payment(player_id: int, amount: float, payment_method: str):
 
 
 
-def update_video_status_sync(player_name: str, new_status: str):
+def update_video_status_sync(player_name: str, new_status: str, user : int):
     """Synchronously update the status of the latest video for a given player."""
     try:
         logger.info(f"Updating video status for player: {player_name} to {new_status}")
+        logger.info(f"Updating video by the user: {user}")
         player = Player.objects.get(name__iexact=player_name)
         video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
 
@@ -258,7 +259,8 @@ def update_video_status_sync(player_name: str, new_status: str):
             editor=video.editor,
             status=new_status,
             changed_at=timezone.now(),
-            comment=f"Status changed from {previous_status} to {new_status}."
+            created_by = 2,
+            comment=f"Status changed"
         )
 
         logger.info(f"Video status updated to {new_status}")

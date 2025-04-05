@@ -326,7 +326,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         logger.info(f"Updating video status for {player_name} to {new_status}...")
-        update_result = await update_video_status(player_name, new_status)
+        update_result = await update_video_status(player_name, new_status,update.effective_user.id)
 
         await update.message.reply_text(update_result)
         logger.info(f"Status update result: {update_result}")
