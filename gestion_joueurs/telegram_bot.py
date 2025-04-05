@@ -294,8 +294,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Define status with corresponding icons
         status_icons = {
             "Pending": "⏳",
-            "In Progress": "🚧",
-            "Completed Collab": "🤝",
+            "In_Progress": "🚧",
+            "Completed_Collab": "🤝",
             "Completed": "✅",
             "Delivered": "📦",
             "Problematic": "⚠️"
@@ -315,12 +315,12 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         player_name = context.user_data.get("selected_player")
 
         # Remove the icon by splitting and taking the last part
-        new_status = new_status_with_icon.split(" ", 1)[-1]
+        new_status = new_status_with_icon.split(" ", 1)[-1].lower()
         player_name = context.user_data.get("selected_player")
 
         logger.info(f"User selected new status: {new_status} for {player_name}")
 
-        if new_status not in ["Pending", "In Progress", "Completed Collab", "Completed", "Delivered", "Problematic"]:
+        if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered", "problematic"]:
             logger.warning(f"Invalid status selected: {new_status}")
             await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
             return
