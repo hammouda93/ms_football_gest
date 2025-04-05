@@ -112,7 +112,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
-
+    bot_user_id = update.effective_user.id
     # Handle player selection first
     if user_id in pending_player_selections:
         selected_player = text
@@ -324,7 +324,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             logger.warning(f"Invalid status selected: {new_status}")
             await update.message.reply_text("❌ Statut invalide. Veuillez choisir une option valide.")
             return
-        bot_user_id = update.effective_user.id
         logger.info(f"Updating video by the user: {bot_user_id}")
         logger.info(f"Updating video status for {player_name} to {new_status}...")
         update_result = await update_video_status(player_name, new_status, bot_user_id)
@@ -391,7 +390,7 @@ async def handle_payment_input(update: Update, context: CallbackContext,text: st
 async def handle_payment_confirmation(update: Update, context: CallbackContext):
     """Handle the user's response to confirm or cancel the payment."""
     message = update.message.text.strip().lower()
-
+    bot_user_id = update.effective_user.id
     # Check if the user response is 'oui' or 'non' before proceeding
     if message in ["oui", "non"]:
         if message == "oui":
@@ -402,7 +401,7 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
                 payment_method = context.user_data["payment_method"]
 
                 # Process the payment
-                success = await process_payment(player_id, amount, payment_method)
+                success = await process_payment(player_id, amount, payment_method,bot_user_id)
                 if success:
                     await update.message.reply_text("✅ Paiement enregistré avec succès !")
                     context.user_data.pop("awaiting_confirmation", None)

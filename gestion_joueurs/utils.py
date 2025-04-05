@@ -181,7 +181,7 @@ async def get_payment_details(player_name: str):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
 
-def process_payment_sync(player_id: int, amount: float, payment_method: str):
+def process_payment_sync(player_id: int, amount: float, payment_method: str, user: int):
     """Synchronous function to process payment and update the invoice."""
     try:
         logger.info(f"Processing payment of {amount} for player {player_id} using {payment_method}.")
@@ -197,7 +197,8 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str):
         decimal_amount = Decimal(str(amount))  # Use str to preserve precision
 
         payment_type = "final" if invoice.amount_paid + decimal_amount >= invoice.total_amount else "advance"
-
+        # Déterminer l'ID du créateur
+        created_by_id = 1 if user == 5853993816 else 2
         # Save Payment with payment_method
         Payment.objects.create(
             player=player,
@@ -205,6 +206,7 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str):
             amount=decimal_amount,
             payment_type=payment_type,
             payment_method=payment_method,
+            created_by_id=created_by_id ,
             remaining_balance=max(Decimal('0.00'), invoice.total_amount - (invoice.amount_paid + decimal_amount)),
             invoice=invoice
         )
@@ -224,10 +226,10 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str):
         logger.error(f"Error processing payment for player {player_id}: {str(e)}")
         return False
 
-async def process_payment(player_id: int, amount: float, payment_method: str):
+async def process_payment(player_id: int, amount: float, payment_method: str, user: int):
     """Run the synchronous process_payment_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method)
+    return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method, user)
 
 
 
@@ -237,7 +239,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
     """Synchronously update the status of the latest video for a given player."""
     try:
         logger.info(f"Updating video status for player: {player_name} to {new_status}")
-        logger.info(f"Updating video by the user: {user}")
+        logger.info(f"Updating video by the user in utilis.py: {user}")
         player = Player.objects.get(name__iexact=player_name)
         video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
 
@@ -252,14 +254,15 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         previous_status = video.status
         video.status = new_status
         video.save()
-
+        # Déterminer l'ID du créateur
+        created_by_id = 1 if user == 5853993816 else 2
         # Log the status change
         VideoStatusHistory.objects.create(
             video=video,
             editor=video.editor,
             status=new_status,
             changed_at=timezone.now(),
-            created_by = 2,
+            created_by_id = created_by_id,
             comment=f"Status changed"
         )
 
@@ -276,4 +279,4 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
 async def update_video_status(player_name: str, new_status: str, user : int):
     """Run the synchronous update_video_status_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status)
+    return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status, user)
