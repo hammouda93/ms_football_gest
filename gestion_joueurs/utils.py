@@ -254,10 +254,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         logger.info(f"utilisateur {created_by_user.username} trouvé pour l'ID {created_by_user.id} correspondant à {user}")
         previous_status = video.status
         video.status = new_status
-        Video.objects.filter(id=video.id).update(status=new_status)
-        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
-        logger.info(f"utilisateur {created_by_user.username} trouvé pour l'ID {created_by_user.id} correspondant à {user}")        
-        
+        Video.objects.filter(id=video.id).update(status=new_status)       
         VideoStatusHistory.objects.create(
             video=video,
             editor=video.editor,
@@ -274,7 +271,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
                     super_admins = User.objects.filter(is_superuser=True)
                     for admin in super_admins:
                         create_notification(
-                            recipient=admin,
+                            user=admin,
                             message=f"📢 La vidéo {video} est terminée. Contactez le joueur via {video.player.whatsapp_number} pour finaliser le paiement et livrer la vidéo.",
                             notification_type='inter_user',
                             video=video,
@@ -287,7 +284,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
                     super_admins = User.objects.filter(is_superuser=True)
                     for admin in super_admins:
                         create_notification(
-                            recipient=admin,
+                            user=admin,
                             message=f"📢 La vidéo {video} est terminée. Contactez le joueur via {video.player.whatsapp_number} pour finaliser le paiement et livrer la vidéo.",
                             notification_type='inter_user',
                             video=video,
@@ -300,7 +297,7 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
             super_admins = User.objects.filter(is_superuser=True)
             for admin in super_admins:
                 create_notification(
-                    recipient=admin,
+                    user=admin,
                     message=f"📌 La vidéo '{video}' a été finalisée par {video.editor.user.username} et attend validation par un administrateur.",
                     notification_type='inter_user',
                     video=video,

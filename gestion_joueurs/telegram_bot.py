@@ -298,7 +298,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             "Completed_Collab": "🤝",
             "Completed": "✅",
             "Delivered": "📦",
-            "Problematic": "⚠️"
         }
 
         # Create the keyboard with icons
@@ -320,7 +319,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         logger.info(f"User selected new status: {new_status} for {player_name}")
 
-        if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered", "problematic"]:
+        if new_status not in ["pending", "in_progress", "completed_collab", "completed", "delivered"]:
             if new_status == "status" :
                 return
             else:
