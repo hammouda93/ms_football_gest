@@ -244,6 +244,10 @@ def update_video_status_sync(player_name: str, new_status: str):
             logger.warning(f"No video found for player {player_name}.")
             return f"No video found for player {player_name}."
         
+        if video.status == new_status:
+            logger.info(f"Status is already '{new_status}', no update needed.")
+            return f"ℹ️ Le statut est déjà '{new_status}'. Aucune modification effectuée."
+
         previous_status = video.status
         video.status = new_status
         video.save()
@@ -254,7 +258,6 @@ def update_video_status_sync(player_name: str, new_status: str):
             editor=video.editor,
             status=new_status,
             changed_at=timezone.now(),
-            created_by=get_current_user(),
             comment=f"Status changed from {previous_status} to {new_status}."
         )
 
