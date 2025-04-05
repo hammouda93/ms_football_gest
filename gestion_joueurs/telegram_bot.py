@@ -290,7 +290,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         # Display current status and options
         await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
-
+        logger.info(f"We are in signals")
         # Define status with corresponding icons
         status_icons = {
             "Pending": "⏳",
