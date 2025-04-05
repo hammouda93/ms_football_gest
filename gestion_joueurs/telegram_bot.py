@@ -291,35 +291,18 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Display current status and options
         await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
 
-        status_options = [
-            ["Pending"], ["In Progress"], ["Completed Collab"],
-            ["Completed"], ["Delivered"], ["Problematic"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("Choisissez un nouveau statut :", reply_markup=reply_markup)
+        # Define status with corresponding icons
+        status_icons = {
+            "Pending": "⏳",
+            "In Progress": "🚧",
+            "Completed Collab": "🤝",
+            "Completed": "✅",
+            "Delivered": "📦",
+            "Problematic": "⚠️"
+        }
 
-        # Store state for next interaction
-        context.user_data["awaiting_status_change"] = True
-        logger.info("Awaiting user status selection...")
-        logger.info("User selected 'Changer le statut'. Fetching video status...")
-
-        player_name = context.user_data.get("selected_player")
-        video_status = context.user_data.get("video_status")
-
-        if not player_name:
-            logger.warning("No player selected. Cannot change status.")
-            await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
-            return
-
-        logger.info(f"Current video status for {player_name}: {video_status}")
-
-        # Display current status and options
-        await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
-
-        status_options = [
-            ["Pending"], ["In Progress"], ["Completed Collab"],
-            ["Completed"], ["Delivered"], ["Problematic"]
-        ]
+        # Create the keyboard with icons
+        status_options = [[f"{icon} {status}"] for status, icon in status_icons.items()]
         reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text("Choisissez un nouveau statut :", reply_markup=reply_markup)
 
@@ -328,7 +311,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info("Awaiting user status selection...")
     
     if context.user_data.get("awaiting_status_change"):
-        new_status = text.strip()
+        new_status_with_icon = text.strip()
+        player_name = context.user_data.get("selected_player")
+
+        # Remove the icon by splitting and taking the last part
+        new_status = new_status_with_icon.split(" ", 1)[-1]
         player_name = context.user_data.get("selected_player")
 
         logger.info(f"User selected new status: {new_status} for {player_name}")
