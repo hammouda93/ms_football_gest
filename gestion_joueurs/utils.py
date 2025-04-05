@@ -206,7 +206,7 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str, use
             amount=decimal_amount,
             payment_type=payment_type,
             payment_method=payment_method,
-            created_by_id=created_by_user ,
+            created_by=created_by_user ,
             remaining_balance=max(Decimal('0.00'), invoice.total_amount - (invoice.amount_paid + decimal_amount)),
             invoice=invoice
         )
@@ -254,15 +254,16 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         previous_status = video.status
         video.status = new_status
         video.save()
-        # 🔹 Récupérer l'utilisateur Django en fonction de l'ID Telegram
-        created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
+        try:
+            created_by_user = User.objects.get(id=1) if user == 5853993816 else User.objects.get(id=2)
+        except User.DoesNotExist:
+            logger.error(f"Aucun utilisateur trouvé avec l'ID correspondant à {user}")
         # Log the status change
         VideoStatusHistory.objects.create(
             video=video,
             editor=video.editor,
             status=new_status,
-            changed_at=timezone.now(),
-            created_by_id = created_by_user,
+            created_by = created_by_user,
             comment=f"Status changed"
         )
         # 🔹 Vérifier si la vidéo est "completed" et si le paiement est réglé
