@@ -72,12 +72,11 @@ def fetch_players_sync(status: str):
             }.get(video.invoices.status, "Unknown")
 
             if normalized_status == "delivered":
-                # Fetch the latest delivery date
-                delivery_entry = video.status_history.filter(status="delivered").order_by("-changed_at").first()
-                delivery_date = delivery_entry.changed_at.strftime("%Y-%m-%d") if delivery_entry else "Unknown"
+                delivery_date = video.changed_at.strftime("%d-%m-%Y")
                 info = f"{payment_status_icon}{video.player.name}|{delivery_date}|{editor_name}"
             else:
-                info = f"{payment_status_icon}{video.player.name}|{video.deadline}|{editor_name}"
+                deadline = video.deadline.strftime("%d-%m-%Y")
+                info = f"{payment_status_icon}{video.player.name}|{deadline}|{editor_name}"
 
             result.append(info)
 
