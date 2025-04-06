@@ -126,6 +126,9 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
         # Filtering by deadline and excluding 'delivered' and 'problematic' status
         if deadline_filter == 'past':
             videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == '3_days_ago':
+            three_days_ago = today - timedelta(days=3)
+            videos = Video.objects.filter(deadline__gte=three_days_ago,deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
         elif deadline_filter == 'today':
             videos = Video.objects.filter(deadline=today).exclude(status__in=['delivered', 'problematic'])
         elif deadline_filter == '3_days':
@@ -140,6 +143,8 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
         elif deadline_filter == '1_month':
             one_month_from_now = today + timedelta(days=30)
             videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_month_from_now).exclude(status__in=['delivered', 'problematic'])
+        elif deadline_filter == 'upcoming':
+            videos = Video.objects.filter(deadline__gte=today).exclude(status__in=['delivered', 'problematic'])
         else:
             return ["Invalid deadline filter"]
 

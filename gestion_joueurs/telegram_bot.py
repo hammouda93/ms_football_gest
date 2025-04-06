@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Start Command - Shows options
 async def start(update: Update, context: CallbackContext):
     """Send a welcome message with two choices."""
-    keyboard = [["Video Status"], ["Payment Status"], ["Player Invoice"], ["Workflow"]]
+    keyboard = [["Workflow"], ["Player Invoice"], ["Payment Status"],["Video Status"] ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
     await update.message.reply_text(
@@ -217,18 +217,20 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
 
     if text == "workflow":
-        keyboard = [["past"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
+        keyboard = [["past"], ["3 days ago"], ["Today"], ["In 3 days"], ["In a week"], ["In two weeks"], ["In a month"], ["Upcoming"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
         return
 
     deadline_mapping = {
-        "a week ago": "past",
+        "past": "past",
+        "3 days ago": "3_days_ago",
         "today": "today",
-        "in three days": "3_days",
+        "in 3 days": "3_days",
         "in a week": "1_week",
         "in two weeks": "2_weeks",
-        "in a month": "1_month"
+        "in a month": "1_month",
+        "upcoming": "upcoming",
     }
 
     if text in deadline_mapping:
