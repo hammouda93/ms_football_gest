@@ -52,18 +52,16 @@ def fetch_players_sync(status: str):
     try:
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
-        # Subquery to get the most recent 'delivered' date for each video
-        latest_delivery_date = VideoStatusHistory.objects.filter(
-            video=OuterRef("pk"), status="delivered"
-        ).order_by("-changed_at").values("changed_at")[:1]
-
+        
         if normalized_status == "delivered":
             # Get delivered videos & annotate with latest delivery date
-            videos = list(
-                Video.objects.filter(status="delivered")
-                .annotate(delivery_date=Subquery(latest_delivery_date))
-                .order_by("-delivery_date")
-            )
+            videos = Video.objects.filter(status="delivered").annotate(
+                delivery_date=Subquery(
+                    VideoStatusHistory.objects.filter(video=OuterRef("pk"), status="delivered")
+                    .order_by("-changed_at")
+                    .values("changed_at")[:1]
+                    )
+                ).order_by("-delivery_date")
         else:
             # Sort by nearest deadline first
             videos = list(Video.objects.filter(status=normalized_status).order_by("deadline"))
@@ -79,8 +77,7 @@ def fetch_players_sync(status: str):
 
             if normalized_status == "delivered":
                 # Fetch the latest delivery date
-                delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
-                info = f"{payment_status_icon}{video.player.name}|{delivery_date}|{editor_name}"
+                info = f"{payment_status_icon}{video.player.name}|{video.delivery_date}|{editor_name}"
             else:
                 deadline = video.deadline.strftime("%d-%m-%Y")
                 info = f"{payment_status_icon}{video.player.name}|{deadline}|{editor_name}"
