@@ -5,9 +5,10 @@ from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from django.db.models import OuterRef, Subquery
+
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -77,7 +78,7 @@ def fetch_players_sync(status: str):
 
             if normalized_status == "delivered":
                 # Fetch the latest delivery date
-                info = f"{payment_status_icon}{video.player.name}|{video.delivery_date}|{editor_name}"
+                info = f"{payment_status_icon}{video.player.name}|{video.delivery_date.strftime("%d-%m-%Y")}|{editor_name}"
             else:
                 deadline = video.deadline.strftime("%d-%m-%Y")
                 info = f"{payment_status_icon}{video.player.name}|{deadline}|{editor_name}"
@@ -152,14 +153,61 @@ async def get_videos_by_deadline(deadline_filter: str):
 
 
 def fetch_players_by_invoice_status_sync(status: str):
-    """Fetch players whose invoices have the specified status."""
+    """Fetch players whose invoices have the specified status with video details."""
     try:
-        invoices = Invoice.objects.filter(status=status).exclude(video__status='problematic')
-        players = [invoice.video.player.name for invoice in invoices if invoice.video and invoice.video.player]
+        invoices = Invoice.objects.filter(status=status).exclude(video__status="problematic")
 
-        if players:
-            return players
-        return [f"No players found with invoice status '{status}'."]
+        # Subquery to get the most recent 'delivered' date
+        latest_delivery_date = VideoStatusHistory.objects.filter(
+            video=OuterRef("pk"), status="delivered"
+        ).order_by("-changed_at").values("changed_at")[:1]
+
+        videos = Video.objects.filter(id__in=invoices.values("video_id")).annotate(
+            delivery_date=Subquery(latest_delivery_date)
+        )
+
+        # Sorting logic
+        delivered_videos = videos.filter(status="delivered").order_by("-delivery_date")
+        non_delivered_videos = videos.exclude(status="delivered").order_by("deadline")
+
+        sorted_videos = list(delivered_videos) + list(non_delivered_videos)
+
+        result = []
+        today = date.today()
+        urgent_threshold = today + timedelta(days=3)  # Deadline threshold (3 days)
+
+        for video in sorted_videos:
+            editor_name = video.editor.user.username
+            payment_status = video.salary_paid_status
+            deadline = video.deadline if video.deadline else None
+
+            # Default icon logic
+            if payment_status in ["not_paid", "partially_paid"] and video.status in [
+                "in_progress", "completed_collab", "completed", "delivered"
+            ]:
+                call_icon = "☎️ Call"
+            else:
+                call_icon = "⏳ Still Time"
+
+            # Urgency-based icons
+            urgent_icon = ""
+            if deadline and deadline <= urgent_threshold:
+                if payment_status == "partially_paid":
+                    urgent_icon = "⚠️ Work Needed"
+                elif payment_status == "paid" and video.status != "delivered":
+                    urgent_icon = "🔥 Priority Work"
+
+            # Formatting output
+            if video.status == "delivered":
+                delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
+                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | 📅 Delivered: {delivery_date} | 💰 {call_icon} {urgent_icon}"
+            else:
+                formatted_deadline = deadline.strftime("%d-%m-%Y") if deadline else "Unknown"
+                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | ⏳ Deadline: {formatted_deadline} | 💰 {call_icon} {urgent_icon}"
+
+            result.append(info.strip())
+
+        return result if result else [f"No players found with invoice status '{status}'."]
 
     except Exception as e:
         return [f"Error fetching players: {str(e)}"]
