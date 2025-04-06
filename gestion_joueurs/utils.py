@@ -191,12 +191,13 @@ def fetch_players_by_invoice_status_sync(status: str):
                 "in_progress", "completed_collab", "completed", "delivered"
             ]:
                 call_icon = "☎️"
+            elif status == 'delivered': 
+                call_icon = "✅"
             else:
                 call_icon = "⏳"
-
             # Urgency-based icons
             urgent_icon = ""
-            if deadline and deadline <= urgent_threshold:
+            if (deadline <= urgent_threshold or deadline < today):
                 if payment_status == "partially_paid":
                     urgent_icon = "⚠️"
                 elif payment_status == "paid" and video.status != "delivered":
