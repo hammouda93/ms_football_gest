@@ -7,7 +7,7 @@ from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM quer
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-
+from django.db.models import OuterRef, Subquery
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -52,12 +52,18 @@ def fetch_players_sync(status: str):
     try:
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
+        # Subquery to get the most recent 'delivered' date for each video
+        latest_delivery_date = VideoStatusHistory.objects.filter(
+            video=OuterRef("pk"), status="delivered"
+        ).order_by("-changed_at").values("changed_at")[:1]
 
         if normalized_status == "delivered":
-            # Sort by most recent delivery date
-            videos = list(Video.objects.filter(status="delivered").order_by(
-                "-status_history__changed_at"
-            ))
+            # Get delivered videos & annotate with latest delivery date
+            videos = list(
+                Video.objects.filter(status="delivered")
+                .annotate(delivery_date=Subquery(latest_delivery_date))
+                .order_by("-delivery_date")
+            )
         else:
             # Sort by nearest deadline first
             videos = list(Video.objects.filter(status=normalized_status).order_by("deadline"))
@@ -73,8 +79,7 @@ def fetch_players_sync(status: str):
 
             if normalized_status == "delivered":
                 # Fetch the latest delivery date
-                delivery_entry = video.status_history.filter(status="delivered")
-                delivery_date = delivery_entry.changed_at.strftime("%d-%m-%Y") if delivery_entry else "Unknown"
+                delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
                 info = f"{payment_status_icon}{video.player.name}|{delivery_date}|{editor_name}"
             else:
                 deadline = video.deadline.strftime("%d-%m-%Y")
