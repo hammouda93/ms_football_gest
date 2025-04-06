@@ -125,26 +125,26 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
 
         # Filtering by deadline and excluding 'delivered' and 'problematic' status
         if deadline_filter == 'past':
-            videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("-deadline")
         elif deadline_filter == '3_days_ago':
             three_days_ago = today - timedelta(days=3)
-            videos = Video.objects.filter(deadline__gte=three_days_ago,deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=three_days_ago,deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("-deadline")
         elif deadline_filter == 'today':
             videos = Video.objects.filter(deadline=today).exclude(status__in=['delivered', 'problematic'])
         elif deadline_filter == '3_days':
             three_days_from_now = today + timedelta(days=3)
-            videos = Video.objects.filter(deadline__gte=today, deadline__lte=three_days_from_now).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=three_days_from_now).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == '1_week':
             one_week_from_now = today + timedelta(weeks=1)
-            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_week_from_now).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_week_from_now).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == '2_weeks':
             two_weeks_from_now = today + timedelta(weeks=2)
-            videos = Video.objects.filter(deadline__gte=today, deadline__lte=two_weeks_from_now).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=two_weeks_from_now).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == '1_month':
             one_month_from_now = today + timedelta(days=30)
-            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_month_from_now).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=today, deadline__lte=one_month_from_now).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == 'upcoming':
-            videos = Video.objects.filter(deadline__gte=today).exclude(status__in=['delivered', 'problematic'])
+            videos = Video.objects.filter(deadline__gte=today).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         else:
             return ["Invalid deadline filter"]
 
