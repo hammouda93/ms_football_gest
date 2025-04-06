@@ -183,7 +183,7 @@ def fetch_players_by_invoice_status_sync(status: str):
 
         for video in sorted_videos:
             editor_name = video.editor.user.username
-            payment_status = video.salary_paid_status
+            payment_status = video.invoices.status
             deadline = video.deadline if video.deadline else None
 
             # Default icon logic
@@ -191,7 +191,7 @@ def fetch_players_by_invoice_status_sync(status: str):
                 "in_progress", "completed_collab", "completed", "delivered"
             ]:
                 call_icon = "☎️"
-            elif status == 'delivered': 
+            elif status == 'paid': 
                 call_icon = "✅"
             else:
                 call_icon = "⏳"
@@ -202,6 +202,8 @@ def fetch_players_by_invoice_status_sync(status: str):
                     urgent_icon = "⚠️"
                 elif payment_status == "paid" and video.status != "delivered":
                     urgent_icon = "🔥"
+            elif video.status == 'delivered':
+                    urgent_icon = "✅"
             else : 
                 urgent_icon = "🎬"
             # Formatting output
