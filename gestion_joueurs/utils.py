@@ -119,9 +119,10 @@ async def search_players(partial_name: str):
 
 
 def fetch_videos_by_deadline_sync(deadline_filter: str):
-    """Fetch videos based on deadline filters."""
+    """Fetch videos based on deadline filters, including payment status, editor, and video status icons."""
     try:
         today = datetime.now().date()
+
         # Filtering by deadline and excluding 'delivered' and 'problematic' status
         if deadline_filter == 'past':
             videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic'])
@@ -142,7 +143,31 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
         else:
             return ["Invalid deadline filter"]
 
-        return [f"{video.player.name} - {video.deadline}" for video in videos] if videos else ["No videos found for this period."]
+        result = []
+        for video in videos:
+            # Payment status icons
+            payment_icon = {
+                "not_paid": "❌",
+                "partially_paid": "❌⚠️",
+                "paid": "✅"
+            }.get(video.salary_paid_status, "❓")
+
+            # Video status icons
+            status_icon = {
+                "pending": "😴",
+                "in_progress": "🎬",
+                "completed_collab": "🏁🧑‍💻",
+                "completed": "🏁",
+                "delivered": "✅"
+            }.get(video.status, "❓")
+
+            editor_name = video.editor.user.username if video.editor else "Unknown Editor"
+            deadline_formatted = video.deadline.strftime("%d-%m-%Y")
+
+            video_info = f"{status_icon}{video.player.name}|{editor_name}|{deadline_formatted}|💰{payment_icon}"
+            result.append(video_info)
+
+        return result if result else ["No videos found for this period."]
     
     except Exception as e:
         return [f"Error fetching videos: {str(e)}"]

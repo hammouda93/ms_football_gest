@@ -217,7 +217,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
 
     if text == "workflow":
-        keyboard = [["A week ago"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
+        keyboard = [["past"], ["Today"], ["In three days"], ["In a week"], ["In two weeks"], ["In a month"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text("Select a deadline period:", reply_markup=reply_markup)
         return
