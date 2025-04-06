@@ -290,18 +290,19 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         logger.info(f"Current video status for {player_name}: {video_status}")
 
-        # Display current status and options
-        await update.message.reply_text(f"Le statut actuel de la vidéo est : {video_status}")
-        logger.info(f"We are in signals")
+        
         # Define status with corresponding icons
         status_icons = {
-            "Pending": "⏳",
-            "In_Progress": "🚧",
-            "Completed_Collab": "🤝",
-            "Completed": "✅",
-            "Delivered": "📦",
+            "Pending": "😴",
+            "In_Progress": "🎬",
+            "Completed_Collab": "🏁🧑‍💻",
+            "Completed": "🏁",
+            "Delivered": "✅",
         }
-
+        # Get the icon for the current status (default to a generic icon if not found)
+        icone_status = status_icons.get(video_status.lower(), "❓")
+        # Display current status and options
+        await update.message.reply_text(f"Le statut actuel de la vidéo est : {icone_status}{video_status}")
         # Create the keyboard with icons
         status_options = [[f"{icon} {status}"] for status, icon in status_icons.items()]
         reply_markup = ReplyKeyboardMarkup(status_options, one_time_keyboard=True, resize_keyboard=True)

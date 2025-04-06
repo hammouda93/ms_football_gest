@@ -288,7 +288,7 @@ def fetch_payment_details_sync(player_name: str):
 
         # Payment status icon
         payment_status_icons = {
-            "not_paid": "❌",
+            "unpaid": "❌",
             "partially_paid": "❌⚠️",
             "paid": "✅"
         }
@@ -305,14 +305,23 @@ def fetch_payment_details_sync(player_name: str):
         status_icon = video_status_icons.get(video_status, "❓")
         logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
         # Delivery date (if delivered) or Deadline (if not delivered)
+        today = datetime.now().date()
         if video_status == "delivered":
             delivery_date = video.status_history.filter(status="delivered").order_by("-changed_at").first()
             date_info = f"📅 Delivered on {delivery_date.changed_at.strftime('%d-%m-%Y')}" if delivery_date else "📅 Delivery date unknown"
         else:
-            date_info = f"⏳ Deadline: {video.deadline.strftime('%d-%m-%Y')}" if video.deadline else "⏳ No deadline set"
-        response = (f"{player.name} paid {amount_paid} of {total_amount} {paid_icon}: "
-                    f"the video is {invoice.status}. ({status_icon} {video_status})\n"
-                    f"🎬 Editor: {editor_name} | {date_info}")        
+            if video.deadline:
+                if video.deadline < today:  
+                    date_info = f"⏳❗ Past Deadline: {video.deadline.strftime('%d-%m-%Y')}"  # Past deadline  
+                elif today <= video.deadline <= (today + timedelta(days=3)):  
+                    date_info = f"⏳ Urgent: {video.deadline.strftime('%d-%m-%Y')}"  # Within 3 days  
+                else:  
+                    date_info = f"📆 Scheduled: {video.deadline.strftime('%d-%m-%Y')}"  # More than 3 days away  
+            else:
+                date_info = "⏳ No deadline set"
+                response = (f" {paid_icon}{player.name} paid {amount_paid} of {total_amount}: "
+                    f"the video is{video_status} {status_icon}\n"
+                    f"🎥 Edited By {editor_name} | {date_info}")        
         return response, player.id, video_status,player.name
 
     except Player.DoesNotExist:
@@ -452,7 +461,21 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
                 )
 
         logger.info(f"Video status updated to {new_status}")
-        return f"✅ Le statut de la vidéo de {player.name} a été mis à jour en '{new_status}'."
+        # Define status icons
+        status_icons = {
+            "pending": "😴",
+            "in_progress": "🎬",
+            "completed_collab": "🏁🧑‍💻",
+            "completed": "🏁",
+            "delivered": "✅",
+        }
+
+        # Get icons for old and new statuses
+        old_status_icon = status_icons.get(video.status, "❓")
+        new_status_icon = status_icons.get(new_status, "❓")
+
+        # Return message with icons
+        return f"✅ Le statut de la vidéo de {player.name} a été mis à jour de {old_status_icon} {video.status} en {new_status_icon} '{new_status}'."
     
     except Player.DoesNotExist:
         logger.error(f"Player {player_name} not found.")
