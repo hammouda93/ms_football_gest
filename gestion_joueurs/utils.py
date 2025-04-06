@@ -152,10 +152,10 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
         for video in videos:
             # Payment status icons
             payment_icon = {
-                "not_paid": "❌",
+                "unpaid": "❌",
                 "partially_paid": "❌⚠️",
                 "paid": "✅"
-            }.get(video.salary_paid_status, "❓")
+            }.get(video.invoices.status, "❓")
 
             # Video status icons
             status_icon = {
@@ -229,13 +229,18 @@ def fetch_players_by_invoice_status_sync(status: str):
             urgent_icon = "🎬"  # Default icon
             if video.status == "delivered":
                 urgent_icon = "✅"  # Delivered videos get a checkmark
-            if video.status == "pending":
-                urgent_icon = "😴"     
+            elif video.status == "pending":
+                urgent_icon = "😴"  # Pending videos (waiting to start)
+            elif video.status == "completed":
+                urgent_icon = "🏁"  # Completed videos
+            elif video.status == "completed_collab":
+                urgent_icon = "🏁🧑‍💻"  # Completed by collaboration
             elif deadline <= urgent_threshold or deadline < today:  # Urgent cases
                 if payment_status == "partially_paid":
-                    urgent_icon = "⚠️"  # Work needed
+                    urgent_icon += "⚠️"  # Work needed
                 elif payment_status == "paid" and video.status != "delivered":
-                    urgent_icon = "🔥"  # Priority work
+                    urgent_icon += "🔥"  # Priority work
+
             # Formatting output
             if video.status == "delivered":
                 delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
