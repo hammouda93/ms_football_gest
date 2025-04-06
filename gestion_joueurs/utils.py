@@ -262,7 +262,6 @@ async def get_players_by_invoice_status(status: str):
     return await loop.run_in_executor(None, fetch_players_by_invoice_status_sync, status)
 
 
-#Payment
 def fetch_payment_details_sync(player_name: str):
     """Synchronous function to fetch the payment details of a player."""
     try:
@@ -270,23 +269,23 @@ def fetch_payment_details_sync(player_name: str):
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
         logger.info(f"Player {player_name} found.")
 
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the latest video linked to the player
         if not video:
             logger.warning(f"No video found for player {player_name}.")
             return f"No video found for player {player_name}."
         
         video_status = video.status
-        editor_name = video.editor.user.username if video.editor else "Unknown"  # Get editor's name
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
         
         if not invoice:
             logger.warning(f"No invoice found for player {player_name}'s video.")
             return f"No invoice found for {player_name}'s video."
-        # Convert amount to integer (remove decimals)
+        
+        # Convert amounts to integers
         amount_paid = int(invoice.amount_paid)
         total_amount = int(invoice.total_amount)
 
-        # Payment status icon
+        # Payment status icons
         payment_status_icons = {
             "unpaid": "❌",
             "partially_paid": "❌⚠️",
@@ -294,7 +293,7 @@ def fetch_payment_details_sync(player_name: str):
         }
         paid_icon = payment_status_icons.get(invoice.status, "❓")
 
-        # Video status icon
+        # Video status icons
         video_status_icons = {
             "pending": "😴",
             "in_progress": "🎬",
@@ -303,8 +302,11 @@ def fetch_payment_details_sync(player_name: str):
             "delivered": "✅"
         }
         status_icon = video_status_icons.get(video_status, "❓")
-        logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
-        # Delivery date (if delivered) or Deadline (if not delivered)
+
+        # Get editor's name
+        editor_name = video.editor.user.username if video.editor else "Unknown"
+
+        # Delivery date or Deadline
         today = datetime.now().date()
         if video_status == "delivered":
             delivery_date = video.status_history.filter(status="delivered").order_by("-changed_at").first()
@@ -319,11 +321,16 @@ def fetch_payment_details_sync(player_name: str):
                     date_info = f"📆 Scheduled: {video.deadline.strftime('%d-%m-%Y')}"  # More than 3 days away  
             else:
                 date_info = "⏳ No deadline set"
-                response = ''
-                response = (f" {paid_icon}{player.name} paid {amount_paid} of {total_amount}: "
-                    f"the video is{video_status} {status_icon}\n"
-                    f"🎥 Edited By {editor_name} | {date_info}")        
-        return response, player.id, video_status,player.name
+
+        # Build response message
+        response = (
+            f"{paid_icon} {player.name} paid {amount_paid} of {total_amount}.\n"
+            f"🎥 Video Status: {video_status} {status_icon}\n"
+            f"✏️ Edited by: {editor_name}\n"
+            f"{date_info}"
+        )
+
+        return response, player.id, video_status, player.name
 
     except Player.DoesNotExist:
         logger.error(f"Player {player_name} not found.")
@@ -336,6 +343,49 @@ async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
+
+
+
+
+""" #Payment
+def fetch_payment_details_sync(player_name: str):
+    """Synchronous function to fetch the payment details of a player."""
+    try:
+        logger.info(f"Fetching payment details for player: {player_name}")
+        player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
+        logger.info(f"Player {player_name} found.")
+
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
+        if not video:
+            logger.warning(f"No video found for player {player_name}.")
+            return f"No video found for player {player_name}."
+        
+        video_status = video.status
+        invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
+        
+        if not invoice:
+            logger.warning(f"No invoice found for player {player_name}'s video.")
+            return f"No invoice found for {player_name}'s video."
+        
+        logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
+        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}. (status: {video_status})"
+        
+        return response, player.id, video_status,player.name
+
+    except Player.DoesNotExist:
+        logger.error(f"Player {player_name} not found.")
+        return "❌ Joueur introuvable.", None, None, None
+    except Exception as e:
+        logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
+        return f"Error fetching payment details: {str(e)}", None, None, None """
+
+
+
+
+
+
+
+
 
 def process_payment_sync(player_id: int, amount: float, payment_method: str, user: int):
     """Synchronous function to process payment and update the invoice."""
