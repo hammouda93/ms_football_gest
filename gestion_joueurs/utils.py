@@ -125,10 +125,10 @@ def fetch_videos_by_deadline_sync(deadline_filter: str):
 
         # Filtering by deadline and excluding 'delivered' and 'problematic' status
         if deadline_filter == 'past':
-            videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("-deadline")
+            videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == '3_days_ago':
             three_days_ago = today - timedelta(days=3)
-            videos = Video.objects.filter(deadline__gte=three_days_ago,deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("-deadline")
+            videos = Video.objects.filter(deadline__gte=three_days_ago,deadline__lt=today).exclude(status__in=['delivered', 'problematic']).order_by("deadline")
         elif deadline_filter == 'today':
             videos = Video.objects.filter(deadline=today).exclude(status__in=['delivered', 'problematic'])
         elif deadline_filter == '3_days':
@@ -276,15 +276,43 @@ def fetch_payment_details_sync(player_name: str):
             return f"No video found for player {player_name}."
         
         video_status = video.status
+        editor_name = video.editor.user.username if video.editor else "Unknown"  # Get editor's name
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
         
         if not invoice:
             logger.warning(f"No invoice found for player {player_name}'s video.")
             return f"No invoice found for {player_name}'s video."
-        
+        # Convert amount to integer (remove decimals)
+        amount_paid = int(invoice.amount_paid)
+        total_amount = int(invoice.total_amount)
+
+        # Payment status icon
+        payment_status_icons = {
+            "not_paid": "❌",
+            "partially_paid": "❌⚠️",
+            "paid": "✅"
+        }
+        paid_icon = payment_status_icons.get(invoice.status, "❓")
+
+        # Video status icon
+        video_status_icons = {
+            "pending": "😴",
+            "in_progress": "🎬",
+            "completed_collab": "🏁🧑‍💻",
+            "completed": "🏁",
+            "delivered": "✅"
+        }
+        status_icon = video_status_icons.get(video_status, "❓")
         logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
-        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}. (status: {video_status})"
-        
+        # Delivery date (if delivered) or Deadline (if not delivered)
+        if video_status == "delivered":
+            delivery_date = video.status_history.filter(status="delivered").order_by("-changed_at").first()
+            date_info = f"📅 Delivered on {delivery_date.changed_at.strftime('%d-%m-%Y')}" if delivery_date else "📅 Delivery date unknown"
+        else:
+            date_info = f"⏳ Deadline: {video.deadline.strftime('%d-%m-%Y')}" if video.deadline else "⏳ No deadline set"
+        response = (f"{player.name} paid {amount_paid} of {total_amount} {paid_icon}: "
+                    f"the video is {invoice.status}. ({status_icon} {video_status})\n"
+                    f"🎬 Editor: {editor_name} | {date_info}")        
         return response, player.id, video_status,player.name
 
     except Player.DoesNotExist:
