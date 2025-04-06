@@ -48,21 +48,37 @@ def should_process_signals():
 
 
 def fetch_players_sync(status: str):
-    """Synchronous function to fetch players by video status."""
+    """Synchronous function to fetch players by video status with additional details."""
     try:
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
 
         videos = list(Video.objects.filter(status=normalized_status))
-        players = [video.player.name for video in videos]
 
-        logger.info(f"Players found: {players}" if players else f"No players found for this status '{normalized_status}'.")
+        result = []
+        for video in videos:
+            editor_name = video.editor.user.username  # Get the editor's name
+            payment_status_icon = {
+                "not_paid": "❌ Not Paid",
+                "partially_paid": "⚠️ Partially Paid",
+                "paid": "✅ Paid"
+            }.get(video.salary_paid_status, "Unknown")
 
-        return players if players else [f"No players found for status '{normalized_status}'."]
+            if normalized_status == "delivered":
+                # Fetch the latest delivery date
+                delivery_entry = video.status_history.filter(status="delivered").order_by("-changed_at").first()
+                delivery_date = delivery_entry.changed_at.strftime("%Y-%m-%d") if delivery_entry else "Unknown"
+                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | 📅 Delivered: {delivery_date} | 💰 {payment_status_icon}"
+            else:
+                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | ⏳ Deadline: {video.deadline} | 💰 {payment_status_icon}"
+
+            result.append(info)
+
+        return result if result else [f"No videos found for status '{normalized_status}'."]
 
     except Exception as e:
-        logger.error(f"Error fetching players: {e}")
-        return [f"Error fetching players: {str(e)}"]
+        logger.error(f"Error fetching videos: {e}")
+        return [f"Error fetching videos: {str(e)}"]
 
 async def get_players_by_status(status: str):
     """Run the synchronous fetch_players_sync function in a separate thread."""

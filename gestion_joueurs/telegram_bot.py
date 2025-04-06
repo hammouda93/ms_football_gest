@@ -210,8 +210,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
     if text in status_mapping:
         status = status_mapping[text]
-        players = await get_players_by_status(status)
-        response = "\n".join(players) if players else f"No players found for status '{text}'."
+        video_details = await get_players_by_status(status)
+        response = "\n".join(video_details) if video_details else f"No players found for status '{text}'."
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
@@ -478,7 +478,7 @@ async def process_voice(update: Update, context: CallbackContext):
                 if any(keyword in fr_text for keyword in ["facture", "dinar", "dinars", "cash", "poste", "virement"]):
                     text = fr_text
                     logger.info(f"Detected French input: {text}")
-
+                
             except sr.UnknownValueError:
                 logger.error("Could not recognize speech in either language.")
                 await update.message.reply_text("Désolé, je n'ai pas compris le message vocal.")
