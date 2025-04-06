@@ -31,14 +31,14 @@ async def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
     await update.message.reply_text(
-        "Welcome! Please choose an option:\n\n"
-        "🎥 *Video Status*: Check the status of players' videos.\n"
-        "💰 *Payment Status*: Check payment status (Paid, Unpaid, Partially Paid).\n"
-        "➕💰 *Player Invoice*: Check a player's payment details (eg: richard facture).\n"
-        "📋 *Workflow*: Check what do you have on the list.\n\n"
-        "Simply type or send a voice message with your choice!",
-        reply_markup=reply_markup,
-    )
+    "🎉 مرحبا بيك ! اختار حاجة من القائمة:\n\n"
+    "1️⃣ 📋 *Workflow*: شنوة عندنا اليوم؟\n"
+    "2️⃣ ➕💰 *(مثال: richard facture)*: باش تشوف تفاصيل خلاص أي لاعب، و إلا تبدل حالة الفيديو.\n"
+    "3️⃣ 💰 *Payment Status*: نعطيك الفيديوات حسب إذا كانوا خالصين و إلا لا (خالص✅، موش خالص❌، خالص شويّة❌⚠️).\n"
+    "4️⃣ 🎥 *Video Status*: نعطيك الفيديوات حسب حالتهم (يستنا😴، في التعديل🎬، كمل🏁، تسلّم✅...).\n\n"
+    "📢 بعثلي كلمة ولا ڨولها بصوتك باش تختار! 😉",
+    reply_markup=reply_markup,
+)
 
 # Function to generate and send voice response
 async def send_voice_response(update: Update, response: str):
