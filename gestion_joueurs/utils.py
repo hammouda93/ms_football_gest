@@ -196,16 +196,14 @@ def fetch_players_by_invoice_status_sync(status: str):
             else:
                 call_icon = "⏳"
             # Urgency-based icons
-            urgent_icon = ""
-            if (deadline <= urgent_threshold or deadline < today):
+            urgent_icon = "🎬"  # Default icon
+            if video.status == "delivered":
+                urgent_icon = "✅"  # Delivered videos get a checkmark
+            elif deadline <= urgent_threshold or deadline < today:  # Urgent cases
                 if payment_status == "partially_paid":
-                    urgent_icon = "⚠️"
+                    urgent_icon = "⚠️"  # Work needed
                 elif payment_status == "paid" and video.status != "delivered":
-                    urgent_icon = "🔥"
-            elif video.status == 'delivered':
-                    urgent_icon = "✅"
-            else : 
-                urgent_icon = "🎬"
+                    urgent_icon = "🔥"  # Priority work
             # Formatting output
             if video.status == "delivered":
                 delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
