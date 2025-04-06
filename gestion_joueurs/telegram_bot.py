@@ -100,7 +100,7 @@ async def process_request(text: str) -> str:
             logger.info(f"Fetching payment details for player: {player_name}")
             response = await get_payment_details(player_name)
 
-        return response if response else ""
+        return response if response else "No relevant data found."
 
     except Exception as e:
         logger.error(f"Error processing request: {e}")
@@ -337,9 +337,9 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Reset state
         context.user_data["awaiting_status_change"] = False
 
-
-    response = await process_request(text)
-    await update.message.reply_text(response)
+    if text.lower() in ["video status", "player invoice", "workflow", "payment status"] or "facture" in text:
+        response = await process_request(text)
+        await update.message.reply_text(response)
     await send_voice_response(update, response)
 
 async def handle_payment_input(update: Update, context: CallbackContext,text: str = None):
