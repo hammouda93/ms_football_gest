@@ -306,6 +306,7 @@ def fetch_payment_details_sync(player_name: str):
         logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
         # Delivery date (if delivered) or Deadline (if not delivered)
         today = datetime.now().date()
+        response = ''
         if video_status == "delivered":
             delivery_date = video.status_history.filter(status="delivered").order_by("-changed_at").first()
             date_info = f"📅 Delivered on {delivery_date.changed_at.strftime('%d-%m-%Y')}" if delivery_date else "📅 Delivery date unknown"
