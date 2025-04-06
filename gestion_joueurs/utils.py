@@ -53,13 +53,20 @@ def fetch_players_sync(status: str):
         logger.info(f"Fetching players for status: {status}")
         normalized_status = status.strip().lower().replace(" ", "_")
 
-        videos = list(Video.objects.filter(status=normalized_status))
+        if normalized_status == "delivered":
+            # Sort by most recent delivery date
+            videos = list(Video.objects.filter(status="delivered").order_by(
+                "-status_history__changed_at"
+            ))
+        else:
+            # Sort by nearest deadline first
+            videos = list(Video.objects.filter(status=normalized_status).order_by("deadline"))
 
         result = []
         for video in videos:
             editor_name = video.editor.user.username  # Get the editor's name
             payment_status_icon = {
-                "not_paid": "❌",
+                "unpaid": "❌",
                 "partially_paid": "❌⚠️",
                 "paid": "✅"
             }.get(video.invoices.status, "Unknown")
@@ -68,9 +75,9 @@ def fetch_players_sync(status: str):
                 # Fetch the latest delivery date
                 delivery_entry = video.status_history.filter(status="delivered").order_by("-changed_at").first()
                 delivery_date = delivery_entry.changed_at.strftime("%Y-%m-%d") if delivery_entry else "Unknown"
-                info = f"{payment_status_icon}{video.player.name}|✏️{editor_name}|📅{delivery_date}"
+                info = f"{payment_status_icon}{video.player.name}|{delivery_date}|{editor_name}"
             else:
-                info = f"{payment_status_icon}{video.player.name}|✏️{editor_name}|⏳{video.deadline}"
+                info = f"{payment_status_icon}{video.player.name}|{video.deadline}|{editor_name}"
 
             result.append(info)
 
