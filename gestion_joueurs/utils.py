@@ -59,18 +59,18 @@ def fetch_players_sync(status: str):
         for video in videos:
             editor_name = video.editor.user.username  # Get the editor's name
             payment_status_icon = {
-                "not_paid": "❌ Not Paid",
-                "partially_paid": "⚠️ Partially Paid",
-                "paid": "✅ Paid"
-            }.get(video.salary_paid_status, "Unknown")
+                "not_paid": "❌",
+                "partially_paid": "❌⚠️",
+                "paid": "✅"
+            }.get(video.invoices.status, "Unknown")
 
             if normalized_status == "delivered":
                 # Fetch the latest delivery date
                 delivery_entry = video.status_history.filter(status="delivered").order_by("-changed_at").first()
                 delivery_date = delivery_entry.changed_at.strftime("%Y-%m-%d") if delivery_entry else "Unknown"
-                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | 📅 Delivered: {delivery_date} | 💰 {payment_status_icon}"
+                info = f"{payment_status_icon}{video.player.name}|✏️{editor_name}|📅{delivery_date}"
             else:
-                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | ⏳ Deadline: {video.deadline} | 💰 {payment_status_icon}"
+                info = f"{payment_status_icon}{video.player.name}|✏️{editor_name}|⏳{video.deadline}"
 
             result.append(info)
 
