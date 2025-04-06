@@ -171,7 +171,11 @@ def fetch_players_by_invoice_status_sync(status: str):
         delivered_videos = videos.filter(status="delivered").order_by("-delivery_date")
         non_delivered_videos = videos.exclude(status="delivered").order_by("deadline")
 
-        sorted_videos = list(delivered_videos) + list(non_delivered_videos)
+        # If paid, show non-delivered first, otherwise delivered first
+        if status == "paid":
+            sorted_videos = list(non_delivered_videos) + list(delivered_videos)
+        else:
+            sorted_videos = list(delivered_videos) + list(non_delivered_videos)
 
         result = []
         today = date.today()
@@ -186,25 +190,26 @@ def fetch_players_by_invoice_status_sync(status: str):
             if payment_status in ["not_paid", "partially_paid"] and video.status in [
                 "in_progress", "completed_collab", "completed", "delivered"
             ]:
-                call_icon = "☎️ Call"
+                call_icon = "☎️"
             else:
-                call_icon = "⏳ Still Time"
+                call_icon = "⏳"
 
             # Urgency-based icons
             urgent_icon = ""
             if deadline and deadline <= urgent_threshold:
                 if payment_status == "partially_paid":
-                    urgent_icon = "⚠️ Work Needed"
+                    urgent_icon = "⚠️"
                 elif payment_status == "paid" and video.status != "delivered":
-                    urgent_icon = "🔥 Priority Work"
-
+                    urgent_icon = "🔥"
+            else : 
+                urgent_icon = "🎬"
             # Formatting output
             if video.status == "delivered":
                 delivery_date = video.delivery_date.strftime("%d-%m-%Y") if video.delivery_date else "Unknown"
-                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | 📅 Delivered: {delivery_date} | 💰 {call_icon} {urgent_icon}"
+                info = f"{urgent_icon}{video.player.name}|{editor_name}|{delivery_date}|💰{call_icon}"
             else:
                 formatted_deadline = deadline.strftime("%d-%m-%Y") if deadline else "Unknown"
-                info = f"🎬 {video.player.name} | ✏️ Editor: {editor_name} | ⏳ Deadline: {formatted_deadline} | 💰 {call_icon} {urgent_icon}"
+                info = f"{urgent_icon}{video.player.name}|{editor_name}|{formatted_deadline}|💰{call_icon}"
 
             result.append(info.strip())
 
