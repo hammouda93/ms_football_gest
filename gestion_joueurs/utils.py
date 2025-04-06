@@ -349,7 +349,6 @@ async def get_payment_details(player_name: str):
 
 """ #Payment
 def fetch_payment_details_sync(player_name: str):
-    """Synchronous function to fetch the payment details of a player."""
     try:
         logger.info(f"Fetching payment details for player: {player_name}")
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
