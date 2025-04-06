@@ -199,6 +199,8 @@ def fetch_players_by_invoice_status_sync(status: str):
             urgent_icon = "🎬"  # Default icon
             if video.status == "delivered":
                 urgent_icon = "✅"  # Delivered videos get a checkmark
+            if video.status == "pending":
+                urgent_icon = "😴"     
             elif deadline <= urgent_threshold or deadline < today:  # Urgent cases
                 if payment_status == "partially_paid":
                     urgent_icon = "⚠️"  # Work needed
