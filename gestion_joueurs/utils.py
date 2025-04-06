@@ -78,7 +78,8 @@ def fetch_players_sync(status: str):
 
             if normalized_status == "delivered":
                 # Fetch the latest delivery date
-                info = f"{payment_status_icon}{video.player.name}|{video.delivery_date.strftime("%d-%m-%Y")}|{editor_name}"
+                delivery_date = video.delivery_date.strftime('%d-%m-%Y'
+                info = f"{payment_status_icon}{video.player.name}|{delivery_date}|{editor_name}"
             else:
                 deadline = video.deadline.strftime("%d-%m-%Y")
                 info = f"{payment_status_icon}{video.player.name}|{deadline}|{editor_name}"
