@@ -187,7 +187,7 @@ def fetch_players_by_invoice_status_sync(status: str):
             deadline = video.deadline if video.deadline else None
 
             # Default icon logic
-            if payment_status in ["not_paid", "partially_paid"] and video.status in [
+            if payment_status in ["unpaid", "partially_paid"] and video.status in [
                 "in_progress", "completed_collab", "completed", "delivered"
             ]:
                 call_icon = "☎️"
