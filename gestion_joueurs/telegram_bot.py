@@ -245,7 +245,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await send_voice_response(update, response)
         return
 
-        # Invoice Request
+    # Invoice Request
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -255,61 +255,31 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            player = possible_players[0]
-            videos = await get_videos_for_player(player)
+            response, player_id, video_status,player, editor_name = await get_payment_details(possible_players[0])
 
-            if not videos:
-                await update.message.reply_text(f"No videos found for {player}.")
+            if not player_id:
+                await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
 
+            # Store selected player ID
             context.user_data["selected_player"] = player
+            context.user_data["selected_player_id"] = player_id
+            context.user_data["video_status"] = video_status  # Store current video status
 
-            if len(videos) == 1:
-                # Only one video, proceed directly
-                selected_video = videos[0]
-                await process_selected_video(update, context, selected_video, bot_user_id)
-            else:
-                # Multiple videos, show selection keyboard
-                keyboard = [[str(video)] for video in videos]
-                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-                await update.message.reply_text("Multiple videos found. Please select one:", reply_markup=reply_markup)
+            logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-                # Store state to track user selection
-                context.user_data["awaiting_video_selection"] = True
-                context.user_data["available_videos"] = videos
+            # Display payment options
+            keyboard = [["Paiement"], ["Status"], ["Editor"], ["Menu"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text(response)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
 
         else:
-            # Multiple players found, let the user select
+            pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
+            await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)    
 
-            # Store state to track user selection
-            context.user_data["awaiting_player_selection"] = True
-            context.user_data["available_players"] = possible_players
-        return
-
-    # Handle video selection
-    if context.user_data.get("awaiting_video_selection"):
-        selected_video_title = text.strip()
-        available_videos = context.user_data.get("available_videos", [])
-
-        # Find the selected video
-        selected_video = next(
-            (video for video in available_videos if str(video).strip().lower() == selected_video_title.strip().lower()), 
-            None
-        )
-
-        if not selected_video:
-            await update.message.reply_text("❌ Invalid video selected. Please try again.")
-            return
-
-        await process_selected_video(update, context, selected_video, bot_user_id)
-
-        # Reset state
-        context.user_data["awaiting_video_selection"] = False
-        context.user_data["available_videos"] = []
-        return
     
     if text == "status":
         logger.info("User selected 'Changer le statut'. Fetching video status...")
