@@ -164,25 +164,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
 
-    # Handle video selection
-    if "pending_video_selection" in context.user_data:
-        selected_video = next((v for v in context.user_data["pending_video_selection"] if text in f"{v['club']} {v['season']} - {v['status']}"), None)
-
-        if not selected_video:
-            await update.message.reply_text("Invalid selection. Please try again.")
-            return
-
-        # Remove pending selection after choosing
-        del context.user_data["pending_video_selection"]
-    
-        video_id = selected_video["id"]
-        selected_player = context.user_data["selected_player"]
-
-        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
-        await update.message.reply_text(response)
-
-        return
-
     # Handle invoice request
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
@@ -231,7 +212,34 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
 
         return
+    
+    # Handle video selection
+    if "pending_video_selection" in context.user_data:
+        logger.info(f"User selected video: {text}")
+    
+        selected_video = next((v for v in context.user_data["pending_video_selection"] 
+                           if text in f"{v['club']} {v['season']} - {v['status']}"), None)
 
+        if not selected_video:
+            await update.message.reply_text("Invalid selection. Please try again.")
+            return
+
+        # Remove pending selection after choosing
+        del context.user_data["pending_video_selection"]
+
+        video_id = selected_video["id"]
+        selected_player = context.user_data["selected_player"]
+
+        logger.info(f"Fetching details for player: {selected_player}, Video ID: {video_id}")
+
+        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
+    
+        if response:
+            await update.message.reply_text(response)
+        else:
+            await update.message.reply_text("❌ Error retrieving video details.")
+
+        return
 
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):

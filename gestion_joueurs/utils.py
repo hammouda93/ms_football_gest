@@ -285,8 +285,10 @@ def fetch_payment_details_sync(player_name: str,video_id: int = None):
 
         if video_id:
             video = Video.objects.filter(id=video_id).first()
+            logger.info(f"Fetching video with ID: {video_id}")
         else:
             video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+            logger.info(f"Fetching latest video for {player_name}")
 
         if not video:
             logger.warning(f"No video found for player {player_name}.")
