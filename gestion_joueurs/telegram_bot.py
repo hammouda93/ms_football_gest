@@ -306,6 +306,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Reset state
         context.user_data["awaiting_video_selection"] = False
         context.user_data["available_videos"] = []
+        return
     
     if text == "status":
         logger.info("User selected 'Changer le statut'. Fetching video status...")
