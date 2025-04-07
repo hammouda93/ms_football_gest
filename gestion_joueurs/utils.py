@@ -278,6 +278,7 @@ async def get_players_by_invoice_status(status: str):
 
 def fetch_payment_details_sync(player_name: str,video_id: int = None):
     """Synchronous function to fetch the payment details of a player."""
+    logger.info(f"🛠️ Inside fetch_payment_details_sync with player: {player_name}, Video ID: {video_id}")
     try:
         logger.info(f"Fetching payment details for player: {player_name}")
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
@@ -363,7 +364,7 @@ async def get_payment_details(player_name: str,video_id: int = None):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
     logger.info(f"🔍 Calling fetch_payment_details_sync with player: {player_name}, Video ID: {video_id}")
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
+    return await loop.run_in_executor(None, fetch_payment_details_sync, player_name,video_id)
 
 
 

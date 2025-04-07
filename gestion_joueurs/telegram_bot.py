@@ -164,7 +164,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if user_id in pending_player_selections:
         selected_player = text
         del pending_player_selections[user_id]
-
+        logger.warning("executing get_payement_details in handle player selection")
         response, player_id, video_status, player, editor_name = await get_payment_details(selected_player)
 
         if not player_id:
