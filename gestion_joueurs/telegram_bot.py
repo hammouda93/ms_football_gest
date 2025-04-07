@@ -193,15 +193,31 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
                 await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
 
-            context.user_data["selected_player"] = player
+            context.user_data["selected_player"] = selected_player
             context.user_data["selected_player_id"] = player_id
             context.user_data["video_status"] = video_status
 
-            keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text(response)
-            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-            await send_voice_response(update, response)
+            # Fetch videos of player
+            videos = await search_video_for_player(player_id)
+        
+            if not videos:
+                await update.message.reply_text(f"No videos found for {selected_player}.")
+                return
+
+            if len(videos) == 1:
+                # If only one video, proceed as before
+                response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, videos[0]['id'])
+                keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
+                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text(response)
+                await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+                await send_voice_response(update, response)
+            else:
+                # Multiple videos: let user pick one
+                context.user_data["pending_video_selection"] = videos
+                keyboard = [[f"{v['club']} {v['season']} - {v['status']}"] for v in videos]
+                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text("Select a video:", reply_markup=reply_markup)
         else:
             pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
