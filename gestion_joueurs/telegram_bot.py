@@ -29,7 +29,7 @@ async def start(update: Update, context: CallbackContext):
     """Send a welcome message with two choices."""
     keyboard = [["Workflow"], ["Player Invoice"], ["Payment Status"],["Video Status"] ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-
+    
     await update.message.reply_text(
     "🎉 مرحبا بيك ! اختار حاجة من القائمة:\n\n"
     "1️⃣ 📋 *Workflow*\n"
@@ -116,6 +116,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
     bot_user_id = update.effective_user.id
+    response = "..."
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
 
     # Handle player selection
