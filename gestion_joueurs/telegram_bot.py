@@ -127,7 +127,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         context.user_data["selected_player_id"] = player_id
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-        keyboard = [["Paiement"], ["Status"], ["Menu"]]
+        keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
         await update.message.reply_text(response)
