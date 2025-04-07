@@ -357,7 +357,7 @@ def fetch_payment_details_sync(player_name: str,video_id: int = None):
         logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
         return f"Error fetching payment details: {str(e)}", None, None, None, None
 
-async def get_payment_details(player_name: str):
+async def get_payment_details(player_name: str,video_id: int = None):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
