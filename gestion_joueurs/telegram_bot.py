@@ -124,7 +124,38 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         context.user_data.clear()
         await start(update, context)
         return
+    # Handle video selection
+    if context.user_data.get("pending_video_selection"):
+        logger.info(f"User selected video: {text}")
+        selected_player = context.user_data.get("selected_player")
+        for v in context.user_data["pending_video_selection"]:
+            expected_format = f"{v['club']} {v['season']} - {v['status']}".strip().lower()
+            logger.info(f"Comparing with: {expected_format}")
+
+        selected_video = next((v for v in context.user_data["pending_video_selection"]
+                       if text.strip().lower() == f"{v['club']} {v['season']} - {v['status']}".strip().lower()), None)
+
+        if not selected_video:
+            logger.warning("❌ No match found for selected video!")
+        else:
+            logger.info(f"✅ Selected Video ID: {selected_video['id']}")
+
+        # Remove pending selection after choosing
+        del context.user_data["pending_video_selection"]
+
+        video_id = selected_video["id"]
+        selected_player = context.user_data["selected_player"]
+
+        logger.info(f"Fetching details for player: {selected_player}, Video ID: {video_id}")
+
+        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
     
+        if response:
+            await update.message.reply_text(response)
+        else:
+            await update.message.reply_text("❌ Error retrieving video details.")
+
+        return
     # Handle player selection
     if user_id in pending_player_selections:
         selected_player = text
@@ -213,38 +244,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
     
-    # Handle video selection
-    if context.user_data.get("pending_video_selection"):
-        logger.info(f"User selected video: {text}")
-        selected_player = context.user_data.get("selected_player")
-        for v in context.user_data["pending_video_selection"]:
-            expected_format = f"{v['club']} {v['season']} - {v['status']}".strip().lower()
-            logger.info(f"Comparing with: {expected_format}")
-
-        selected_video = next((v for v in context.user_data["pending_video_selection"]
-                       if text.strip().lower() == f"{v['club']} {v['season']} - {v['status']}".strip().lower()), None)
-
-        if not selected_video:
-            logger.warning("❌ No match found for selected video!")
-        else:
-            logger.info(f"✅ Selected Video ID: {selected_video['id']}")
-
-        # Remove pending selection after choosing
-        del context.user_data["pending_video_selection"]
-
-        video_id = selected_video["id"]
-        selected_player = context.user_data["selected_player"]
-
-        logger.info(f"Fetching details for player: {selected_player}, Video ID: {video_id}")
-
-        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
-    
-        if response:
-            await update.message.reply_text(response)
-        else:
-            await update.message.reply_text("❌ Error retrieving video details.")
-
-        return
 
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
