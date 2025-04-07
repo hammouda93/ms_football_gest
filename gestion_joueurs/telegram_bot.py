@@ -113,11 +113,12 @@ async def process_request(text: str) -> str:
 # Store ongoing player selections
 pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
-    """Handles both text and voice inputs by processing requests."""
+    """Handles text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
-    logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
     bot_user_id = update.effective_user.id
-    # Handle player selection first
+    logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
+
+    # Handle player selection
     if user_id in pending_player_selections:
         selected_player = text
         del pending_player_selections[user_id]
@@ -141,7 +142,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         if len(videos) == 1:
             # If only one video, proceed as before
-            response, _, _, _, _ = await get_payment_details(selected_player, videos[0]['id'])
+            response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, videos[0]['id'])
             await update.message.reply_text(response)
         else:
             # Multiple videos: let user pick one
@@ -164,7 +165,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         video_id = selected_video["id"]
         selected_player = context.user_data["selected_player"]
 
-        response, _, _, _, _ = await get_payment_details(selected_player, video_id)
+        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
         await update.message.reply_text(response)
 
         return
@@ -197,6 +198,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
 
         return
+
 
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
