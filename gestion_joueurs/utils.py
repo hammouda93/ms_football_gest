@@ -344,7 +344,20 @@ async def get_payment_details(player_name: str):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
 
+def fetch_videos_sync(player_name):
+    """Fetch all videos for the given player in a synchronous way."""
+    try:
+        player = Player.objects.get(name__iexact=player_name)
+        videos = Video.objects.filter(player=player).order_by("-video_creation_date")
 
+        return list(videos)
+    except Player.DoesNotExist:
+        return []
+    
+async def get_videos_for_player(player_name):
+    """Fetch all videos for a given player."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_videos_sync, player_name)
 
 
 """ #Payment
