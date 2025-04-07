@@ -121,7 +121,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if user_id in pending_player_selections:
         selected_player = text
         del pending_player_selections[user_id]  
-        response, player_id, video_status, player = await get_payment_details(selected_player)
+        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player)
         context.user_data["video_status"] = video_status  # Store current video status
         context.user_data["selected_player"] = selected_player
         context.user_data["selected_player_id"] = player_id
