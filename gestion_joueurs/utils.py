@@ -297,7 +297,7 @@ def fetch_payment_details_sync(player_name: str,video_id: int = None):
         
         video_status = video.status
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
-        
+        video_id = video.id
         if not invoice:
             logger.warning(f"No invoice found for player {player_name}'s video.")
             return f"No invoice found for {player_name}'s video."
@@ -351,7 +351,7 @@ def fetch_payment_details_sync(player_name: str,video_id: int = None):
             f"{date_info}"
         )
 
-        return response, player.id, video_status, player.name, editor_name
+        return response, player.id, video_status, player.name, editor_name, video_id 
 
     except Player.DoesNotExist:
         logger.error(f"Player {player_name} not found.")
@@ -368,12 +368,12 @@ async def get_payment_details(player_name: str,video_id: int = None):
 
 
 
-def process_payment_sync(player_id: int, amount: float, payment_method: str, user: int):
+def process_payment_sync(player_id: int, amount: float, payment_method: str, user: int,video_id: int = None):
     """Synchronous function to process payment and update the invoice."""
     try:
         logger.info(f"Processing payment of {amount} for player {player_id} using {payment_method}.")
         player = Player.objects.get(id=player_id)
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+        video = Video.objects.filter(id=video_id).first()
         invoice = Invoice.objects.filter(video=video).order_by("-invoice_date").first()
 
         if not invoice:
@@ -413,22 +413,22 @@ def process_payment_sync(player_id: int, amount: float, payment_method: str, use
         logger.error(f"Error processing payment for player {player_id}: {str(e)}")
         return False
 
-async def process_payment(player_id: int, amount: float, payment_method: str, user: int):
+async def process_payment(player_id: int, amount: float, payment_method: str, user: int,video_id: int = None):
     """Run the synchronous process_payment_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method, user)
+    return await loop.run_in_executor(None, process_payment_sync, player_id, amount, payment_method, user,video_id)
 
 
 
 
 
-def update_video_status_sync(player_name: str, new_status: str, user : int):
+def update_video_status_sync(player_name: str, new_status: str, user : int,video_id: int = None):
     """Synchronously update the status of the latest video for a given player."""
     try:
         logger.info(f"Updating video status for player: {player_name} to {new_status}")
         logger.info(f"Updating video by the user in utilis.py: {user}")
         player = Player.objects.get(name__iexact=player_name)
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+        video = Video.objects.filter(id=video_id).first()
 
         if not video:
             logger.warning(f"No video found for player {player_name}.")
@@ -516,10 +516,10 @@ def update_video_status_sync(player_name: str, new_status: str, user : int):
         logger.error(f"Error updating video status: {str(e)}")
         return f"Error updating video status: {str(e)}"
 
-async def update_video_status(player_name: str, new_status: str, user : int):
+async def update_video_status(player_name: str, new_status: str, user : int,video_id: int = None):
     """Run the synchronous update_video_status_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status, user)
+    return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status, user,video_id)
 
 
 
@@ -533,11 +533,11 @@ def get_available_editors_sync():
         logger.error(f"Error fetching video editors: {str(e)}")
         return []
 
-def update_video_editor_sync(player_name: str, new_editor: str, user_id: int):
+def update_video_editor_sync(player_name: str, new_editor: str, user_id: int,video_id: int = None):
     """Synchronously update the editor of the latest video for a given player."""
     try:
         player = Player.objects.get(name__iexact=player_name)
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+        video = Video.objects.filter(id=video_id).first()
 
         if not video:
             return f"❌ Aucun vidéo trouvé pour {player_name}."
@@ -565,7 +565,7 @@ async def get_available_editors():
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, get_available_editors_sync)
 
-async def update_video_editor(player_name: str, new_editor: str, user_id: int):
+async def update_video_editor(player_name: str, new_editor: str, user_id: int,video_id: int = None):
     """Run the synchronous update_video_editor_sync function in a separate thread asynchronously."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, update_video_editor_sync, player_name, new_editor, user_id)
+    return await loop.run_in_executor(None, update_video_editor_sync, player_name, new_editor, user_id,video_id)

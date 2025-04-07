@@ -165,12 +165,12 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         selected_player = text
         del pending_player_selections[user_id]
         logger.warning("executing get_payement_details in handle player selection")
-        response, player_id, video_status, player, editor_name = await get_payment_details(selected_player)
+        response, player_id, video_status, player, editor_name,video_id  = await get_payment_details(selected_player)
 
         if not player_id:
             await update.message.reply_text("❌ Player not found or has no invoice.")
             return
-
+        context.user_data["selected_video_id"] = video_id 
         context.user_data["selected_player"] = selected_player
         context.user_data["selected_player_id"] = player_id
         context.user_data["video_status"] = video_status
@@ -209,12 +209,12 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            response, player_id, video_status, player, editor_name = await get_payment_details(possible_players[0])
+            response, player_id, video_status, player, editor_name,video_id = await get_payment_details(possible_players[0])
             selected_player = possible_players[0]
             if not player_id:
                 await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
-
+            context.user_data["selected_video_id"] = video_id 
             context.user_data["selected_player"] = selected_player
             context.user_data["selected_player_id"] = player_id
             context.user_data["video_status"] = video_status
@@ -267,7 +267,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     
     # ✅ Now check "Paiement" after a player is already selected
     if text.lower() == "paiement":
-        player_id = context.user_data.get("selected_player_id")  # Get stored player_id
+        player_id = context.user_data.get("selected_player_id")
+        video_id =context.user_data["selected_video_id"]
         if player_id:
             context.user_data["awaiting_payment"] = player_id
             logger.info(f"User {user_id} selected 'Paiement' for player ID: {player_id}. Awaiting payment input.")
@@ -357,7 +358,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info("User selected 'Changer le statut'. Fetching video status...")
         player_name = context.user_data.get("selected_player")
         video_status = context.user_data.get("video_status")
-
+        video_id =context.user_data["selected_video_id"]
         if not player_name:
             logger.warning("No player selected. Cannot change status.")
             await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
@@ -390,7 +391,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if context.user_data.get("awaiting_status_change"):
         new_status_with_icon = text.strip()
         player_name = context.user_data.get("selected_player")
-
+        video_id =context.user_data["selected_video_id"]
         # Remove the icon by splitting and taking the last part
         new_status = new_status_with_icon.split(" ", 1)[-1].lower()
         player_name = context.user_data.get("selected_player")
@@ -407,7 +408,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             
         logger.info(f"Updating video by the user: {bot_user_id}")
         logger.info(f"Updating video status for {player_name} to {new_status}...")
-        update_result = await update_video_status(player_name, new_status, bot_user_id)
+        update_result = await update_video_status(player_name, new_status, bot_user_id,video_id)
 
         await update.message.reply_text(update_result)
         logger.info(f"Status update result: {update_result}")
@@ -418,7 +419,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text.lower() == "editor":
         logger.info("User selected 'Changer d'éditeur'. Fetching editor list...")
         player_name = context.user_data.get("selected_player")
-
+        video_id =context.user_data["selected_video_id"]
         if not player_name:
             logger.warning("No player selected. Cannot change editor.")
             await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
@@ -444,7 +445,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if context.user_data.get("awaiting_editor_change"):
         new_editor = text.strip()
         player_name = context.user_data.get("selected_player")
-
+        video_id =context.user_data["selected_video_id"]
         logger.info(f"User selected new editor: {new_editor} for {player_name}")
 
         # Validate editor
@@ -455,7 +456,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         logger.info(f"Updating editor for {player_name} to {new_editor}...")
-        update_result = await update_video_editor(player_name, new_editor, bot_user_id)
+        update_result = await update_video_editor(player_name, new_editor, bot_user_id,video_id)
 
         await update.message.reply_text(update_result)
         logger.info(f"Editor update result: {update_result}")
@@ -474,6 +475,7 @@ async def handle_payment_input(update: Update, context: CallbackContext,text: st
     if "awaiting_payment" in context.user_data:
         player_id = context.user_data["awaiting_payment"]
         player = context.user_data["selected_player"]
+        video_id =context.user_data["selected_video_id"]
         message = update.message.text if update.message.text else text
         logging.info(f"Text inside handle_payement_input: '{message}'")
         logger.info(f"context.user_data in handle_payment_input: {context.user_data}")
@@ -528,9 +530,9 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
                 player_id = context.user_data["awaiting_payment"]
                 amount = context.user_data["payment_amount"]
                 payment_method = context.user_data["payment_method"]
-
+                video_id =context.user_data["selected_video_id"]
                 # Process the payment
-                success = await process_payment(player_id, amount, payment_method,bot_user_id)
+                success = await process_payment(player_id, amount, payment_method,bot_user_id,video_id)
                 if success:
                     await update.message.reply_text("✅ Paiement enregistré avec succès !")
                     context.user_data.pop("awaiting_confirmation", None)
