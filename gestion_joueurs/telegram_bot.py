@@ -295,7 +295,10 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         available_videos = context.user_data.get("available_videos", [])
 
         # Find the selected video
-        selected_video = next((video for video in available_videos if video.title == selected_video_title), None)
+        selected_video = next(
+            (video for video in available_videos if str(video).strip().lower() == selected_video_title.strip().lower()), 
+            None
+        )
 
         if not selected_video:
             await update.message.reply_text("❌ Invalid video selected. Please try again.")
