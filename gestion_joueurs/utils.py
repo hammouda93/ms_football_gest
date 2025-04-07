@@ -350,7 +350,7 @@ def fetch_videos_sync(player_name):
         player = Player.objects.get(name__iexact=player_name)
         videos = Video.objects.filter(player=player).order_by("-video_creation_date")
 
-        return list(videos)
+        return [[str(Video)] for video in videos]
     except Player.DoesNotExist:
         return []
     
