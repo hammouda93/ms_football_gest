@@ -344,7 +344,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         # Reset state
         context.user_data["awaiting_status_change"] = False
 
-    if text == "Editor":
+    if text.lower() == "editor":
         logger.info("User selected 'Changer d'éditeur'. Fetching editor list...")
         player_name = context.user_data.get("selected_player")
 
@@ -355,7 +355,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         # Fetch list of editors
         editors = await get_available_editors()
-    
+
         if not editors:
             await update.message.reply_text("❌ Aucun éditeur disponible.")
             return
@@ -367,23 +367,21 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         # Store state for next interaction
         context.user_data["awaiting_editor_change"] = True
-        logger.info("Awaiting user editor selection...")
+        return  # Return early to prevent further execution
 
-        if context.user_data.get("awaiting_editor_change"):
-            new_editor = text.strip()
-            player_name = context.user_data.get("selected_player")
+    # Handle editor selection
+    if context.user_data.get("awaiting_editor_change"):
+        new_editor = text.strip()
+        player_name = context.user_data.get("selected_player")
 
-            logger.info(f"User selected new editor: {new_editor} for {player_name}")
+        logger.info(f"User selected new editor: {new_editor} for {player_name}")
 
-            # Validate editor
-            available_editors = await get_available_editors()
-            if new_editor not in available_editors:
-                if new_editor == "Editor":
-                    return
-                else:
-                    logger.warning(f"Invalid editor selected: {new_editor}")
-                    await update.message.reply_text("❌ Éditeur invalide. Veuillez choisir une option valide.")
-                    return
+        # Validate editor
+        available_editors = await get_available_editors()
+        if new_editor not in available_editors:
+            logger.warning(f"Invalid editor selected: {new_editor}")
+            await update.message.reply_text("❌ Éditeur invalide. Veuillez choisir une option valide.")
+            return
 
         logger.info(f"Updating editor for {player_name} to {new_editor}...")
         update_result = await update_video_editor(player_name, new_editor, bot_user_id)
