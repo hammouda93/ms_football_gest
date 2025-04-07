@@ -175,7 +175,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         if len(possible_players) == 1:
             response, player_id, video_status, player, editor_name = await get_payment_details(possible_players[0])
-
+            selected_player = possible_players[0]
             if not player_id:
                 await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
@@ -216,7 +216,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     # Handle video selection
     if "pending_video_selection" in context.user_data:
         logger.info(f"User selected video: {text}")
-    
+        selected_player = context.user_data.get("selected_player")
         selected_video = next((v for v in context.user_data["pending_video_selection"] 
                            if text in f"{v['club']} {v['season']} - {v['status']}"), None)
 
