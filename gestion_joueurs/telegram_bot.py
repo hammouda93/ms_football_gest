@@ -149,9 +149,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info(f"Fetching details for player: {selected_player}, Video ID: {video_id}")
 
         response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
-    
+        keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         if response:
             await update.message.reply_text(response)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
         else:
             await update.message.reply_text("❌ Error retrieving video details.")
 
