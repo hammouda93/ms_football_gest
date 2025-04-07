@@ -119,7 +119,7 @@ async def search_players(partial_name: str):
 def search_video_for_player_sync(player_id: int):
     """Fetch videos associated with a given player ID (synchronously)."""
     try:
-        videos = Video.objects.filter(player__id=player_id).values("id", "club", "season", "status")
+        videos = Video.objects.filter(player__id=player_id).values("id", "club", "season", "status").order_by('video_creation_date')
         return list(videos) if videos else []
     except Exception as e:
         return f"Error fetching videos: {str(e)}"    
