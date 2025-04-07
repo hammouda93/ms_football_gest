@@ -17,8 +17,8 @@ django.setup()
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,process_payment
-from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status,update_video_status
+from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,process_payment,get_available_editors
+from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status,update_video_status,update_video_editor
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -255,7 +255,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            response, player_id, video_status,player = await get_payment_details(possible_players[0])
+            response, player_id, video_status,player, editor_name = await get_payment_details(possible_players[0])
 
             if not player_id:
                 await update.message.reply_text("❌ Player not found or has no invoice.")
@@ -269,7 +269,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
             # Display payment options
-            keyboard = [["Paiement"], ["Status"], ["Menu"]]
+            keyboard = [["Paiement"], ["Status"], ["Editor"], ["Menu"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(response)
             await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
@@ -343,6 +343,56 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         # Reset state
         context.user_data["awaiting_status_change"] = False
+
+    if text == "Editor":
+        logger.info("User selected 'Changer d'éditeur'. Fetching editor list...")
+        player_name = context.user_data.get("selected_player")
+
+        if not player_name:
+            logger.warning("No player selected. Cannot change editor.")
+            await update.message.reply_text("❌ Aucun joueur sélectionné. Essayez d'abord de rechercher une facture.")
+            return
+
+        # Fetch list of editors
+        editors = await get_available_editors()
+    
+        if not editors:
+            await update.message.reply_text("❌ Aucun éditeur disponible.")
+            return
+
+        # Display editor options
+        keyboard = [[editor] for editor in editors]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("Choisissez un éditeur :", reply_markup=reply_markup)
+
+        # Store state for next interaction
+        context.user_data["awaiting_editor_change"] = True
+        logger.info("Awaiting user editor selection...")
+
+        if context.user_data.get("awaiting_editor_change"):
+            new_editor = text.strip()
+            player_name = context.user_data.get("selected_player")
+
+            logger.info(f"User selected new editor: {new_editor} for {player_name}")
+
+            # Validate editor
+            available_editors = await get_available_editors()
+            if new_editor not in available_editors:
+                if new_editor == "Editor":
+                    return
+                else:
+                    logger.warning(f"Invalid editor selected: {new_editor}")
+                    await update.message.reply_text("❌ Éditeur invalide. Veuillez choisir une option valide.")
+                    return
+
+        logger.info(f"Updating editor for {player_name} to {new_editor}...")
+        update_result = await update_video_editor(player_name, new_editor, bot_user_id)
+
+        await update.message.reply_text(update_result)
+        logger.info(f"Editor update result: {update_result}")
+
+        # Reset state
+        context.user_data["awaiting_editor_change"] = False
 
     if text.lower() in ["video status", "player invoice", "workflow", "payment status"] or "facture" in text:
         response = await process_request(text)

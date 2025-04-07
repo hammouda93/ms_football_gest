@@ -1,6 +1,6 @@
 import threading
 from django.conf import settings
-from .models import Notification,Video,Invoice,Player,Payment,VideoStatusHistory,User
+from .models import Notification,Video,Invoice,Player,Payment,VideoStatusHistory,User,VideoEditor
 from django.utils import timezone
 import logging
 from asgiref.sync import sync_to_async, asyncio  # Fix for async Django ORM queries
@@ -330,14 +330,14 @@ def fetch_payment_details_sync(player_name: str):
             f"{date_info}"
         )
 
-        return response, player.id, video_status, player.name
+        return response, player.id, video_status, player.name, editor_name
 
     except Player.DoesNotExist:
         logger.error(f"Player {player_name} not found.")
-        return "❌ Joueur introuvable.", None, None, None
+        return "❌ Joueur introuvable.", None, None, None, None
     except Exception as e:
         logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
-        return f"Error fetching payment details: {str(e)}", None, None, None
+        return f"Error fetching payment details: {str(e)}", None, None, None, None
 
 async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
@@ -538,3 +538,52 @@ async def update_video_status(player_name: str, new_status: str, user : int):
     """Run the synchronous update_video_status_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, update_video_status_sync, player_name, new_status, user)
+
+
+
+
+def get_available_editors_sync():
+    """Fetch a list of available video editors synchronously."""
+    try:
+        editors = VideoEditor.objects.filter(user__isnull=False).values_list("user__username", flat=True)
+        return list(editors)
+    except Exception as e:
+        logger.error(f"Error fetching video editors: {str(e)}")
+        return []
+
+def update_video_editor_sync(player_name: str, new_editor: str, user_id: int):
+    """Synchronously update the editor of the latest video for a given player."""
+    try:
+        player = Player.objects.get(name__iexact=player_name)
+        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+
+        if not video:
+            return f"❌ Aucun vidéo trouvé pour {player_name}."
+
+        # Get the new editor object from VideoEditor (linked to User)
+        new_editor_obj = VideoEditor.objects.get(user__username=new_editor)
+
+        # Update the video editor
+        video.editor = new_editor_obj
+        video.save()
+
+        logger.info(f"Editor updated successfully for {player_name} to {new_editor}.")
+        return f"✅ L'éditeur a été mis à jour avec succès : {new_editor}"
+    except Player.DoesNotExist:
+        return "❌ Joueur introuvable."
+    except VideoEditor.DoesNotExist:
+        return "❌ Éditeur introuvable."
+    except Exception as e:
+        logger.error(f"Error updating editor for {player_name}: {str(e)}")
+        return f"❌ Erreur lors de la mise à jour de l'éditeur: {str(e)}"
+    
+
+async def get_available_editors():
+    """Fetch a list of available video editors asynchronously."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_available_editors_sync)
+
+async def update_video_editor(player_name: str, new_editor: str, user_id: int):
+    """Run the synchronous update_video_editor_sync function in a separate thread asynchronously."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, update_video_editor_sync, player_name, new_editor, user_id)
