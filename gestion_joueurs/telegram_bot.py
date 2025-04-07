@@ -118,7 +118,13 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     bot_user_id = update.effective_user.id
     response = "..."
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
-
+    
+    if text == "menu":
+        # Reset user data context
+        context.user_data.clear()
+        await start(update, context)
+        return
+    
     # Handle player selection
     if user_id in pending_player_selections:
         selected_player = text
@@ -253,12 +259,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         else:
             logger.error(f"User {user_id} attempted 'Paiement' but no selected player ID found.")
             await update.message.reply_text("Erreur : Aucun joueur sélectionné. Veuillez d'abord rechercher un joueur.")
-        return
-
-    if text == "menu":
-        # Reset user data context
-        context.user_data.clear()
-        await start(update, context)
         return
     
     if text == "player invoice":
