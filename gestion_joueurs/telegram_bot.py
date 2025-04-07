@@ -270,7 +270,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
                 await process_selected_video(update, context, selected_video, bot_user_id)
             else:
                 # Multiple videos, show selection keyboard
-                keyboard = [[video] for video in videos]
+                keyboard = [[str(video)] for video in videos]
                 reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
                 await update.message.reply_text("Multiple videos found. Please select one:", reply_markup=reply_markup)
 
