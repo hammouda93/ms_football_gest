@@ -130,7 +130,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
         # Fetch available videos for this player
-        videos = search_video_for_player(player_id)
+        videos = await search_video_for_player(player_id)
 
         if videos:
             keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
@@ -144,7 +144,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     # Handle video selection
     if "selected_player_id" in context.user_data:
         player_id = context.user_data["selected_player_id"]
-        videos = search_video_for_player(player_id)
+        videos = await search_video_for_player(player_id)
 
         selected_video = next((video for video in videos if text in f"{video['club']} - {video['season']} ({video['status']})"), None)
         
@@ -178,7 +178,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
             # Fetch available videos
-            videos = search_video_for_player(player_id)
+            videos = await search_video_for_player(player_id)
 
             if videos:
                 keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
