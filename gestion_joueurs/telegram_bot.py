@@ -145,7 +145,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         video_id = selected_video["id"]
         selected_player = context.user_data["selected_player"]
-
+        # ✅ Store the video ID properly
+        context.user_data["selected_video_id"] = video_id
         logger.info(f"Fetching details for player: {selected_player}, Video ID: {video_id}")
 
         response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, video_id)
