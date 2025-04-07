@@ -276,14 +276,18 @@ async def get_players_by_invoice_status(status: str):
     return await loop.run_in_executor(None, fetch_players_by_invoice_status_sync, status)
 
 
-def fetch_payment_details_sync(player_name: str):
+def fetch_payment_details_sync(player_name: str,video_id: int = None):
     """Synchronous function to fetch the payment details of a player."""
     try:
         logger.info(f"Fetching payment details for player: {player_name}")
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
         logger.info(f"Player {player_name} found.")
 
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the latest video linked to the player
+        if video_id:
+            video = Video.objects.filter(id=video_id).first()
+        else:
+            video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+
         if not video:
             logger.warning(f"No video found for player {player_name}.")
             return f"No video found for player {player_name}."

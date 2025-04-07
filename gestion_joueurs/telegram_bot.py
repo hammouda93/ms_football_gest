@@ -114,47 +114,62 @@ async def process_request(text: str) -> str:
 pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
-    bot_user_id = update.effective_user.id
     user_id = update.message.from_user.id
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
-    
-    # Handle player selection
+    bot_user_id = update.effective_user.id
+    # Handle player selection first
     if user_id in pending_player_selections:
         selected_player = text
-        del pending_player_selections[user_id]  
+        del pending_player_selections[user_id]
 
         response, player_id, video_status, player, editor_name = await get_payment_details(selected_player)
-        context.user_data["video_status"] = video_status
+
+        if not player_id:
+            await update.message.reply_text("❌ Player not found or has no invoice.")
+            return
+
         context.user_data["selected_player"] = selected_player
         context.user_data["selected_player_id"] = player_id
-        logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
+        context.user_data["video_status"] = video_status
 
-        # Fetch available videos for this player
+        # Fetch videos of player
         videos = await search_video_for_player(player_id)
+        
+        if not videos:
+            await update.message.reply_text(f"No videos found for {selected_player}.")
+            return
 
-        if videos:
-            keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text("🎥 Sélectionnez une vidéo :", reply_markup=reply_markup)
+        if len(videos) == 1:
+            # If only one video, proceed as before
+            response, _, _, _, _ = await get_payment_details(selected_player, videos[0]['id'])
+            await update.message.reply_text(response)
         else:
-            await update.message.reply_text("❌ Aucune vidéo disponible pour ce joueur.")
+            # Multiple videos: let user pick one
+            context.user_data["pending_video_selection"] = videos
+            keyboard = [[f"{v['club']} {v['season']} - {v['status']}"] for v in videos]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("Select a video:", reply_markup=reply_markup)
 
-        return  # Stop further processing
+        return
 
     # Handle video selection
-    if "selected_player_id" in context.user_data:
-        player_id = context.user_data["selected_player_id"]
-        videos = await search_video_for_player(player_id)
+    if user_id in context.user_data.get("pending_video_selection", {}):
+        selected_video = next((v for v in context.user_data["pending_video_selection"] if text in v.values()), None)
 
-        selected_video = next((video for video in videos if text in f"{video['club']} - {video['season']} ({video['status']})"), None)
-        
-        if selected_video:
-            context.user_data["video_id"] = selected_video["id"]  # Store video ID
-            response, _, video_status, _, _ = await get_payment_details(context.user_data["selected_player"])
-            await update.message.reply_text(response)
-            return  # Stop further processing
+        if not selected_video:
+            await update.message.reply_text("Invalid selection. Please try again.")
+            return
 
-    # Invoice request
+        del context.user_data["pending_video_selection"]
+        video_id = selected_video["id"]
+        selected_player = context.user_data["selected_player"]
+
+        response, _, _, _, _ = await get_payment_details(selected_player, video_id)
+        await update.message.reply_text(response)
+
+        return
+
+    # Handle invoice request
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -170,25 +185,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
                 await update.message.reply_text("❌ Player not found or has no invoice.")
                 return
 
-            # Store selected player ID
             context.user_data["selected_player"] = player
             context.user_data["selected_player_id"] = player_id
-            context.user_data["video_status"] = video_status  
+            context.user_data["video_status"] = video_status
 
-            logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
-
-            # Fetch available videos
-            videos = await search_video_for_player(player_id)
-
-            if videos:
-                keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
-                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-                await update.message.reply_text(response)
-                await update.message.reply_text("🎥 Sélectionnez une vidéo :", reply_markup=reply_markup)
-            else:
-                await update.message.reply_text(response)
-                await update.message.reply_text("❌ Aucune vidéo disponible pour ce joueur.")
-
+            await update.message.reply_text(response)
         else:
             pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
@@ -196,7 +197,13 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)
 
         return
-    
+
+    if text.lower() in ["video status", "player invoice", "workflow", "payment status"] or "facture" in text:
+        response = await process_request(text)
+        await update.message.reply_text(response)
+    await send_voice_response(update, response)
+
+
 
 
     # ✅ Check for payment input if awaiting payment
@@ -308,8 +315,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
-
-    
     
     if text == "status":
         logger.info("User selected 'Changer le statut'. Fetching video status...")
