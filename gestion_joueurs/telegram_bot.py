@@ -214,15 +214,20 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
     
     # Handle video selection
-    if "pending_video_selection" in context.user_data:
+    if context.user_data.get("pending_video_selection"):
         logger.info(f"User selected video: {text}")
         selected_player = context.user_data.get("selected_player")
-        selected_video = next((v for v in context.user_data["pending_video_selection"] 
-                           if text in f"{v['club']} {v['season']} - {v['status']}"), None)
+        for v in context.user_data["pending_video_selection"]:
+            expected_format = f"{v['club']} {v['season']} - {v['status']}".strip().lower()
+            logger.info(f"Comparing with: {expected_format}")
+
+        selected_video = next((v for v in context.user_data["pending_video_selection"]
+                       if text.strip().lower() == f"{v['club']} {v['season']} - {v['status']}".strip().lower()), None)
 
         if not selected_video:
-            await update.message.reply_text("Invalid selection. Please try again.")
-            return
+            logger.warning("❌ No match found for selected video!")
+        else:
+            logger.info(f"✅ Selected Video ID: {selected_video['id']}")
 
         # Remove pending selection after choosing
         del context.user_data["pending_video_selection"]
