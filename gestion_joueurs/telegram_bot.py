@@ -135,6 +135,45 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await send_voice_response(update, response)
         return  # Exit here so it doesn't process further commands
     
+    
+    # Invoice Request
+    if "facture" in text:
+        player_name = text.replace("facture", "").strip()
+        possible_players = await search_players(player_name)
+
+        if not possible_players:
+            await update.message.reply_text(f"No players found with the name '{player_name}'. Try again.")
+            return
+
+        if len(possible_players) == 1:
+            response, player_id, video_status,player, editor_name = await get_payment_details(possible_players[0])
+
+            if not player_id:
+                await update.message.reply_text("❌ Player not found or has no invoice.")
+                return
+
+            # Store selected player ID
+            context.user_data["selected_player"] = player
+            context.user_data["selected_player_id"] = player_id
+            context.user_data["video_status"] = video_status  # Store current video status
+
+            logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
+
+            # Display payment options
+            keyboard = [["Paiement"], ["Status"], ["Editor"], ["Menu"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text(response)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+
+        else:
+            pending_player_selections[user_id] = possible_players
+            keyboard = [[name] for name in possible_players]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)    
+
+
+
+
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
         logger.info(f"User data before processing payment: {context.user_data}")
@@ -244,41 +283,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         await update.message.reply_text(response)
         await send_voice_response(update, response)
         return
-
-    # Invoice Request
-    if "facture" in text:
-        player_name = text.replace("facture", "").strip()
-        possible_players = await search_players(player_name)
-
-        if not possible_players:
-            await update.message.reply_text(f"No players found with the name '{player_name}'. Try again.")
-            return
-
-        if len(possible_players) == 1:
-            response, player_id, video_status,player, editor_name = await get_payment_details(possible_players[0])
-
-            if not player_id:
-                await update.message.reply_text("❌ Player not found or has no invoice.")
-                return
-
-            # Store selected player ID
-            context.user_data["selected_player"] = player
-            context.user_data["selected_player_id"] = player_id
-            context.user_data["video_status"] = video_status  # Store current video status
-
-            logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
-
-            # Display payment options
-            keyboard = [["Paiement"], ["Status"], ["Editor"], ["Menu"]]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text(response)
-            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-
-        else:
-            pending_player_selections[user_id] = possible_players
-            keyboard = [[name] for name in possible_players]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text("Multiple players found. Please select one:", reply_markup=reply_markup)    
 
     
     if text == "status":
