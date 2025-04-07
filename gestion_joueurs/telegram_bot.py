@@ -198,14 +198,6 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
         return
 
-    if text.lower() in ["video status", "player invoice", "workflow", "payment status"] or "facture" in text:
-        response = await process_request(text)
-        await update.message.reply_text(response)
-    await send_voice_response(update, response)
-
-
-
-
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
         logger.info(f"User data before processing payment: {context.user_data}")
