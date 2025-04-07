@@ -108,11 +108,25 @@ def search_players_sync(partial_name: str):
     
     except Exception as e:
         return f"Error fetching players: {str(e)}"
-
 async def search_players(partial_name: str):
     """Run the synchronous search_players_sync function asynchronously."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, search_players_sync, partial_name)
+
+
+
+
+def search_video_for_player_sync(player_id: int):
+    """Fetch videos associated with a given player ID (synchronously)."""
+    try:
+        videos = Video.objects.filter(player__id=player_id).values("id", "club", "season", "status")
+        return list(videos) if videos else []
+    except Exception as e:
+        return f"Error fetching videos: {str(e)}"    
+async def search_video_for_player(player_id: int):
+    """Run the synchronous search_video_for_player_sync function asynchronously."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, search_video_for_player_sync, player_id)
 
 
 
@@ -343,59 +357,6 @@ async def get_payment_details(player_name: str):
     """Run the synchronous fetch_payment_details_sync function in a separate thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, fetch_payment_details_sync, player_name)
-
-def fetch_videos_sync(player_name):
-    """Fetch all videos for the given player in a synchronous way."""
-    try:
-        player = Player.objects.get(name__iexact=player_name)
-        videos = Video.objects.filter(player=player).order_by("-video_creation_date")
-
-        return [[str(video)] for video in videos]
-    except Player.DoesNotExist:
-        return []
-    
-async def get_videos_for_player(player_name):
-    """Fetch all videos for a given player."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, fetch_videos_sync, player_name)
-
-
-""" #Payment
-def fetch_payment_details_sync(player_name: str):
-    try:
-        logger.info(f"Fetching payment details for player: {player_name}")
-        player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
-        logger.info(f"Player {player_name} found.")
-
-        video = Video.objects.filter(player=player).order_by("-video_creation_date").first()  # Get the first video linked to the player
-        if not video:
-            logger.warning(f"No video found for player {player_name}.")
-            return f"No video found for player {player_name}."
-        
-        video_status = video.status
-        invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
-        
-        if not invoice:
-            logger.warning(f"No invoice found for player {player_name}'s video.")
-            return f"No invoice found for {player_name}'s video."
-        
-        logger.info(f"Invoice found: {invoice.amount_paid}/{invoice.total_amount} - {invoice.status}")
-        response = f"{player.name} paid {invoice.amount_paid} of {invoice.total_amount}: the video is {invoice.status}. (status: {video_status})"
-        
-        return response, player.id, video_status,player.name
-
-    except Player.DoesNotExist:
-        logger.error(f"Player {player_name} not found.")
-        return "❌ Joueur introuvable.", None, None, None
-    except Exception as e:
-        logger.error(f"Error fetching payment details for player {player_name}: {str(e)}")
-        return f"Error fetching payment details: {str(e)}", None, None, None """
-
-
-
-
-
-
 
 
 

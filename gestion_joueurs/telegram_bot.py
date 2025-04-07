@@ -18,7 +18,7 @@ django.setup()
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from gestion_joueurs.utils import get_players_by_status, get_payment_details,search_players,process_payment,get_available_editors
-from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status,update_video_status,update_video_editor
+from gestion_joueurs.utils import get_videos_by_deadline,get_players_by_invoice_status,update_video_status,update_video_editor,search_video_for_player
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -114,27 +114,47 @@ async def process_request(text: str) -> str:
 pending_player_selections = {}
 async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles both text and voice inputs by processing requests."""
+    bot_user_id = update.effective_user.id
     user_id = update.message.from_user.id
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
-    bot_user_id = update.effective_user.id
-    # Handle player selection first
+    
+    # Handle player selection
     if user_id in pending_player_selections:
         selected_player = text
         del pending_player_selections[user_id]  
+
         response, player_id, video_status, player, editor_name = await get_payment_details(selected_player)
-        context.user_data["video_status"] = video_status  # Store current video status
+        context.user_data["video_status"] = video_status
         context.user_data["selected_player"] = selected_player
         context.user_data["selected_player_id"] = player_id
         logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-        keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        # Fetch available videos for this player
+        videos = search_video_for_player(player_id)
 
-        await update.message.reply_text(response)
-        await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-        await send_voice_response(update, response)
-        return  # Exit here so it doesn't process further commands
-        # Invoice Request
+        if videos:
+            keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("🎥 Sélectionnez une vidéo :", reply_markup=reply_markup)
+        else:
+            await update.message.reply_text("❌ Aucune vidéo disponible pour ce joueur.")
+
+        return  # Stop further processing
+
+    # Handle video selection
+    if "selected_player_id" in context.user_data:
+        player_id = context.user_data["selected_player_id"]
+        videos = search_video_for_player(player_id)
+
+        selected_video = next((video for video in videos if text in f"{video['club']} - {video['season']} ({video['status']})"), None)
+        
+        if selected_video:
+            context.user_data["video_id"] = selected_video["id"]  # Store video ID
+            response, _, video_status, _, _ = await get_payment_details(context.user_data["selected_player"])
+            await update.message.reply_text(response)
+            return  # Stop further processing
+
+    # Invoice request
     if "facture" in text:
         player_name = text.replace("facture", "").strip()
         possible_players = await search_players(player_name)
@@ -144,7 +164,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             return
 
         if len(possible_players) == 1:
-            response, player_id, video_status,player, editor_name = await get_payment_details(possible_players[0])
+            response, player_id, video_status, player, editor_name = await get_payment_details(possible_players[0])
 
             if not player_id:
                 await update.message.reply_text("❌ Player not found or has no invoice.")
@@ -153,15 +173,21 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             # Store selected player ID
             context.user_data["selected_player"] = player
             context.user_data["selected_player_id"] = player_id
-            context.user_data["video_status"] = video_status  # Store current video status
+            context.user_data["video_status"] = video_status  
 
             logger.info(f"Stored selected_player_id: {player_id} for user {user_id}")
 
-            # Display payment options
-            keyboard = [["Paiement"], ["Status"], ["Editor"], ["Menu"]]
-            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            await update.message.reply_text(response)
-            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+            # Fetch available videos
+            videos = search_video_for_player(player_id)
+
+            if videos:
+                keyboard = [[f"{video['club']} - {video['season']} ({video['status']})"] for video in videos]
+                reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text(response)
+                await update.message.reply_text("🎥 Sélectionnez une vidéo :", reply_markup=reply_markup)
+            else:
+                await update.message.reply_text(response)
+                await update.message.reply_text("❌ Aucune vidéo disponible pour ce joueur.")
 
         else:
             pending_player_selections[user_id] = possible_players
@@ -172,7 +198,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
     
 
-    
+
     # ✅ Check for payment input if awaiting payment
     if context.user_data.get("awaiting_confirmation"):
         logger.info(f"User data before processing payment: {context.user_data}")
