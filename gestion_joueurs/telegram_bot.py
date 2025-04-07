@@ -144,7 +144,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         if len(videos) == 1:
             # If only one video, proceed as before
             response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, videos[0]['id'])
+            keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(response)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+            await send_voice_response(update, response)
         else:
             # Multiple videos: let user pick one
             context.user_data["pending_video_selection"] = videos
@@ -155,14 +159,16 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         return
 
     # Handle video selection
-    if user_id in context.user_data.get("pending_video_selection", {}):
-        selected_video = next((v for v in context.user_data["pending_video_selection"] if text in v.values()), None)
+    if "pending_video_selection" in context.user_data:
+        selected_video = next((v for v in context.user_data["pending_video_selection"] if text in f"{v['club']} {v['season']} - {v['status']}"), None)
 
         if not selected_video:
             await update.message.reply_text("Invalid selection. Please try again.")
             return
 
+        # Remove pending selection after choosing
         del context.user_data["pending_video_selection"]
+    
         video_id = selected_video["id"]
         selected_player = context.user_data["selected_player"]
 
@@ -191,7 +197,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             context.user_data["selected_player_id"] = player_id
             context.user_data["video_status"] = video_status
 
+            keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
+            reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(response)
+            await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
+            await send_voice_response(update, response)
         else:
             pending_player_selections[user_id] = possible_players
             keyboard = [[name] for name in possible_players]
