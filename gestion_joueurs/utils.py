@@ -282,17 +282,17 @@ def fetch_payment_details_sync(player_name: str,video_id: int = None):
         logger.info(f"Fetching payment details for player: {player_name}")
         player = Player.objects.get(name__iexact=player_name)  # Case-insensitive search
         logger.info(f"Player {player_name} found.")
-
-        if video_id:
-            video = Video.objects.filter(id=video_id).first()
+        logger.info(f"Video ID passed: {video_id}, Type: {type(video_id)}")
+        if video_id is not None:  # Explicitly check for None
             logger.info(f"Fetching video with ID: {video_id}")
+            video = Video.objects.filter(id=video_id).first()
+            if not video:
+                logger.warning(f"⚠️ Video ID {video_id} not found. Defaulting to latest video.")
+                return f"No video found for player {player_name}."
         else:
-            video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
             logger.info(f"Fetching latest video for {player_name}")
-
-        if not video:
-            logger.warning(f"No video found for player {player_name}.")
-            return f"No video found for player {player_name}."
+            video = Video.objects.filter(player=player).order_by("-video_creation_date").first()
+            
         
         video_status = video.status
         invoice = Invoice.objects.filter(video=video).first()  # Get the related invoice
