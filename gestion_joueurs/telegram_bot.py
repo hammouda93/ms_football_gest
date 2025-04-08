@@ -46,7 +46,12 @@ async def start(update: Update, context: CallbackContext):
 
 # Function to generate and send voice response
 async def send_voice_response(update: Update, response: str):
-    """Generate TTS response and send as voice message."""
+    user_id = update.message.from_user.id  # Get the user ID
+    # Restrict access
+    allowed_users = {5853993816, 5880438888}
+    if user_id not in allowed_users:
+        await update.message.reply_text("🚫 You are not authorized to use this bot.")
+        return  # Stop further execution
     try:
         if not response.strip():
             logger.error("Error: Empty response text!")
@@ -116,6 +121,11 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     """Handles text and voice inputs by processing requests."""
     user_id = update.message.from_user.id
     bot_user_id = update.effective_user.id
+    # Restrict access
+    allowed_users = {5853993816, 5880438888}
+    if bot_user_id not in allowed_users:
+        await update.message.reply_text("🚫 You are not authorized to use this bot.")
+        return  # Stop further execution
     response = "..."
     logger.info(f"handle_request received text: '{text}' (Length: {len(text)})")
     
@@ -229,7 +239,8 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
 
             if len(videos) == 1:
                 # If only one video, proceed as before
-                response, player_id, video_status, player, editor_name = await get_payment_details(selected_player, videos[0]['id'])
+                response, player_id, video_status, player, editor_name,video_id = await get_payment_details(selected_player, videos[0]['id'])
+                context.user_data["selected_video_id"] = video_id
                 keyboard = [["Paiement"], ["Status"],["Editor"],["Menu"]]
                 reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
                 await update.message.reply_text(response)
@@ -564,11 +575,23 @@ async def handle_payment_confirmation(update: Update, context: CallbackContext):
 
 async def process_text(update: Update, context: CallbackContext):
     """Handle text messages."""
+    user_id = update.message.from_user.id  # Get the user ID
+    # Restrict access
+    allowed_users = {5853993816, 5880438888}
+    if user_id not in allowed_users:
+        await update.message.reply_text("🚫 You are not authorized to use this bot.")
+        return  # Stop further execution
     text = update.message.text.strip().lower()
     await handle_request(text, update, context)
 
 async def process_voice(update: Update, context: CallbackContext):
     """Handle voice messages by converting speech to text and processing."""
+    user_id = update.message.from_user.id  # Get the user ID
+    # Restrict access
+    allowed_users = {5853993816, 5880438888}
+    if user_id not in allowed_users:
+        await update.message.reply_text("🚫 You are not authorized to use this bot.")
+        return  # Stop further execution
     try:
         logger.info("Received a voice message.")
         voice = update.message.voice
