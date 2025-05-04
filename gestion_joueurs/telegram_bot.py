@@ -670,20 +670,9 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handles text messages
     application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
 
-
-    PORT = int(os.environ.get("PORT", 8443))
-
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"https://msfootball.herokuapp.com/{bot_token}"
-    )
-
-
-
     # Start the bot
     logger.info("Bot is starting...")
-    # application.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
