@@ -798,7 +798,7 @@ def view_expenses(request):
     category_filter = request.GET.get('category', '')
 
     # Start with all expenses created by the user
-    expenses = Expense.objects.filter(created_by=request.user)
+    expenses = Expense.objects.filter()
 
     # Filter by search query if it exists
     if search_query:
