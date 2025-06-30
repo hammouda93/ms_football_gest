@@ -265,7 +265,7 @@ def fetch_players_by_invoice_status_sync(status: str):
 
             result.append(info.strip())
 
-        return result if result else [f"No players found with invoice status '{status}'."]
+        return result[:80] if result else [f"No players found with invoice status '{status}'."]
 
     except Exception as e:
         return [f"Error fetching players: {str(e)}"]
