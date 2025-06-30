@@ -86,7 +86,7 @@ def fetch_players_sync(status: str):
 
             result.append(info)
 
-        return result if result else [f"No videos found for status '{normalized_status}'."]
+        return result[:80] if result else [f"No videos found for status '{normalized_status}'."]
 
     except Exception as e:
         logger.error(f"Error fetching videos: {e}")
