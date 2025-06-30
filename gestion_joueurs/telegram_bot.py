@@ -200,7 +200,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(response)
             await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-            await send_voice_response(update, response)
+            # await send_voice_response(update, response)
         else:
             # Multiple videos: let user pick one
             context.user_data["pending_video_selection"] = videos
@@ -245,7 +245,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
                 reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
                 await update.message.reply_text(response)
                 await update.message.reply_text("Choisissez une option :", reply_markup=reply_markup)
-                await send_voice_response(update, response)
+                # await send_voice_response(update, response)
             else:
                 # Multiple videos: let user pick one
                 context.user_data["pending_video_selection"] = videos
@@ -312,7 +312,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         players = await get_players_by_invoice_status(status)
         response = "\n".join(players) if players else f"No players found with status '{text}'."
         await update.message.reply_text(response)
-        await send_voice_response(update, response)
+        # await send_voice_response(update, response)
         return
     
     if text == "video status":
@@ -338,7 +338,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         video_details = await get_players_by_status(status)
         response = "\n".join(video_details) if video_details else f"No players found for status '{text}'."
         await update.message.reply_text(response)
-        await send_voice_response(update, response)
+        # await send_voice_response(update, response)
         return
 
     if text == "workflow":
@@ -363,7 +363,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
         videos = await get_videos_by_deadline(deadline_filter)
         response = "\n".join(videos)
         await update.message.reply_text(response)
-        await send_voice_response(update, response)
+        # await send_voice_response(update, response)
         return
     
     if text == "status":
@@ -479,7 +479,7 @@ async def handle_request(text: str, update: Update, context: CallbackContext):
     if text.lower() in ["video status", "player invoice", "workflow", "payment status"] or "facture" in text:
         response = await process_request(text)
         await update.message.reply_text(response)
-    await send_voice_response(update, response)
+    # await send_voice_response(update, response)
 
 async def handle_payment_input(update: Update, context: CallbackContext,text: str = None):
     """Handle payment amount and payment method input."""
@@ -668,7 +668,7 @@ def main():
     # Add command and message handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text))  # Handles text messages
-    # application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
+    application.add_handler(MessageHandler(filters.VOICE, process_voice))  # Handles voice messages
 
     # Start the bot
     logger.info("Bot is starting...")
