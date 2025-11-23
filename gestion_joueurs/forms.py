@@ -32,11 +32,12 @@ class VideoForm(forms.ModelForm):
     SEASONS = [
         ('2022/2023', '2022/2023'),
         ('2023/2024', '2023/2024'),
-        ('2024/2025', '2024/2025'),  # Default value
+        ('2024/2025', '2024/2025'),  
         ('2025/2026', '2025/2026'),
+        ('2026/2027', '2026/2027'),  # Default value
     ]
 
-    season = forms.ChoiceField(choices=SEASONS, initial='2024/2025')
+    season = forms.ChoiceField(choices=SEASONS, initial='2025/2026')
 
     deadline = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
