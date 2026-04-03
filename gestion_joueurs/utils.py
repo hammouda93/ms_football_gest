@@ -8,6 +8,148 @@ import threading
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from django.db.models import OuterRef, Subquery
+import requests
+from datetime import datetime
+import re
+import requests
+from html import unescape
+
+
+def clean_text(value):
+    if not value:
+        return ""
+    return " ".join(unescape(value).split()).strip()
+
+
+def extract_meta_content(html, meta_name=None, meta_property=None):
+    if meta_name:
+        pattern = rf'<meta\s+name="{re.escape(meta_name)}"\s+content="([^"]*)"'
+    elif meta_property:
+        pattern = rf'<meta\s+property="{re.escape(meta_property)}"\s+content="([^"]*)"'
+    else:
+        return ""
+
+    match = re.search(pattern, html, re.IGNORECASE)
+    return clean_text(match.group(1)) if match else ""
+
+
+def extract_js_value(html, key):
+    pattern = rf"{re.escape(key)}\s*:\s*'([^']*)'"
+    match = re.search(pattern, html, re.IGNORECASE)
+    return clean_text(match.group(1)) if match else ""
+
+
+def map_transfermarkt_position(position_text):
+    text = (position_text or "").lower()
+
+    if any(x in text for x in ["goalkeeper", "gardien"]):
+        return "GK"
+    if any(x in text for x in [
+        "defender", "centre-back", "center-back", "left-back", "right-back",
+        "arrière", "défenseur", "lateral", "back"
+    ]):
+        return "DF"
+    if any(x in text for x in [
+        "midfield", "midfielder", "milieu", "central midfield",
+        "defensive midfield", "attacking midfield"
+    ]):
+        return "MF"
+    if any(x in text for x in [
+        "forward", "striker", "winger", "ailier", "attaquant",
+        "centre-forward", "center-forward"
+    ]):
+        return "FW"
+
+    return "DF"
+
+
+def extract_birth_date_from_description(description):
+    # exemple dans ton HTML :
+    # * 12 juil. 1999 à Guayaquil, Équateur
+    match = re.search(r"\*\s*(\d{1,2}\s+[^\s]+\s+\d{4})", description)
+    if not match:
+        return ""
+
+    raw = match.group(1).strip()
+
+    months = {
+        "janv.": "01", "févr.": "02", "mars": "03", "avr.": "04",
+        "mai": "05", "juin": "06", "juil.": "07", "août": "08",
+        "sept.": "09", "oct.": "10", "nov.": "11", "déc.": "12",
+        "jan": "01", "feb": "02", "mar": "03", "apr": "04",
+        "may": "05", "jun": "06", "jul": "07", "aug": "08",
+        "sep": "09", "oct": "10", "nov": "11", "dec": "12",
+    }
+
+    parts = raw.split()
+    if len(parts) != 3:
+        return ""
+
+    day = parts[0].zfill(2)
+    month = months.get(parts[1].lower())
+    year = parts[2]
+
+    if not month:
+        return ""
+
+    return f"{year}-{month}-{day}"
+
+
+def parse_transfermarkt_player(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(url, headers=headers, timeout=15)
+    response.raise_for_status()
+    html = response.text
+
+    og_title = extract_meta_content(html, meta_property="og:title")
+    description = extract_meta_content(html, meta_name="description")
+
+    name = extract_js_value(html, "eVar27")
+    club = extract_js_value(html, "eVar3")
+    league_name = extract_js_value(html, "eVar4")
+    name = re.sub(r"\s*\(\d+\)$", "", name).strip()
+    club = re.sub(r"\s*\(\d+\)$", "", club).strip()
+    league_name = re.sub(r"\s*\([A-Z0-9]+\)$", "", league_name).strip()
+    if not name and og_title:
+        # ex: Diego Palacios - Profil du joueur 2026
+        name = og_title.split(" - ")[0].strip()
+
+    # position depuis meta description
+    position_raw = ""
+    # ex: Diego Palacios, 26, de Équateur ➤ CD Universidad Católica, depuis 2025 ➤ Arrière gauche ➤ ...
+    desc_parts = [p.strip() for p in description.split("➤")]
+    if len(desc_parts) >= 2:
+        position_raw = desc_parts[1] if len(desc_parts) > 1 else ""
+
+    # dans ton exemple exact, le club est dans eVar3 et la ligue dans eVar4
+    # ça vient du JS de la page Transfermarkt
+    position = map_transfermarkt_position(description)
+
+    # mapping ligue vers tes choix Django
+    league = "OC"
+    league_name_lower = (league_name or "").lower()
+    if "tunisie" in league_name_lower and "ligue 1" in league_name_lower:
+        league = "L1"
+    elif "tunisie" in league_name_lower and "ligue 2" in league_name_lower:
+        league = "L2"
+    elif "libye" in league_name_lower:
+        league = "LY"
+
+    date_of_birth = extract_birth_date_from_description(description)
+
+    return {
+        "name": name,
+        "date_of_birth": date_of_birth,
+        "club": club,
+        "position": position,
+        "league": league,
+        "league_name_raw": league_name,
+        "description_raw": description,
+    }
+
 
 # Configure logging
 logging.basicConfig(

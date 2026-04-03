@@ -20,6 +20,17 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0 text-center">Ajouter ou Sélectionner un Joueur</h5>
                 </div>
+                <div class="form-group mb-3">
+                    <label for="transfermarktUrl"><strong>Lien Transfermarkt :</strong></label>
+                    <div class="input-group">
+                        <input type="url" id="transfermarktUrl" class="form-control"
+                            placeholder="Collez le lien Transfermarkt du joueur">
+                        <button type="button" id="importTransfermarktBtn" class="btn btn-success">
+                            Importer
+                        </button>
+                    </div>
+                    <small id="transfermarktMessage" class="form-text text-muted"></small>
+                </div>
                 <div class="card-body">
                     <form method="POST" id="playerFormContainer">
                         {% csrf_token %}
@@ -128,7 +139,77 @@ document.getElementById('playerName').addEventListener('blur', function() {
     }
 });
 </script>
+<script>
+document.getElementById('importTransfermarktBtn').addEventListener('click', function () {
+    const url = document.getElementById('transfermarktUrl').value.trim();
+    const messageBox = document.getElementById('transfermarktMessage');
 
+    if (!url) {
+        messageBox.innerText = "Veuillez coller un lien Transfermarkt.";
+        messageBox.className = "form-text text-danger";
+        return;
+    }
+
+    fetch("{% url 'import_transfermarkt_player' %}", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: new URLSearchParams({
+            url: url
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            messageBox.innerText = data.error || "Erreur lors de l'import.";
+            messageBox.className = "form-text text-danger";
+            return;
+        }
+
+        const player = data.player || {};
+
+        // Toujours remplir le champ de recherche visible
+        document.getElementById('playerName').value = player.name || '';
+
+        if (data.exists) {
+            // Joueur déjà dans la base
+            document.getElementById('id_name').value = player.name || '';
+            document.getElementById('id_date_of_birth').value = player.date_of_birth || '';
+            document.getElementById('id_league').value = player.league || 'OC';
+            document.getElementById('id_club').value = player.club || '';
+            document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
+            document.getElementById('id_position').value = player.position || 'DF';
+            document.getElementById('id_client_fidel').checked = !!player.client_fidel;
+            document.getElementById('id_client_vip').checked = !!player.client_vip;
+            document.getElementById('selectedPlayerId').value = player.id || '';
+
+            messageBox.innerText = "Joueur trouvé dans la base.";
+            messageBox.className = "form-text text-success";
+        } else {
+            // Joueur non trouvé -> préremplissage depuis Transfermarkt
+            document.getElementById('id_name').value = player.name || '';
+            document.getElementById('id_date_of_birth').value = player.date_of_birth || '';
+            document.getElementById('id_league').value = player.league || 'OC';
+            document.getElementById('id_club').value = player.club || '';
+            document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
+            document.getElementById('id_position').value = player.position || 'DF';
+            document.getElementById('id_client_fidel').checked = false;
+            document.getElementById('id_client_vip').checked = false;
+            document.getElementById('selectedPlayerId').value = '';
+
+            messageBox.innerText = "Joueur non trouvé dans la base. Formulaire rempli automatiquement.";
+            messageBox.className = "form-text text-warning";
+        }
+    })
+    .catch(error => {
+        console.error(error);
+        messageBox.innerText = "Erreur serveur.";
+        messageBox.className = "form-text text-danger";
+    });
+});
+</script>
 <style>
     #playerName {
         border: 2px solid blue; /* Change to your preferred color */

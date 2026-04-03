@@ -228,6 +228,12 @@
                     </a>
                 </li>
                 {%endif%}
+                {% url 'dashboard_cards_view' as dashboard_cards_url %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == dashboard_cards_url %}active{% endif %}" href="{{ dashboard_cards_url }}">
+                        <i class="fas fa-th-large"></i> Aperçu Dashboard
+                    </a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'dashboard/' %}active{% endif %}" href="{% url 'dashboard' %}">
                         <i class="fas fa-tachometer-alt"></i> Tableau de bord

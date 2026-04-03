@@ -1,0 +1,185 @@
+<div class="row mb-4">
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'dashboard' %}?tab=ongoing" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-blue h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-spinner"></i>
+                    </div>
+                    <h6 class="stat-label">Vidéos en cours</h6>
+                    <h3 class="stat-value">{{ total_videos_in_progress }}</h3>
+                    <span class="stat-action">Voir les vidéos en cours</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'dashboard' %}?tab=delivered" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-green h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h6 class="stat-label">Vidéos livrées</h6>
+                    <h3 class="stat-value">{{ total_videos_delivered }}</h3>
+                    <span class="stat-action">Voir les vidéos livrées</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'dashboard' %}?deadline_filter=past&tab=ongoing" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-red h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h6 class="stat-label">Vidéos en retard</h6>
+                    <h3 class="stat-value">{{ total_late_videos }}</h3>
+                    <span class="stat-action">Voir les vidéos en retard</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'player_dashboard' %}" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-slate h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h6 class="stat-label">Joueurs</h6>
+                    <h3 class="stat-value">{{ total_players }}</h3>
+                    <span class="stat-action">Voir les joueurs</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'view_invoices' %}?status=unpaid" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-amber h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <h6 class="stat-label">Factures impayées</h6>
+                    <h3 class="stat-value">{{ total_unpaid_invoices }}</h3>
+                    <span class="stat-action">Voir les factures impayées</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'view_invoices' %}?status=partially_paid" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-cyan h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-coins"></i>
+                    </div>
+                    <h6 class="stat-label">Factures partiellement payées</h6>
+                    <h3 class="stat-value">{{ total_partially_paid_invoices }}</h3>
+                    <span class="stat-action">Voir les factures partiellement payées</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'statistical_dashboard' %}" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-rose h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-hourglass-half"></i>
+                    </div>
+                    <h6 class="stat-label">Vidéos terminées non payées</h6>
+                    <h3 class="stat-value">{{ completed_videos_not_paid_count }}</h3>
+                    <span class="stat-action">Voir le dashboard statistique</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'statistical_dashboard' %}" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-purple h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-truck"></i>
+                    </div>
+                    <h6 class="stat-label">Vidéos livrées non payées</h6>
+                    <h3 class="stat-value">{{ delivered_videos_not_paid_count }}</h3>
+                    <span class="stat-action">Voir le dashboard statistique</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'player_dashboard' %}?client_fidel=true" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-emerald h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-handshake"></i>
+                    </div>
+                    <h6 class="stat-label">Clients fidèles</h6>
+                    <h3 class="stat-value">{{ total_loyal_clients }}</h3>
+                    <span class="stat-action">Voir les clients fidèles</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'player_dashboard' %}?client_vip=true" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-gold h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-crown"></i>
+                    </div>
+                    <h6 class="stat-label">Clients VIP</h6>
+                    <h3 class="stat-value">{{ total_vip_clients }}</h3>
+                    <span class="stat-action">Voir les clients VIP</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'notification_list' %}" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-indigo h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-bell"></i>
+                    </div>
+                    <h6 class="stat-label">Notifications non lues</h6>
+                    <h3 class="stat-value">{{ unread_notifications }}</h3>
+                    <span class="stat-action">Voir les notifications</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <a href="{% url 'financial_report_list' %}" class="dashboard-card-link">
+            <div class="card dashboard-stat-card stat-dark h-100">
+                <div class="card-body">
+                    <div class="stat-icon-wrap">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h6 class="stat-label">Rapports financiers</h6>
+                    <h3 class="stat-value">+</h3>
+                    <span class="stat-action">Voir les rapports financiers</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>

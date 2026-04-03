@@ -31,6 +31,15 @@ from .tasks import (
     generate_first_day_of_current_month_report
 )
 
+import requests
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from .models import Player
+from django.views.decorators.http import require_POST
+from .utils import parse_transfermarkt_player
+from decimal import Decimal
+from django.db import transaction
 
 @superadmin_required
 @login_required
@@ -40,7 +49,6 @@ def create_video_highlight(request):
     player = None
     selected_player_id = request.POST.get('selected_player_id')
 
-    # Débogage : afficher la valeur de selected_player_id
     print(f'Selected Player ID: {selected_player_id}')
 
     if request.method == 'POST':
@@ -48,9 +56,9 @@ def create_video_highlight(request):
             if selected_player_id:
                 try:
                     player = Player.objects.get(id=selected_player_id)
-                    player_form = PlayerForm(request.POST, instance=player)  # Lier au joueur existant
+                    player_form = PlayerForm(request.POST, instance=player)
                     if player_form.is_valid():
-                        player_form.save()  # Mettre à jour les infos du joueur
+                        player = player_form.save()
                         messages.success(request, "Les informations du joueur ont été mises à jour avec succès !")
                     else:
                         messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
@@ -59,58 +67,132 @@ def create_video_highlight(request):
             else:
                 player_form = PlayerForm(request.POST)
                 if player_form.is_valid():
-                    player = player_form.save()  # Enregistrer le nouveau joueur
+                    player = player_form.save()
                     messages.success(request, "Le nouveau joueur a été ajouté avec succès !")
+                else:
+                    messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
 
-            video_form = VideoForm(user=request.user)  # Réinitialiser le formulaire vidéo
+            video_form = VideoForm(user=request.user)
             return render(request, 'gestion_joueurs/create_video.html', {
                 'video_form': video_form,
                 'player_form': player_form,
                 'players': Player.objects.all(),
-                'new_player_added': True,
+                'new_player_added': player is not None,
                 'added_player': player,
             })
 
         elif 'create_video' in request.POST:
             player_id = request.POST.get('player')
-            if player_id:
-                video_form = VideoForm(request.POST)
-                if video_form.is_valid():
-                    video = video_form.save(commit=False)
-                    video.player = Player.objects.get(id=player_id)
-                    
-                    # Capture the selected editor from the form
-                    editor_id = request.POST.get('editor')  # Ensure the editor is being passed in the form
-                    if editor_id:
-                        try:
-                            video.editor = VideoEditor.objects.get(id=editor_id)
-                        except VideoEditor.DoesNotExist:
-                            messages.error(request, "L'éditeur sélectionné n'existe pas.")
-                            return render(request, 'gestion_joueurs/create_video.html', {
-                                'video_form': video_form,
-                                'player_form': player_form,
-                                'players': Player.objects.all(),
-                                'new_player_added': False,
-                                'added_player': None,
-                            })
-                    else:
+
+            if not player_id:
+                messages.error(request, "Aucun joueur sélectionné. Veuillez réessayer.")
+                return render(request, 'gestion_joueurs/create_video.html', {
+                    'video_form': video_form,
+                    'player_form': player_form,
+                    'players': Player.objects.all(),
+                    'new_player_added': False,
+                    'added_player': None,
+                })
+
+            video_form = VideoForm(request.POST, user=request.user)
+
+            if not video_form.is_valid():
+                messages.error(request, "Erreur lors de la création de la vidéo. Veuillez vérifier les informations.")
+                try:
+                    player = Player.objects.get(id=player_id)
+                except Player.DoesNotExist:
+                    player = None
+                return render(request, 'gestion_joueurs/create_video.html', {
+                    'video_form': video_form,
+                    'player_form': player_form,
+                    'players': Player.objects.all(),
+                    'new_player_added': player is not None,
+                    'added_player': player,
+                })
+
+            try:
+                with transaction.atomic():
+                    player = Player.objects.get(id=player_id)
+
+                    editor_id = request.POST.get('editor')
+                    if not editor_id:
                         messages.error(request, "Aucun éditeur sélectionné. Veuillez réessayer.")
                         return render(request, 'gestion_joueurs/create_video.html', {
                             'video_form': video_form,
                             'player_form': player_form,
                             'players': Player.objects.all(),
-                            'new_player_added': False,
-                            'added_player': None,
+                            'new_player_added': True,
+                            'added_player': player,
                         })
-                    
+
+                    try:
+                        editor = VideoEditor.objects.get(id=editor_id)
+                    except VideoEditor.DoesNotExist:
+                        messages.error(request, "L'éditeur sélectionné n'existe pas.")
+                        return render(request, 'gestion_joueurs/create_video.html', {
+                            'video_form': video_form,
+                            'player_form': player_form,
+                            'players': Player.objects.all(),
+                            'new_player_added': True,
+                            'added_player': player,
+                        })
+
+                    video = video_form.save(commit=False)
+                    video.player = player
+                    video.editor = editor
+
+                    # IMPORTANT : remplir club/league ici, au lieu de laisser le signal refaire un save()
+                    video.club = player.club
+                    video.league = player.league
+
                     video.save()
-                    messages.success(request, "La vidéo a été créée avec succès !")
-                    return redirect('dashboard')
-                else:
-                    messages.error(request, "Erreur lors de la création de la vidéo. Veuillez vérifier les informations.")
-                    player = Player.objects.get(id=player_id)
-            else:
-                messages.error(request, "Aucun joueur sélectionné. Veuillez réessayer.")
+
+                    total_payment = Decimal(video.total_payment or 0)
+                    advance_payment = Decimal(video.advance_payment or 0)
+
+                    invoice_status = 'unpaid'
+                    if advance_payment > 0 and advance_payment < total_payment:
+                        invoice_status = 'partially_paid'
+                    elif total_payment > 0 and advance_payment >= total_payment:
+                        invoice_status = 'paid'
+
+                    invoice, created = Invoice.objects.get_or_create(
+                        video=video,
+                        defaults={
+                            'total_amount': total_payment,
+                            'amount_paid': advance_payment,
+                            'status': invoice_status,
+                            'created_by': request.user,
+                        }
+                    )
+
+                    if not created:
+                        invoice.total_amount = total_payment
+                        invoice.amount_paid = advance_payment
+                        invoice.status = invoice_status
+                        invoice.created_by = request.user
+                        invoice.save()
+
+                    if advance_payment > 0:
+                        Payment.objects.update_or_create(
+                            video=video,
+                            invoice=invoice,
+                            defaults={
+                                'player': player,
+                                'amount': advance_payment,
+                                'payment_type': 'final' if advance_payment >= total_payment else 'advance',
+                                'created_by': request.user,
+                                'remaining_balance': total_payment - advance_payment,
+                            }
+                        )
+
+                messages.success(request, "La vidéo a été créée avec succès avec sa facture !")
+                return redirect('dashboard')
+
+            except Player.DoesNotExist:
+                messages.error(request, "Le joueur sélectionné n'existe pas.")
+            except Exception as e:
+                messages.error(request, f"Erreur lors de la création de la vidéo : {str(e)}")
 
     players = Player.objects.all()
     return render(request, 'gestion_joueurs/create_video.html', {
@@ -197,6 +279,37 @@ def dashboard(request):
 
     # Fetch editors for filter (to populate the dropdown)
     editors = VideoEditor.objects.all()
+
+
+    today = timezone.now().date()
+    total_players = Player.objects.count()
+    total_videos_delivered = Video.objects.filter(status='delivered').count()
+    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
+    total_late_videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).count()
+
+    total_unpaid_invoices = Invoice.objects.filter(status='unpaid').count()
+    total_partially_paid_invoices = Invoice.objects.filter(status='partially_paid').count()
+
+    total_vip_clients = Player.objects.filter(client_vip=True).count()
+    total_loyal_clients = Player.objects.filter(client_fidel=True).count()
+
+    unread_notifications = Notification.objects.filter(user=request.user, is_read=False).count()
+
+    completed_videos_not_paid_count = Video.objects.filter(
+        status='completed',
+        invoices__status__in=['unpaid', 'partially_paid']
+    ).count()
+
+    delivered_videos_not_paid_count = Video.objects.filter(
+        status='delivered',
+        invoices__status__in=['unpaid', 'partially_paid']
+    ).count()
+
+
+
+
+
+
     return render(request, 'gestion_joueurs/dashboard.html', {
         'videos': page_obj,
         'tab': tab,
@@ -208,6 +321,58 @@ def dashboard(request):
         'ongoing_videos_count': ongoing_videos_count,
         'editors': editors,  # Pass editors to the template
         'show_problematic': show_only_problematic,
+        'total_players': total_players,
+        'total_videos_delivered': total_videos_delivered,
+        'total_videos_in_progress': total_videos_in_progress,
+        'total_late_videos': total_late_videos,
+        'total_unpaid_invoices': total_unpaid_invoices,
+        'total_partially_paid_invoices': total_partially_paid_invoices,
+        'total_vip_clients': total_vip_clients,
+        'total_loyal_clients': total_loyal_clients,
+        'unread_notifications': unread_notifications,
+        'completed_videos_not_paid_count': completed_videos_not_paid_count,
+        'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
+    })
+
+@login_required
+def dashboard_cards_view(request):
+    today = timezone.now().date()
+
+    total_players = Player.objects.count()
+    total_videos_delivered = Video.objects.filter(status='delivered').count()
+    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
+    total_late_videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).count()
+
+    total_unpaid_invoices = Invoice.objects.filter(status='unpaid').count()
+    total_partially_paid_invoices = Invoice.objects.filter(status='partially_paid').count()
+
+    total_vip_clients = Player.objects.filter(client_vip=True).count()
+    total_loyal_clients = Player.objects.filter(client_fidel=True).count()
+
+    unread_notifications = Notification.objects.filter(user=request.user, is_read=False).count()
+
+    completed_videos_not_paid_count = Video.objects.filter(
+        status='completed',
+        invoices__status__in=['unpaid', 'partially_paid']
+    ).count()
+
+    delivered_videos_not_paid_count = Video.objects.filter(
+        status='delivered',
+        invoices__status__in=['unpaid', 'partially_paid']
+    ).count()
+
+    return render(request, 'gestion_joueurs/dashboard_cards_page.html', {
+        'total_players': total_players,
+        'total_videos_delivered': total_videos_delivered,
+        'total_videos_in_progress': total_videos_in_progress,
+        'total_late_videos': total_late_videos,
+        'total_unpaid_invoices': total_unpaid_invoices,
+        'total_partially_paid_invoices': total_partially_paid_invoices,
+        'total_vip_clients': total_vip_clients,
+        'total_loyal_clients': total_loyal_clients,
+        'unread_notifications': unread_notifications,
+        'completed_videos_not_paid_count': completed_videos_not_paid_count,
+        'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
     })
 
 
@@ -374,16 +539,21 @@ def edit_video(request, video_id):
      
     # Fetch salaries related to the current video
     salaries = Salary.objects.filter(video=video)
-    video_paid = video.invoices.status
+    video_paid = last_invoice.status if last_invoice else 'unpaid'
     print(previous_editor.user.username)
     # Store the previous editor in thread-local storage
     thread_local.previous_editor = previous_editor
     if request.method == 'POST':
         form = VideoForm(request.POST, instance=video, user=request.user)
         if form.is_valid():
-            last_invoice.total_amount = form.cleaned_data.get('total_payment')
             form.save()
-            last_invoice.save()
+            if last_invoice:
+                last_invoice.total_amount = form.cleaned_data.get('total_payment')
+                if last_invoice.amount_paid == 0:
+                    last_invoice.status = 'unpaid'
+                else:
+                    last_invoice.status = 'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
+                last_invoice.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
             return redirect('dashboard')
     else:
@@ -459,26 +629,33 @@ def record_payment(request, video_id):
             payment = form.save(commit=False)
             payment.video = video
             payment.player = player
-            payment.created_by = request.user  # Set the user who created the payment
-            payment.invoice_id = last_invoice.id
+            payment.created_by = request.user
 
-            # Update the invoice based on the new payment
-            if last_invoice:
-                # Add the new payment amount to the invoice
-                last_invoice.amount_paid += payment.amount
-                last_invoice.status = (
-                    'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount 
-                    else 'paid'
+            if not last_invoice:
+                last_invoice = Invoice.objects.create(
+                    video=video,
+                    total_amount=video.total_payment,
+                    amount_paid=0,
+                    status='unpaid',
+                    created_by=request.user
                 )
-                last_invoice.save()  # Save the updated invoice
 
-                # Calculate the new remaining balance for the payment
-                payment.remaining_balance = last_invoice.total_amount - last_invoice.amount_paid
+            payment.invoice = last_invoice
+
+            last_invoice.amount_paid += payment.amount
+            last_invoice.status = (
+                'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
+            )
+            last_invoice.save()
+
+            payment.remaining_balance = last_invoice.total_amount - last_invoice.amount_paid
+
+            if payment.amount == last_invoice.total_amount:
+                payment.payment_type = 'final'
             else:
-                # If no invoice exists, handle accordingly (e.g., create a new invoice)
-                payment.remaining_balance = remaining_amount  # Keep the logic as needed
+                payment.payment_type = 'partial' if last_invoice.amount_paid < last_invoice.total_amount else 'final'
 
-            payment.save()  # Save the payment after all attributes are set
+            payment.save()
 
             messages.success(request, "Le paiement a été enregistré avec succès.")
             return redirect('view_payments')
@@ -1409,5 +1586,73 @@ def run_all_tasks(request):
 
 
 
+@superadmin_required
+@login_required
+@require_POST
+def import_transfermarkt_player(request):
+    url = request.POST.get("url", "").strip()
 
+    if not url:
+        return JsonResponse({
+            "success": False,
+            "error": "Lien Transfermarkt manquant."
+        }, status=400)
+
+    if "transfermarkt" not in url:
+        return JsonResponse({
+            "success": False,
+            "error": "Lien invalide."
+        }, status=400)
+
+    try:
+        parsed_data = parse_transfermarkt_player(url)
+
+        if not parsed_data.get("name"):
+            return JsonResponse({
+                "success": False,
+                "error": "Impossible de récupérer le nom du joueur."
+            }, status=400)
+
+        existing_player = Player.objects.filter(
+            name__iexact=parsed_data["name"]
+        ).first()
+
+        if existing_player:
+            return JsonResponse({
+                "success": True,
+                "exists": True,
+                "player": {
+                    "id": existing_player.id,
+                    "name": existing_player.name,
+                    "date_of_birth": existing_player.date_of_birth.strftime("%Y-%m-%d") if existing_player.date_of_birth else "",
+                    "league": existing_player.league,
+                    "club": existing_player.club,
+                    "whatsapp_number": existing_player.whatsapp_number or "",
+                    "position": existing_player.position,
+                    "client_fidel": existing_player.client_fidel,
+                    "client_vip": existing_player.client_vip,
+                }
+            })
+
+        return JsonResponse({
+            "success": True,
+            "exists": False,
+            "player": {
+                "id": "",
+                "name": parsed_data.get("name", ""),
+                "date_of_birth": parsed_data.get("date_of_birth", ""),
+                "league": parsed_data.get("league", "OC"),
+                "club": parsed_data.get("club", ""),
+                "whatsapp_number": "",
+                "position": parsed_data.get("position", "DF"),
+                "client_fidel": False,
+                "client_vip": False,
+            }
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "error": f"Erreur import Transfermarkt : {str(e)}"
+        }, status=500)
 
