@@ -1,0 +1,23 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Aperçu Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4 dashboard-cards-page">
+    <div class="page-hero-card mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <h1 class="mb-2">Aperçu Dashboard</h1>
+                <p class="mb-0">Vue synthétique des vidéos, factures, clients et notifications.</p>
+            </div>
+            <div class="hero-actions mt-3 mt-md-0">
+                <a href="{% url 'dashboard' %}" class="btn btn-primary">
+                    <i class="fas fa-tachometer-alt mr-2"></i>Tableau de bord
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% include 'gestion_joueurs/dashboard_cards.html' %}
+</div>
+{% endblock %}

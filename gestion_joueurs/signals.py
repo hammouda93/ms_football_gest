@@ -95,101 +95,11 @@ def create_video_status_history(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Video)
 def update_payment_for_video(sender, instance, created, **kwargs):
-    if not should_process_signals():
-        return  # Skip processing if the flag is set to False
-    
-    user = instance.editor.user if instance.editor and instance.editor.user else None
-    total_payment = Decimal(instance.total_payment or '0.00')
-    advance_payment = Decimal(instance.advance_payment or '0.00')
-    
-    print(f"Processing Video: {instance.id}, Created: {created}, Total Payment: {total_payment}, Advance Payment: {advance_payment}")
-
-    # Get or create an invoice for the video
-    invoice, _ = Invoice.objects.get_or_create(video=instance)
-
-    # Use a transaction to ensure atomic operations
-    with transaction.atomic():
-        if created:  # If a new video has been created
-            print(f"Creating new invoice for Video: {instance.id}")
-            # Set the total amount for the invoice
-            invoice.total_amount = total_payment
-            invoice.amount_paid = Decimal('0.00')
-            invoice.status = 'unpaid'
-            invoice.created_by = user
-            invoice.save()
-            print(f"New invoice created: {invoice.id} with total amount {total_payment}")
-
-        # Handle payments for both creation and updates
-        if advance_payment > 0 and not created:
-            print(f"Processing advance payment for Video: {instance.id}")
-
-            # Update the invoice amount paid
-            previous_amount_paid = invoice.amount_paid
-            invoice.total_amount = total_payment
-            print(f"Invoice Total Amount : New : {total_payment} , Old :{invoice.total_amount} ")
-            # Check for existing payments
-            existing_payment = Payment.objects.filter(video=instance).first()
-
-            # Create or update payment record
-            if not existing_payment:
-                print("No existing payment found, creating a new one.")
-                invoice.amount_paid = advance_payment
-                
-                if invoice.amount_paid == 0:
-                    invoice.status = 'unpaid'
-                else:
-                    invoice.status = 'partially_paid' if invoice.amount_paid < invoice.total_amount else 'paid'
-                invoice.save()
-                
-                # Determine payment type
-                payment_type = 'final' if invoice.amount_paid >= invoice.total_amount else 'advance'
-                Payment.objects.create(
-                    player=instance.player,
-                    video=instance,
-                    amount=advance_payment,
-                    payment_type=payment_type,
-                    created_by=user,
-                    remaining_balance=invoice.total_amount - invoice.amount_paid,
-                    invoice=invoice
-                )
-                print(f"New payment created for Video: {instance.id} with amount {advance_payment}")
-
-            else:
-                print("Existing payment found, updating it.")
-                
-                # Log the current state before updating
-                print(f"Current existing payment details for Video: {instance.id} - Amount: {existing_payment.amount}, Remaining Balance: {existing_payment.remaining_balance}")
-
-                # Update the existing payment details
-                existing_payment.amount = advance_payment
-                existing_payment.remaining_balance = invoice.total_amount - advance_payment
-
-                # Check all payments for the video instance
-                payments = Payment.objects.filter(video=instance)
-                for payment in payments:
-                    print(f"Payment amount: {payment.amount}")
-                # Aggregate to see what the sum should be
-                
-  
-                # Save the existing payment record
-                existing_payment.save()
-                total_existing_payments = payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
-                invoice.amount_paid = total_existing_payments
-
-                
-                # Determine payment type
-                payment_type = 'final' if invoice.amount_paid >= invoice.total_amount else 'advance'
-                existing_payment.payment_type = payment_type
-                existing_payment.save()
-
-                # Update the invoice status
-                if invoice.amount_paid == 0:
-                    invoice.status = 'unpaid'
-                else:
-                    invoice.status = 'partially_paid' if invoice.amount_paid < invoice.total_amount else 'paid'
-                
-                invoice.save()
-                print(f"Invoice status updated for Video: {instance.id} - New Status: {invoice.status}")
+    """
+    La création / mise à jour financière est maintenant gérée explicitement dans la vue.
+    On ne fait plus de logique comptable ici pour éviter les doublons et incohérences.
+    """
+    return
 
            
 
