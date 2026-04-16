@@ -113,6 +113,11 @@ class Video(models.Model):
     total_payment = models.DecimalField(max_digits=10, decimal_places=2)
     deadline = models.DateField(validators=[validate_deadline])
     video_link = models.URLField(blank=True, null=True)
+    seasons_to_process = models.PositiveSmallIntegerField(
+        choices=SeasonsToProcessChoices.choices,
+        default=SeasonsToProcessChoices.ONE,
+        verbose_name="Nombre de saisons à traiter"
+    )
     processing_mode = models.CharField(
         max_length=20,
         choices=AutomationModeChoices.choices,
