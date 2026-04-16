@@ -1,0 +1,69 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center">
+            <h2 class="mb-0">Ajouter un Revenu Non-Vidéo</h2>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                <div class="mb-3">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            <strong>{{ message.tags|capfirst }}!</strong> {{ message }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <form method="POST" action="{% url 'add_non_video_income' %}">
+                {% csrf_token %}
+
+                <!-- Category Field -->
+                <div class="form-group">
+                    <label for="category">Catégorie</label>
+                    <select name="category" id="category" class="form-control" required>
+                        <option value="">Sélectionnez une catégorie</option>
+                        <option value="freelance">Freelance</option>
+                        <option value="deposit">Dépôt</option>
+                        <option value="coach_cv">CV Coach</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="sponsorship">Sponsorship</option>
+                        <option value="donation">Donations</option>
+                        <option value="partnership">Partenariat</option>
+                        <option value="media">Media</option>
+                        <option value="other">Autre</option>
+                    </select>
+                </div>
+
+                <!-- Description Field -->
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" class="form-control" id="description" name="description" required>
+                </div>
+
+                <!-- Amount Field -->
+                <div class="form-group">
+                    <label for="amount">Montant</label>
+                    <input type="number" class="form-control" id="amount" name="amount" required>
+                </div>
+
+                <!-- Date Field -->
+                <div class="form-group">
+                    <label for="date">Date</label>
+                    <input type="date" class="form-control" id="date" name="date" value="{{ form.date.value|date:'Y-m-d' }}" required>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-primary btn-block">
+                    Ajouter un Revenu Non-Vidéo
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

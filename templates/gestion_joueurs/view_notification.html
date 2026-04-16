@@ -1,0 +1,93 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Voir la Notification{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            {% if notification.sent_by %}
+            <h5 class="text-center text-muted">Consulter la Notification</h5>
+                <span class="badge badge-primary">{{ notification.sent_by.username }}</span>
+            {% else %}
+                <span class="badge badge-info">Serveur</span>
+            {% endif %}
+            <i class="fas fa-arrow-right"></i> <!-- Font Awesome arrow -->
+            <span class="badge badge-secondary">{{ notification.user.username }}</span>
+            <span class="badge badge-warning ml-2">Envoyé le : {{ notification.sent_at|date:"d-m-Y H:i" }}</span>
+        </div>
+        <div class="card-body">
+            {% if notification %}
+                <ul class="list-group text-center">
+                    {% if notification.sent_by %}
+                    <li class="list-group-item">
+                        <strong>Crée par :</strong> {{ notification.sent_by }} 
+                    </li>
+                    {% else %}
+                    <li class="list-group-item">
+                        <strong>Crée :</strong><span class="badge badge-info ml-1"> Automatiquement </span>  
+                    </li>
+                    {% endif %}
+                    <li class="list-group-item">
+                        <strong>Envoyé a :</strong> {{ notification.user.username }}
+                    </li>
+                    
+                    <li class="list-group-item">
+                        <strong>Message :</strong> {{ notification.message }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Type de Notification :</strong> {{ notification.get_notification_type_display }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Date de Création :</strong> {{ notification.created_at|date:"d-m-Y H:i" }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Status :</strong>
+                        {% if notification.is_read %}
+                            <span class="badge badge-success">Lu</span>
+                        {% else %}
+                            <span class="badge badge-danger">Non lu</span>
+                        {% endif %}
+                    </li>
+                     
+                        {% if notification.video %}
+                        <li class="list-group-item">
+                            <strong>Video :</strong> {{ notification.video }} 
+                            <a href="{% url 'view_video' notification.video.id %}" class="btn btn-secondary btn-sm ml-2" title="Voir la video">
+                                <i class="fas fa-eye"></i>
+                            </a> 
+                            {% if request.user.is_superuser %}
+                            <a href="{% url 'record_payment' notification.video.id %}" class="btn btn-success btn-sm ml-2" title="ajouter un payement">
+                                <i class="fas fa-dollar-sign"></i>
+                            </a>
+                            <a href="{% url 'add_expense' %}" class="btn btn-warning btn-sm ml-2" title="payer un collaborateur">
+                                <i class="fas fa-credit-card"></i>
+                            </a>
+                            {%endif%}
+                        </li>
+                        {% endif %}
+                    
+                    {% if notification.player %}
+                    <li class="list-group-item">
+                        <strong>Joueur :</strong> {{ notification.player }} ({{notification.player.whatsapp_number}})  
+                        {% if request.user.is_superuser %}
+                            <a href="{% url 'edit_player' notification.player.id %}" class="btn btn-primary btn-sm ml-2" title="Voir le joueur">
+                                <i class="fas fa-user"></i>
+                            </a>   
+                        {% endif %}                           
+                    </li>  
+                    {% endif %}
+                </ul>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Notification introuvable.
+                </div>
+            {% endif %}
+            <div class="d-flex justify-content-center mt-3">
+                <a href="{% url 'notification_list' %}" class="btn btn-secondary">Retour à la liste des notifications</a>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}

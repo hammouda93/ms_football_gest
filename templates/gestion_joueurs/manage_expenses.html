@@ -1,0 +1,33 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Gestion des Dépenses{% endblock %}
+
+{% block content %}
+<h1>Liste des Dépenses</h1>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Description</th>
+            <th>Montant</th>
+            <th>Date</th>
+            <th>Catégorie</th>
+            <th>Lié à Salaire</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for expense in expenses %}
+        <tr>
+            <td>{{ expense.description }}</td>
+            <td>{{ expense.amount }}</td>
+            <td>{{ expense.date|date:"d/m/Y" }}</td>
+            <td>{{ expense.category }}</td>
+            <td>{{ expense.salary.user.username if expense.salary else 'N/A' }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5">Aucune dépense enregistrée.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

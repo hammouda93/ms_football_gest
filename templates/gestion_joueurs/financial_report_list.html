@@ -1,0 +1,218 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Liste des Rapports Financiers{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h1>Liste des Rapports Financiers</h1>
+            <a href="{% url 'financial_report' %}" class="btn btn-success mb-3">
+                <i class="fas fa-plus-circle"></i> Générer un Nouveau Rapport Financier
+            </a>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            <form method="get" class="form-inline mb-3" id="searchForm">
+                <div class="form-group mr-3">
+                    <label for="year" class="mr-2">Année:</label>
+                    <select name="year" id="year" class="form-control">
+                        <option value="">-- Sélectionner l'année --</option>
+                        {% for year in distinct_years %}
+                            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            
+                <div class="form-group mr-3">
+                    <label for="month" class="mr-2">Mois:</label>
+                    <select name="month" id="month" class="form-control" {% if not selected_year %}disabled{% endif %}>
+                        <option value="">-- Sélectionner le mois --</option>
+                        {% for month in distinct_months %}
+                            <option value="{{ month }}" {% if month == selected_month %}selected{% endif %}>{{ month }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            
+                <div class="form-group mr-3">
+                    <label for="day" class="mr-2">Jour:</label>
+                    <select name="day" id="day" class="form-control" {% if not selected_month %}disabled{% endif %}>
+                        <option value="">-- Sélectionner le jour --</option>
+                        {% for day in distinct_days %}
+                            <option value="{{ day }}" {% if day == selected_day %}selected{% endif %}>{{ day }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            
+                <button type="submit" class="btn btn-primary">Filtrer</button>
+            </form>
+
+            {% if reports %}
+            <table class="table table-bordered table-striped small-table">
+                <thead>
+                    <tr>
+                        <th>Date du Rapport</th>
+                        <th>Total Revenus</th>
+                        <th>Total Dépenses</th>
+                        <th>Revenu Net</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in reports %}
+                    <tr>
+                        <td>{{ report.report_date }}</td>
+                        <td>${{ report.total_income }}</td>
+                        <td>${{ report.total_expenses }}</td>
+                        <td>${{ report.net_profit }}</td>
+                        <td>
+                            <a href="{% url 'view_financial_report' report.pk %}" class="btn btn-info btn-sm">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="alert alert-warning">
+                Aucun rapport financier disponible.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const monthDropdown = document.getElementById('month');
+        const dayDropdown = document.getElementById('day');
+        const yearDropdown = document.getElementById('year');
+        const searchForm = document.getElementById('searchForm');
+
+        // Get the currently selected year, month, and day from the server-side template context
+        const currentYear = yearDropdown.value;
+        const currentMonth = monthDropdown.value;
+        const currentDay = dayDropdown.value;
+
+        // Initially disable month and day fields if no year is selected
+        if (!currentYear) {
+            monthDropdown.disabled = true;
+            dayDropdown.disabled = true;
+        }
+
+        // Fetch months if a year is selected
+        if (currentYear) {
+            fetchMonths(currentYear);
+        }
+
+        // Fetch days if both a year and month are selected
+        if (currentYear && currentMonth) {
+            fetchDays(currentYear, currentMonth);
+        }
+
+        // Event listener for year change
+        yearDropdown.addEventListener('change', function() {
+            const year = this.value;
+
+            // Enable or disable months based on year selection
+            if (year) {
+                monthDropdown.disabled = false;
+                fetchMonths(year);
+                dayDropdown.disabled = true;  // Disable day dropdown until a month is selected
+            } else {
+                monthDropdown.disabled = true;
+                dayDropdown.disabled = true;
+            }
+
+            // Reset the month and day selection
+            monthDropdown.value = '';
+            dayDropdown.value = '';
+
+            // Submit the form after selecting a year
+            submitForm();
+        });
+
+        // Event listener for month change
+        monthDropdown.addEventListener('change', function() {
+            const year = yearDropdown.value;
+            const month = this.value;
+
+            // Enable or disable the day dropdown based on month selection
+            if (month) {
+                dayDropdown.disabled = false;
+                fetchDays(year, month);
+            } else {
+                dayDropdown.disabled = true;
+            }
+
+            // Submit the form after selecting a month
+            submitForm();
+        });
+
+        // Event listener for day change
+        dayDropdown.addEventListener('change', function() {
+            // Submit the form after selecting a day
+            submitForm();
+        });
+
+        // Submit the form function
+        function submitForm() {
+            searchForm.submit();
+        }
+
+        // Function to fetch months for the selected year
+        function fetchMonths(year) {
+            fetch(`/gestion_joueurs/get_months/?year=${year}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.months) {
+                        monthDropdown.innerHTML = '<option value="">-- Sélectionner le mois --</option>';
+                        data.months.forEach(month => {
+                            let option = document.createElement('option');
+                            option.value = month;
+                            option.textContent = month;
+                            monthDropdown.appendChild(option);
+                        });
+
+                        // Pre-select the current month if available
+                        if (currentMonth) {
+                            monthDropdown.value = currentMonth;
+                            fetchDays(year, currentMonth);  // Load the days for the selected month
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching months:', error));
+        }
+
+        // Function to fetch days for the selected month and year
+        function fetchDays(year, month) {
+            fetch(`/gestion_joueurs/get_days/?year=${year}&month=${month}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.days) {
+                        dayDropdown.innerHTML = '<option value="">-- Sélectionner le jour --</option>';
+                        data.days.forEach(day => {
+                            let option = document.createElement('option');
+                            option.value = day;
+                            option.textContent = day;
+                            dayDropdown.appendChild(option);
+                        });
+
+                        // Pre-select the current day if available
+                        if (currentDay) {
+                            dayDropdown.value = currentDay;
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching days:', error));
+        }
+    });
+
+</script>
+
+{% endblock %}
