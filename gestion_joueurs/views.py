@@ -1718,6 +1718,7 @@ def automation_pending_videos(request):
             'automation_started': video.automation_started,
             'automation_completed': video.automation_completed,
             'season': video.season,
+            'seasons_to_process': video.seasons_to_process,
             'club': video.club,
             'league': video.league,
             'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,

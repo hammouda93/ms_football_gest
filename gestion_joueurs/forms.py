@@ -59,7 +59,7 @@ class VideoForm(forms.ModelForm):
     )
     class Meta:
         model = Video
-        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info', 'season', 'editor']
+        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info', 'season', 'editor','seasons_to_process']
     
     editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=True)
 
@@ -67,6 +67,7 @@ class VideoForm(forms.ModelForm):
         # Récupérer l'utilisateur connecté
         user = kwargs.pop('user', None)
         super(VideoForm, self).__init__(*args, **kwargs)
+        self.fields['seasons_to_process'].widget = forms.Select(choices=Video.SeasonsToProcessChoices.choices)
         if user and hasattr(user, 'videoeditor'):
             # Définir l'éditeur par défaut sur l'utilisateur connecté
             self.fields['editor'].initial = user.videoeditor

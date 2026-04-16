@@ -93,7 +93,9 @@ class Video(models.Model):
         NOT_PAID = 'not_paid', 'Not Paid'
         PARTIALLY_PAID = 'partially_paid', 'Partially Paid'
         PAID = 'paid', 'Paid'
-    
+    class SeasonsToProcessChoices(models.IntegerChoices):
+        ONE = 1, '1 saison'
+        TWO = 2, '2 saisons'
     class AutomationModeChoices(models.TextChoices):
         NORMAL = 'normal', 'Normal'
         AUTOMATION = 'automation', 'Automation'

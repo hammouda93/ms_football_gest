@@ -31,7 +31,7 @@ class SportsBaseAutomation:
         value = re.sub(r"\s+", " ", value).strip()
         return value
 
-    def run_for_player(self, player_name: str, player_url: str, target_dir: str) -> dict:
+    def run_for_player(self, player_name: str, player_url: str, target_dir: str, seasons_to_process: int = 1) -> dict:
         target_path = Path(target_dir)
         raw_clips_dir = target_path / "raw_clips"
         raw_clips_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ class SportsBaseAutomation:
 
                 self.open_player_statistics(page)
 
-                matches_played = min(self.get_matches_played(page),2)
+                matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) # max(self.get_matches_played(page),22)
                 result["matches_played"] = matches_played
                 print(f"[DEBUG] Matches played lus: {matches_played}")
 
@@ -186,7 +186,8 @@ class SportsBaseAutomation:
 
         page.wait_for_timeout(2000)
 
-    def get_matches_played(self, page) -> int:
+    def get_matches_played(self, page, seasons_to_process: int = 1) -> int:
+        # Saison 1 = logique actuelle
         row = page.locator("li").filter(has=page.get_by_text("Matches played", exact=True)).first
         row.wait_for(timeout=15000)
 
@@ -194,10 +195,39 @@ class SportsBaseAutomation:
         text = value_locator.inner_text().strip()
 
         try:
-            return int(text)
+            first_season_matches = int(text)
         except ValueError:
-            raise RuntimeError(f"Impossible de lire Matches played: {text}")
+            raise RuntimeError(f"Impossible de lire Matches played saison 1: {text}")
 
+        if seasons_to_process == 1:
+            return first_season_matches
+
+        # Saison 2 = clic sur le slider puis lecture de la nouvelle valeur
+        try:
+            season_slider = page.locator("div.Slider-sc-e7kel1-1.iQBwAL").first
+            season_slider.wait_for(timeout=10000)
+            season_slider.scroll_into_view_if_needed()
+            season_slider.click()
+            page.wait_for_timeout(1500)
+
+            second_value_locator = page.locator(
+                "div.Values-sc-16aevzl-10 div.StatValue-sc-16aevzl-11"
+            ).first
+            second_value_locator.wait_for(timeout=10000)
+
+            second_text = second_value_locator.inner_text().strip()
+            second_season_matches = int(second_text)
+
+            total_matches = first_season_matches + second_season_matches
+            print(
+                f"[DEBUG] Matches played saison 1: {first_season_matches} | "
+                f"saison 2: {second_season_matches} | total: {total_matches}"
+            )
+            return total_matches
+
+        except Exception as e:
+            raise RuntimeError(f"Impossible de lire Matches played saison 2: {e}")
+    
     def get_match_items(self, page):
         return page.locator("ul.MatchesList-sc-1gt3fpl-2 > li.MatchItem-sc-wzxkix-1")
 
@@ -311,48 +341,59 @@ class SportsBaseAutomation:
         generation_confirmed = False
         direct_download_cancelled = False
 
-        # ici on clique sur "One file" en surveillant si un téléchargement démarre
         try:
             type_dropdown = popup.locator("div.DropdownFrame-sc-1228j4m-0").filter(
                 has=popup.get_by_text("Type of download", exact=False)
             ).first
-
             type_dropdown.wait_for(timeout=10000)
 
-            one_file_option = type_dropdown.locator("div.DropdownItem-sc-tuwi5p-2").filter(
-                has_text=re.compile(r"One file", re.I)
-            ).last
+            popup.wait_for_timeout(500)
 
-            one_file_option.wait_for(timeout=10000)
+            one_file_option = popup.locator("div.DropdownItem-sc-tuwi5p-2").filter(
+                has_text=re.compile(r"^\s*One file\s*$", re.I)
+            ).first
+
+            one_file_option.wait_for(state="visible", timeout=10000)
+            one_file_option.scroll_into_view_if_needed()
+            popup.wait_for_timeout(300)
+
+            try:
+                print(f"[DEBUG] one_file_option count = {one_file_option.count()}")
+                print(f"[DEBUG] one_file_option text = {one_file_option.inner_text().strip()}")
+            except Exception:
+                pass
 
             direct_download = None
 
+            # Un seul clic sur One file
             try:
-                with popup.expect_download(timeout=4000) as download_info:
-                    one_file_option.click()
+                with popup.expect_download(timeout=2500) as download_info:
+                    one_file_option.click(timeout=5000)
                 direct_download = download_info.value
-                print("[DEBUG] Un téléchargement direct a démarré depuis le popup")
+                print("[DEBUG] Clic One file effectué + téléchargement direct détecté")
             except Exception:
-                # aucun téléchargement direct détecté
-                one_file_option.click()
+                # Pas de download direct immédiat, mais le clic a peut-être quand même marché
+                one_file_option.click(timeout=5000)
+                print("[DEBUG] Clic One file effectué sans téléchargement direct immédiat")
 
-            popup.wait_for_timeout(1500)
+            popup.wait_for_timeout(1200)
 
-            try:
-                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=5000)
-                print(f"[DEBUG] Message génération vidéo détecté avec qualité {selected_quality}")
-                generation_confirmed = True
-            except Exception:
-                print("[INFO] Message non détecté - probablement déjà généré ou génération lancée directement")
-
-            # si pas de message mais téléchargement direct démarré => on annule
-            if not generation_confirmed and direct_download is not None:
+            # Si téléchargement direct lancé, on l'annule puis on passe
+            if direct_download is not None:
                 try:
                     direct_download.cancel()
                     print("[DEBUG] Téléchargement direct annulé")
                     direct_download_cancelled = True
                 except Exception as e:
                     print(f"[WARN] Impossible d'annuler le téléchargement direct: {e}")
+
+            # Sinon, on regarde si le message apparaît
+            try:
+                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=2500)
+                print(f"[DEBUG] Message génération vidéo détecté avec qualité {selected_quality}")
+                generation_confirmed = True
+            except Exception:
+                print("[INFO] Message non détecté rapidement après clic")
 
         except Exception as e:
             print(f"[WARN] Erreur durant generate_download_in_popup: {e}")
@@ -362,7 +403,7 @@ class SportsBaseAutomation:
 
     def generate_all_players_actions(self, page, matches_played: int):
         processed = 0
-        max_matches = min(matches_played,2)
+        max_matches = matches_played # max(matches_played,22)
         generated_match_titles = []
 
         match_items = self.get_match_items(page)

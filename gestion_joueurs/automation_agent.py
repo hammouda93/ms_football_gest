@@ -105,9 +105,11 @@ def process_video(video_data):
     player_name = video_data["player"]["name"]
     sportsbase_url = video_data["player"].get("sportsbase_url")
     automation_started = video_data.get("automation_started", False)
+    seasons_to_process = int(video_data.get("seasons_to_process", 1))
 
     print(f"[INFO] Nouvelle vidéo à traiter: {video_id} - {player_name}")
     print(f"[INFO] SportsBase URL: {sportsbase_url}")
+    print(f"[INFO] Saisons à traiter: {seasons_to_process}")
 
     if not sportsbase_url:
         print(f"[WARN] Pas de SportsBase URL pour la vidéo {video_id}")
@@ -123,7 +125,8 @@ def process_video(video_data):
     result = automation.run_for_player(
         player_name=player_name,
         player_url=sportsbase_url,
-        target_dir=folder
+        target_dir=folder,
+        seasons_to_process=seasons_to_process
     )
 
     print(f"[INFO] Matches played: {result['matches_played']}")
