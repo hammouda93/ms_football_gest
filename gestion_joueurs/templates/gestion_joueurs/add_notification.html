@@ -1,0 +1,41 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Ajouter une Notification{% endblock %}
+
+{% block content %}
+{% load crispy_forms_tags %}  <!-- Load crispy forms tags here -->
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h1 class="text-center"> Envoyer/Enregistrer une Notification </h1>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="card mb-4">
+                    <div class="card-body">
+                        {{ form|crispy }}
+                    </div>
+                </div>
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-success">Envoyer la notification</button>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- Initialize Select2 for the 'video' and 'player' fields -->
+<script>
+    $(document).ready(function() {
+        // Apply Select2 to the 'video' and 'player' select fields
+        $('#id_video').select2({
+            placeholder: "Sélectionner une vidéo (optionnel)", // Placeholder for the video field
+            allowClear: true // Allow clearing the selection
+        });
+        $('#id_player').select2({
+            placeholder: "Sélectionner un joueur (optionnel)", // Placeholder for the player field
+            allowClear: true // Allow clearing the selection
+        });
+    });
+</script>
+{% endblock %}

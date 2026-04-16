@@ -1,0 +1,134 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Voir les Paiements{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center">
+            <h1 class="mb-0">Liste des Paiements des Vidéos</h1>
+        </div>
+        <div class="card-body">
+            <!-- Search Form -->
+            <form method="GET" class="mb-3" id="search-form">
+                <div class="form-row">
+                    <div class="col">
+                        <input type="text" id="search-video" name="search_video" class="form-control" placeholder="Rechercher par Vidéo" value="{{ request.GET.search_video }}">
+                    </div>
+                    <div class="col">
+                        <input type="text" id="search-player" name="search_player" class="form-control" placeholder="Rechercher par Joueur" value="{{ request.GET.search_player }}">
+                    </div>
+                </div>
+            </form>
+
+            {% if payments %}
+            <table class="table table-striped table-bordered table-hover small-table">
+                <thead class="thead-light">
+                    <tr>
+                        <th scope="col">Joueur</th>
+                        <th scope="col">Vidéo</th>
+                        <th scope="col">Montant</th>
+                        <th scope="col">Type de Paiement</th>
+                        <th scope="col">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.player.name }}</td>
+                        <td>{{ payment.video }}</td>
+                        <td>{{ payment.amount }}</td>
+                        <td>{{ payment.get_payment_type_display }}</td>
+                        <td>{{ payment.payment_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <!-- Pagination Controls -->
+            <nav>
+                <ul class="pagination justify-content-center pagination-sm">
+                    {% if payments.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if search_video %}&search_video={{ search_video }}{% endif %}{% if search_player %}&search_player={{ search_player }}{% endif %}" aria-label="Première">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ payments.previous_page_number }}{% if search_video %}&search_video={{ search_video }}{% endif %}{% if search_player %}&search_player={{ search_player }}{% endif %}" aria-label="Précédent">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ payments.number }} / {{ payments.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if payments.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ payments.next_page_number }}{% if search_video %}&search_video={{ search_video }}{% endif %}{% if search_player %}&search_player={{ search_player }}{% endif %}" aria-label="Suivant">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ payments.paginator.num_pages }}{% if search_video %}&search_video={{ search_video }}{% endif %}{% if search_player %}&search_player={{ search_player }}{% endif %}" aria-label="Dernière">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% else %}
+            <div class="alert alert-warning" role="alert">
+                Aucun paiement trouvé.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const searchVideoInput = document.getElementById('search-video');
+        const searchPlayerInput = document.getElementById('search-player');
+
+        // Function to update the URL with the current search parameters
+        const updateSearchParams = () => {
+            const searchVideo = searchVideoInput.value;
+            const searchPlayer = searchPlayerInput.value;
+
+            const url = new URL(window.location.href);
+            if (searchVideo) {
+                url.searchParams.set('search_video', searchVideo);
+            } else {
+                url.searchParams.delete('search_video');
+            }
+
+            if (searchPlayer) {
+                url.searchParams.set('search_player', searchPlayer);
+            } else {
+                url.searchParams.delete('search_player');
+            }
+
+            // Update the browser's URL without reloading the page
+            window.history.replaceState({}, '', url);
+            
+            // Reload the page to apply the filters
+            window.location.href = url;
+        };
+
+        // Event listeners to trigger the updateSearchParams function
+        searchVideoInput.addEventListener('input', debounce(updateSearchParams, 500));
+        searchPlayerInput.addEventListener('input', debounce(updateSearchParams, 500));
+    });
+
+    // Debounce function to delay the execution of the search
+    function debounce(func, delay) {
+        let timeout;
+        return function () {
+            clearTimeout(timeout);
+            timeout = setTimeout(func, delay);
+        };
+    }
+</script>
+{% endblock %}

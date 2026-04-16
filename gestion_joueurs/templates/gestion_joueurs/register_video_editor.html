@@ -1,0 +1,42 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags %}  <!-- Charger les tags Crispy Forms -->
+
+{% block title %}Ajouter Éditeurs Vidéo{% endblock %}
+
+{% block content %}
+<h1>Ajouter Éditeurs Vidéo</h1>
+
+{% if messages %}
+    <div>
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<h2>Éditeurs Vidéo Existants</h2>
+<ul class="list-group mb-4">
+    {% for editor in editors %}
+        <li class="list-group-item">{{ editor.user.username }}</li>
+    {% empty %}
+        <li class="list-group-item">Aucun éditeur vidéo trouvé.</li>
+    {% endfor %}
+</ul>
+
+<h2>Ajouter un Nouvel Éditeur Vidéo</h2>
+<form method="POST">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="user">Sélectionnez un utilisateur</label>
+        <select name="user" class="form-control" id="user" required>
+            <option value="">Choisir un utilisateur</option>
+            {% for user in users %}
+                <option value="{{ user.id }}">{{ user.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Ajouter Éditeur Vidéo</button>
+</form>
+
+<a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
+{% endblock %}

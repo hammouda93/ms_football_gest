@@ -1,0 +1,746 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+    <!-- Main Content -->
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-lg-7 mb-4">
+                <div class="card border-primary shadow-lg h-100">
+                    <div class="card-body"> 
+                        <div class="row mb-4">
+                            <div class="col-12 mb-1">                              
+                                <div class="d-flex  justify-content-around" style="margin-top: 0;">
+                                    <div class="col-3 d-flex flex-column align-items-center text-center">
+                                        <div style="width: 80px; height: 80px;">
+                                            <canvas id="totalIncomeChart"></canvas>
+                                            <span class="text-center">Revenus</span>
+                                            <span class="text-center" id="totalRevenue">{{ total_revenue }}</span> <!-- Display value here -->
+                                        </div>
+                                    </div>
+                                    <div class="col-3 d-flex flex-column align-items-center text-center">
+                                        <div style="width: 80px; height: 80px;">
+                                            <canvas id="totalExpensesChart"></canvas>
+                                            <span class="text-center">Dépenses</span>
+                                            <span class="text-center" id="totalExpenses">{{ total_expenses }}</span> <!-- Display value here -->
+                                        </div>
+                                    </div>
+                                    <div class="col-3 d-flex flex-column align-items-center text-center">
+                                        <div style="width: 80px; height: 80px;">
+                                            <canvas id="netProfitChart"></canvas>
+                                            <span class="text-center">Bénéfices</span>
+                                            <span class="text-center" id="totalGain">{{ total_gain }}</span> <!-- Display value here -->
+                                        </div>
+                                    </div>
+                                    <div class="col-3 d-flex flex-column align-items-center text-center">
+                                        <div style="width: 80px; height: 80px;">
+                                            <canvas id="outstandingPaymentsChart"></canvas>
+                                            <span class="text-center">Recouv..</span>
+                                            <span class="text-center" id="totalOutstandingPayments">{{ total_outstanding_payments }}</span> <!-- Display value here -->
+                                        </div>
+                                    </div>     
+                                </div>                             
+                            </div>
+                        </div>
+                        <div class="row w-100" id="dynamic_table" style="margin-top: 50px;">
+                            <ul class="nav nav-tabs" id="myTab" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <a class="nav-link active" id="past-deadline-tab" data-bs-toggle="tab" href="#past-deadline" role="tab" aria-controls="past-deadline" aria-selected="true">VDP</a>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <a class="nav-link" id="completed-not-paid-tab" data-bs-toggle="tab" href="#completed-not-paid" role="tab" aria-controls="completed-not-paid" aria-selected="true">VFNP</a>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <a class="nav-link" id="delivered-not-paid-tab" data-bs-toggle="tab" href="#delivered-not-paid" role="tab" aria-controls="delivered-not-paid" aria-selected="false">VLNP</a>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <a class="nav-link" id="pending-no-advance-tab" data-bs-toggle="tab" href="#pending-no-advance" role="tab" aria-controls="pending-no-advance" aria-selected="false">VEA (A=0)</a>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <a class="nav-link" id="completed-collab-tab" data-bs-toggle="tab" href="#completed-collab" role="tab" aria-controls="completed-collab" aria-selected="false">VFPC</a>
+                                </li>
+                            </ul>
+    
+                            <div class="tab-content w-100" id="myTabContent">
+                                <div class="tab-pane fade show active" id="past-deadline" role="tabpanel" aria-labelledby="past-deadline-tab">
+                                    <h5 class="mt-3">Vidéos avec Deadline Passée ({{ count_past_deadline_videos }}) </h5>
+                                    <table class="table table-striped text-center w-100">
+                                        <thead>
+                                            <tr>
+                                                <th>Vidéo</th>
+                                                <th>Deadline</th>
+                                                <th>Statut</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for video in past_deadline_videos %}
+                                                <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                                    <td>{{ video }}</td>
+                                                    <td>{{ video.deadline }}</td>
+                                                    <td>{{ video.get_status_display }}</td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="3">Aucune vidéo avec deadline dépassée trouvée.</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="tab-pane fade" id="completed-not-paid" role="tabpanel" aria-labelledby="completed-not-paid-tab">
+                                    <h5 class="mt-3">Vidéos finies Non Payées ({{ count_completed_not_paid }})</h5>
+                                    <table class="table table-striped text-center w-100">
+                                        <thead>
+                                            <tr>
+                                                <th>Vidéo</th>
+                                                <th>Montant Total</th>
+                                                <th>Etat</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for video in completed_videos_not_paid %}
+                                                <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                                    <td>{{ video }}</td>
+                                                    <td>{{ video.total_payment }}</td>
+                                                    <td>{{ video.invoices.status }}</td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="3">Aucune vidéo complétée non payée trouvée.</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+    
+                                <div class="tab-pane fade" id="delivered-not-paid" role="tabpanel" aria-labelledby="delivered-not-paid-tab">
+                                    <h5 class="mt-3">Vidéos Livrées Non Payées ({{ count_delivered_not_paid }})</h5>
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Vidéo</th>
+                                                <th>Montant Total</th>
+                                                <th>Etat</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for video in delivered_videos_not_paid %}
+                                                <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                                    <td>{{ video }}</td>
+                                                    <td>{{ video.total_payment }}</td>
+                                                    <td>{{ video.invoices.status }}</td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="3">Aucune vidéo livrée non payée trouvée.</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+    
+                                <div class="tab-pane fade" id="pending-no-advance" role="tabpanel" aria-labelledby="pending-no-advance-tab">
+                                    <h5 class="mt-3">Vidéos En Attente (Avance = 0) ({{ count_pending_no_advance }}) </h5>
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Vidéo</th>
+                                                <th>Montant Total</th>
+                                                <th>Etat</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for video in pending_videos_no_advance %}
+                                            <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                                    <td>{{ video }}</td>
+                                                    <td>{{ video.total_payment }}</td>
+                                                    <td>{{ video.status }}</td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="3">Aucune vidéo en attente trouvée.</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+    
+                                <div class="tab-pane fade" id="completed-collab" role="tabpanel" aria-labelledby="completed-collab-tab">
+                                    <h5 class="mt-3">Vidéos Finis par les Collaborateurs ({{ count_completed_collab }}) </h5>
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Vidéo</th>
+                                                <th>Montant Total</th>
+                                                <th>Montant Avance</th>
+                                                <th>Statut</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for video in completed_collab_videos %}
+                                                <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                                    <td>{{ video }}</td>
+                                                    <td>{{ video.total_payment }}</td>
+                                                    <td>{{ video.advance_payment }}</td>
+                                                    <td>{{ video.get_status_display }}</td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="4">Aucune vidéo finie par des collaborateurs trouvée.</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5 mb-4">
+                <div class="card border-primary shadow-lg h-100">
+                    <div class="card-body text-center" >
+                        <div class="row mb-2" >
+                            <div class="col-6" >
+                                <div class="canvas-container" style="height: 150px;">
+                                    <canvas id="videoStatusInProgressChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-6 d-flex flex-column align-items-center ">
+                                <span class="badge bg-primary fs-5 w-100 mb-1"> Vidéos en cours : {{ total_videos_in_progress }}</span>
+                                <span class="badge bg-success fs-5 w-100 mb-1" >Vidéos chez les Collab : {{ total_videos_with_collaborators }}</span>
+                                <span class="badge bg-primary fs-5 w-100 mb-1 clickable-row" onclick="$('#myTab a[href=\'#past-deadline\']').tab('show');" style="cursor: pointer;"> Vidéos Avec Deadline Passé : {{ count_past_deadline_videos }}</span>
+                                <span class="badge bg-primary fs-5 w-100 mb-1 clickable-row" onclick="$('#myTab a[href=\'#completed-not-paid\']').tab('show');" style="cursor: pointer;"> Vidéos Finis Non Payées : {{ count_completed_not_paid }}</span>
+                                <span class="badge bg-warning fs-5 w-100 mb-1 clickable-row" onclick="$('#myTab a[href=\'#delivered-not-paid\']').tab('show');" style="cursor: pointer;">Vidéos Livrées Non Payées : {{ count_delivered_not_paid }}</span>
+                                <span class="badge bg-secondary fs-5 w-100 mb-1 clickable-row" onclick="$('#myTab a[href=\'#pending-no-advance\']').tab('show');" style="cursor: pointer;">Vidéos En Attente Av : {{ count_pending_no_advance }}</span>
+                                <span class="badge bg-danger fs-5 w-100 mb-1 clickable-row" onclick="$('#myTab a[href=\'#completed-collab\']').tab('show');" style="cursor: pointer;">Vidéos Finis par Collab : {{ count_completed_collab }}</span>
+                            </div>
+                        </div>
+                        <div class="row mb-2 text-center" style="justify-content: center;">
+                            <h5 class="text-center">Videos en attente de finition</h5>
+                            <table class="table table-striped small-table">
+                                <thead>
+                                    <tr>
+                                        <th>Joueur</th>
+                                        <th>Deadline</th>
+                                        <th>Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for video in upcoming_deadlines %}
+                                        <tr class="clickable-row" onclick="window.location='{% url 'view_video' video.id %}'" style="cursor: pointer;">
+                                            <td>{{ video.player.name }}</td>
+                                            <td>{{ video.deadline }}</td>
+                                            <td>{{ video.get_status_display }}</td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="3">Aucune vidéo avec deadline proche trouvée.</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>          
+        </div>
+
+
+        <div class="row mb-4">
+            <div class="col-lg-7 mb-4">
+                <div class="card border-primary shadow-lg h-100">
+                    <div class="card-body"> 
+                        <div class="row">
+                            <div class="col-6 text-center">
+                                <div class="canvas-container" >
+                                    <canvas id="playersByPositionChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="canvas-container" style="height: 150px;">
+                                    <canvas id="playersByLeagueChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="canvas-container">
+                                    <canvas id="clientsChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-6"> 
+                                <table class="table table-striped mt-3">
+                                    <thead>
+                                        <tr>
+                                            <th>Joueur</th>
+                                            <th>Vidéos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for player in top_loyal_players %}
+                                            <tr class="clickable-row" onclick="window.location='{% url 'edit_player' player.id %}'" style="cursor: pointer;">
+                                                <td>{{ player.name }}</td>
+                                                <td>{{ player.video_set.count }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="2">Aucun joueur fidèle trouvé.</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5 mb-4">
+                <div class="card border-primary shadow-lg h-100">
+                    <div class="card-body text-center">
+                        <h5 class="text-center">Gestion de payement des Collaborateurs</h5>
+                        <!-- Badges pointing to the two tables -->
+                        <span class="badge bg-primary fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#deliveredNotPaidTable">
+                            Vidéos Livrées (Collab Non Payé) : {{count_videos_delivered_not_paid}}
+                        </span>
+                        <span class="badge bg-warning fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#completedCollabTable">
+                            Vidéos Finis  (Collab Non Payé) : {{count_completed_collab_videos}}
+                        </span>
+            
+                        <!-- Collapse Table for Delivered Videos Not Paid -->
+                        <div class="mt-3 ollapse show" id="deliveredNotPaidTable" >
+                            <table class="table table-striped table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Vidéo</th>
+                                        <th>Editeur</th>
+                                        <th>Video Payé</th>
+                                        <th>Editeur Payé</th>
+                                        
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for video in videos_delivered_not_paid %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td>{{ video }}</td>
+                                        <td>{{ video.editor.user.username }}</td>  <!-- Accessing the User's full_name via the editor -->
+                                        <td>{{ video.invoices.status }}</td>  <!-- Accessing invoice status using 'invoices' -->
+                                        <td>{{ video.salary_paid_status }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5">Aucune vidéo à afficher.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Collapse Table for Completed Collab Videos Not Paid -->
+                        <div class="collapse mt-3" id="completedCollabTable">
+                            <table class="table table-striped table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Vidéo</th>
+                                        <th>Editeur</th>
+                                        <th>Video Payé</th>
+                                        <th>Editeur Payé</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for video in completed_collab_videos_not_paid %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td>{{ video }}</td>
+                                        <td>{{ video.editor.user.username }}</td>  <!-- Accessing the User's full_name via the editor -->
+                                        <td>{{ video.invoices.status }}</td>  <!-- Invoice status -->
+                                        <td>{{ video.salary_paid_status }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6">Aucune vidéo à afficher.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>          
+        </div>
+    </div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js"></script>
+<!-- Chart.js Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.0.6/countUp.min.js"></script>
+<script>
+    // Function to animate numbers
+    function animateNumber(elementId, start, end, duration) {
+        const element = document.getElementById(elementId);
+        const startTimestamp = performance.now();
+
+        const step = (currentTime) => {
+            const elapsed = currentTime - startTimestamp;
+            const progress = Math.min(elapsed / duration, 1);
+            const currentValue = Math.floor(start + (end - start) * progress);
+            element.innerText = currentValue;
+
+            // Stop if the end value is reached
+            if (progress < 1) {
+                requestAnimationFrame(step);
+            } else {
+                element.innerText = end; // Ensure it shows the final value
+            }
+        };
+
+        requestAnimationFrame(step);
+    }
+
+    // Set the values you want to animate
+    const totalRevenue = {{ total_revenue }};
+    const totalExpenses = {{ total_expenses }}; // Highest value
+    const totalGain = {{ total_gain }}; // Profits
+    const totalOutstandingPayments = {{ total_outstanding_payments }}; // Debts
+
+    // Store values in an array
+    const values = [
+        { id: 'totalRevenue', value: totalRevenue },
+        { id: 'totalExpenses', value: totalExpenses },
+        { id: 'totalGain', value: totalGain },
+        { id: 'totalOutstandingPayments', value: totalOutstandingPayments }
+    ];
+
+    // Find the maximum value
+    const maxValue = Math.max(...values.map(v => Math.abs(v.value))); // Use absolute value for profits
+    const baseDuration = 5000; // 3 seconds for the highest value
+
+    // Start animations
+    document.addEventListener('DOMContentLoaded', () => {
+        values.forEach(({ id, value }) => {
+            const duration = (Math.abs(value) / maxValue) * baseDuration; // Scale duration
+            animateNumber(id, 0, value, duration);
+        });
+    });
+
+
+    const playersByLeagueData = {
+        labels: [{% for player in players_by_league %}'{{ player.league }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Position de Joueurs',
+            data: [{% for player in players_by_league %}{{ player.count }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: [
+                'rgba(153, 102, 255, 0.6)',
+                'rgba(255, 99, 132, 0.6)',
+                'rgba(255, 159, 64, 0.6)',
+                'rgba(75, 192, 192, 0.6)',
+                'rgba(54, 162, 235, 0.6)',
+            ],
+            borderColor: [
+                'rgba(153, 102, 255, 1)',
+                'rgba(255, 99, 132, 1)',
+                'rgba(255, 159, 64, 1)',
+                'rgba(75, 192, 192, 1)',
+                'rgba(54, 162, 235, 1)',
+            ],
+            borderWidth: 1
+        }]
+    };
+
+    const playersByLeagueConfig = {
+        type: 'pie',
+        data: playersByLeagueData,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false, // Hide the legend completely
+                },
+                title: {
+                    display: true,
+                    text: 'Répartition par Ligue'
+                },
+                datalabels: {
+                    color: '#000',  // White color for the numbers
+                    formatter: (value) => {
+                        return value; // Show the count
+                    },
+                    anchor: 'center',
+                    align: 'center',
+                    font: {
+                        weight: 'bold',
+                        size: '16',
+                    }
+                }
+            }
+        },
+        plugins: [ChartDataLabels] // Ensure the plugin is included here
+    };
+
+    const playersByLeagueChart = new Chart(
+        document.getElementById('playersByLeagueChart'),
+        playersByLeagueConfig
+    );
+
+    // Players by Position Chart
+    const playersByPositionData = {
+        labels: [{% for player in players_by_position %}'{{ player.position }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Nombre de Joueurs : {{ total_players }}',
+            data: [{% for player in players_by_position %}{{ player.count }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: [
+                'rgba(75, 192, 192, 0.6)',   // Color for Position 1
+                'rgba(255, 99, 132, 0.6)',    // Color for Position 2
+                'rgba(255, 159, 64, 0.6)',    // Color for Position 3
+                'rgba(54, 162, 235, 0.6)',    // Color for Position 4
+                'rgba(153, 102, 255, 0.6)',   // Color for Position 5
+                // Add more colors as needed
+            ],
+            borderColor: [
+                'rgba(75, 192, 192, 1)',
+                'rgba(255, 99, 132, 1)',
+                'rgba(255, 159, 64, 1)',
+                'rgba(54, 162, 235, 1)',
+                'rgba(153, 102, 255, 1)',
+                // Corresponding borders
+            ],
+            borderWidth: 1
+        }]
+    };
+
+    const playersByPositionConfig = {
+        type: 'bar',
+        data: playersByPositionData,
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: false,
+                    text: 'Nombre de joueurs : {{ total_players }}'
+                }
+            }
+        }
+    };
+
+    const playersByPositionChart = new Chart(
+        document.getElementById('playersByPositionChart'),
+        playersByPositionConfig
+    );
+
+    // Chart for Client Distribution
+    const clientsData = {
+        labels: ['Fidèles', 'VIP', 'Normal'],
+        datasets: [{
+            label: 'Classification de joueurs',
+            data: [{{ total_loyal_clients }}, {{ total_vip_clients }}, {{ other_clients }}],
+            backgroundColor: [
+                'rgba(75, 192, 192, 0.6)',   // Couleur pour les clients fidèles
+                'rgba(255, 159, 64, 0.6)',    // Couleur pour les clients VIP
+                'rgba(255, 99, 132, 0.6)'     // Couleur pour les autres clients
+            ],
+            borderColor: [
+                'rgba(75, 192, 192, 1)',
+                'rgba(255, 159, 64, 1)',
+                'rgba(255, 99, 132, 1)'
+            ],
+            borderWidth: 1
+        }]
+    };
+
+    const clientsConfig = {
+        type: 'bar',  // Vous pouvez changer à 'pie' si vous préférez
+        data: clientsData,
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: false,
+                    text: 'classification des joueurs'
+                }
+            }
+        }
+    };
+
+    const clientsChart = new Chart(
+        document.getElementById('clientsChart'),
+        clientsConfig
+    );
+    // Function to create a donut chart with value in the center (inside the cutout area)
+    function createDonutChart(ctx, label, data, color) {
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: [label],
+                datasets: [{
+                    data: [data],
+                    backgroundColor: [color],
+                    borderColor: [color],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        display: false // Hide the legend
+                    },
+                    tooltip: {
+                        enabled: false // Disable tooltip
+                    },
+                }
+            },
+        });
+    }
+
+    // Total Income Chart (green)
+    const totalIncomeCtx = document.getElementById('totalIncomeChart').getContext('2d');
+    createDonutChart(totalIncomeCtx, 'Revenus Total', {{ total_revenue }}, 'rgba(58, 241, 43, 0.8)');
+
+    // Total Expenses Chart (red)
+    const totalExpensesCtx = document.getElementById('totalExpensesChart').getContext('2d');
+    createDonutChart(totalExpensesCtx, 'Dépenses Totales', {{ total_expenses }}, 'rgba(206, 22, 70, 0.8)');
+
+    // Outstanding Payments Chart (dark red)
+    const outstandingPaymentsCtx = document.getElementById('outstandingPaymentsChart').getContext('2d');
+    createDonutChart(outstandingPaymentsCtx, 'Paiements en Souffrance', {{ total_outstanding_payments }}, 'rgba(255, 0, 20, 0.9)');
+
+    // Net Profit Chart (dark green or burgundy)
+    const netProfitValue = {{ total_gain }};
+    const netProfitColor = netProfitValue >= 0 ? 'rgba(0, 255, 0, 0.9)' : 'rgba(172, 3, 17, 0.9)';
+    const netProfitCtx = document.getElementById('netProfitChart').getContext('2d');
+    createDonutChart(netProfitCtx, 'Bénéfice Net', netProfitValue, netProfitColor);
+
+    // Ensure your counts are passed from the backend
+    // Video Status Distribution In Progress Chart
+    const videoStatusInProgressData = {
+        labels: [{% for video in video_status_distribution_in_progress %}'{{ video.status }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Nb Vidéos',
+            data: [{% for video in video_status_distribution_in_progress %}{{ video.count }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: [
+                'rgba(255, 206, 86, 0.6)',  // Pending
+                'rgba(75, 192, 192, 0.6)',   // In Progress
+                'rgba(54, 162, 235, 0.6)',   // Completed by Collaborators
+                'rgba(99, 255, 99, 0.6)'     // Completed
+            ],
+            borderColor: [
+                'rgba(255, 206, 86, 1)',
+                'rgba(75, 192, 192, 1)',
+                'rgba(54, 162, 235, 1)',
+                'rgba(99, 255, 99, 1)'
+            ],
+        }]
+    };
+
+    const videoStatusInProgressConfig = {
+        type: 'pie',
+        data: videoStatusInProgressData,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                title: {
+                    display: true,
+                    text: 'Etat d\'avancement des videos'
+                },
+                datalabels: {
+                    color: '#000',  // White color for the numbers
+                    formatter: (value) => {
+                        return value; // Show the count
+                    },
+                    anchor: 'center',
+                    align: 'center',
+                    font: {
+                        weight: 'bold',
+                        size: '16',
+                    }
+                }
+            }
+        },
+        plugins: [ChartDataLabels] // Ensure the plugin is included here
+    };
+
+    const videoStatusInProgressChart = new Chart(
+        document.getElementById('videoStatusInProgressChart'),
+        videoStatusInProgressConfig
+    );
+</script>
+
+<style>
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .card {
+        transition: transform 0.2s;
+    }
+
+    .card:hover {
+        transform: scale(1.02);
+    }
+    .canvas-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%; /* Make sure it occupies the full height */
+    }
+
+    .table {
+        font-size: 0.7rem; /* Smaller font for table */
+        margin: 0; /* Remove default margin */
+        padding: 0; /* Remove default padding */
+    }
+
+    th, td {
+        padding: 0.2rem !important; 
+    }
+
+    .col-lg-6, .col-lg-7, .col-lg-4 {
+        margin-bottom: 1rem; /* Space between columns */
+    }
+
+    .d-flex {
+        display: flex;
+        justify-content: space-around; /* Evenly space charts */
+        margin-top: 20px; /* Space above charts */
+    }
+    .col-6 {
+        align-content: center;
+    }
+    .clickable-row {
+        cursor: pointer;
+        transition: transform 0.2s; /* Smooth transition */
+    }
+
+    .clickable-row:hover {
+        transform: scale(1.02); /* Slightly enlarge the row */
+        background-color: #f8f9fa; /* Optional: change background color on hover */
+    }
+</style>
+
+{% endblock %}

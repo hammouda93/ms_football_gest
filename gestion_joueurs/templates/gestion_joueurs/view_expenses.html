@@ -1,0 +1,139 @@
+{% extends "gestion_joueurs/base.html" %}
+
+{% block title %}Tableau de bord des Dépenses{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h1>Mes Dépenses({{expenses_count}})</h1>
+            <a href="{% url 'add_expense' %}" class="btn btn-success mb-0 mt-0">
+                <i class="fas fa-plus"></i> Ajouter une Dépense
+            </a>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            <form method="GET" class="mb-3" id="filter-form">
+                <div class="form-row">
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par description" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col">
+                        <select id="category-select" name="category" class="form-control">
+                            <option value="">Toutes les catégories</option>
+                            <option value="Transport" {% if category == "Transport" %}selected{% endif %}>Transport</option>
+                            <option value="Entertainement" {% if category == "Entertainement" %}selected{% endif %}>Loisirs</option>
+                            <option value="Internet" {% if category == "Internet" %}selected{% endif %}>Internet</option>
+                            <option value="marketing" {% if category == "marketing" %}selected{% endif %}>Marketing</option>
+                            <option value="operational" {% if category == "operational" %}selected{% endif %}>Operational</option>
+                            <option value="salary" {% if category == "salary" %}selected{% endif %}>Salary</option>
+                            <option value="equipment" {% if category == "equipment" %}selected{% endif %}>Equipment</option>
+                            <option value="other" {% if category == "other" %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                    </div>
+                </div>
+            </form>
+            {% if expenses %}
+                <table class="table table-striped table-bordered table-hover mt-3 small-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Montant</th>
+                            <th scope="col">Catégorie</th>
+                            <th scope="col" class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for expense in expenses %}
+                        <tr>
+                            <td>{{ expense.date|date:"d/m/Y" }}</td>
+                            <td>{{ expense.description }}</td>
+                            <td>{{ expense.amount }}</td>
+                            <td>{{ expense.category }}</td>
+                            <td class="text-center">
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'edit_expense' expense.id %}" class="btn btn-warning btn-sm" title="Modifier">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <!-- Pagination Controls -->
+                <nav>
+                    <ul class="pagination justify-content-center pagination-sm">
+                        {% if expenses.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% if search %}&search={{ search }}{% endif %}{% if category %}&category={{ category }}{% endif %}" aria-label="Première">
+                                    <span aria-hidden="true">&laquo;&laquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ expenses.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if category %}&category={{ category }}{% endif %}" aria-label="Précédent">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        <li class="page-item active" aria-current="page">
+                            <span class="page-link">{{ expenses.number }} / {{ expenses.paginator.num_pages }}</span>
+                        </li>
+
+                        {% if expenses.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ expenses.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if category %}&category={{ category }}{% endif %}" aria-label="Suivant">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ expenses.paginator.num_pages }}{% if search %}&search={{ search }}{% endif %}{% if category %}&category={{ category }}{% endif %}" aria-label="Dernière">
+                                    <span aria-hidden="true">&raquo;&raquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Aucune dépense enregistrée.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const categorySelect = document.getElementById('category-select');
+
+        const submitForm = () => {
+            filterForm.submit();
+        };
+
+        categorySelect.addEventListener('change', submitForm);
+
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+    });
+</script>
+{% endblock %}
