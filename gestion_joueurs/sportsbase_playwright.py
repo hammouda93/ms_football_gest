@@ -67,7 +67,7 @@ class SportsBaseAutomation:
 
                 self.open_player_statistics(page)
 
-                matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) # max(self.get_matches_played(page),22)
+                matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) 
                 result["matches_played"] = matches_played
                 print(f"[DEBUG] Matches played lus: {matches_played}")
 
@@ -187,33 +187,53 @@ class SportsBaseAutomation:
         page.wait_for_timeout(2000)
 
     def get_matches_played(self, page, seasons_to_process: int = 1) -> int:
-        # Saison 1 = logique actuelle
-        row = page.locator("li").filter(has=page.get_by_text("Matches played", exact=True)).first
-        row.wait_for(timeout=15000)
+        # Saison 1 : bloc gauche, ligne "Matches played" = 2e li
+        left_block = page.locator("ul.LeftStatBlock-sc-16aevzl-7").first
+        left_block.wait_for(timeout=15000)
 
-        value_locator = row.locator("div").filter(has_text=re.compile(r"^\d+$")).last
-        text = value_locator.inner_text().strip()
+        first_row = left_block.locator("li.Row-sc-16aevzl-9").nth(1)
+        first_value_locator = first_row.locator(
+            "div.Values-sc-16aevzl-10 div.StatValue-sc-16aevzl-11"
+        ).first
+
+        first_text = first_value_locator.inner_text().strip()
 
         try:
-            first_season_matches = int(text)
+            first_season_matches = int(first_text)
         except ValueError:
-            raise RuntimeError(f"Impossible de lire Matches played saison 1: {text}")
+            raise RuntimeError(f"Impossible de lire Matches played saison 1: {first_text}")
 
         if seasons_to_process == 1:
             return first_season_matches
 
-        # Saison 2 = clic sur le slider puis lecture de la nouvelle valeur
         try:
-            season_slider = page.locator("div.Slider-sc-e7kel1-1.iQBwAL").first
-            season_slider.wait_for(timeout=10000)
-            season_slider.scroll_into_view_if_needed()
-            season_slider.click()
-            page.wait_for_timeout(1500)
+            # activer Compare with previous season
+            compare_switch = page.locator('div[role="switch"]').filter(
+                has=page.get_by_text("Compare with previous season", exact=False)
+            ).first
+            compare_switch.wait_for(timeout=10000)
 
-            second_value_locator = page.locator(
+            aria_checked = compare_switch.get_attribute("aria-checked")
+            if aria_checked != "true":
+                slider = compare_switch.locator("div.Slider-sc-e7kel1-1").first
+                slider.scroll_into_view_if_needed()
+                slider.click()
+                page.wait_for_timeout(1500)
+
+            # attendre que le switch soit bien activé
+            compare_switch = page.locator('div[role="switch"][aria-checked="true"]').filter(
+                has=page.get_by_text("Compare with previous season", exact=False)
+            ).first
+            compare_switch.wait_for(timeout=10000)
+
+            # Saison 2 : bloc droit, ligne "Matches played" = 2e li
+            right_block = page.locator("ul.RightStatBlock-sc-16aevzl-8").first
+            right_block.wait_for(timeout=10000)
+
+            second_row = right_block.locator("li.Row-sc-16aevzl-9").nth(1)
+            second_value_locator = second_row.locator(
                 "div.Values-sc-16aevzl-10 div.StatValue-sc-16aevzl-11"
             ).first
-            second_value_locator.wait_for(timeout=10000)
 
             second_text = second_value_locator.inner_text().strip()
             second_season_matches = int(second_text)
@@ -223,10 +243,38 @@ class SportsBaseAutomation:
                 f"[DEBUG] Matches played saison 1: {first_season_matches} | "
                 f"saison 2: {second_season_matches} | total: {total_matches}"
             )
-            return total_matches
+            return 2  # total_matches
 
         except Exception as e:
             raise RuntimeError(f"Impossible de lire Matches played saison 2: {e}")
+        
+
+    def expand_matches_list(self, page, target_count: int):
+        safety = 0
+        max_rounds = 20
+
+        while safety < max_rounds:
+            match_items = self.get_match_items(page)
+            current_count = match_items.count()
+            print(f"[DEBUG] Matchs visibles actuellement: {current_count} / cible: {target_count}")
+
+            if current_count >= target_count:
+                return current_count
+
+            show_more_button = page.get_by_role("button", name="Show more").first
+
+            if show_more_button.count() == 0 or not show_more_button.is_visible():
+                print("[DEBUG] Bouton Show more non visible, arrêt expansion")
+                return current_count
+
+            show_more_button.scroll_into_view_if_needed()
+            page.wait_for_timeout(500)
+            show_more_button.click()
+            page.wait_for_timeout(2000)
+
+            safety += 1
+
+        return self.get_match_items(page).count()
     
     def get_match_items(self, page):
         return page.locator("ul.MatchesList-sc-1gt3fpl-2 > li.MatchItem-sc-wzxkix-1")
@@ -341,6 +389,14 @@ class SportsBaseAutomation:
         generation_confirmed = False
         direct_download_cancelled = False
 
+        def abort_video_download(route):
+            url = route.request.url.lower()
+            if ".mp4" in url or "videocuts" in url:
+                print(f"[DEBUG] Téléchargement bloqué: {route.request.url}")
+                route.abort()
+            else:
+                route.continue_()
+
         try:
             type_dropdown = popup.locator("div.DropdownFrame-sc-1228j4m-0").filter(
                 has=popup.get_by_text("Type of download", exact=False)
@@ -363,52 +419,46 @@ class SportsBaseAutomation:
             except Exception:
                 pass
 
-            direct_download = None
+            # Bloquer tout mp4/videocuts pendant le clic
+            popup.context.route("**/*", abort_video_download)
 
-            # Un seul clic sur One file
             try:
-                with popup.expect_download(timeout=2500) as download_info:
-                    one_file_option.click(timeout=5000)
-                direct_download = download_info.value
-                print("[DEBUG] Clic One file effectué + téléchargement direct détecté")
-            except Exception:
-                # Pas de download direct immédiat, mais le clic a peut-être quand même marché
-                one_file_option.click(timeout=5000)
-                print("[DEBUG] Clic One file effectué sans téléchargement direct immédiat")
-
-            popup.wait_for_timeout(1200)
-
-            # Si téléchargement direct lancé, on l'annule puis on passe
-            if direct_download is not None:
+                one_file_option.click(timeout=5000, no_wait_after=True)
+                print("[DEBUG] Clic One file effectué")
+            finally:
+                popup.wait_for_timeout(1200)
                 try:
-                    direct_download.cancel()
-                    print("[DEBUG] Téléchargement direct annulé")
-                    direct_download_cancelled = True
-                except Exception as e:
-                    print(f"[WARN] Impossible d'annuler le téléchargement direct: {e}")
+                    popup.context.unroute("**/*", abort_video_download)
+                except Exception:
+                    pass
 
-            # Sinon, on regarde si le message apparaît
+            # Si pas de téléchargement direct, attendre la notification
             try:
-                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=2500)
+                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=5000)
                 print(f"[DEBUG] Message génération vidéo détecté avec qualité {selected_quality}")
                 generation_confirmed = True
             except Exception:
-                print("[INFO] Message non détecté rapidement après clic")
+                print("[INFO] Notification non détectée après clic")
+
+            # Si le mp4 a été bloqué, on considère ça comme un téléchargement annulé
+            direct_download_cancelled = True
 
         except Exception as e:
             print(f"[WARN] Erreur durant generate_download_in_popup: {e}")
 
-        popup.wait_for_timeout(2000)
+        popup.wait_for_timeout(1000)
         return match_title, generation_confirmed, direct_download_cancelled
 
     def generate_all_players_actions(self, page, matches_played: int):
         processed = 0
-        max_matches = matches_played # max(matches_played,22)
+        max_matches = 2 # matches_played
         generated_match_titles = []
 
+        # IMPORTANT : charger plus de matchs si nécessaire
+        current_count = self.expand_matches_list(page, max_matches)
+        print(f"[DEBUG] Nombre de vrais matchs visibles après expansion: {current_count}")
+
         match_items = self.get_match_items(page)
-        current_count = match_items.count()
-        print(f"[DEBUG] Nombre de vrais matchs visibles: {current_count}")
 
         for i in range(min(current_count, max_matches)):
             match_item = match_items.nth(i)

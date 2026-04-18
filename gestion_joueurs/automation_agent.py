@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 
 from sportsbase_playwright import SportsBaseAutomation
+from premiere_automation import PremiereAutomation
 
 load_dotenv()
 
@@ -96,6 +97,7 @@ def create_local_folder(video_data):
     (folder / "raw_clips").mkdir(parents=True, exist_ok=True)
     (folder / "exports").mkdir(parents=True, exist_ok=True)
     (folder / "logs").mkdir(parents=True, exist_ok=True)
+    (folder / "intro").mkdir(parents=True, exist_ok=True)
 
     return str(folder)
 
@@ -137,6 +139,15 @@ def process_video(video_data):
         result["generation_requests_sent"] > 0
         and len(result["downloaded_files"]) == result["generation_requests_sent"]
     ):
+        # AJOUT : lancer Premiere seulement si SportsBaseAutomation a réussi
+        premiere = PremiereAutomation()
+        premiere_result = premiere.run_for_player(
+            player_name=result.get("sportsbase_player_name") or player_name,
+            target_dir=folder,
+            downloaded_files=result["downloaded_files"]
+        )
+        print(f"[INFO] Premiere success: {premiere_result['success']}")
+
         mark_completed(video_id)
         print(f"[INFO] Vidéo {video_id} marquée automation_completed=True")
     else:

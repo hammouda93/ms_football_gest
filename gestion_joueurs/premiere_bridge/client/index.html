@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MS Premiere Bridge</title>
+  <script src="CSInterface.js"></script>
+  <script defer src="index.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 12px;
+      background: #1e1e1e;
+      color: #f0f0f0;
+    }
+
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      background: #2d2d2d;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      min-height: 60px;
+    }
+
+    button {
+      padding: 8px 10px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 6px;
+      background: #3a3a3a;
+      color: #fff;
+    }
+
+    button:hover {
+      opacity: 0.92;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    h3, h4 {
+      margin: 0 0 10px 0;
+    }
+
+    .section {
+      margin-top: 14px;
+    }
+
+    .styled-btn {
+      background: #6a2ea0;
+      color: #fff;
+    }
+
+    .styled-btn:hover {
+      background: #7d39bc;
+    }
+
+    .completed-btn {
+      background: #0f766e;
+      color: #fff;
+    }
+
+    .completed-btn:hover {
+      background: #129287;
+    }
+  </style>
+</head>
+<body>
+  <h3>MS Premiere Bridge</h3>
+
+  <div class="top-actions">
+    <button id="build-final">Build ASSEMBLY_MAIN</button>
+    <button id="mark-slowmo">Mark SLOWMO</button>
+    <button id="mark-reverse">Mark REVERSE</button>
+    <button id="build-styled" class="styled-btn">Build STYLED_MAIN</button>
+    <button id="build-completed" class="completed-btn">Build COMPLETED_MAIN</button>
+    <button id="run-now">Run pending command</button>
+    <button id="refresh-summary">Refresh markers summary</button>
+  </div>
+
+  <div class="section">
+    <h4>Tag last 2 markers in REVIEW_TIMELINE</h4>
+    <div class="grid">
+      <button class="cat-btn" data-code="0" data-label="CLOSEUP">0 Closeup</button>
+      <button class="cat-btn" data-code="1" data-label="GOAL">1 Goal</button>
+      <button class="cat-btn" data-code="2" data-label="ASSIST">2 Assist</button>
+      <button class="cat-btn" data-code="3" data-label="KEYPASS">3 KeyPass</button>
+      <button class="cat-btn" data-code="4" data-label="BESTACTION">4 BestAction</button>
+      <button class="cat-btn" data-code="5" data-label="DRIBBLE">5 Dribble</button>
+      <button class="cat-btn" data-code="6" data-label="CHALLENGE">6 Challenge</button>
+      <button class="cat-btn" data-code="7" data-label="GREATPASS">7 GreatPass</button>
+      <button class="cat-btn" data-code="8" data-label="HEADER">8 Header</button>
+      <button class="cat-btn" data-code="9" data-label="OTHER">9 Other</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">Waiting...</div>
+</body>
+</html>
