@@ -5,7 +5,8 @@ from. views import register_video_editor,search_players,view_invoices,view_payme
 from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance,create_invoice,StatisticalDashboardView,get_months
 from .views import mark_notification_as_read,test_task, non_video_income_list,add_non_video_income,edit_non_video_income,financial_report_list,view_financial_report,get_days
 from .views import add_notification, notification_list, view_notification,run_all_tasks,import_transfermarkt_player,dashboard_cards_view
-
+from django.conf import settings
+from django.conf.urls.static import static
 urlpatterns = [
     path('', dashboard, name='dashboard'),
     path('players/', player_dashboard, name='player_dashboard'),
@@ -55,3 +56,5 @@ urlpatterns = [
     path('automation/<int:video_id>/mark-intro-started/', mark_intro_automation_started, name='mark_intro_automation_started'),
     path('automation/<int:video_id>/mark-intro-completed/', mark_intro_automation_completed, name='mark_intro_automation_completed'),
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

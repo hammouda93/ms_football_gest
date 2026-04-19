@@ -2,6 +2,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urljoin
 
 import requests
@@ -105,7 +106,7 @@ def sanitize_filename(name: str) -> str:
     return name.replace(" ", "_").replace("/", "_").replace("\\", "_")
 
 
-def download_intro_photo(video_data, target_folder: Path) -> Path | None:
+def download_intro_photo(video_data, target_folder: Path) -> Optional[Path]:
     intro_photo_url = video_data.get("intro_photo_url")
     if not intro_photo_url:
         return None
@@ -127,7 +128,7 @@ def download_intro_photo(video_data, target_folder: Path) -> Path | None:
     return output_path
 
 
-def save_transfermarkt_url(video_data, target_folder: Path) -> Path | None:
+def save_transfermarkt_url(video_data, target_folder: Path) -> Optional[Path]:
     transfermarkt_url = video_data["player"].get("transfermarkt_url")
     if not transfermarkt_url:
         return None

@@ -154,7 +154,8 @@ if DEBUG:
     STATICFILES_DIRS = [
         BASE_DIR / "gestion_joueurs/static",  # Adjust according to your project structure
     ]
-
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -199,50 +200,3 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/3'),  # Every 1st day of the month at midnight
     },
 }
-
-""" CELERY_BEAT_SCHEDULE = {
-    'notify-birthday-every-day': {
-        'task': 'gestion_joueurs.tasks.notify_birthday',
-        'schedule': crontab(minute=0, hour=0),  # Every day at midnight
-    },
-    'notify-pending-videos-every-30-minutes': {
-        'task': 'gestion_joueurs.tasks.notify_pending_videos',
-        'schedule': crontab(minute='*/30'),  # Every 30 minutes
-    },
-    'notify-in-progress-videos-every-30-minutes': {
-        'task': 'gestion_joueurs.tasks.notify_in_progress_videos',
-        'schedule': crontab(minute='*/30'),  # Every 30 minutes
-    },
-    'notify_salary_due_for_delivered_videos': {
-        'task': 'gestion_joueurs.tasks.notify_salary_due_for_delivered_videos,
-        'schedule': crontab(minute='*/3'),  # Every hour
-    },
-    'check_video_count': {
-        'task': 'gestion_joueurs.tasks.check_video_count',
-        'schedule': crontab(minute='*/3'),  # Every hour
-    },
-    'check-delivered-videos-every-hour': {
-        'task': 'gestion_joueurs.tasks.check_delivered_videos',
-        'schedule': crontab(minute=0, hour='*'),  # Every hour
-    },
-    'check-completed-videos-every-hour': {
-        'task': 'gestion_joueurs.tasks.check_completed_videos',
-        'schedule': crontab(minute=0, hour='*'),  # Every hour
-    },
-    'check-salary-after-deadline-every-hour': {
-        'task': 'gestion_joueurs.tasks.check_salary_after_deadline',
-        'schedule': crontab(minute=0, hour='*'),  # Every hour
-    },
-} """
-
-
-
-
-
-""" CELERY_IMPORTS = ('gestion_joueurs.tasks',)
-CELERY_BEAT_SCHEDULE = {
-    'send-reminders-every-day': {
-        'task': 'gestion_joueurs.tasks.send_reminders',
-        'schedule': crontab(hour=8, minute=0),  # Runs every day at 8 AM
-    },
-} """
