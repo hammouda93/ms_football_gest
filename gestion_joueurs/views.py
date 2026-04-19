@@ -464,13 +464,14 @@ def update_video_status(request, video_id):
             processing_mode = request.POST.get('processing_mode', 'normal')
             delivery_mode = request.POST.get('delivery_mode', 'normal')
             sportsbase_url = request.POST.get('sportsbase_url', '').strip()
+            intro_automation_enabled = request.POST.get('intro_automation_enabled') == 'on'
 
             set_signal_processing(False)
 
             old_status = video.status
             old_processing_mode = video.processing_mode
+            old_intro_enabled = getattr(video, "intro_automation_enabled", False)
 
-            # validation : automation => sportsbase_url obligatoire
             if new_status == 'in_progress' and processing_mode == 'automation':
                 final_sportsbase_url = sportsbase_url or (video.player.sportsbase_url or '').strip()
 
@@ -481,43 +482,36 @@ def update_video_status(request, video_id):
                     )
                     return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
 
-                # sauvegarder dans le joueur
                 video.player.sportsbase_url = final_sportsbase_url
                 video.player.save(update_fields=['sportsbase_url'])
 
-            # upload photo intro optionnelle
-            uploaded_intro_photo = request.FILES.get('intro_photo')
-            if uploaded_intro_photo:
-                video.intro_photo = uploaded_intro_photo
-                video.intro_automation_started = False
-                video.intro_automation_completed = False
-
             video.status = new_status
 
-            # Gestion du lien vidéo
             if new_status == 'delivered':
                 video.video_link = video_link
             else:
                 video.video_link = ''
 
-            # Gestion des modes
             if new_status == 'in_progress':
                 video.processing_mode = processing_mode
 
-                # reset pipeline clips si on entre dans in_progress
                 if old_status != 'in_progress':
                     video.automation_started = False
                     video.automation_completed = False
 
-                # reset pipeline clips si on passe de normal -> automation
                 if old_processing_mode != 'automation' and processing_mode == 'automation':
                     video.automation_started = False
                     video.automation_completed = False
 
+                video.intro_automation_enabled = intro_automation_enabled
+
+                if intro_automation_enabled and not old_intro_enabled:
+                    video.intro_automation_started = False
+                    video.intro_automation_completed = False
+
             if new_status == 'delivered':
                 video.delivery_mode = delivery_mode
 
-            # Si on sort de l'automatisation clips
             if new_status != 'in_progress' and old_status == 'in_progress':
                 video.automation_started = False
 
@@ -1728,7 +1722,7 @@ def automation_pending_videos(request):
         status='in_progress',
         processing_mode='automation',
         automation_completed=True,
-        intro_photo__isnull=False,
+        intro_automation_enabled=True,
         intro_automation_completed=False
     ).select_related('player', 'editor')
 

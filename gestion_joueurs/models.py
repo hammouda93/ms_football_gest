@@ -151,6 +151,7 @@ class Video(models.Model):
         null=True,
         verbose_name="Photo Intro"
     )
+    intro_automation_enabled = models.BooleanField(default=False, verbose_name="Générer la présentation")
     intro_automation_started = models.BooleanField(default=False)
     intro_automation_completed = models.BooleanField(default=False)
     league = models.CharField(

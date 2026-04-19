@@ -61,23 +61,32 @@
                         Obligatoire si le mode de traitement est Automation.
                     </small>
                 </div>
-                <div class="form-group" id="intro-photo-container" style="display: none;">
-                    <label for="intro_photo">Photo joueur pour intro</label>
-                    <input
-                        type="file"
-                        name="intro_photo"
-                        class="form-control"
-                        id="intro_photo"
-                        accept="image/*"
-                    >
-                    {% if video.intro_photo %}
+                <div class="form-group" id="intro-automation-container" style="display: none;">
+                    <div class="form-check">
+                        <input
+                            type="checkbox"
+                            name="intro_automation_enabled"
+                            class="form-check-input"
+                            id="intro_automation_enabled"
+                            {% if video.intro_automation_enabled %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="intro_automation_enabled">
+                            Générer la présentation
+                        </label>
+                    </div>
+
+                    <small class="form-text text-muted">
+                        Si activé, l’agent préparera automatiquement le dossier local
+                        <strong>Uploads_Gemini</strong> pour l’intro du joueur.
+                    </small>
+
+                    {% if video.intro_automation_completed %}
                         <small class="form-text text-success">
-                            Photo déjà uploadée :
-                            <a href="{{ video.intro_photo.url }}" target="_blank">voir</a>
+                            Présentation intro déjà préparée.
                         </small>
-                    {% else %}
-                        <small class="form-text text-muted">
-                            Optionnel. Sert pour l’automation de l’intro joueur.
+                    {% elif video.intro_automation_started %}
+                        <small class="form-text text-warning">
+                            Présentation intro en cours de préparation.
                         </small>
                     {% endif %}
                 </div>
@@ -119,13 +128,13 @@
         const sportsbaseUrlContainer = document.getElementById('sportsbase-url-container');
         const deliveryModeContainer = document.getElementById('delivery-mode-container');
         const videoLinkContainer = document.getElementById('video-link-container');
-        const introPhotoContainer = document.getElementById('intro-photo-container');
+        const introAutomationContainer = document.getElementById('intro-automation-container');
         const status = statusSelect.value;
         const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
 
         processingModeContainer.style.display = (status === 'in_progress') ? 'block' : 'none';
         sportsbaseUrlContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
-        introPhotoContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
+        introAutomationContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'block';
         deliveryModeContainer.style.display = (status === 'delivered') ? 'block' : 'none';
         videoLinkContainer.style.display = (status === 'delivered') ? 'block' : 'none';
     }

@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 
 from sportsbase_playwright import SportsBaseAutomation
 from premiere_automation import PremiereAutomation
-
+from transfermarkt_assets import build_assets_from_transfermarkt_html_text
+from transfermarkt_fetcher import build_transfermarkt_assets_from_url_file
 load_dotenv()
 
 BASE_URL = os.getenv("DJANGO_BASE_URL", "https://msfootball-1a882b44ed52.herokuapp.com/gestion_joueurs").rstrip("/")
@@ -119,30 +120,68 @@ def create_local_folder(video_data):
     return str(folder)
 
 
+def prepare_uploads_gemini_folder(intro_folder: Path, intro_photo_path: Path, tm_assets: dict):
+    uploads_dir = intro_folder / "Uploads_Gemini"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    # player photo
+    if intro_photo_path and intro_photo_path.exists():
+        ext = intro_photo_path.suffix or ".jpg"
+        target_photo = uploads_dir / f"player_photo{ext}"
+        target_photo.write_bytes(intro_photo_path.read_bytes())
+
+    # transfermarkt files
+    for key in ["json_path", "logo_path", "prompt_path", "badges_card_path"]:
+        path_value = tm_assets.get(key)
+        if path_value:
+            src = Path(path_value)
+            if src.exists():
+                dst = uploads_dir / src.name
+                dst.write_bytes(src.read_bytes())
+
+    # badges folder
+    badge_paths = tm_assets.get("badge_paths", [])
+    if badge_paths:
+        badges_dir = uploads_dir / "badges"
+        badges_dir.mkdir(parents=True, exist_ok=True)
+        for badge_path in badge_paths:
+            src = Path(badge_path)
+            if src.exists():
+                dst = badges_dir / src.name
+                dst.write_bytes(src.read_bytes())
+
+    return uploads_dir
+
 def sanitize_filename(name: str) -> str:
     return name.replace(" ", "_").replace("/", "_").replace("\\", "_")
 
 
-def download_intro_photo(video_data, target_folder: Path):
-    intro_photo_url = video_data.get("intro_photo_url")
-    if not intro_photo_url:
-        return None
-
-    absolute_url = intro_photo_url
-
-    ext = Path(intro_photo_url).suffix or ".jpg"
+def find_local_intro_photo(video_data, target_folder: Path):
     player_name = sanitize_filename(video_data["player"]["name"])
-    output_path = target_folder / f"{player_name}_intro_photo{ext}"
 
-    response = session.get(absolute_url, timeout=60, stream=True)
-    response.raise_for_status()
+    candidates = [
+        target_folder / f"{player_name}_intro_photo.jpg",
+        target_folder / f"{player_name}_intro_photo.jpeg",
+        target_folder / f"{player_name}_intro_photo.png",
+        target_folder / "player_photo.jpg",
+        target_folder / "player_photo.jpeg",
+        target_folder / "player_photo.png",
+        target_folder / "intro_photo.jpg",
+        target_folder / "intro_photo.jpeg",
+        target_folder / "intro_photo.png",
+        target_folder / "photo.jpg",
+        target_folder / "photo.jpeg",
+        target_folder / "photo.png",
+        target_folder / "intro.jpg",
+        target_folder / "intro.jpeg",
+        target_folder / "intro.png",
+    ]
 
-    with open(output_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+    for path in candidates:
+        if path.exists():
+            return path
 
-    return output_path
+    return None
 
 
 def save_transfermarkt_url(video_data, target_folder: Path):
@@ -170,8 +209,29 @@ def process_intro_video(video_data):
     folder = Path(create_local_folder(video_data))
     intro_folder = folder / "intro"
 
-    intro_photo_path = download_intro_photo(video_data, intro_folder)
+    intro_photo_path = find_local_intro_photo(video_data, intro_folder)
     transfermarkt_file = save_transfermarkt_url(video_data, intro_folder)
+
+    tm_assets = None
+    try:
+        tm_assets = build_transfermarkt_assets_from_url_file(str(intro_folder))
+        print(f"[INFO] Transfermarkt HTML: {tm_assets['raw_html_path']}")
+        print(f"[INFO] Transfermarkt JSON: {tm_assets['json_path']}")
+        print(f"[INFO] Transfermarkt Team Logo: {tm_assets['logo_path']}")
+        print(f"[INFO] Badges Card: {tm_assets['badges_card_path']}")
+        print(f"[INFO] Prompt TXT: {tm_assets['prompt_path']}")
+        print(f"[INFO] Badges PNG: {tm_assets['badge_paths']}")
+    except Exception as e:
+        print(f"[WARN] Impossible de générer les assets Transfermarkt: {e}")
+
+    uploads_gemini_dir = None
+    if intro_photo_path and intro_photo_path.exists() and tm_assets:
+        uploads_gemini_dir = prepare_uploads_gemini_folder(
+            intro_folder=intro_folder,
+            intro_photo_path=intro_photo_path,
+            tm_assets=tm_assets,
+        )
+        print(f"[INFO] Uploads_Gemini: {uploads_gemini_dir}")
 
     player_intro_output = intro_folder / f"{sanitize_filename(player_name)}Intro.mp4"
 
@@ -180,10 +240,8 @@ def process_intro_video(video_data):
     print(f"[INFO] Transfermarkt URL sauvegardée: {transfermarkt_file}")
     print(f"[INFO] Fichier cible intro vidéo: {player_intro_output}")
 
-    # Placeholder pour Gemini/Kling plus tard
     if intro_photo_path and intro_photo_path.exists():
-        mark_intro_completed(video_id)
-        print(f"[INFO] Intro vidéo {video_id} marquée intro_automation_completed=True")
+        print("[INFO] Photo Trouvé pour Intro Video")
     else:
         print(f"[WARN] Pas de photo intro pour {video_id}, automation intro non complétée")
 
