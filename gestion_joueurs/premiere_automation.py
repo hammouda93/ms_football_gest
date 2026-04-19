@@ -46,7 +46,28 @@ class PremiereAutomation:
         date_str = datetime.now().strftime("%Y-%m-%d")
         safe_player_name = self._safe_name(player_name)
         return premiere_dir / f"{safe_player_name}_{date_str}.prproj"
+    
+    def _write_project_context_file(self, premiere_dir: Path, job_data: dict[str, Any]) -> str:
+        project_context_file = premiere_dir / "project_context.json"
 
+        project_context = {
+            "player_name": job_data.get("player_name", ""),
+            "target_dir": job_data.get("target_dir", ""),
+            "premiere_dir": job_data.get("premiere_dir", ""),
+            "project_path": job_data.get("project_path", ""),
+            "graphics_bin_name": job_data.get("graphics_bin_name", "04_GRAPHICS"),
+            "audio_bin_name": job_data.get("audio_bin_name", "05_AUDIO"),
+            "player_intro_path": job_data.get("player_intro_path", ""),
+            "music_dir": job_data.get("music_dir", ""),
+            "logo_path": job_data.get("logo_path", ""),
+            "created_at": job_data.get("created_at", ""),
+        }
+
+        project_context_file.write_text(
+            json.dumps(project_context, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return str(project_context_file)
     def _write_job_file(
         self,
         player_name: str,
@@ -161,6 +182,10 @@ class PremiereAutomation:
             target_dir=target_path,
             downloaded_files=downloaded_files,
         )
+        project_context_file = self._write_project_context_file(
+            premiere_dir=Path(written["premiere_dir"]),
+            job_data=written["job_data"],
+        )
 
         premiere_dir = Path(written["premiere_dir"])
         command_file = self._write_command_file(
@@ -172,6 +197,7 @@ class PremiereAutomation:
         self._launch_premiere()
 
         print(f"[INFO] Job Premiere préparé: {written['job_file']}")
+        print(f"[INFO] Project context file: {project_context_file}")
         print(f"[INFO] Commande Premiere préparée: {command_file}")
         print(f"[INFO] Current command file: {current_command_file}")
 
@@ -182,4 +208,5 @@ class PremiereAutomation:
             "command_file": command_file,
             "current_command_file": current_command_file,
             "clips_count": len(downloaded_files),
+            "project_context_file": project_context_file,
         }

@@ -145,6 +145,14 @@ class Video(models.Model):
     ]
     season = models.CharField(max_length=10, choices=SEASONS, default='2024/2025')
     club = models.CharField(max_length=100, default="", verbose_name="Club Name")
+    intro_photo = models.ImageField(
+        upload_to='video_intro_photos/',
+        blank=True,
+        null=True,
+        verbose_name="Photo Intro"
+    )
+    intro_automation_started = models.BooleanField(default=False)
+    intro_automation_completed = models.BooleanField(default=False)
     league = models.CharField(
         max_length=2,
         choices=LEAGUE_CHOICES,

@@ -60,7 +60,44 @@ $._MSBridge.collectImportedProjectItems = function (bin) {
     }
     return items;
 };
+$._MSBridge.getActiveProjectPath = function () {
+    try {
+        if (app.project && app.project.path) {
+            return String(app.project.path);
+        }
+    } catch (e) {
+    }
+    return "";
+};
 
+$._MSBridge.getPremiereDirForActiveProject = function () {
+    try {
+        var projectPath = $._MSBridge.getActiveProjectPath();
+        if (!projectPath) {
+            return "";
+        }
+
+        var projectFile = new File(projectPath);
+        if (!projectFile || !projectFile.parent) {
+            return "";
+        }
+
+        return projectFile.parent.fsName;
+    } catch (e) {
+        return "";
+    }
+};
+
+$._MSBridge.readProjectContextForActiveProject = function () {
+    var premiereDir = $._MSBridge.getPremiereDirForActiveProject();
+    if (!premiereDir) {
+        throw new Error("Impossible de déterminer le dossier du projet actif");
+    }
+
+    var contextPath = premiereDir + "/project_context.json";
+    var txt = $._MSBridge.readTextFile(contextPath);
+    return $._MSBridge.parseJsonText(txt);
+};
 
 $._MSBridge.runCreateProjectFromCurrentCommand = function () {
     var currentCommandPath = "D:/Django_Projects/ms_football_gest/gestion_joueurs/premiere_bridge/current_command.txt";
@@ -79,13 +116,13 @@ $._MSBridge.runCreateProjectFromCurrentCommand = function () {
 
         var resultPath = job.premiere_dir + "/premiere_result.txt";
         var lockPath = job.premiere_dir + "/premiere_lock.txt";
-
+        var projectContextPath = job.premiere_dir + "/project_context.json";
         var lockFile = new File(lockPath);
         if (lockFile.exists) {
             return "LOCK_EXISTS";
         }
         $._MSBridge.writeTextFile(lockPath, "running");
-
+        
         var created = app.newProject(job.project_path);
         if (!created) {
             throw new Error("app.newProject failed: " + job.project_path);
@@ -169,6 +206,27 @@ $._MSBridge.runCreateProjectFromCurrentCommand = function () {
         if (!seq) {
             throw new Error("Sequence creation failed");
         }
+        $._MSBridge.escapeJsonString = function (value) {
+            var s = String(value == null ? "" : value);
+            s = s.replace(/\\/g, "\\\\");
+            s = s.replace(/"/g, '\\"');
+            s = s.replace(/\r/g, "\\r");
+            s = s.replace(/\n/g, "\\n");
+            s = s.replace(/\t/g, "\\t");
+            return s;
+        };
+        var projectContextJson =
+            "{\n" +
+            '  "player_name": "' + $._MSBridge.escapeJsonString(job.player_name || "") + '",\n' +
+            '  "project_path": "' + $._MSBridge.escapeJsonString(job.project_path || "") + '",\n' +
+            '  "premiere_dir": "' + $._MSBridge.escapeJsonString(job.premiere_dir || "") + '",\n' +
+            '  "graphics_bin_name": "' + $._MSBridge.escapeJsonString(job.graphics_bin_name || "04_GRAPHICS") + '",\n' +
+            '  "audio_bin_name": "' + $._MSBridge.escapeJsonString(job.audio_bin_name || "05_AUDIO") + '",\n' +
+            '  "player_intro_path": "' + $._MSBridge.escapeJsonString(job.player_intro_path || "") + '",\n' +
+            '  "music_dir": "' + $._MSBridge.escapeJsonString(job.music_dir || "") + '"\n' +
+            "}";
+
+        $._MSBridge.writeTextFile(projectContextPath, projectContextJson);
 
         app.project.save();
 
@@ -1635,12 +1693,7 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
             throw new Error("STYLED_MAIN introuvable");
         }
 
-        var currentCommandPath = "D:/Django_Projects/ms_football_gest/gestion_joueurs/premiere_bridge/current_command.txt";
-        var commandPath = $._MSBridge.readTextFile(currentCommandPath).replace(/^\s+|\s+$/g, "");
-        var commandText = $._MSBridge.readTextFile(commandPath);
-        var command = $._MSBridge.parseJsonText(commandText);
-        var jobText = $._MSBridge.readTextFile(command.job_file);
-        var job = $._MSBridge.parseJsonText(jobText);
+        var job = $._MSBridge.readProjectContextForActiveProject();
 
         var graphicsBin = $._MSBridge.findOrCreateBinRecursive(job.graphics_bin_name || "04_GRAPHICS");
         var audioBin = $._MSBridge.findOrCreateBinRecursive(job.audio_bin_name || "05_AUDIO");
@@ -1659,7 +1712,7 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
         }
 
         var completedSeqName = "COMPLETED_MAIN";
-        var seedItem = $._MSBridge.getLogoItemFromProject() || introItem;
+        var seedItem = $._MSBridge.getLogoItemFromProject() || introItem || styledSeq.projectItem;
         if (!seedItem) {
             throw new Error("Aucun media seed trouvé pour créer COMPLETED_MAIN");
         }
@@ -1689,7 +1742,6 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
             }
         }
 
-        // détecter le gap réservé à l'intro dans STYLED_MAIN
         var gapFound = false;
         var closeupEnd = 0;
         var nextBlockStart = 0;
@@ -1720,137 +1772,114 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
             }
         }
 
-        var introStart = closeupEnd;
-        var introEnd = introStart + introDuration;
-
-        function mapStart(oldStart) {
-            if (!gapFound) {
-                return oldStart;
-            }
-
-            // avant le gap : inchangé
-            if (oldStart < nextBlockStart - 0.01) {
-                return oldStart;
-            }
-
-            // après le gap :
-            // on supprime le gap 6s et on réserve la place réelle de l'intro
-            return oldStart - gapDuration + introDuration;
+        var styledProjectItem = styledSeq.projectItem;
+        if (!styledProjectItem) {
+            throw new Error("STYLED_MAIN.projectItem introuvable");
         }
 
-        function copyTrackMapped(srcTrack, dstTrack) {
-            if (!srcTrack || !dstTrack) {
-                return;
-            }
-
-            for (var i = 0; i < srcTrack.clips.numItems; i++) {
-                var clip = srcTrack.clips[i];
-                try {
-                    if (!clip || !clip.projectItem) {
-                        continue;
-                    }
-
-                    var srcIn = 0;
-                    var srcOut = 0;
-                    var oldStart = 0;
-                    var newStart = 0;
-
-                    try { srcIn = clip.inPoint.seconds; } catch (e1) { srcIn = 0; }
-                    try { srcOut = clip.outPoint.seconds; } catch (e2) { srcOut = srcIn + (clip.end.seconds - clip.start.seconds); }
-                    try { oldStart = clip.start.seconds; } catch (e3) { oldStart = 0; }
-
-                    newStart = mapStart(oldStart);
-
-                    try { clip.projectItem.setInPoint(srcIn, 4); } catch (e4) {}
-                    try { clip.projectItem.setOutPoint(srcOut, 4); } catch (e5) {}
-                    try { dstTrack.overwriteClip(clip.projectItem, newStart); } catch (e6) {}
-                } catch (copyErr) {}
-            }
+        var styledTotalEnd = 0;
+        try {
+            styledTotalEnd = $._MSBridge.getSequenceEndSeconds(styledSeq);
+        } catch (e0) {
+            styledTotalEnd = 0;
         }
 
-        // 1) recopier toute la VIDEO avec positions finales directes
-        if (styledSeq.videoTracks && styledSeq.videoTracks.numTracks > 0 &&
-            completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
-            copyTrackMapped(styledSeq.videoTracks[0], completedSeq.videoTracks[0]);
-        }
-
-        // 2) nettoyer A1 après copie vidéo
-        if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
-            var completedA1Clean = completedSeq.audioTracks[0];
-            for (var ac = completedA1Clean.clips.numItems - 1; ac >= 0; ac--) {
-                try { completedA1Clean.clips[ac].remove(0, 1); } catch (removeErr) {}
-            }
-        }
-
-        // 3) recopier seulement l'audio restant de STYLED_MAIN avec les mêmes positions finales
-        if (styledSeq.audioTracks && styledSeq.audioTracks.numTracks > 0 &&
-            completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
-            copyTrackMapped(styledSeq.audioTracks[0], completedSeq.audioTracks[0]);
-        }
-
-        // 4) poser l'intro dans l'espace réservé
-        if (introItem && gapFound) {
-            try { introItem.clearInPoint(); } catch (e0) {}
-            try { introItem.clearOutPoint(); } catch (e00) {}
+        // 1) nested part 1 : début -> startVide
+        if (gapFound && closeupEnd > 0.01) {
+            try { styledProjectItem.setInPoint(0, 4); } catch (e1) {}
+            try { styledProjectItem.setOutPoint(closeupEnd, 4); } catch (e2) {}
 
             try {
                 if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
-                    completedSeq.videoTracks[0].overwriteClip(introItem, introStart);
+                    completedSeq.videoTracks[0].overwriteClip(styledProjectItem, 0);
                 }
-            } catch (e01) {}
+            } catch (e3) {}
 
             try {
                 if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
-                    completedSeq.audioTracks[0].overwriteClip(introItem, introStart);
+                    completedSeq.audioTracks[0].overwriteClip(styledProjectItem, 0);
                 }
-            } catch (e02) {}
+            } catch (e4) {}
+        } else {
+            try { styledProjectItem.clearInPoint(); } catch (e5) {}
+            try { styledProjectItem.clearOutPoint(); } catch (e6) {}
 
-            // relire la vraie fin si possible
             try {
-                var cv = completedSeq.videoTracks[0];
-                for (var iv = 0; iv < cv.clips.numItems; iv++) {
-                    var placedIntro = cv.clips[iv];
-                    if (placedIntro &&
-                        placedIntro.projectItem &&
-                        placedIntro.projectItem.name === introItem.name &&
-                        Math.abs(placedIntro.start.seconds - introStart) < 0.1) {
-                        introEnd = placedIntro.end.seconds;
-                        break;
-                    }
+                if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
+                    completedSeq.videoTracks[0].overwriteClip(styledProjectItem, 0);
                 }
-            } catch (e03) {}
+            } catch (e7) {}
+
+            try {
+                if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
+                    completedSeq.audioTracks[0].overwriteClip(styledProjectItem, 0);
+                }
+            } catch (e8) {}
         }
 
-        // 5) calculer la vraie fin utile
+        var introStart = closeupEnd;
+        var introEnd = introStart;
+
+        // 2) intro au milieu
+        if (introItem && gapFound) {
+            try { introItem.clearInPoint(); } catch (e10) {}
+            try { introItem.clearOutPoint(); } catch (e11) {}
+
+            try {
+                if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 1) {
+                    completedSeq.videoTracks[1].overwriteClip(introItem, introStart);
+                } else if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
+                    completedSeq.videoTracks[0].overwriteClip(introItem, introStart);
+                }
+            } catch (e12) {}
+
+            try {
+                if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 1) {
+                    completedSeq.audioTracks[1].overwriteClip(introItem, introStart);
+                } else if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
+                    completedSeq.audioTracks[0].overwriteClip(introItem, introStart);
+                }
+            } catch (e13) {}
+
+            introEnd = introStart + introDuration;
+
+            try {
+                if (introItem.duration && introItem.duration.seconds > 0) {
+                    introEnd = introStart + introItem.duration.seconds;
+                }
+            } catch (e14) {}
+        }
+
+        // 3) nested part 2 : endVide -> fin
+        if (gapFound && styledTotalEnd > nextBlockStart + 0.01) {
+            try { styledProjectItem.setInPoint(nextBlockStart, 4); } catch (e20) {}
+            try { styledProjectItem.setOutPoint(styledTotalEnd, 4); } catch (e21) {}
+
+            try {
+                if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
+                    completedSeq.videoTracks[0].overwriteClip(styledProjectItem, introEnd);
+                }
+            } catch (e22) {}
+
+            try {
+                if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
+                    completedSeq.audioTracks[0].overwriteClip(styledProjectItem, introEnd);
+                }
+            } catch (e23) {}
+        }
+
+        try { styledProjectItem.clearInPoint(); } catch (e24) {}
+        try { styledProjectItem.clearOutPoint(); } catch (e25) {}
+
+        // 4) fin utile
         var usefulEnd = 0;
-
         try {
-            if (completedSeq.videoTracks && completedSeq.videoTracks.numTracks > 0) {
-                var vv0 = completedSeq.videoTracks[0];
-                for (var vi = 0; vi < vv0.clips.numItems; vi++) {
-                    try {
-                        if (vv0.clips[vi] && vv0.clips[vi].end.seconds > usefulEnd) {
-                            usefulEnd = vv0.clips[vi].end.seconds;
-                        }
-                    } catch (eV) {}
-                }
-            }
-        } catch (eV2) {}
+            usefulEnd = $._MSBridge.getSequenceEndSeconds(completedSeq);
+        } catch (e30) {
+            usefulEnd = 0;
+        }
 
-        try {
-            if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
-                var aa0 = completedSeq.audioTracks[0];
-                for (var ai = 0; ai < aa0.clips.numItems; ai++) {
-                    try {
-                        if (aa0.clips[ai] && aa0.clips[ai].end.seconds > usefulEnd) {
-                            usefulEnd = aa0.clips[ai].end.seconds;
-                        }
-                    } catch (eA) {}
-                }
-            }
-        } catch (eA2) {}
-
-        // 6) start musique = fin audio logo sur A1
+        // 5) musique inchangée
         var logoAudioEnd = 0;
         if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 0) {
             var a1ForLogo = completedSeq.audioTracks[0];
@@ -1866,7 +1895,6 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
             }
         }
 
-        // nettoyer A2
         if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 1) {
             var completedA2Clean = completedSeq.audioTracks[1];
             for (var mc = completedA2Clean.clips.numItems - 1; mc >= 0; mc--) {
@@ -1874,18 +1902,20 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
             }
         }
 
-        // 7) musique
         var musicItems = $._MSBridge.collectProjectItemsFromBin(audioBin);
         musicItems = $._MSBridge.shuffleArray(musicItems);
 
         var musicStart = logoAudioEnd;
         var musicPlacedCount = 0;
 
-        // 8) placer la musique jusqu'à usefulEnd exactement
         if (completedSeq.audioTracks && completedSeq.audioTracks.numTracks > 1 && musicItems.length > 0) {
             var musicTrack = completedSeq.audioTracks[1];
             var guard = 0;
             var musicIndex = 0;
+
+            if (musicStart < 0) {
+                musicStart = 0;
+            }
 
             while (musicStart < usefulEnd && guard < 100) {
                 if (musicIndex >= musicItems.length) {
@@ -1902,7 +1932,7 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
                         if (musicItem.duration && musicItem.duration.seconds > 0) {
                             musicDuration = musicItem.duration.seconds;
                         }
-                    } catch (e0m) {
+                    } catch (e31) {
                         musicDuration = 0;
                     }
 
@@ -1910,13 +1940,13 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
                         break;
                     }
 
-                    try { musicItem.setInPoint(0, 4); } catch (e1) {}
+                    try { musicItem.setInPoint(0, 4); } catch (e32) {}
 
                     if (musicDuration > 0 && musicDuration > remainingDuration) {
                         try {
                             musicItem.setOutPoint(remainingDuration, 4);
-                        } catch (e2) {
-                            try { musicItem.clearOutPoint(); } catch (e22) {}
+                        } catch (e33) {
+                            try { musicItem.clearOutPoint(); } catch (e34) {}
                         }
                     } else {
                         try {
@@ -1925,16 +1955,47 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
                             } else {
                                 musicItem.clearOutPoint();
                             }
-                        } catch (e3) {
-                            try { musicItem.clearOutPoint(); } catch (e33) {}
+                        } catch (e35) {
+                            try { musicItem.clearOutPoint(); } catch (e36) {}
                         }
                     }
 
-                    lastMusicStart = musicStart;
-                    try { musicTrack.overwriteClip(musicItem, musicStart); } catch (e4) {}
-                    lastMusicPlaced = musicItem;
+                    var placedStart = musicStart;
+                    try { musicTrack.overwriteClip(musicItem, placedStart); } catch (e37) {}
 
-                    if (musicDuration > 0 && musicDuration > remainingDuration) {
+                    var placedClipEnd = 0;
+                    try {
+                        for (var pp = musicTrack.clips.numItems - 1; pp >= 0; pp--) {
+                            var placedClip = musicTrack.clips[pp];
+                            if (!placedClip || !placedClip.projectItem) {
+                                continue;
+                            }
+
+                            var sameName = (placedClip.projectItem.name === musicItem.name);
+                            var sameStart = false;
+
+                            try {
+                                sameStart = Math.abs(placedClip.start.seconds - placedStart) < 0.08;
+                            } catch (e38) {
+                                sameStart = false;
+                            }
+
+                            if (sameName && sameStart) {
+                                try {
+                                    placedClipEnd = placedClip.end.seconds;
+                                } catch (e39) {
+                                    placedClipEnd = 0;
+                                }
+                                break;
+                            }
+                        }
+                    } catch (e40) {
+                        placedClipEnd = 0;
+                    }
+
+                    if (placedClipEnd > placedStart) {
+                        musicStart = placedClipEnd;
+                    } else if (musicDuration > 0 && musicDuration > remainingDuration) {
                         musicStart += remainingDuration;
                     } else if (musicDuration > 0) {
                         musicStart += musicDuration;
@@ -1949,7 +2010,6 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
                 guard += 1;
             }
 
-            // sécurité : si le dernier clip musique dépasse encore usefulEnd, on le remplace trimé exactement
             try {
                 var mt = completedSeq.audioTracks[1];
                 for (var mm = mt.clips.numItems - 1; mm >= 0; mm--) {
@@ -1959,23 +2019,23 @@ $._MSBridge.buildCompletedMainFromStyled = function () {
                         var mStart = mclip.start.seconds;
                         var remain = usefulEnd - mStart;
 
-                        try { mclip.remove(0, 1); } catch (e51) {}
+                        try { mclip.remove(0, 1); } catch (e41) {}
 
                         if (mItem && remain > 0.01) {
-                            try { mItem.setInPoint(0, 4); } catch (e52) {}
-                            try { mItem.setOutPoint(remain, 4); } catch (e53) {}
-                            try { mt.overwriteClip(mItem, mStart); } catch (e54) {}
+                            try { mItem.setInPoint(0, 4); } catch (e42) {}
+                            try { mItem.setOutPoint(remain, 4); } catch (e43) {}
+                            try { mt.overwriteClip(mItem, mStart); } catch (e44) {}
                         }
                     }
                 }
-            } catch (e55) {}
+            } catch (e45) {}
         }
 
         var opened = $._MSBridge.openSequenceInTimeline(completedSeq);
         app.project.save();
 
         return "COMPLETED_MAIN_BUILT" +
-               " | from=STYLED_MAIN" +
+               " | from=STYLED_MAIN_NESTED_SPLIT" +
                " | intro_used=" + (introItem ? "YES" : "NO") +
                " | intro_duration=" + introDuration +
                " | closeup_end=" + closeupEnd +

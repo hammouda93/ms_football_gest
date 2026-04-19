@@ -468,6 +468,7 @@ def update_video_status(request, video_id):
             set_signal_processing(False)
 
             old_status = video.status
+            old_processing_mode = video.processing_mode
 
             # validation : automation => sportsbase_url obligatoire
             if new_status == 'in_progress' and processing_mode == 'automation':
@@ -484,6 +485,13 @@ def update_video_status(request, video_id):
                 video.player.sportsbase_url = final_sportsbase_url
                 video.player.save(update_fields=['sportsbase_url'])
 
+            # upload photo intro optionnelle
+            uploaded_intro_photo = request.FILES.get('intro_photo')
+            if uploaded_intro_photo:
+                video.intro_photo = uploaded_intro_photo
+                video.intro_automation_started = False
+                video.intro_automation_completed = False
+
             video.status = new_status
 
             # Gestion du lien vidéo
@@ -496,15 +504,20 @@ def update_video_status(request, video_id):
             if new_status == 'in_progress':
                 video.processing_mode = processing_mode
 
-                # reset pour permettre à l'agent local de redémarrer ce job
+                # reset pipeline clips si on entre dans in_progress
                 if old_status != 'in_progress':
+                    video.automation_started = False
+                    video.automation_completed = False
+
+                # reset pipeline clips si on passe de normal -> automation
+                if old_processing_mode != 'automation' and processing_mode == 'automation':
                     video.automation_started = False
                     video.automation_completed = False
 
             if new_status == 'delivered':
                 video.delivery_mode = delivery_mode
 
-            # Si on sort de l'automatisation, on peut réinitialiser si besoin
+            # Si on sort de l'automatisation clips
             if new_status != 'in_progress' and old_status == 'in_progress':
                 video.automation_started = False
 
@@ -1703,10 +1716,20 @@ from django.contrib.auth.decorators import login_required
 
 @login_required
 def automation_pending_videos(request):
+    # pipeline existant clips + premiere
     videos = Video.objects.filter(
         status='in_progress',
         processing_mode='automation',
         automation_completed=False
+    ).select_related('player', 'editor')
+
+    # nouveau pipeline intro
+    intro_videos = Video.objects.filter(
+        status='in_progress',
+        processing_mode='automation',
+        automation_completed=True,
+        intro_photo__isnull=False,
+        intro_automation_completed=False
     ).select_related('player', 'editor')
 
     data = []
@@ -1717,6 +1740,38 @@ def automation_pending_videos(request):
             'processing_mode': video.processing_mode,
             'automation_started': video.automation_started,
             'automation_completed': video.automation_completed,
+            'intro_automation_started': video.intro_automation_started,
+            'intro_automation_completed': video.intro_automation_completed,
+            'intro_photo_url': video.intro_photo.url if video.intro_photo else None,
+            'season': video.season,
+            'seasons_to_process': video.seasons_to_process,
+            'club': video.club,
+            'league': video.league,
+            'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,
+            'player': {
+                'id': video.player.id,
+                'name': video.player.name,
+                'club': video.player.club,
+                'sportsbase_url': video.player.sportsbase_url,
+                'transfermarkt_url': video.player.transfermarkt_url,
+            },
+            'editor': {
+                'id': video.editor.id,
+                'username': video.editor.user.username if video.editor and video.editor.user else None,
+            }
+        })
+
+    intro_data = []
+    for video in intro_videos:
+        intro_data.append({
+            'video_id': video.id,
+            'status': video.status,
+            'processing_mode': video.processing_mode,
+            'automation_started': video.automation_started,
+            'automation_completed': video.automation_completed,
+            'intro_automation_started': video.intro_automation_started,
+            'intro_automation_completed': video.intro_automation_completed,
+            'intro_photo_url': video.intro_photo.url if video.intro_photo else None,
             'season': video.season,
             'seasons_to_process': video.seasons_to_process,
             'club': video.club,
@@ -1738,18 +1793,29 @@ def automation_pending_videos(request):
     print("=== VIDEOS AUTOMATION A TRAITER ===")
     for item in data:
         print(
-            f"video_id={item['video_id']} | "
+            f"[CLIPS] video_id={item['video_id']} | "
             f"player={item['player']['name']} | "
             f"status={item['status']} | "
             f"processing_mode={item['processing_mode']} | "
             f"started={item['automation_started']} | "
             f"completed={item['automation_completed']}"
         )
+
+    for item in intro_data:
+        print(
+            f"[INTRO] video_id={item['video_id']} | "
+            f"player={item['player']['name']} | "
+            f"intro_started={item['intro_automation_started']} | "
+            f"intro_completed={item['intro_automation_completed']} | "
+            f"intro_photo={bool(item['intro_photo_url'])}"
+        )
     print("=== FIN LISTE AUTOMATION ===")
 
     return JsonResponse({
         'count': len(data),
-        'videos': data
+        'videos': data,
+        'intro_count': len(intro_data),
+        'intro_videos': intro_data,
     })
 
 @login_required
@@ -1779,3 +1845,43 @@ def mark_automation_completed(request, video_id):
         'video_id': video.id,
         'automation_completed': video.automation_completed
     })
+
+
+
+
+
+
+
+
+@login_required
+@require_POST
+def mark_intro_automation_started(request, video_id):
+    video = get_object_or_404(Video, id=video_id)
+    video.intro_automation_started = True
+    video.save(update_fields=['intro_automation_started'])
+    return JsonResponse({
+        'success': True,
+        'video_id': video.id,
+        'intro_automation_started': video.intro_automation_started
+    })
+
+
+@login_required
+@require_POST
+def mark_intro_automation_completed(request, video_id):
+    video = get_object_or_404(Video, id=video_id)
+    video.intro_automation_completed = True
+    video.save(update_fields=['intro_automation_completed'])
+    return JsonResponse({
+        'success': True,
+        'video_id': video.id,
+        'intro_automation_completed': video.intro_automation_completed
+    })
+
+
+
+
+
+
+
+

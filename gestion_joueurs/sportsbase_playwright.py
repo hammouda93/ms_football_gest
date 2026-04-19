@@ -243,7 +243,7 @@ class SportsBaseAutomation:
                 f"[DEBUG] Matches played saison 1: {first_season_matches} | "
                 f"saison 2: {second_season_matches} | total: {total_matches}"
             )
-            return 2  # total_matches
+            return total_matches
 
         except Exception as e:
             raise RuntimeError(f"Impossible de lire Matches played saison 2: {e}")
@@ -289,9 +289,11 @@ class SportsBaseAutomation:
         profile_href = self.get_match_profile_href(match_item)
         print(f"[DEBUG] Match {index + 1} href: {profile_href}")
 
-        action_button = match_item.get_by_role("button", name="All player's actions").first
+        match_item.wait_for(state="visible", timeout=10000)
+
+        action_button = match_item.locator("button", has_text=re.compile(r"All player actions", re.I)).first
+        action_button.wait_for(state="visible", timeout=10000)
         action_button.scroll_into_view_if_needed()
-        action_button.wait_for(timeout=15000)
 
         with page.expect_popup(timeout=20000) as popup_info:
             action_button.click()
@@ -451,7 +453,7 @@ class SportsBaseAutomation:
 
     def generate_all_players_actions(self, page, matches_played: int):
         processed = 0
-        max_matches = 2 # matches_played
+        max_matches = matches_played
         generated_match_titles = []
 
         # IMPORTANT : charger plus de matchs si nécessaire
@@ -548,7 +550,7 @@ class SportsBaseAutomation:
     ):
         my_videos_page = self.open_my_videos(page)
         downloaded_files = []
-        normalized_target = f"{player_name}, All player's actions"
+        normalized_target = f"{player_name}, All player actions".lower().strip()
 
         seen_rows = set()
         global_rounds = 0
@@ -571,6 +573,15 @@ class SportsBaseAutomation:
 
             return body_group.locator('div[role="row"]')
 
+        def refresh_page():
+            print("[DEBUG] Refresh My videos")
+            my_videos_page.reload(wait_until="domcontentloaded", timeout=30000)
+            my_videos_page.wait_for_timeout(3000)
+            try:
+                my_videos_page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+
         def get_candidate_indexes(rows):
             row_count = rows.count()
             indexes = []
@@ -582,8 +593,8 @@ class SportsBaseAutomation:
                     if title_locator.count() == 0:
                         continue
 
-                    title_text = title_locator.inner_text().strip()
-                    if normalized_target.lower() in title_text.lower():
+                    title_text = title_locator.inner_text().strip().lower()
+                    if normalized_target in title_text:
                         indexes.append(i)
                 except Exception:
                     continue
@@ -592,7 +603,9 @@ class SportsBaseAutomation:
 
         def expand_if_needed():
             safety = 0
-            while safety < 20:
+            max_expand_rounds = 20
+
+            while safety < max_expand_rounds:
                 rows = load_rows()
                 candidate_indexes = get_candidate_indexes(rows)
 
@@ -604,6 +617,8 @@ class SportsBaseAutomation:
                 show_more = my_videos_page.get_by_role("button", name="Show more")
                 if show_more.count() > 0 and show_more.first.is_visible():
                     print("[DEBUG] Click Show more")
+                    show_more.first.scroll_into_view_if_needed()
+                    my_videos_page.wait_for_timeout(300)
                     show_more.first.click()
                     my_videos_page.wait_for_timeout(2000)
                 else:
@@ -620,23 +635,38 @@ class SportsBaseAutomation:
             except Exception as e:
                 print(f"[WARN] Impossible de charger My videos: {e}")
                 global_rounds += 1
-                my_videos_page.wait_for_timeout(4000)
+                try:
+                    refresh_page()
+                except Exception:
+                    my_videos_page.wait_for_timeout(4000)
                 continue
 
             if not candidate_indexes:
                 global_rounds += 1
-                print(f"[DEBUG] Aucune row candidate. global_rounds={global_rounds}")
-                my_videos_page.wait_for_timeout(5000)
+                print(f"[DEBUG] Aucune row candidate. refresh + retry. global_rounds={global_rounds}")
+                try:
+                    refresh_page()
+                except Exception:
+                    my_videos_page.wait_for_timeout(5000)
                 continue
 
-            # on garde seulement les max_downloads premières rows visibles
+            if len(candidate_indexes) < max_downloads:
+                global_rounds += 1
+                print(
+                    f"[DEBUG] Rows candidates insuffisantes: {len(candidate_indexes)} / {max_downloads}. "
+                    f"refresh + retry. global_rounds={global_rounds}"
+                )
+                try:
+                    refresh_page()
+                except Exception:
+                    my_videos_page.wait_for_timeout(5000)
+                continue
+
             candidate_indexes = candidate_indexes[:max_downloads]
             print(f"[DEBUG] Rows candidates retenues: {candidate_indexes}")
 
             downloaded_this_round = 0
 
-            # téléchargement en reverse :
-            # si max_downloads=4 et rows=[0,1,2,3], on traite 3 puis 2 puis 1 puis 0
             for reverse_pos, row_index in enumerate(reversed(candidate_indexes)):
                 if len(downloaded_files) >= max_downloads:
                     break
@@ -708,26 +738,19 @@ class SportsBaseAutomation:
                     download_icon.scroll_into_view_if_needed()
                     my_videos_page.wait_for_timeout(300)
 
-                    downloaded = False
-
                     try:
                         with my_videos_page.expect_download(timeout=15000) as download_info:
                             download_icon.click()
                         download = download_info.value
-                        downloaded = True
                     except Exception:
                         try:
                             with my_videos_page.expect_download(timeout=15000) as download_info:
                                 download_icon.evaluate("(el) => el.click()")
                             download = download_info.value
-                            downloaded = True
                         except Exception as e:
                             print(f"[WARN] Download row {row_index} impossible: {e}")
                             continue
 
-                    # IMPORTANT:
-                    # rows = reverse
-                    # titles = ordre normal
                     match_title = "match_unknown"
                     if reverse_pos < len(generated_match_titles):
                         match_title = generated_match_titles[reverse_pos]
@@ -756,7 +779,10 @@ class SportsBaseAutomation:
             if downloaded_this_round == 0:
                 global_rounds += 1
                 print(f"[DEBUG] Aucun téléchargement ce round. global_rounds={global_rounds}")
-                my_videos_page.wait_for_timeout(5000)
+                try:
+                    refresh_page()
+                except Exception:
+                    my_videos_page.wait_for_timeout(5000)
             else:
                 global_rounds = 0
 
