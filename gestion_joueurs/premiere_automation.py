@@ -46,7 +46,28 @@ class PremiereAutomation:
         date_str = datetime.now().strftime("%Y-%m-%d")
         safe_player_name = self._safe_name(player_name)
         return premiere_dir / f"{safe_player_name}_{date_str}.prproj"
-    
+
+    def _resolve_player_intro_path(self, target_dir: Path, player_name: str) -> str:
+        intro_dir = target_dir / "intro"
+        uploads_gemini_dir = intro_dir / "Uploads_Gemini"
+
+        if uploads_gemini_dir.exists():
+            kling_candidates = sorted(
+                [
+                    p for p in uploads_gemini_dir.iterdir()
+                    if p.is_file()
+                    and p.suffix.lower() == ".mp4"
+                    and p.name.lower().startswith("kling")
+                ],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if kling_candidates:
+                return str(kling_candidates[0])
+
+        safe_player_name = self._safe_name(player_name)
+        return str(intro_dir / f"{safe_player_name}Intro.mp4")
+
     def _write_project_context_file(self, premiere_dir: Path, job_data: dict[str, Any]) -> str:
         project_context_file = premiere_dir / "project_context.json"
 
@@ -68,6 +89,7 @@ class PremiereAutomation:
             encoding="utf-8",
         )
         return str(project_context_file)
+
     def _write_job_file(
         self,
         player_name: str,
@@ -87,9 +109,8 @@ class PremiereAutomation:
         )
 
         intro_dir = str(target_dir / "intro")
+        player_intro_path = self._resolve_player_intro_path(target_dir, player_name)
 
-        safe_player_name = self._safe_name(player_name)
-        player_intro_path = str(Path(intro_dir) / f"{safe_player_name}Intro.mp4")
         job_data = {
             "player_name": player_name,
             "target_dir": str(target_dir),
@@ -198,6 +219,7 @@ class PremiereAutomation:
 
         print(f"[INFO] Job Premiere préparé: {written['job_file']}")
         print(f"[INFO] Project context file: {project_context_file}")
+        print(f"[INFO] Player intro path selected: {written['job_data']['player_intro_path']}")
         print(f"[INFO] Commande Premiere préparée: {command_file}")
         print(f"[INFO] Current command file: {current_command_file}")
 

@@ -233,7 +233,14 @@ def process_intro_video(video_data):
         )
         print(f"[INFO] Uploads_Gemini: {uploads_gemini_dir}")
 
-    player_intro_output = intro_folder / f"{sanitize_filename(player_name)}Intro.mp4"
+        if uploads_gemini_dir and Path(uploads_gemini_dir).exists():
+            mark_intro_completed(video_id)
+            print(f"[INFO] Intro vidéo {video_id} marquée intro_automation_completed=True")
+            try:
+                os.startfile(str(uploads_gemini_dir))
+            except Exception as e:
+                print(f"[WARN] Impossible d'ouvrir Uploads_Gemini: {e}")
+        player_intro_output = intro_folder / f"{sanitize_filename(player_name)}Intro.mp4"
 
     print(f"[INFO] Dossier intro: {intro_folder}")
     print(f"[INFO] Photo intro téléchargée: {intro_photo_path}")

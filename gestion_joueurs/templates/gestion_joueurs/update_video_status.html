@@ -74,7 +74,23 @@
                             Générer la présentation
                         </label>
                     </div>
-
+                    <div class="form-group" id="transfermarkt-url-container" style="display: none;">
+                        <label for="transfermarkt_url">Lien Transfermarkt du joueur</label>
+                        <input
+                            type="url"
+                            name="transfermarkt_url"
+                            class="form-control"
+                            id="transfermarkt_url"
+                            placeholder="Entrez le lien Transfermarkt du joueur"
+                            value="{{ video.player.transfermarkt_url|default:'' }}"
+                        >
+                        {% if video.player.transfermarkt_url %}
+                            <small class="form-text text-success">Lien Transfermarkt déjà enregistré pour ce joueur.</small>
+                        {% endif %}
+                        <small class="form-text text-muted">
+                            Obligatoire si Générer la présentation est activé.
+                        </small>
+                    </div>
                     <small class="form-text text-muted">
                         Si activé, l’agent préparera automatiquement le dossier local
                         <strong>Uploads_Gemini</strong> pour l’intro du joueur.
@@ -131,14 +147,24 @@
         const introAutomationContainer = document.getElementById('intro-automation-container');
         const status = statusSelect.value;
         const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
+        const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
+        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
+        const introAutomationEnabled = introAutomationCheckbox ? introAutomationCheckbox.checked : false;
 
         processingModeContainer.style.display = (status === 'in_progress') ? 'block' : 'none';
         sportsbaseUrlContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
-        introAutomationContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'block';
+        introAutomationContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
+        transfermarktUrlContainer.style.display = (status === 'in_progress' && processingMode === 'automation' && introAutomationEnabled) ? 'block' : 'none';
         deliveryModeContainer.style.display = (status === 'delivered') ? 'block' : 'none';
         videoLinkContainer.style.display = (status === 'delivered') ? 'block' : 'none';
     }
-
+    document.addEventListener('DOMContentLoaded', function () {
+        toggleStatusFields();
+        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
+        if (introAutomationCheckbox) {
+            introAutomationCheckbox.addEventListener('change', toggleStatusFields);
+        }
+    });
     function confirmProblematic() {
         if (confirm("Êtes-vous sûr de vouloir marquer cette vidéo comme problématique ?")) {
             document.getElementById('status').value = 'problematic';

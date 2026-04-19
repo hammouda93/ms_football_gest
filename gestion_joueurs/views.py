@@ -464,6 +464,7 @@ def update_video_status(request, video_id):
             processing_mode = request.POST.get('processing_mode', 'normal')
             delivery_mode = request.POST.get('delivery_mode', 'normal')
             sportsbase_url = request.POST.get('sportsbase_url', '').strip()
+            transfermarkt_url = request.POST.get('transfermarkt_url', '').strip()
             intro_automation_enabled = request.POST.get('intro_automation_enabled') == 'on'
 
             set_signal_processing(False)
@@ -472,6 +473,7 @@ def update_video_status(request, video_id):
             old_processing_mode = video.processing_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
 
+            # validation : automation => sportsbase_url obligatoire
             if new_status == 'in_progress' and processing_mode == 'automation':
                 final_sportsbase_url = sportsbase_url or (video.player.sportsbase_url or '').strip()
 
@@ -483,7 +485,21 @@ def update_video_status(request, video_id):
                     return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
 
                 video.player.sportsbase_url = final_sportsbase_url
-                video.player.save(update_fields=['sportsbase_url'])
+
+                # validation : intro automation => transfermarkt_url obligatoire
+                if intro_automation_enabled:
+                    final_transfermarkt_url = transfermarkt_url or (video.player.transfermarkt_url or '').strip()
+
+                    if not final_transfermarkt_url:
+                        messages.error(
+                            request,
+                            "Le lien Transfermarkt est obligatoire si Générer la présentation est activé."
+                        )
+                        return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+
+                    video.player.transfermarkt_url = final_transfermarkt_url
+
+                video.player.save(update_fields=['sportsbase_url', 'transfermarkt_url'])
 
             video.status = new_status
 
@@ -506,6 +522,10 @@ def update_video_status(request, video_id):
                 video.intro_automation_enabled = intro_automation_enabled
 
                 if intro_automation_enabled and not old_intro_enabled:
+                    video.intro_automation_started = False
+                    video.intro_automation_completed = False
+
+                if not intro_automation_enabled:
                     video.intro_automation_started = False
                     video.intro_automation_completed = False
 
@@ -1722,7 +1742,7 @@ def automation_pending_videos(request):
         status='in_progress',
         processing_mode='automation',
         automation_completed=True,
-        intro_automation_enabled=True,
+        intro_automation_enabled=False,
         intro_automation_completed=False
     ).select_related('player', 'editor')
 
@@ -1766,6 +1786,7 @@ def automation_pending_videos(request):
             'intro_automation_started': video.intro_automation_started,
             'intro_automation_completed': video.intro_automation_completed,
             'intro_photo_url': request.build_absolute_uri(video.intro_photo.url) if video.intro_photo else None,
+            'intro_automation_enabled': video.intro_automation_enabled,
             'season': video.season,
             'seasons_to_process': video.seasons_to_process,
             'club': video.club,
