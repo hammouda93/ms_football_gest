@@ -47,27 +47,36 @@ class PremiereAutomation:
         safe_player_name = self._safe_name(player_name)
         return premiere_dir / f"{safe_player_name}_{date_str}.prproj"
 
-    def _resolve_player_intro_path(self, target_dir: Path, player_name: str) -> str:
+    def _find_and_prepare_kling_intro_mp4(self, target_dir: Path, player_name: str) -> str | None:
         intro_dir = target_dir / "intro"
         uploads_gemini_dir = intro_dir / "Uploads_Gemini"
+        if not uploads_gemini_dir.exists():
+            return None
 
-        if uploads_gemini_dir.exists():
-            kling_candidates = sorted(
-                [
-                    p for p in uploads_gemini_dir.iterdir()
-                    if p.is_file()
-                    and p.suffix.lower() == ".mp4"
-                    and p.name.lower().startswith("kling")
-                ],
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            if kling_candidates:
-                return str(kling_candidates[0])
+        kling_candidates = sorted(
+            [
+                p for p in uploads_gemini_dir.iterdir()
+                if p.is_file()
+                and p.suffix.lower() == ".mp4"
+                and p.name.lower().startswith("kling")
+            ],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
 
+        if not kling_candidates:
+            return None
+
+        source_file = kling_candidates[0]
         safe_player_name = self._safe_name(player_name)
-        return str(intro_dir / f"{safe_player_name}Intro.mp4")
+        target_file = intro_dir / f"{safe_player_name}Intro.mp4"
 
+        try:
+            target_file.write_bytes(source_file.read_bytes())
+            return str(target_file)
+        except Exception:
+            return str(source_file)
+    
     def _write_project_context_file(self, premiere_dir: Path, job_data: dict[str, Any]) -> str:
         project_context_file = premiere_dir / "project_context.json"
 
@@ -109,7 +118,13 @@ class PremiereAutomation:
         )
 
         intro_dir = str(target_dir / "intro")
-        player_intro_path = self._resolve_player_intro_path(target_dir, player_name)
+
+        safe_player_name = self._safe_name(player_name)
+        player_intro_path = str(Path(intro_dir) / f"{safe_player_name}Intro.mp4")
+
+        kling_intro_path = self._find_and_prepare_kling_intro_mp4(target_dir, player_name)
+        if kling_intro_path:
+            player_intro_path = kling_intro_path
 
         job_data = {
             "player_name": player_name,
@@ -219,7 +234,6 @@ class PremiereAutomation:
 
         print(f"[INFO] Job Premiere préparé: {written['job_file']}")
         print(f"[INFO] Project context file: {project_context_file}")
-        print(f"[INFO] Player intro path selected: {written['job_data']['player_intro_path']}")
         print(f"[INFO] Commande Premiere préparée: {command_file}")
         print(f"[INFO] Current command file: {current_command_file}")
 
