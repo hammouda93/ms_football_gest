@@ -5,465 +5,313 @@
   <title>MS Premiere Bridge</title>
   <script src="CSInterface.js"></script>
   <script defer src="index.js"></script>
-  <style>
-    :root {
-      --bg: #111827;
-      --panel: #1f2937;
-      --panel-2: #243041;
-      --muted: #94a3b8;
-      --text: #f8fafc;
-      --border: #334155;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --accent: #7c3aed;
-      --accent-hover: #6d28d9;
-      --success: #0f766e;
-      --success-hover: #129287;
-      --warning: #b45309;
-      --warning-hover: #d97706;
-      --shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
-      --radius: 14px;
-    }
+<style>
+  :root {
+    --bg: #111827;
+    --panel: #1f2937;
+    --panel-2: #243041;
+    --panel-3: #0f172a;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --border: #334155;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --success: #0f766e;
+    --success-hover: #129287;
+    --warning: #b45309;
+    --warning-hover: #d97706;
+    --shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+    --radius: 10px;
+  }
 
-    * {
-      box-sizing: border-box;
-    }
+  * {
+    box-sizing: border-box;
+  }
 
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
-      color: var(--text);
-      padding: 20px;
-    }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    color: var(--text);
+    padding: 10px;
+  }
 
-    .app {
-      max-width: 1450px;
-      margin: 0 auto;
+  .app {
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    background: rgba(31, 41, 55, 0.96);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .badge {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1.55fr 0.8fr;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .left,
+  .right {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: rgba(31, 41, 55, 0.96);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 8px 11px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1.1;
+  }
+
+  .card-body {
+    padding: 10px;
+  }
+
+  button {
+    border: 0;
+    border-radius: 9px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    min-height: 48px;
+    padding: 12px 14px;
+    transition: 0.14s ease;
+    line-height: 1.15;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+    opacity: 0.97;
+  }
+
+  .btn-primary { background: var(--primary); }
+  .btn-primary:hover { background: var(--primary-hover); }
+
+  .btn-accent { background: var(--accent); }
+  .btn-accent:hover { background: var(--accent-hover); }
+
+  .btn-success { background: var(--success); }
+  .btn-success:hover { background: var(--success-hover); }
+
+  .btn-warning { background: var(--warning); }
+  .btn-warning:hover { background: var(--warning-hover); }
+
+  .btn-muted { background: #475569; }
+
+  .categories-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .cat-btn {
+    text-align: left;
+    background: #273449;
+    border: 1px solid #3a4a63;
+    padding: 12px 14px;
+    min-height: 50px;
+  }
+
+  .cat-code {
+    display: inline-block;
+    width: 20px;
+    margin-right: 6px;
+    color: #fbbf24;
+    font-weight: 700;
+  }
+
+  .pipeline-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .pipe {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pipe-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    line-height: 1;
+  }
+
+  .pipe-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .status-box {
+    min-height: 390px;
+    max-height: 620px;
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--panel-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    white-space: pre-wrap;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #dbeafe;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 1180px) {
+    .pipeline-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 300px) {
+    .categories-grid,
+    .pipeline-row,
+    .top-actions {
+      grid-template-columns: 1fr;
     }
 
     .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 18px;
-      padding: 18px 20px;
-      background: rgba(31, 41, 55, 0.96);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .header h1 {
-      margin: 0;
-      font-size: 24px;
-    }
-
-    .header p {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .header-badge {
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: #0b1220;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 1.4fr 0.9fr;
-      gap: 18px;
-    }
-
-    .column {
-      display: flex;
       flex-direction: column;
-      gap: 18px;
+      align-items: flex-start;
+      gap: 6px;
     }
-
-    .card {
-      background: rgba(31, 41, 55, 0.96);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .card-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .card-title {
-      margin: 0;
-      font-size: 16px;
-      font-weight: bold;
-    }
-
-    .card-subtitle {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .card-body {
-      padding: 16px;
-    }
-
-    .workflow-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .step {
-      display: grid;
-      grid-template-columns: 54px 1fr auto;
-      gap: 14px;
-      align-items: center;
-      padding: 14px;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-    }
-
-    .step-number {
-      width: 38px;
-      height: 38px;
-      border-radius: 999px;
-      background: #0b1220;
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #e2e8f0;
-      font-weight: bold;
-      font-size: 14px;
-    }
-
-    .step-text h3 {
-      margin: 0 0 4px;
-      font-size: 14px;
-    }
-
-    .step-text p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .step-actions {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    button {
-      padding: 10px 12px;
-      cursor: pointer;
-      border: 0;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      min-height: 40px;
-      transition: 0.18s ease;
-    }
-
-    button:hover {
-      transform: translateY(-1px);
-      opacity: 0.97;
-    }
-
-    .btn-primary {
-      background: var(--primary);
-    }
-
-    .btn-primary:hover {
-      background: var(--primary-hover);
-    }
-
-    .btn-accent {
-      background: var(--accent);
-    }
-
-    .btn-accent:hover {
-      background: var(--accent-hover);
-    }
-
-    .btn-success {
-      background: var(--success);
-    }
-
-    .btn-success:hover {
-      background: var(--success-hover);
-    }
-
-    .btn-warning {
-      background: var(--warning);
-    }
-
-    .btn-warning:hover {
-      background: var(--warning-hover);
-    }
-
-    .btn-muted {
-      background: #475569;
-    }
-
-    .categories-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .cat-btn {
-      text-align: left;
-      padding: 12px;
-      background: #273449;
-      border: 1px solid #3a4a63;
-    }
-
-    .cat-code {
-      display: inline-block;
-      min-width: 26px;
-      margin-right: 8px;
-      color: #fbbf24;
-      font-weight: bold;
-    }
-
-    .status-box {
-      min-height: 220px;
-      padding: 14px;
-      background: #0f172a;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      white-space: pre-wrap;
-      font-size: 12px;
-      line-height: 1.5;
-      color: #dbeafe;
-      overflow-wrap: anywhere;
-    }
-
-    .info-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .info-item {
-      padding: 12px;
-      background: #0f172a;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-    }
-
-    .info-item strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 13px;
-    }
-
-    .info-item span {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    @media (max-width: 1100px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 900px) {
-      .step {
-        grid-template-columns: 1fr;
-      }
-
-      .step-actions {
-        justify-content: flex-start;
-      }
-    }
-
-    @media (max-width: 700px) {
-      .categories-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .header {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-    }
-  </style>
+  }
+</style>
 </head>
 <body>
   <div class="app">
     <div class="header">
-      <div>
-        <h1>MS Premiere Bridge</h1>
-        <p>Workflow clair et ordonné pour REVIEW → ASSEMBLY → STYLED → COMPLETED</p>
-      </div>
-      <div class="header-badge">Ordered Workflow Panel</div>
+      <h1>MS Premiere Bridge</h1>
+      <div class="badge">Compact</div>
     </div>
 
     <div class="layout">
-      <div class="column">
+      <div class="left">
         <div class="card">
-          <div class="card-header">
-            <h2 class="card-title">Ordre de travail recommandé</h2>
-            <p class="card-subtitle">Suis exactement cet ordre pour travailler rapidement et proprement.</p>
-          </div>
+          <div class="card-header">Tags</div>
           <div class="card-body">
-            <div class="workflow-list">
+            <div class="categories-grid">
+              <button class="cat-btn" data-code="0" data-label="CLOSEUP"><span class="cat-code">0</span>Closeup</button>
+              <button class="cat-btn" data-code="1" data-label="GOAL"><span class="cat-code">1</span>Goal</button>
+              <button class="cat-btn" data-code="2" data-label="ASSIST"><span class="cat-code">2</span>Assist</button>
+              <button class="cat-btn" data-code="3" data-label="KEYPASS"><span class="cat-code">3</span>KeyPass</button>
+              <button class="cat-btn" data-code="4" data-label="BESTACTION"><span class="cat-code">4</span>BestAction</button>
+              <button class="cat-btn" data-code="5" data-label="DRIBBLE"><span class="cat-code">5</span>Dribble</button>
+              <button class="cat-btn" data-code="6" data-label="CHALLENGE"><span class="cat-code">6</span>Challenge</button>
+              <button class="cat-btn" data-code="7" data-label="GREATPASS"><span class="cat-code">7</span>GreatPass</button>
+              <button class="cat-btn" data-code="8" data-label="HEADER"><span class="cat-code">8</span>Header</button>
+              <button class="cat-btn" data-code="9" data-label="OTHER"><span class="cat-code">9</span>Other</button>
+            </div>
+          </div>
+        </div>
 
-              <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-text">
-                  <h3>Run pending command</h3>
-                  <p>Créer / lancer le projet Premiere depuis la commande courante.</p>
+        <div class="card">
+          <div class="card-header">Pipeline</div>
+          <div class="card-body">
+            <div class="pipeline-row">
+              <div class="pipe">
+                <div class="pipe-title"data-code="1">Styles</div>
+                <div class="pipe-actions">
+                  <button id="mark-slowmo" class="btn-warning">SlowMo</button>
+                  <button id="mark-reverse" class="btn-warning">Reverse</button>
                 </div>
-                <div class="step-actions">
-                  <button id="run-now" class="btn-primary">Run pending command</button>
+                <div class="pipe-actions" data-code="2">
+                  <button id="build-styled" class="btn-accent">2- Appliquer</button>
                 </div>
               </div>
-
-              <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-text">
-                  <h3>Tag markers</h3>
-                  <p>Catégoriser les 2 derniers marqueurs dans REVIEW_TIMELINE.</p>
-                </div>
-                <div class="step-actions">
-                  <div class="categories-grid">
-                    <button class="cat-btn" data-code="0" data-label="CLOSEUP"><span class="cat-code">0</span>Plan Serré</button>
-                    <button class="cat-btn" data-code="1" data-label="GOAL"><span class="cat-code">1</span>Goal</button>
-                    <button class="cat-btn" data-code="2" data-label="ASSIST"><span class="cat-code">2</span>Assist</button>
-                    <button class="cat-btn" data-code="3" data-label="KEYPASS"><span class="cat-code">3</span>KeyPass</button>
-                    <button class="cat-btn" data-code="4" data-label="BESTACTION"><span class="cat-code">4</span>BestAction</button>
-                    <button class="cat-btn" data-code="5" data-label="DRIBBLE"><span class="cat-code">5</span>Dribble</button>
-                    <button class="cat-btn" data-code="6" data-label="CHALLENGE"><span class="cat-code">6</span>Challenge</button>
-                    <button class="cat-btn" data-code="7" data-label="GREATPASS"><span class="cat-code">7</span>GreatPass</button>
-                    <button class="cat-btn" data-code="8" data-label="HEADER"><span class="cat-code">8</span>Header</button>
-                    <button class="cat-btn" data-code="9" data-label="OTHER"><span class="cat-code">9</span>Other</button>
+              <div class="pipe">
+                <div class="pipe-title">Process</div>
+                <div class="pipe-actions">
+                  <button id="build-final" class="btn-primary" data-code="1"> 1- Trier </button>
+                  <div class="pipe-actions">
+                    <button id="build-completed" class="btn-success" data-code="3">3- Intro/Audio</button>
+                  </div>
+                  <div class="pipe-actions">
+                    <button id="build-styled" class="btn-accent" data-code="4">4- Livrer</button>
                   </div>
                 </div>
               </div>
-
-              <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-text">
-                  <h3>Trier Les Sequences</h3>
-                  <p>Construire la séquence assembly à partir des marqueurs de review.</p>
-                </div>
-                <div class="step-actions">
-                  <button id="build-final" class="btn-primary">Trier Les Sequences</button>
-                </div>
-              </div>
-
-              <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-text">
-                  <h3>Mark SLOWMO / REVERSE</h3>
-                  <p>Appliquer les styles manuels après assembly et avant Styled Main.</p>
-                </div>
-                <div class="step-actions">
-                  <button id="mark-slowmo" class="btn-warning">Marquer SlowMotion</button>
-                  <button id="mark-reverse" class="btn-warning">Marquer REVERSE</button>
-                </div>
-              </div>
-
-              <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-text">
-                  <h3>Appliquer Les Ralenti/Reverse</h3>
-                  <p>Créer la séquence styled depuis la version assembly préparée.</p>
-                </div>
-                <div class="step-actions">
-                  <button id="build-styled" class="btn-accent">Appliquer Les Ralenti/Reverse</button>
-                </div>
-              </div>
-
-              <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-text">
-                  <h3>Générer la Video Finale</h3>
-                  <p>Créer la version finale avec intro, audio et logique complète.</p>
-                </div>
-                <div class="step-actions">
-                  <button id="build-completed" class="btn-success">Générer la Video Finale</button>
-                </div>
-              </div>
-
-              <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-text">
-                  <h3>Refresh summary</h3>
-                  <p>Contrôler les marqueurs et vérifier le résultat final.</p>
-                </div>
-                <div class="step-actions">
-                  <button id="refresh-summary" class="btn-muted">Refresh markers summary</button>
-                </div>
-              </div>
-
             </div>
           </div>
         </div>
       </div>
 
-      <div class="column">
+      <div class="right">
         <div class="card">
-          <div class="card-header">
-            <h2 class="card-title">État / Résultat</h2>
-            <p class="card-subtitle">Retour direct des actions envoyées à Premiere.</p>
-          </div>
+          <div class="card-header">Controls</div>
           <div class="card-body">
-            <div class="status-box" id="status">Waiting...</div>
+            <div class="top-actions">
+              <button id="run-now" class="btn-primary">Run</button>
+              <button id="refresh-summary" class="btn-muted">Refresh</button>
+            </div>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <h2 class="card-title">Rappel du workflow</h2>
-            <p class="card-subtitle">Ordre exact demandé.</p>
-          </div>
+          <div class="card-header">Status</div>
           <div class="card-body">
-            <div class="info-list">
-              <div class="info-item">
-                <strong>Ordre conseillé</strong>
-                <span>
-                  Run pending command → Tag markers → Build ASSEMBLY_MAIN →
-                  Mark SLOWMO / REVERSE → Build STYLED_MAIN →
-                  Build COMPLETED_MAIN → Refresh summary
-                </span>
-              </div>
-
-              <div class="info-item">
-                <strong>Conseil pratique</strong>
-                <span>
-                  Fais toujours les tags avant assembly, puis les styles manuels
-                  avant la construction de STYLED_MAIN.
-                </span>
-              </div>
-
-              <div class="info-item">
-                <strong>Sortie finale</strong>
-                <span>
-                  COMPLETED_MAIN doit être lancé seulement quand STYLED_MAIN est finalisé.
-                </span>
-              </div>
-            </div>
+            <div class="status-box" id="status">Waiting...</div>
           </div>
         </div>
       </div>
