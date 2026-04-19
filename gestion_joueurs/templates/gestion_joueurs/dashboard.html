@@ -146,6 +146,19 @@
                                                     <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement">
                                                         <i class="fas fa-dollar-sign"></i>
                                                     </a>
+                                                    {% if video.intro_automation_completed %}
+                                                        <span class="btn btn-success btn-sm" title="Présentation intro prête">
+                                                            <i class="fas fa-image"></i>
+                                                        </span>
+                                                    {% elif video.intro_automation_enabled %}
+                                                        <span class="btn btn-warning btn-sm" title="Présentation intro activée">
+                                                            <i class="fas fa-image"></i>
+                                                        </span>
+                                                    {% else %}
+                                                        <a href="{% url 'update_video_status' video.id %}" class="btn btn-dark btn-sm" title="Activer la présentation intro">
+                                                            <i class="fas fa-image"></i>
+                                                        </a>
+                                                    {% endif %}
                                                 {%else%}
                                                     <a href="{% url 'view_video' video.id %}" class="btn btn-primary btn-sm" title="Voir la video">
                                                         <i class="fas fa-info-circle"></i>
