@@ -97,40 +97,63 @@ def extract_birth_date_from_description(description):
 
 def parse_transfermarkt_player(url):
     headers = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,image/apng,*/*;q=0.8"
+        ),
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.transfermarkt.fr/",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
     }
 
-    response = requests.get(url, headers=headers, timeout=15)
+    session = requests.Session()
+
+    response = session.get(
+        url,
+        headers=headers,
+        timeout=20,
+        allow_redirects=True,
+    )
+
+    if response.status_code == 403:
+        raise ValueError(
+            "Transfermarkt bloque l'import automatique pour le moment. "
+            "Réessayez plus tard ou remplissez le joueur manuellement."
+        )
+
     response.raise_for_status()
     html = response.text
 
-    og_title = extract_meta_content(html, meta_property="og:title")
-    description = extract_meta_content(html, meta_name="description")
+    og_title = extract_meta_content(html, meta_property="og:title") or ""
+    description = extract_meta_content(html, meta_name="description") or ""
 
-    name = extract_js_value(html, "eVar27")
-    club = extract_js_value(html, "eVar3")
-    league_name = extract_js_value(html, "eVar4")
+    name = extract_js_value(html, "eVar27") or ""
+    club = extract_js_value(html, "eVar3") or ""
+    league_name = extract_js_value(html, "eVar4") or ""
+
     name = re.sub(r"\s*\(\d+\)$", "", name).strip()
     club = re.sub(r"\s*\(\d+\)$", "", club).strip()
     league_name = re.sub(r"\s*\([A-Z0-9]+\)$", "", league_name).strip()
+
     if not name and og_title:
-        # ex: Diego Palacios - Profil du joueur 2026
         name = og_title.split(" - ")[0].strip()
 
-    # position depuis meta description
-    position_raw = ""
-    # ex: Diego Palacios, 26, de Équateur ➤ CD Universidad Católica, depuis 2025 ➤ Arrière gauche ➤ ...
-    desc_parts = [p.strip() for p in description.split("➤")]
-    if len(desc_parts) >= 2:
-        position_raw = desc_parts[1] if len(desc_parts) > 1 else ""
-
-    # dans ton exemple exact, le club est dans eVar3 et la ligue dans eVar4
-    # ça vient du JS de la page Transfermarkt
     position = map_transfermarkt_position(description)
 
-    # mapping ligue vers tes choix Django
     league = "OC"
-    league_name_lower = (league_name or "").lower()
+    league_name_lower = league_name.lower()
+
     if "tunisie" in league_name_lower and "ligue 1" in league_name_lower:
         league = "L1"
     elif "tunisie" in league_name_lower and "ligue 2" in league_name_lower:

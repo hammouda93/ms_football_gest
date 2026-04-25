@@ -1719,6 +1719,28 @@ def import_transfermarkt_player(request):
             }
         })
 
+    except ValueError as e:
+        return JsonResponse({
+            "success": False,
+            "error": str(e)
+        }, status=400)
+
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response else 500
+
+        if status_code == 403:
+            return JsonResponse({
+                "success": False,
+                "error": (
+                    "Transfermarkt refuse l'accès automatique pour le moment. "
+                    "Essayez plus tard ou remplissez le joueur manuellement."
+                )
+            }, status=400)
+
+        return JsonResponse({
+            "success": False,
+            "error": f"Erreur HTTP Transfermarkt : {status_code}"
+        }, status=400)
     except Exception as e:
         return JsonResponse({
             "success": False,
