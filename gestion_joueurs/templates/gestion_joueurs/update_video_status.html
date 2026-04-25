@@ -135,36 +135,51 @@
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', toggleStatusFields);
-
-    function toggleStatusFields() {
-        const statusSelect = document.getElementById('status');
-        const processingModeSelect = document.getElementById('processing_mode');
-        const processingModeContainer = document.getElementById('processing-mode-container');
-        const sportsbaseUrlContainer = document.getElementById('sportsbase-url-container');
-        const deliveryModeContainer = document.getElementById('delivery-mode-container');
-        const videoLinkContainer = document.getElementById('video-link-container');
-        const introAutomationContainer = document.getElementById('intro-automation-container');
-        const status = statusSelect.value;
-        const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
-        const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
-        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
-        const introAutomationEnabled = introAutomationCheckbox ? introAutomationCheckbox.checked : false;
-
-        processingModeContainer.style.display = (status === 'in_progress') ? 'block' : 'none';
-        sportsbaseUrlContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
-        introAutomationContainer.style.display = (status === 'in_progress' && processingMode === 'automation') ? 'block' : 'none';
-        transfermarktUrlContainer.style.display = (status === 'in_progress' && processingMode === 'automation' && introAutomationEnabled) ? 'block' : 'none';
-        deliveryModeContainer.style.display = (status === 'delivered') ? 'block' : 'none';
-        videoLinkContainer.style.display = (status === 'delivered') ? 'block' : 'none';
-    }
     document.addEventListener('DOMContentLoaded', function () {
         toggleStatusFields();
+
         const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
         if (introAutomationCheckbox) {
             introAutomationCheckbox.addEventListener('change', toggleStatusFields);
         }
     });
+
+    function toggleStatusFields() {
+        const statusSelect = document.getElementById('status');
+        const processingModeSelect = document.getElementById('processing_mode');
+
+        const processingModeContainer = document.getElementById('processing-mode-container');
+        const sportsbaseUrlContainer = document.getElementById('sportsbase-url-container');
+        const introAutomationContainer = document.getElementById('intro-automation-container');
+        const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
+        const deliveryModeContainer = document.getElementById('delivery-mode-container');
+        const videoLinkContainer = document.getElementById('video-link-container');
+
+        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
+
+        const status = statusSelect ? statusSelect.value : '';
+        const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
+        const introAutomationEnabled = introAutomationCheckbox ? introAutomationCheckbox.checked : false;
+
+        const isInProgress = status === 'in_progress';
+        const isAutomation = processingMode === 'automation';
+        const isDelivered = status === 'delivered';
+
+        processingModeContainer.style.display = isInProgress ? 'block' : 'none';
+
+        // SportsBase seulement pour automation vidéo
+        sportsbaseUrlContainer.style.display = (isInProgress && isAutomation) ? 'block' : 'none';
+
+        // Générer la présentation visible directement dès que statut = En cours
+        introAutomationContainer.style.display = isInProgress ? 'block' : 'none';
+
+        // Transfermarkt seulement si la case est cochée
+        transfermarktUrlContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
+
+        deliveryModeContainer.style.display = isDelivered ? 'block' : 'none';
+        videoLinkContainer.style.display = isDelivered ? 'block' : 'none';
+    }
+
     function confirmProblematic() {
         if (confirm("Êtes-vous sûr de vouloir marquer cette vidéo comme problématique ?")) {
             document.getElementById('status').value = 'problematic';

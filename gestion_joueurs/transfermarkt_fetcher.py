@@ -45,11 +45,20 @@ def build_transfermarkt_assets_from_url_file(intro_folder: str):
     return {
         "transfermarkt_url": transfermarkt_url,
         "raw_html_path": str(raw_html_path),
+
+        # Présentation normale
         "json_path": assets["json_path"],
         "logo_path": assets["logo_path"],
         "badge_paths": assets["badge_paths"],
         "badges_card_path": assets["badges_card_path"],
         "prompt_path": assets["prompt_path"],
+
+        # Deuxième présentation : position + valeur marchande
+        "position_market_value_prompt_path": assets["position_market_value_prompt_path"],
+        "position_graph_path": assets["position_graph_path"],
+        "market_value_graph_path": assets["market_value_graph_path"],
+        "position_market_value_card_path": assets["position_market_value_card_path"],
+
         "data": assets["data"],
     }
 

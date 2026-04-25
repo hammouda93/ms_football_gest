@@ -473,7 +473,7 @@ def update_video_status(request, video_id):
             old_processing_mode = video.processing_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
 
-            # validation : automation => sportsbase_url obligatoire
+            # validation : SportsBase obligatoire seulement si mode Automation vidéo
             if new_status == 'in_progress' and processing_mode == 'automation':
                 final_sportsbase_url = sportsbase_url or (video.player.sportsbase_url or '').strip()
 
@@ -486,20 +486,31 @@ def update_video_status(request, video_id):
 
                 video.player.sportsbase_url = final_sportsbase_url
 
-                # validation : intro automation => transfermarkt_url obligatoire
-                if intro_automation_enabled:
-                    final_transfermarkt_url = transfermarkt_url or (video.player.transfermarkt_url or '').strip()
+            # validation : Transfermarkt obligatoire seulement si Générer la présentation est activé
+            # IMPORTANT : indépendant du processing_mode
+            if new_status == 'in_progress' and intro_automation_enabled:
+                final_transfermarkt_url = transfermarkt_url or (video.player.transfermarkt_url or '').strip()
 
-                    if not final_transfermarkt_url:
-                        messages.error(
-                            request,
-                            "Le lien Transfermarkt est obligatoire si Générer la présentation est activé."
-                        )
-                        return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+                if not final_transfermarkt_url:
+                    messages.error(
+                        request,
+                        "Le lien Transfermarkt est obligatoire si Générer la présentation est activé."
+                    )
+                    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
 
-                    video.player.transfermarkt_url = final_transfermarkt_url
+                video.player.transfermarkt_url = final_transfermarkt_url
 
-                video.player.save(update_fields=['sportsbase_url', 'transfermarkt_url'])
+            # sauvegarde joueur seulement si nécessaire
+            player_update_fields = []
+
+            if new_status == 'in_progress' and processing_mode == 'automation':
+                player_update_fields.append('sportsbase_url')
+
+            if new_status == 'in_progress' and intro_automation_enabled:
+                player_update_fields.append('transfermarkt_url')
+
+            if player_update_fields:
+                video.player.save(update_fields=player_update_fields)
 
             video.status = new_status
 

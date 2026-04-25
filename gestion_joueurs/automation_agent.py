@@ -131,7 +131,19 @@ def prepare_uploads_gemini_folder(intro_folder: Path, intro_photo_path: Path, tm
         target_photo.write_bytes(intro_photo_path.read_bytes())
 
     # transfermarkt files
-    for key in ["json_path", "logo_path", "prompt_path", "badges_card_path"]:
+    for key in [
+        # Présentation normale
+        "json_path",
+        "logo_path",
+        "prompt_path",
+        "badges_card_path",
+
+        # Deuxième présentation : position + valeur marchande
+        "position_market_value_prompt_path",
+        "position_graph_path",
+        "market_value_graph_path",
+        "position_market_value_card_path",
+    ]:
         path_value = tm_assets.get(key)
         if path_value:
             src = Path(path_value)
@@ -144,6 +156,7 @@ def prepare_uploads_gemini_folder(intro_folder: Path, intro_photo_path: Path, tm
     if badge_paths:
         badges_dir = uploads_dir / "badges"
         badges_dir.mkdir(parents=True, exist_ok=True)
+
         for badge_path in badge_paths:
             src = Path(badge_path)
             if src.exists():
@@ -221,6 +234,10 @@ def process_intro_video(video_data):
         print(f"[INFO] Badges Card: {tm_assets['badges_card_path']}")
         print(f"[INFO] Prompt TXT: {tm_assets['prompt_path']}")
         print(f"[INFO] Badges PNG: {tm_assets['badge_paths']}")
+        print(f"[INFO] Position Prompt TXT: {tm_assets.get('position_market_value_prompt_path')}")
+        print(f"[INFO] Position Graph PNG: {tm_assets.get('position_graph_path')}")
+        print(f"[INFO] Market Value Graph PNG: {tm_assets.get('market_value_graph_path')}")
+        print(f"[INFO] Position + Market Card PNG: {tm_assets.get('position_market_value_card_path')}")
     except Exception as e:
         print(f"[WARN] Impossible de générer les assets Transfermarkt: {e}")
 
