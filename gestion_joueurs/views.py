@@ -1773,9 +1773,7 @@ def automation_pending_videos(request):
     # nouveau pipeline intro
     intro_videos = Video.objects.filter(
         status='in_progress',
-        processing_mode='automation',
-        automation_completed=True,
-        intro_automation_enabled=False,
+        intro_automation_enabled=True,
         intro_automation_completed=False
     ).select_related('player', 'editor')
 
