@@ -18,9 +18,15 @@
                 </div>
             {% endif %}
 
-            <form method="POST" enctype="multipart/form-data">
+            <form
+                method="POST"
+                enctype="multipart/form-data"
+                id="status-update-form"
+                data-original-status="{{ video.status }}"
+            >
                 {% csrf_token %}
                 <input type="hidden" name="editor" value="{{ video.editor.id }}">
+                <input type="hidden" name="notification_action" id="notification_action" value="skip">
 
                 <div class="form-group">
                     <label for="status">Statut</label>
@@ -129,10 +135,100 @@
                 <button type="submit" class="btn btn-primary btn-block">Mettre à jour</button>
                 <a href="{% url 'video_status' video.id %}" class="btn btn-secondary btn-block mt-3">Retour au statut de la vidéo</a>
                 <button type="button" class="btn btn-danger btn-block mt-3" onclick="confirmProblematic()">Marquer comme problématique</button>
+
+                <div
+                    class="modal fade"
+                    id="status-notification-modal"
+                    tabindex="-1"
+                    role="dialog"
+                    aria-labelledby="status-notification-title"
+                    aria-hidden="true"
+                >
+                    <div class="modal-dialog modal-lg" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="status-notification-title">
+                                    Informer {{ video.player.name }} du nouveau statut ?
+                                </h5>
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-light border">
+                                    <strong>Situation de paiement enregistrée :</strong>
+                                    {{ payment_snapshot.status_label }}<br>
+                                    <small>
+                                        Payé : {{ payment_snapshot.amount_paid_display }} /
+                                        {{ payment_snapshot.total_display }} —
+                                        Solde : {{ payment_snapshot.remaining_display }}
+                                    </small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="payment_message_mode">Information de paiement à inclure</label>
+                                    <select
+                                        name="payment_message_mode"
+                                        id="payment_message_mode"
+                                        class="form-control"
+                                    >
+                                        {% for value, label in payment_mode_choices %}
+                                            <option value="{{ value }}">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="form-text text-primary" id="payment-recommendation"></small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="whatsapp_message">Message proposé — modifiable avant ouverture</label>
+                                    <textarea
+                                        name="whatsapp_message"
+                                        id="whatsapp_message"
+                                        class="form-control"
+                                        rows="11"
+                                        maxlength="4000"
+                                    ></textarea>
+                                </div>
+
+                                {% if player_has_whatsapp %}
+                                    <div class="alert alert-info mb-0">
+                                        WhatsApp s’ouvrira avec ce texte prérempli. Le message ne sera pas
+                                        envoyé tant que vous n’appuierez pas vous-même sur « Envoyer » dans WhatsApp.
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-warning mb-0">
+                                        Aucun numéro WhatsApp n’est enregistré pour ce joueur. Vous pouvez
+                                        enregistrer le statut sans envoyer de message.
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="modal-footer flex-column flex-sm-row">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                                    Annuler
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="save-without-whatsapp">
+                                    Mettre à jour sans WhatsApp
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-success"
+                                    id="save-with-whatsapp"
+                                    {% if not player_has_whatsapp %}disabled{% endif %}
+                                >
+                                    <i class="fab fa-whatsapp"></i>
+                                    Mettre à jour et ouvrir WhatsApp
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 </div>
+
+{{ status_whatsapp_messages|json_script:"status-whatsapp-messages" }}
+{{ status_payment_recommendations|json_script:"status-payment-recommendations" }}
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -142,7 +238,101 @@
         if (introAutomationCheckbox) {
             introAutomationCheckbox.addEventListener('change', toggleStatusFields);
         }
+
+        initialiseStatusNotificationConfirmation();
     });
+
+    function initialiseStatusNotificationConfirmation() {
+        const form = document.getElementById('status-update-form');
+        const statusSelect = document.getElementById('status');
+        const notificationAction = document.getElementById('notification_action');
+        const paymentModeSelect = document.getElementById('payment_message_mode');
+        const whatsappMessage = document.getElementById('whatsapp_message');
+        const paymentRecommendation = document.getElementById('payment-recommendation');
+        const videoLinkInput = document.getElementById('video_link');
+        const saveWithoutWhatsapp = document.getElementById('save-without-whatsapp');
+        const saveWithWhatsapp = document.getElementById('save-with-whatsapp');
+
+        const messageOptionsElement = document.getElementById('status-whatsapp-messages');
+        const recommendationsElement = document.getElementById('status-payment-recommendations');
+
+        if (!form || !statusSelect || !messageOptionsElement || !recommendationsElement) {
+            return;
+        }
+
+        const messageOptions = JSON.parse(messageOptionsElement.textContent);
+        const recommendations = JSON.parse(recommendationsElement.textContent);
+        let confirmationCompleted = false;
+
+        function addCurrentDeliveryLink(message, status) {
+            const videoLink = videoLinkInput ? videoLinkInput.value.trim() : '';
+            if (status !== 'delivered' || !videoLink || message.includes(videoLink)) {
+                return message;
+            }
+
+            const signature = '\n\nMoataz — MS Football';
+            const linkParagraph = `\n\nVoici le lien de la vidéo : ${videoLink}`;
+            if (message.includes(signature)) {
+                return message.replace(signature, `${linkParagraph}${signature}`);
+            }
+            return `${message}${linkParagraph}`;
+        }
+
+        function updateMessagePreview() {
+            const status = statusSelect.value;
+            const paymentMode = paymentModeSelect.value;
+            const recommendation = recommendations[status] || {};
+            const statusMessages = messageOptions[status] || {};
+
+            if (paymentRecommendation) {
+                paymentRecommendation.textContent = recommendation.label
+                    ? `Recommandation : ${recommendation.label}`
+                    : '';
+            }
+
+            const automaticOption = paymentModeSelect.querySelector('option[value="auto"]');
+            if (automaticOption) {
+                automaticOption.textContent = recommendation.label
+                    ? `Automatique — ${recommendation.label}`
+                    : 'Selon le paiement enregistré';
+            }
+
+            const proposedMessage = statusMessages[paymentMode] || statusMessages.auto || '';
+            whatsappMessage.value = addCurrentDeliveryLink(proposedMessage, status);
+        }
+
+        function submitConfirmed(action) {
+            notificationAction.value = action;
+            confirmationCompleted = true;
+            $('#status-notification-modal').modal('hide');
+
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        }
+
+        form.addEventListener('submit', function (event) {
+            const statusChanged = statusSelect.value !== form.dataset.originalStatus;
+            if (confirmationCompleted || !statusChanged) {
+                return;
+            }
+
+            event.preventDefault();
+            paymentModeSelect.value = 'auto';
+            updateMessagePreview();
+            $('#status-notification-modal').modal('show');
+        });
+
+        paymentModeSelect.addEventListener('change', updateMessagePreview);
+        saveWithoutWhatsapp.addEventListener('click', function () {
+            submitConfirmed('skip');
+        });
+        saveWithWhatsapp.addEventListener('click', function () {
+            submitConfirmed('whatsapp');
+        });
+    }
 
     function toggleStatusFields() {
         const statusSelect = document.getElementById('status');
@@ -184,7 +374,15 @@
         if (confirm("Êtes-vous sûr de vouloir marquer cette vidéo comme problématique ?")) {
             document.getElementById('status').value = 'problematic';
             toggleStatusFields();
-            document.forms[0].submit();
+            const form = document.getElementById('status-update-form');
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                const submitEvent = new Event('submit', {cancelable: true});
+                if (form.dispatchEvent(submitEvent)) {
+                    form.submit();
+                }
+            }
         }
     }
 </script>

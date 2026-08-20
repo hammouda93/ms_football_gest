@@ -40,6 +40,12 @@ from django.views.decorators.http import require_POST
 from .utils import parse_transfermarkt_player
 from decimal import Decimal
 from django.db import transaction
+from .video_status_whatsapp import (
+    PAYMENT_MODE_CHOICES,
+    build_notification_whatsapp_url,
+    build_status_notification_context,
+    build_whatsapp_url,
+)
 
 @superadmin_required
 @login_required
@@ -461,6 +467,44 @@ def video_status(request, video_id):
     video = get_object_or_404(Video, id=video_id)
     return render(request, 'gestion_joueurs/video_status.html', {'video': video})
 
+
+def _render_update_video_status(request, video):
+    context = {'video': video}
+    context.update(build_status_notification_context(video))
+    return render(request, 'gestion_joueurs/update_video_status.html', context)
+
+
+def _redirect_to_status_whatsapp(request, video, status_changed):
+    """Open a player-facing WhatsApp draft after a confirmed status change."""
+    if not status_changed or request.POST.get('notification_action') != 'whatsapp':
+        return None
+
+    payment_mode = request.POST.get('payment_message_mode', 'auto')
+    valid_payment_modes = {value for value, _label in PAYMENT_MODE_CHOICES}
+    if payment_mode not in valid_payment_modes:
+        payment_mode = 'auto'
+
+    notification_context = build_status_notification_context(video)
+    whatsapp_message = request.POST.get('whatsapp_message', '').strip()
+    if not whatsapp_message:
+        whatsapp_message = notification_context['status_whatsapp_messages'][
+            video.status
+        ][payment_mode]
+
+    whatsapp_url = build_whatsapp_url(
+        video.player.whatsapp_number,
+        whatsapp_message[:4000],
+    )
+    if whatsapp_url:
+        return redirect(whatsapp_url)
+
+    messages.warning(
+        request,
+        "Le statut a été enregistré, mais aucun numéro WhatsApp n’est renseigné pour ce joueur."
+    )
+    return None
+
+
 @login_required
 def update_video_status(request, video_id):
     video = get_object_or_404(Video, id=video_id)
@@ -468,6 +512,11 @@ def update_video_status(request, video_id):
     if request.method == 'POST':
         if request.user.is_authenticated:
             new_status = request.POST.get('status')
+            valid_statuses = {value for value, _label in Video.StatusChoices.choices}
+            if new_status not in valid_statuses:
+                messages.error(request, "Le statut sélectionné n’est pas valide.")
+                return _render_update_video_status(request, video)
+
             video_link = request.POST.get('video_link', '').strip()
             processing_mode = request.POST.get('processing_mode', 'normal')
             delivery_mode = request.POST.get('delivery_mode', 'normal')
@@ -478,6 +527,7 @@ def update_video_status(request, video_id):
             set_signal_processing(False)
 
             old_status = video.status
+            status_changed = old_status != new_status
             old_processing_mode = video.processing_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
 
@@ -490,7 +540,7 @@ def update_video_status(request, video_id):
                         request,
                         "Le lien SportsBase est obligatoire pour démarrer une vidéo en mode Automation."
                     )
-                    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+                    return _render_update_video_status(request, video)
 
                 video.player.sportsbase_url = final_sportsbase_url
 
@@ -504,7 +554,7 @@ def update_video_status(request, video_id):
                         request,
                         "Le lien Transfermarkt est obligatoire si Générer la présentation est activé."
                     )
-                    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+                    return _render_update_video_status(request, video)
 
                 video.player.transfermarkt_url = final_transfermarkt_url
 
@@ -557,11 +607,20 @@ def update_video_status(request, video_id):
             video.save()
 
             messages.success(request, "Le statut de la vidéo a été mis à jour avec succès.")
+
+            whatsapp_response = _redirect_to_status_whatsapp(
+                request,
+                video,
+                status_changed,
+            )
+            if whatsapp_response:
+                return whatsapp_response
+
             return redirect('video_status', video_id=video.id)
         else:
             messages.error(request, "Vous devez être connecté pour mettre à jour le statut de la vidéo.")
 
-    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+    return _render_update_video_status(request, video)
 
 @superadmin_required
 @login_required
@@ -619,6 +678,7 @@ thread_local = threading.local()
 @login_required
 def edit_video(request, video_id):
     video = get_object_or_404(Video, id=video_id)
+    original_status = video.status
     video_status_history = video.status_history.all()  # Utiliser le related_name
     payments = video.payments.all()  # Assure-toi que le modèle Payment a la relation correcte
     previous_editor = video.editor
@@ -643,17 +703,29 @@ def edit_video(request, video_id):
                     last_invoice.status = 'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
                 last_invoice.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
+
+            whatsapp_response = _redirect_to_status_whatsapp(
+                request,
+                video,
+                original_status != video.status,
+            )
+            if whatsapp_response:
+                return whatsapp_response
+
             return redirect('dashboard')
     else:
         form = VideoForm(instance=video, user=request.user)
 
-    return render(request, 'gestion_joueurs/edit_video.html', {
+    context = {
         'form': form,
         'video': video,
+        'original_video_status': original_status,
         'video_status_history': video_status_history,
         'payments': payments,
         'salaries': salaries,  # Pass salaries to the template
-    })
+    }
+    context.update(build_status_notification_context(video))
+    return render(request, 'gestion_joueurs/edit_video.html', context)
 
 
 @login_required
@@ -1565,15 +1637,21 @@ def notification_list(request):
     search_query = request.GET.get('search', '')
 
     # Base queryset for notifications
-    notifications_list = Notification.objects.all().order_by('-created_at')
-    print(f"{notification_list}")
+    notifications_list = Notification.objects.select_related(
+        'user',
+        'sent_by',
+        'video__player',
+        'video__invoices',
+        'player',
+    ).order_by('-created_at')
     if not is_superuser:
         notifications_list = notifications_list.filter(user=request.user)
     else:
         if selected_user_id:
             notifications_list = notifications_list.filter(user_id=selected_user_id)
-        if search_query:
-            notifications_list = notifications_list.filter(Q(message__icontains=search_query))
+
+    if search_query:
+        notifications_list = notifications_list.filter(Q(message__icontains=search_query))
 
     # Get all users for superuser filtering options
     users = User.objects.all() if is_superuser else []
@@ -1589,6 +1667,9 @@ def notification_list(request):
     except EmptyPage:
         notifications_page = paginator.page(paginator.num_pages)  # If page is out of range, show the last page
 
+    for notification in notifications_page.object_list:
+        notification.whatsapp_url = build_notification_whatsapp_url(notification)
+
     # Pass context to the template
     return render(request, 'gestion_joueurs/notification_list.html', {
         'notifications_list': notifications_page,
@@ -1599,16 +1680,31 @@ def notification_list(request):
 
 @login_required
 def view_notification(request, notification_id):
-    # Get the notification by its ID, or 404 if not found
-    notification = get_object_or_404(Notification, id=notification_id)
+    notifications = Notification.objects.select_related(
+        'user',
+        'sent_by',
+        'video__player',
+        'video__invoices',
+        'player',
+    )
+    if not request.user.is_superuser:
+        notifications = notifications.filter(user=request.user)
+
+    notification = get_object_or_404(notifications, id=notification_id)
     
     # Mark the notification as read (if not already read)
     if not notification.is_read:
         notification.is_read = True
-        notification.save()
+        notification.save(update_fields=('is_read',))
+
+    notification_player = notification.player
+    if not notification_player and notification.video:
+        notification_player = notification.video.player
 
     return render(request, 'gestion_joueurs/view_notification.html', {
         'notification': notification,
+        'notification_player': notification_player,
+        'notification_whatsapp_url': build_notification_whatsapp_url(notification),
     })
 
 @login_required
@@ -1931,10 +2027,4 @@ def mark_intro_automation_completed(request, video_id):
         'video_id': video.id,
         'intro_automation_completed': video.intro_automation_completed
     })
-
-
-
-
-
-
 

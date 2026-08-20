@@ -29,13 +29,100 @@
         <div class="col-md-6">
             <div class="card mb-4">
                 <div class="card-body">
-                    <form method="POST">
+                    <form
+                        method="POST"
+                        id="video-edit-form"
+                        data-original-status="{{ original_video_status }}"
+                    >
                         {% csrf_token %}
+                        <input type="hidden" name="notification_action" id="edit_notification_action" value="skip">
                         {{ form|crispy }}  
                         <button type="submit" class="btn btn-primary btn-block mt-3" aria-label="Mettre à jour la vidéo">Mettre à jour la Vidéo</button>
                         <div class="d-flex justify-content-between mt-3">
                             <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
                             <a href="{% url 'edit_player' video.player.id %}" class="btn btn-info">Modifier le joueur</a> 
+                        </div>
+
+                        <div
+                            class="modal fade"
+                            id="edit-status-notification-modal"
+                            tabindex="-1"
+                            role="dialog"
+                            aria-labelledby="edit-status-notification-title"
+                            aria-hidden="true"
+                        >
+                            <div class="modal-dialog" role="document">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="edit-status-notification-title">
+                                            Informer {{ video.player.name }} du nouveau statut ?
+                                        </h5>
+                                        <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="alert alert-light border">
+                                            <strong>Situation de paiement enregistrée :</strong>
+                                            {{ payment_snapshot.status_label }}<br>
+                                            <small>
+                                                Payé : {{ payment_snapshot.amount_paid_display }} /
+                                                {{ payment_snapshot.total_display }} —
+                                                Solde : {{ payment_snapshot.remaining_display }}
+                                            </small>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="edit_payment_message_mode">
+                                                Information de paiement à inclure
+                                            </label>
+                                            <select
+                                                name="payment_message_mode"
+                                                id="edit_payment_message_mode"
+                                                class="form-control"
+                                            >
+                                                {% for value, label in payment_mode_choices %}
+                                                    <option value="{{ value }}">{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <small
+                                                class="form-text text-primary"
+                                                id="edit-payment-recommendation"
+                                            ></small>
+                                        </div>
+
+                                        {% if player_has_whatsapp %}
+                                            <div class="alert alert-info mb-0">
+                                                WhatsApp s’ouvrira avec un message prérempli à partir du
+                                                nouveau statut, du paiement et de la deadline. Vous pourrez
+                                                encore modifier le texte avant de l’envoyer.
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-warning mb-0">
+                                                Aucun numéro WhatsApp n’est enregistré pour ce joueur.
+                                                La vidéo peut être mise à jour sans notification.
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="modal-footer flex-column flex-sm-row">
+                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                                            Annuler
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" id="edit-save-without-whatsapp">
+                                            Mettre à jour sans WhatsApp
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn btn-success"
+                                            id="edit-save-with-whatsapp"
+                                            {% if not player_has_whatsapp %}disabled{% endif %}
+                                        >
+                                            <i class="fab fa-whatsapp"></i>
+                                            Mettre à jour et ouvrir WhatsApp
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -155,4 +242,78 @@
         </div>
     </div>
 </div>
+
+{{ status_payment_recommendations|json_script:"edit-status-payment-recommendations" }}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('video-edit-form');
+        const statusSelect = document.getElementById('id_status');
+        const notificationAction = document.getElementById('edit_notification_action');
+        const paymentModeSelect = document.getElementById('edit_payment_message_mode');
+        const paymentRecommendation = document.getElementById('edit-payment-recommendation');
+        const saveWithoutWhatsapp = document.getElementById('edit-save-without-whatsapp');
+        const saveWithWhatsapp = document.getElementById('edit-save-with-whatsapp');
+        const recommendationsElement = document.getElementById(
+            'edit-status-payment-recommendations'
+        );
+
+        if (!form || !statusSelect || !recommendationsElement) {
+            return;
+        }
+
+        const recommendations = JSON.parse(recommendationsElement.textContent);
+        let confirmationCompleted = false;
+
+        function updateRecommendation() {
+            const recommendation = recommendations[statusSelect.value] || {};
+            if (paymentRecommendation) {
+                paymentRecommendation.textContent = recommendation.label
+                    ? `Recommandation : ${recommendation.label}`
+                    : '';
+            }
+
+            const automaticOption = paymentModeSelect.querySelector(
+                'option[value="auto"]'
+            );
+            if (automaticOption) {
+                automaticOption.textContent = recommendation.label
+                    ? `Automatique — ${recommendation.label}`
+                    : 'Selon le paiement enregistré';
+            }
+        }
+
+        function submitConfirmed(action) {
+            notificationAction.value = action;
+            confirmationCompleted = true;
+            $('#edit-status-notification-modal').modal('hide');
+
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        }
+
+        form.addEventListener('submit', function (event) {
+            const statusChanged = statusSelect.value !== form.dataset.originalStatus;
+            if (confirmationCompleted || !statusChanged) {
+                return;
+            }
+
+            event.preventDefault();
+            paymentModeSelect.value = 'auto';
+            updateRecommendation();
+            $('#edit-status-notification-modal').modal('show');
+        });
+
+        paymentModeSelect.addEventListener('change', updateRecommendation);
+        saveWithoutWhatsapp.addEventListener('click', function () {
+            submitConfirmed('skip');
+        });
+        saveWithWhatsapp.addEventListener('click', function () {
+            submitConfirmed('whatsapp');
+        });
+    });
+</script>
 {% endblock %}
