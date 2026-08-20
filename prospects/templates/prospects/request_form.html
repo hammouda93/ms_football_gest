@@ -1,0 +1,72 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Demandez votre vidéo highlights ou votre CV vidéo de football.">
+    <title>Demande de vidéo | MS Football</title>
+    <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
+</head>
+<body class="public-page">
+    <main class="public-shell">
+        <section class="public-intro" aria-labelledby="page-title">
+            <a class="brand" href="{% url 'prospects:request_create' %}" aria-label="MS Football">
+                <span class="brand-mark">MS</span>
+                <span>Football</span>
+            </a>
+            <p class="eyebrow">Votre carrière en images</p>
+            <h1 id="page-title">Une vidéo qui montre vraiment votre niveau.</h1>
+            <p class="intro-copy">
+                Envoyez les informations de votre projet. Nous étudions vos matchs et
+                nous vous répondons directement sur WhatsApp.
+            </p>
+            <ul class="benefit-list" aria-label="Avantages du service">
+                <li>Highlights professionnels</li>
+                <li>CV vidéo pour clubs et agents</li>
+                <li>Échange rapide sur WhatsApp</li>
+            </ul>
+        </section>
+
+        <section class="form-card" aria-labelledby="form-title">
+            <div class="form-heading">
+                <p class="step-label">Demande gratuite</p>
+                <h2 id="form-title">Parlez-nous de votre projet</h2>
+                <p>Les champs marqués d’un astérisque sont obligatoires.</p>
+            </div>
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-error" role="alert">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div class="form-grid">
+                    {% for field in form %}
+                        <div class="field{% if field.name == 'match_links' or field.name == 'message' %} field-wide{% endif %}">
+                            <label for="{{ field.id_for_label }}">
+                                {{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span>{% endif %}
+                            </label>
+                            {{ field }}
+                            {% if field.help_text %}
+                                <p class="help-text" id="{{ field.id_for_label }}_help">{{ field.help_text }}</p>
+                            {% endif %}
+                            {% if field.errors %}
+                                <div class="field-errors" role="alert">{{ field.errors }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button class="primary-button" type="submit">Envoyer ma demande</button>
+                <p class="privacy-note">
+                    Vos coordonnées servent uniquement à traiter votre demande et à vous recontacter.
+                </p>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

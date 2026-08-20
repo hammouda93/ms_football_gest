@@ -1,0 +1,25 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Demande envoyée | MS Football</title>
+    <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
+</head>
+<body class="success-page">
+    <main class="success-card">
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <p class="eyebrow">Demande envoyée</p>
+        <h1>Merci, votre projet est bien enregistré.</h1>
+        <p>
+            L’équipe MS Football va étudier vos informations et vous répondre sur
+            WhatsApp dès que possible.
+        </p>
+        <a class="secondary-button" href="{% url 'prospects:request_create' %}">
+            Envoyer une autre demande
+        </a>
+    </main>
+</body>
+</html>

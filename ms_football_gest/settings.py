@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'gestion_joueurs',
+    'prospects.apps.ProspectsConfig',
     'crispy_forms',
     'crispy_bootstrap4',
     'whitenoise.runserver_nostatic',
