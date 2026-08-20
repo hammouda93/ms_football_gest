@@ -1,0 +1,4 @@
+{% extends "gestion_joueurs/base.html" %}{% load static %}
+{% block title %}Nouveau compte portail{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
+{% block content %}<div class="production-page narrow-page"><a class="back-link" href="{% url 'portal:management' %}">← Gestion du portail</a><section class="portal-panel"><div class="panel-heading"><h1>Nouveau compte portail</h1></div><p>Le compte sera lié au joueur ou à l’organisation sans modifier leurs données.</p><form method="post" class="compact-form">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Créer et générer le lien</button></form></section></div>{% endblock %}

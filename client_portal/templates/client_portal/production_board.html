@@ -1,0 +1,85 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+
+{% block title %}Centre de production — MS Football{% endblock %}
+{% block content_container_class %}container-fluid{% endblock %}
+{% block content_container_style %}margin-left: 260px; padding: 24px; min-width: 0;{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="production-page">
+    <div class="production-heading">
+        <div>
+            <span class="eyebrow">Pilotage opérationnel</span>
+            <h1>Centre de production</h1>
+            <p>Une vue unique des délais, paiements, validations et prochaines actions.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="{% url 'portal:operations_brief' %}">
+            <i class="fas fa-wand-magic-sparkles"></i> Brief du jour
+        </a>
+    </div>
+
+    <div class="metric-grid">
+        <div class="metric-card"><span>Productions</span><strong>{{ metrics.total }}</strong></div>
+        <div class="metric-card metric-danger"><span>En retard</span><strong>{{ metrics.late }}</strong></div>
+        <div class="metric-card metric-warning"><span>Bloquées</span><strong>{{ metrics.blocked }}</strong></div>
+        <div class="metric-card metric-info"><span>À valider</span><strong>{{ metrics.review }}</strong></div>
+        <div class="metric-card"><span>Solde visible</span><strong>{{ metrics.outstanding|floatformat:2 }}</strong></div>
+    </div>
+
+    <form method="get" class="production-filters">
+        <input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Joueur, club ou saison">
+        <select class="form-control" name="stage">
+            <option value="">Toutes les étapes</option>
+            {% for value, label in stage_choices %}
+                <option value="{{ value }}" {% if selected_stage == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        {% if request.user.is_superuser %}
+            <select class="form-control" name="editor">
+                <option value="">Tous les monteurs</option>
+                {% for editor in editors %}
+                    <option value="{{ editor.pk }}" {% if selected_editor == editor.pk|stringformat:'s' %}selected{% endif %}>{{ editor.user.username }}</option>
+                {% endfor %}
+            </select>
+        {% endif %}
+        <button class="btn btn-primary" type="submit">Filtrer</button>
+        <a class="btn btn-light" href="{% url 'portal:production_board' %}">Réinitialiser</a>
+    </form>
+
+    <div class="kanban-board" aria-label="Étapes de production">
+        {% for column in columns %}
+            <section class="kanban-column stage-{{ column.key }}">
+                <header>
+                    <h2>{{ column.label }}</h2>
+                    <span>{{ column.count }}</span>
+                </header>
+                <div class="kanban-list">
+                    {% for video in column.videos %}
+                        <a class="production-ticket {% if video.is_late %}ticket-late{% endif %}" href="{% url 'portal:production_video' video.pk %}">
+                            <div class="ticket-title-row">
+                                <strong>{{ video.player.name }}</strong>
+                                {% if video.production_priority == 'urgent' %}<span class="priority urgent">Urgent</span>{% elif video.production_priority == 'high' %}<span class="priority high">Haute</span>{% endif %}
+                            </div>
+                            <span class="ticket-meta">{{ video.club|default:video.player.club }} · {{ video.season }}</span>
+                            <span class="ticket-meta"><i class="far fa-calendar"></i> {{ video.deadline|date:"d/m/Y" }}{% if video.is_late %} · En retard{% endif %}</span>
+                            <span class="ticket-meta"><i class="far fa-user"></i> {{ video.editor.user.username }}</span>
+                            <div class="progress production-progress"><div style="width: {{ video.production_progress }}%"></div></div>
+                            <div class="ticket-balance">
+                                <span>Progression {{ video.production_progress }}%</span>
+                                <span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span>
+                            </div>
+                            {% if video.production_next_action %}<p>{{ video.production_next_action }}</p>{% endif %}
+                        </a>
+                    {% empty %}
+                        <div class="kanban-empty">Aucune production</div>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

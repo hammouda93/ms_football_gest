@@ -1,0 +1,35 @@
+{% extends "client_portal/portal_base.html" %}
+{% load portal_extras %}
+{% block title %}Vidéo {{ video.player.name }}{% endblock %}
+{% block portal_content %}
+<a class="portal-back" href="{% url 'portal:player' video.player.pk %}">← {{ video.player.name }}</a>
+<section class="portal-video-hero">
+    <div><span class="eyebrow">{{ video.season }}</span><h1>{{ video.player.name }}</h1><p>{{ video.club }} · Livraison prévue le {{ video.deadline|date:"d/m/Y" }}</p></div>
+    <span class="stage-pill stage-{{ video.production_stage }}">{{ video.production_stage_label }}</span>
+    <div class="portal-progress large"><div style="width: {{ video.production_progress }}%"></div></div><small>{{ video.production_progress }}% · {{ video.production_next_action }}</small>
+</section>
+
+<section class="portal-metrics three">
+    <div><span>Montant total</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong></div>
+    <div><span>Déjà payé</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong></div>
+    <div><span>Solde</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong></div>
+</section>
+
+{% if payment_requests %}<section class="portal-section"><div class="portal-section-heading"><div><h2>Paiements demandés</h2></div></div>{% for payment in payment_requests %}<div class="portal-payment-card"><div><strong>{{ payment.label }}</strong><span>{{ payment.amount|floatformat:2 }}{% if payment.due_date %} · avant le {{ payment.due_date|date:"d/m/Y" }}{% endif %}</span></div><form method="post" action="{% url 'portal:payment_open' payment.pk %}">{% csrf_token %}<button class="portal-button primary small" type="submit">Ouvrir le paiement</button></form></div>{% endfor %}</section>{% endif %}
+
+<section class="portal-section">
+    <div class="portal-section-heading"><div><span class="eyebrow">Vérification</span><h2>Versions de la vidéo</h2></div><span>{{ versions|length }}</span></div>
+    <div class="portal-version-list">
+        {% for version in versions %}<article class="portal-version-card"><div class="portal-version-heading"><div><strong>Version {{ version.version_number }}</strong><span>{{ version.title }}</span></div><span class="stage-pill status-{{ version.status }}">{{ version.get_status_display }}</span></div><p>{{ version.notes }}</p><a class="portal-button secondary" href="{{ version.preview_url }}" target="_blank" rel="noopener">Regarder la version</a>{% if can_edit_video and version.status != 'approved' %}<form method="post" action="{% url 'portal:version_approve' version.pk %}" onsubmit="return confirm('Confirmer définitivement cette version ?');">{% csrf_token %}<button class="portal-button approve" type="submit">J’approuve cette version</button></form><details class="revision-form"><summary>Demander une correction</summary><form method="post" action="{% url 'portal:revision_request' version.pk %}" class="portal-form">{% csrf_token %}{{ revision_form.as_p }}<button class="portal-button primary" type="submit">Envoyer la correction</button></form></details>{% endif %}{% for revision in version.revision_requests.all %}<div class="portal-revision"><strong>{% if revision.timecode_seconds != None %}{{ revision.timecode_seconds|timecode }} · {% endif %}{{ revision.get_status_display }}</strong><p>{{ revision.comment }}</p>{% if revision.staff_response %}<small>Réponse MS Football : {{ revision.staff_response }}</small>{% endif %}</div>{% endfor %}</article>{% empty %}<div class="portal-empty">La première version apparaîtra ici dès qu’elle sera prête.</div>{% endfor %}
+    </div>
+</section>
+
+{% if can_edit_video %}<section class="portal-section split-section">
+    <div><div class="portal-section-heading"><div><span class="eyebrow">Sources</span><h2>Envoyer un match ou un élément</h2></div></div><form method="post" action="{% url 'portal:media_submit' video.pk %}" class="portal-form">{% csrf_token %}{{ media_form.as_p }}<button class="portal-button primary" type="submit">Transmettre à l’équipe</button></form></div>
+    <div><div class="portal-section-heading"><div><h2>Déjà transmis</h2></div><span>{{ media_submissions|length }}</span></div>{% for item in media_submissions %}<a class="portal-media-row" href="{{ item.source_url }}" target="_blank" rel="noopener"><div><strong>{{ item.title }}</strong><span>{{ item.get_category_display }} · {{ item.created_at|date:"d/m/Y" }}</span></div><b>↗</b></a>{% empty %}<div class="portal-empty">Aucun élément transmis.</div>{% endfor %}</div>
+</section>{% endif %}
+
+<section class="portal-section"><div class="portal-section-heading"><div><span class="eyebrow">Chronologie</span><h2>Suivi de la commande</h2></div></div><div class="portal-timeline">{% for activity in activities %}<div><span></span><article><strong>{{ activity.get_kind_display }}</strong><p>{{ activity.message }}</p><small>{{ activity.created_at|date:"d/m/Y H:i" }}</small></article></div>{% empty %}<div class="portal-empty">Les mises à jour apparaîtront ici.</div>{% endfor %}</div></section>
+
+{% if video.final_delivery_available %}<section class="final-delivery"><span>✓</span><div><h2>Votre vidéo finale est disponible</h2><p>Le lien de livraison est maintenant accessible.</p></div><a class="portal-button approve" href="{{ video.video_link }}" target="_blank" rel="noopener">Télécharger / regarder</a></section>{% endif %}
+{% endblock %}

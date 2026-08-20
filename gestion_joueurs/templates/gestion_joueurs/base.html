@@ -287,6 +287,11 @@
                         <i class="fas fa-tachometer-alt"></i> Tableau de bord
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.namespace == 'portal' and '/production/' in request.path %}active{% endif %}" href="{% url 'portal:production_board' %}">
+                        <i class="fas fa-clapperboard"></i> Centre de production
+                    </a>
+                </li>
                 {% if request.user.is_superuser %}
                 <li class="nav-item">
                     <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'statistics/' %}active{% endif %}" href="{% url 'statistical_dashboard' %}">
@@ -303,6 +308,11 @@
                 <li class="nav-item">
                     <a class="nav-link {% if request.resolver_match.namespace == 'prospects' %}active{% endif %}" href="{% url 'prospects:prospect_list' %}">
                         <i class="fas fa-user-plus"></i> Gestion des Prospects
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.namespace == 'portal' and '/gestion/portail/' in request.path %}active{% endif %}" href="{% url 'portal:management' %}">
+                        <i class="fas fa-people-group"></i> Espaces joueurs / agents
                     </a>
                 </li>
                 <li class="nav-item">

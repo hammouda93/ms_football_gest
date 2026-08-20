@@ -1,0 +1,513 @@
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from decimal import Decimal
+from urllib.parse import quote
+
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Count, Q
+from django.template.defaultfilters import slugify
+from django.utils import timezone
+
+from gestion_joueurs.models import Invoice, Player, Video
+
+from .models import (
+    CommunicationLog,
+    OrganizationMembership,
+    PlayerAccess,
+    PortalProfile,
+    RevisionRequest,
+    VideoActivity,
+    VideoWorkflow,
+)
+
+
+User = get_user_model()
+
+
+@dataclass(frozen=True)
+class InvoiceSnapshot:
+    total: Decimal
+    paid: Decimal
+    balance: Decimal
+    status: str
+
+
+STAGE_PROGRESS = {
+    VideoWorkflow.Stage.NEW_ORDER: 5,
+    VideoWorkflow.Stage.AWAITING_DEPOSIT: 10,
+    VideoWorkflow.Stage.AWAITING_MEDIA: 20,
+    VideoWorkflow.Stage.DOWNLOADING: 35,
+    VideoWorkflow.Stage.EDITING: 55,
+    VideoWorkflow.Stage.CLIENT_REVIEW: 75,
+    VideoWorkflow.Stage.REVISIONS: 82,
+    VideoWorkflow.Stage.AWAITING_BALANCE: 90,
+    VideoWorkflow.Stage.READY_DELIVERY: 95,
+    VideoWorkflow.Stage.DELIVERED: 100,
+    VideoWorkflow.Stage.BLOCKED: 0,
+}
+
+
+STAGE_NEXT_ACTION = {
+    VideoWorkflow.Stage.NEW_ORDER: "Qualifier la commande et confirmer le prix.",
+    VideoWorkflow.Stage.AWAITING_DEPOSIT: "Confirmer ou demander l’acompte.",
+    VideoWorkflow.Stage.AWAITING_MEDIA: "Recevoir les matchs et actions du joueur.",
+    VideoWorkflow.Stage.DOWNLOADING: "Contrôler le téléchargement SportsBase.",
+    VideoWorkflow.Stage.EDITING: "Poursuivre le montage et préparer une version.",
+    VideoWorkflow.Stage.CLIENT_REVIEW: "Obtenir la validation du joueur ou de l’agent.",
+    VideoWorkflow.Stage.REVISIONS: "Traiter les corrections ouvertes.",
+    VideoWorkflow.Stage.AWAITING_BALANCE: "Demander le paiement du solde.",
+    VideoWorkflow.Stage.READY_DELIVERY: "Vérifier le fichier final et le livrer.",
+    VideoWorkflow.Stage.DELIVERED: "Planifier une relance ou une mise à jour future.",
+    VideoWorkflow.Stage.BLOCKED: "Résoudre le blocage indiqué.",
+}
+
+
+def invoice_snapshot(video):
+    try:
+        invoice = video.invoices
+    except Invoice.DoesNotExist:
+        invoice = None
+
+    if invoice:
+        total = Decimal(invoice.total_amount or 0)
+        paid = Decimal(invoice.amount_paid or 0)
+        status = invoice.status
+    else:
+        total = Decimal(video.total_payment or 0)
+        paid = Decimal(video.advance_payment or 0)
+        status = "paid" if total > 0 and paid >= total else "unpaid"
+
+    return InvoiceSnapshot(
+        total=total,
+        paid=paid,
+        balance=max(total - paid, Decimal("0")),
+        status=status,
+    )
+
+
+def _saved_workflow(video):
+    try:
+        return video.production_workflow
+    except VideoWorkflow.DoesNotExist:
+        return None
+
+
+def derived_stage(video):
+    workflow = _saved_workflow(video)
+    if workflow:
+        return workflow.stage
+
+    payment = invoice_snapshot(video)
+    if video.status == Video.StatusChoices.PROBLEMATIC:
+        return VideoWorkflow.Stage.BLOCKED
+    if video.status == Video.StatusChoices.DELIVERED:
+        return VideoWorkflow.Stage.DELIVERED
+    if video.status == Video.StatusChoices.COMPLETED:
+        if payment.balance > 0:
+            return VideoWorkflow.Stage.AWAITING_BALANCE
+        return VideoWorkflow.Stage.READY_DELIVERY
+    if video.status == Video.StatusChoices.COMPLETED_COLLAB:
+        return VideoWorkflow.Stage.CLIENT_REVIEW
+    if video.status == Video.StatusChoices.IN_PROGRESS:
+        if video.automation_started and not video.automation_completed:
+            return VideoWorkflow.Stage.DOWNLOADING
+        return VideoWorkflow.Stage.EDITING
+    if payment.total > 0 and payment.paid <= 0:
+        return VideoWorkflow.Stage.AWAITING_DEPOSIT
+    return VideoWorkflow.Stage.AWAITING_MEDIA
+
+
+def decorate_video(video):
+    workflow = _saved_workflow(video)
+    stage = workflow.stage if workflow else derived_stage(video)
+    payment = invoice_snapshot(video)
+    video.production_stage = stage
+    video.production_stage_label = dict(VideoWorkflow.Stage.choices)[stage]
+    video.production_progress = (
+        workflow.progress if workflow else STAGE_PROGRESS.get(stage, 0)
+    )
+    video.production_priority = (
+        workflow.priority if workflow else VideoWorkflow.Priority.NORMAL
+    )
+    video.production_next_action = (
+        workflow.next_action
+        if workflow and workflow.next_action
+        else STAGE_NEXT_ACTION.get(stage, "")
+    )
+    video.production_blocked_reason = workflow.blocked_reason if workflow else ""
+    video.payment_snapshot = payment
+    video.final_delivery_available = bool(
+        video.status == Video.StatusChoices.DELIVERED
+        and video.video_link
+        and payment.balance <= 0
+    )
+    video.is_late = (
+        video.deadline < timezone.localdate()
+        and stage != VideoWorkflow.Stage.DELIVERED
+    )
+    return video
+
+
+def production_queryset_for(user):
+    queryset = Video.objects.select_related(
+        "player",
+        "editor__user",
+        "production_workflow",
+        "invoices",
+    ).prefetch_related("portal_versions__revision_requests")
+    if user.is_superuser:
+        return queryset
+    try:
+        editor = user.videoeditor
+    except Exception:
+        return queryset.none()
+    return queryset.filter(editor=editor)
+
+
+def accessible_players_for(user):
+    if not user.is_authenticated:
+        return Player.objects.none()
+    direct = Q(
+        portal_user_accesses__user=user,
+        portal_user_accesses__is_active=True,
+    )
+    through_organization = Q(
+        portal_organization_links__is_active=True,
+        portal_organization_links__organization__is_active=True,
+        portal_organization_links__organization__memberships__user=user,
+        portal_organization_links__organization__memberships__is_active=True,
+    )
+    return Player.objects.filter(direct | through_organization).distinct()
+
+
+def accessible_videos_for(user):
+    return Video.objects.filter(
+        player__in=accessible_players_for(user)
+    ).select_related(
+        "player",
+        "editor__user",
+        "production_workflow",
+        "invoices",
+    ).prefetch_related(
+        "media_submissions",
+        "portal_versions__revision_requests",
+        "portal_payment_requests",
+    ).distinct()
+
+
+def editable_players_for(user):
+    """Players for which a portal user may submit or approve client actions."""
+    if not user.is_authenticated:
+        return Player.objects.none()
+    direct = Q(
+        portal_user_accesses__user=user,
+        portal_user_accesses__is_active=True,
+        portal_user_accesses__role__in={
+            PlayerAccess.Role.PLAYER,
+            PlayerAccess.Role.REPRESENTATIVE,
+        },
+    )
+    through_organization = Q(
+        portal_organization_links__is_active=True,
+        portal_organization_links__organization__is_active=True,
+        portal_organization_links__organization__memberships__user=user,
+        portal_organization_links__organization__memberships__is_active=True,
+        portal_organization_links__organization__memberships__role__in={
+            OrganizationMembership.Role.OWNER,
+            OrganizationMembership.Role.STAFF,
+        },
+    )
+    return Player.objects.filter(direct | through_organization).distinct()
+
+
+def editable_videos_for(user):
+    return Video.objects.filter(player__in=editable_players_for(user)).distinct()
+
+
+def user_can_access_video(user, video):
+    return accessible_players_for(user).filter(pk=video.player_id).exists()
+
+
+def unique_portal_username(email, display_name):
+    seed = email.split("@", 1)[0] if email else display_name
+    base = slugify(seed).replace("-", "_")[:120] or "client"
+    candidate = f"portal_{base}"
+    suffix = 1
+    while User.objects.filter(username=candidate).exists():
+        suffix += 1
+        candidate = f"portal_{base}_{suffix}"
+    return candidate
+
+
+@transaction.atomic
+def create_portal_account(cleaned_data, *, created_by):
+    user = User(
+        username=unique_portal_username(
+            cleaned_data["email"],
+            cleaned_data["display_name"],
+        ),
+        email=cleaned_data["email"],
+        first_name=cleaned_data["display_name"][:150],
+        is_active=True,
+    )
+    user.set_unusable_password()
+    user.save()
+    profile = PortalProfile.objects.create(
+        user=user,
+        account_type=cleaned_data["account_type"],
+        display_name=cleaned_data["display_name"],
+        whatsapp_number=cleaned_data.get("whatsapp_number", ""),
+        preferred_language=cleaned_data.get("preferred_language", "fr"),
+        created_by=created_by,
+    )
+
+    player = cleaned_data.get("player")
+    organization = cleaned_data.get("organization")
+    if player:
+        PlayerAccess.objects.create(
+            user=user,
+            player=player,
+            role=PlayerAccess.Role.PLAYER,
+            granted_by=created_by,
+        )
+    if organization:
+        OrganizationMembership.objects.create(
+            user=user,
+            organization=organization,
+            role=OrganizationMembership.Role.OWNER,
+        )
+    return profile
+
+
+def update_workflow(video, cleaned_data, *, actor):
+    previous_stage = derived_stage(video)
+    workflow, _created = VideoWorkflow.objects.get_or_create(
+        video=video,
+        defaults={
+            "stage": previous_stage,
+            "progress": STAGE_PROGRESS.get(previous_stage, 0),
+            "updated_by": actor,
+        },
+    )
+    for field in ("stage", "priority", "progress", "next_action", "blocked_reason"):
+        setattr(workflow, field, cleaned_data[field])
+    workflow.updated_by = actor
+    workflow.save()
+
+    if previous_stage != workflow.stage:
+        VideoActivity.objects.create(
+            video=video,
+            kind=VideoActivity.Kind.STAGE,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message=(
+                f"Étape passée de « {dict(VideoWorkflow.Stage.choices)[previous_stage]} » "
+                f"à « {workflow.get_stage_display()} »."
+            ),
+            metadata={"from": previous_stage, "to": workflow.stage},
+            created_by=actor,
+        )
+    return workflow
+
+
+def normalize_whatsapp_number(value):
+    return re.sub(r"\D", "", value or "")
+
+
+def build_video_whatsapp_message(video, template_key):
+    player_name = video.player.name
+    deadline = video.deadline.strftime("%d/%m/%Y")
+    payment = invoice_snapshot(video)
+    templates = {
+        "welcome": (
+            f"Bonjour {player_name} 👋\n\nNous avons bien enregistré ta vidéo "
+            f"pour la saison {video.season}. Tu peux maintenant suivre la commande "
+            "et transmettre tes éléments depuis ton espace MS Football."
+        ),
+        "deposit": (
+            f"Bonjour {player_name} 👋\n\nTa commande est prête à démarrer. "
+            f"Le montant total est de {payment.total:.2f} et l’acompte enregistré "
+            f"est de {payment.paid:.2f}. Merci de confirmer l’acompte pour lancer la production."
+        ),
+        "started": (
+            f"Bonjour {player_name} 👋\n\nLe travail sur ta vidéo a commencé. "
+            f"La date prévue est le {deadline}. Nous te tiendrons informé depuis ton espace."
+        ),
+        "review": (
+            f"Bonjour {player_name} 👋\n\nUne version de ta vidéo est prête à être vérifiée. "
+            "Tu peux la regarder, l’approuver ou indiquer précisément les corrections dans ton espace."
+        ),
+        "balance": (
+            f"Bonjour {player_name} 👋\n\nTa vidéo est terminée. "
+            f"Le solde restant est de {payment.balance:.2f}. La livraison finale sera disponible "
+            "après confirmation du règlement."
+        ),
+        "delivery": (
+            f"Bonjour {player_name} 👋\n\nTa vidéo finale est disponible dans ton espace "
+            "MS Football. Merci pour ta confiance et bonne réussite pour la suite ⚽"
+        ),
+    }
+    if template_key not in templates:
+        raise ValueError("Modèle WhatsApp inconnu.")
+    return templates[template_key]
+
+
+def build_video_whatsapp_url(video, template_key, *, actor):
+    phone = normalize_whatsapp_number(video.player.whatsapp_number)
+    if not phone:
+        raise ValueError("Ce joueur n’a pas de numéro WhatsApp.")
+    message = build_video_whatsapp_message(video, template_key)
+    CommunicationLog.objects.create(
+        video=video,
+        player=video.player,
+        channel=CommunicationLog.Channel.WHATSAPP,
+        template_key=template_key,
+        recipient=video.player.whatsapp_number or "",
+        message=message,
+        state=CommunicationLog.State.DRAFT_OPENED,
+        actor=actor,
+    )
+    VideoActivity.objects.create(
+        video=video,
+        kind=VideoActivity.Kind.MESSAGE,
+        visibility=VideoActivity.Visibility.INTERNAL,
+        message=f"Brouillon WhatsApp « {template_key} » ouvert.",
+        created_by=actor,
+    )
+    return f"https://wa.me/{phone}?text={quote(message, safe='')}"
+
+
+def production_brief(videos, *, include_sales=False):
+    decorated = [decorate_video(video) for video in videos]
+    late = [video for video in decorated if video.is_late]
+    blocked = [
+        video
+        for video in decorated
+        if video.production_stage == VideoWorkflow.Stage.BLOCKED
+    ]
+    awaiting_balance = [
+        video
+        for video in decorated
+        if video.production_stage == VideoWorkflow.Stage.AWAITING_BALANCE
+    ]
+    review = [
+        video
+        for video in decorated
+        if video.production_stage in {
+            VideoWorkflow.Stage.CLIENT_REVIEW,
+            VideoWorkflow.Stage.REVISIONS,
+        }
+    ]
+    outstanding = sum(
+        (video.payment_snapshot.balance for video in decorated),
+        Decimal("0"),
+    )
+    average_order = (
+        sum(
+            (video.payment_snapshot.total for video in decorated),
+            Decimal("0"),
+        )
+        / len(decorated)
+        if decorated
+        else Decimal("0")
+    )
+    workloads = defaultdict(int)
+    for video in decorated:
+        if video.production_stage != VideoWorkflow.Stage.DELIVERED:
+            workloads[video.editor.user.username] += 1
+    editor_workloads = sorted(
+        (
+            {"editor": editor, "count": count}
+            for editor, count in workloads.items()
+        ),
+        key=lambda item: (-item["count"], item["editor"]),
+    )
+    open_revisions = RevisionRequest.objects.filter(
+        version__video_id__in=[video.pk for video in decorated],
+        status__in={
+            RevisionRequest.Status.OPEN,
+            RevisionRequest.Status.IN_PROGRESS,
+        },
+    ).count()
+    sales_metrics = None
+    if include_sales:
+        from prospects.models import Prospect
+
+        prospect_total = Prospect.objects.count()
+        prospect_converted = Prospect.objects.filter(
+            status=Prospect.Status.CONVERTED
+        ).count()
+        source_performance = list(
+            Prospect.objects.values("source")
+            .annotate(
+                total=Count("id"),
+                converted=Count(
+                    "id",
+                    filter=Q(status=Prospect.Status.CONVERTED),
+                ),
+            )
+            .order_by("-total", "source")[:8]
+        )
+        sales_metrics = {
+            "prospect_total": prospect_total,
+            "prospect_converted": prospect_converted,
+            "conversion_rate": (
+                prospect_converted * 100 / prospect_total if prospect_total else 0
+            ),
+            "source_performance": source_performance,
+        }
+    recommendations = []
+    if late:
+        recommendations.append(
+            {
+                "severity": "danger",
+                "title": f"{len(late)} production(s) en retard",
+                "detail": "Vérifier le blocage et prévenir les clients concernés.",
+            }
+        )
+    if awaiting_balance:
+        recommendations.append(
+            {
+                "severity": "warning",
+                "title": f"{len(awaiting_balance)} solde(s) à récupérer",
+                "detail": f"Montant restant visible : {outstanding:.2f}.",
+            }
+        )
+    if blocked:
+        recommendations.append(
+            {
+                "severity": "danger",
+                "title": f"{len(blocked)} production(s) bloquée(s)",
+                "detail": "Attribuer une prochaine action et un responsable.",
+            }
+        )
+    if review:
+        recommendations.append(
+            {
+                "severity": "info",
+                "title": f"{len(review)} validation(s) ou correction(s)",
+                "detail": "Relancer les validations et traiter les demandes ouvertes.",
+            }
+        )
+    if not recommendations:
+        recommendations.append(
+            {
+                "severity": "success",
+                "title": "Aucune urgence détectée",
+                "detail": "Le flux de production ne présente pas de blocage prioritaire.",
+            }
+        )
+    return {
+        "videos": decorated,
+        "late": late,
+        "blocked": blocked,
+        "awaiting_balance": awaiting_balance,
+        "review": review,
+        "outstanding": outstanding,
+        "average_order": average_order,
+        "open_revisions": open_revisions,
+        "editor_workloads": editor_workloads,
+        "sales_metrics": sales_metrics,
+        "recommendations": recommendations,
+    }

@@ -1,0 +1,23 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}Gestion du portail{% endblock %}
+{% block content_container_class %}container-fluid{% endblock %}
+{% block content_container_style %}margin-left: 260px; padding: 24px; min-width: 0;{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
+{% block content %}
+<div class="production-page">
+    <div class="production-heading"><div><span class="eyebrow">Accès clients</span><h1>Espaces joueurs et agents</h1><p>Les accès sont séparés des fiches joueurs existantes.</p></div><div><a class="btn btn-outline-primary" href="{% url 'portal:organization_create' %}">Nouvelle organisation</a> <a class="btn btn-primary" href="{% url 'portal:account_create' %}">Nouveau compte</a></div></div>
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
+    <div class="production-layout">
+        <main>
+            <section class="portal-panel"><div class="panel-heading"><h2>Organisations</h2><span>{{ organizations|length }}</span></div>
+                {% for organization in organizations %}<a class="list-row" href="{% url 'portal:organization_detail' organization.pk %}"><div><strong>{{ organization.name }}</strong><small>{{ organization.get_kind_display }} · {{ organization.player_links.count }} joueur(s) · {{ organization.memberships.count }} accès</small></div><span>Gérer →</span></a>{% empty %}<div class="empty-state">Aucune organisation.</div>{% endfor %}
+            </section>
+            <section class="portal-panel"><div class="panel-heading"><h2>Demandes de joueurs des agents</h2></div>
+                {% for item in agent_requests %}<div class="request-review"><div><strong>{{ item.full_name }}</strong><small>{{ item.organization }} · {{ item.get_status_display }}</small>{% if item.transfermarkt_url %}<a href="{{ item.transfermarkt_url }}" target="_blank" rel="noopener">Transfermarkt</a>{% endif %}</div>{% if item.status == 'new' or item.status == 'reviewing' %}<form method="post" action="{% url 'portal:agent_request_review' item.pk %}">{% csrf_token %}<select name="player_id" class="form-control form-control-sm"><option value="">Associer à un joueur existant</option>{% for player in all_players %}<option value="{{ player.pk }}">{{ player.name }} — {{ player.club }}</option>{% endfor %}</select><button class="btn btn-sm btn-primary" name="decision" value="link">Associer</button><button class="btn btn-sm btn-outline-danger" name="decision" value="reject">Refuser</button></form>{% endif %}</div>{% empty %}<div class="empty-state">Aucune demande.</div>{% endfor %}
+            </section>
+        </main>
+        <aside><section class="portal-panel"><div class="panel-heading"><h2>Comptes portail</h2><span>{{ profiles|length }}</span></div>{% for profile in profiles %}<div class="mini-card"><strong>{{ profile.display_name }}</strong><span>{{ profile.get_account_type_display }} · {{ profile.user.email }}</span><form method="post" action="{% url 'portal:access_link_generate' profile.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Créer un lien sécurisé</button></form></div>{% empty %}<div class="empty-state">Aucun compte.</div>{% endfor %}</section></aside>
+    </div>
+</div>
+{% endblock %}

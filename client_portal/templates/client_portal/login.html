@@ -1,0 +1,16 @@
+{% extends "client_portal/portal_base.html" %}
+{% block title %}Connexion — MS Football{% endblock %}
+{% block portal_content %}
+<div class="portal-auth-wrap">
+    <section class="portal-auth-card">
+        <span class="eyebrow">Accès sécurisé</span>
+        <h1>Retrouvez vos vidéos</h1>
+        <p>Utilisez le lien reçu par MS Football ou vos identifiants personnels.</p>
+        <form method="post" class="portal-form">
+            {% csrf_token %}{{ form.as_p }}
+            <button class="portal-button primary" type="submit">Se connecter</button>
+        </form>
+        <p class="portal-help">Vous n’avez pas encore de lien ? Contactez directement votre interlocuteur MS Football.</p>
+    </section>
+</div>
+{% endblock %}

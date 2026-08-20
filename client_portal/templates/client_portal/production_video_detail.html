@@ -1,0 +1,124 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static portal_extras %}
+
+{% block title %}Production {{ video.player.name }}{% endblock %}
+{% block content_container_class %}container-fluid{% endblock %}
+{% block content_container_style %}margin-left: 260px; padding: 24px; min-width: 0;{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
+
+{% block content %}
+<div class="production-page production-detail">
+    <div class="production-heading">
+        <div>
+            <a class="back-link" href="{% url 'portal:production_board' %}">← Centre de production</a>
+            <h1>{{ video.player.name }}</h1>
+            <p>{{ video.club|default:video.player.club }} · {{ video.season }} · État vidéo : {{ video.get_status_display }}</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'view_video' video.pk %}">Fiche existante</a>
+    </div>
+
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
+
+    <div class="detail-summary-grid">
+        <div><span>Étape</span><strong>{{ video.production_stage_label }}</strong></div>
+        <div><span>Deadline</span><strong>{{ video.deadline|date:"d/m/Y" }}</strong></div>
+        <div><span>Monteur</span><strong>{{ video.editor.user.username }}</strong></div>
+        <div><span>Payé / Total</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }} / {{ video.payment_snapshot.total|floatformat:2 }}</strong></div>
+    </div>
+
+    <div class="production-layout">
+        <main>
+            <section class="portal-panel">
+                <div class="panel-heading"><h2>Versions et validation</h2><span>{{ versions|length }} version(s)</span></div>
+                <form method="post" action="{% url 'portal:production_version_add' video.pk %}" class="compact-form">
+                    {% csrf_token %}
+                    {{ version_form.as_p }}
+                    <button class="btn btn-primary" type="submit">Publier une version</button>
+                </form>
+                <div class="version-list">
+                    {% for version in versions %}
+                        <article class="version-card">
+                            <div><strong>Version {{ version.version_number }}</strong> <span class="status-chip status-{{ version.status }}">{{ version.get_status_display }}</span></div>
+                            <a href="{{ version.preview_url }}" target="_blank" rel="noopener">Ouvrir la prévisualisation</a>
+                            {% if version.notes %}<p>{{ version.notes }}</p>{% endif %}
+                            {% for revision in version.revision_requests.all %}
+                                <div class="revision-row">
+                                    <div>
+                                        {% if revision.timecode_seconds != None %}<strong>{{ revision.timecode_seconds|timecode }}</strong> · {% endif %}{{ revision.comment }}
+                                        <small>{{ revision.get_status_display }}</small>
+                                    </div>
+                                    <form method="post" action="{% url 'portal:production_revision_resolve' revision.pk %}">
+                                        {% csrf_token %}
+                                        <select name="status" class="form-control form-control-sm">
+                                            <option value="in_progress">En cours</option>
+                                            <option value="resolved">Résolue</option>
+                                            <option value="rejected">Non retenue</option>
+                                        </select>
+                                        <textarea name="staff_response" class="form-control form-control-sm" rows="2" placeholder="Réponse au client">{{ revision.staff_response }}</textarea>
+                                        <button class="btn btn-sm btn-outline-primary" type="submit">Mettre à jour</button>
+                                    </form>
+                                </div>
+                            {% empty %}
+                                <p class="muted">Aucune correction pour cette version.</p>
+                            {% endfor %}
+                        </article>
+                    {% empty %}
+                        <div class="empty-state">Aucune version publiée.</div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="portal-panel">
+                <div class="panel-heading"><h2>Éléments transmis</h2><span>{{ media_submissions|length }}</span></div>
+                {% for item in media_submissions %}
+                    <div class="list-row">
+                        <div><strong>{{ item.title }}</strong><small>{{ item.get_category_display }} · {{ item.created_at|date:"d/m/Y H:i" }}</small></div>
+                        <a href="{{ item.source_url }}" target="_blank" rel="noopener">Ouvrir</a>
+                    </div>
+                {% empty %}<div class="empty-state">Aucun match ou document transmis depuis le portail.</div>{% endfor %}
+            </section>
+
+            <section class="portal-panel">
+                <div class="panel-heading"><h2>Historique du dossier</h2></div>
+                <form method="post" action="{% url 'portal:production_activity_add' video.pk %}" class="compact-form">
+                    {% csrf_token %}{{ activity_form.as_p }}
+                    <button class="btn btn-outline-primary" type="submit">Ajouter la note</button>
+                </form>
+                <div class="timeline">
+                    {% for activity in activities %}
+                        <div class="timeline-item"><span></span><div><strong>{{ activity.get_kind_display }}</strong><p>{{ activity.message }}</p><small>{{ activity.created_at|date:"d/m/Y H:i" }}{% if activity.created_by %} · {{ activity.created_by.username }}{% endif %}</small></div></div>
+                    {% empty %}<div class="empty-state">L’historique commencera à la première action.</div>{% endfor %}
+                </div>
+            </section>
+        </main>
+
+        <aside>
+            <section class="portal-panel sticky-panel">
+                <div class="panel-heading"><h2>Suivi de production</h2></div>
+                <form method="post" action="{% url 'portal:production_workflow_update' video.pk %}" class="compact-form">
+                    {% csrf_token %}{{ workflow_form.as_p }}
+                    <p class="form-note">Ce suivi n’écrase pas l’état historique de la vidéo.</p>
+                    <button class="btn btn-primary btn-block" type="submit">Mettre à jour</button>
+                </form>
+            </section>
+
+            <section class="portal-panel">
+                <div class="panel-heading"><h2>WhatsApp</h2></div>
+                <p class="form-note">Le message s’ouvre en brouillon et n’est jamais envoyé sans confirmation.</p>
+                <div class="action-stack">
+                    {% for key, label in whatsapp_actions %}<form method="post" action="{% url 'portal:production_whatsapp' video.pk key %}" target="_blank">{% csrf_token %}<button class="btn btn-outline-success btn-sm btn-block" type="submit"><i class="fab fa-whatsapp"></i> {{ label }}</button></form>{% endfor %}
+                </div>
+            </section>
+
+            <section class="portal-panel">
+                <div class="panel-heading"><h2>Demande de paiement</h2></div>
+                <form method="post" action="{% url 'portal:production_payment_request_add' video.pk %}" class="compact-form">
+                    {% csrf_token %}{{ payment_request_form.as_p }}
+                    <button class="btn btn-outline-primary btn-block" type="submit">Créer la demande</button>
+                </form>
+                {% for payment in payment_requests %}<div class="mini-card"><strong>{{ payment.label }}</strong><span>{{ payment.amount|floatformat:2 }} · {{ payment.get_status_display }}</span></div>{% endfor %}
+            </section>
+        </aside>
+    </div>
+</div>
+{% endblock %}

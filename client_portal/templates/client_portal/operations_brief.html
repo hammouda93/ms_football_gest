@@ -1,0 +1,37 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}Brief du jour{% endblock %}
+{% block content_container_class %}container-fluid{% endblock %}
+{% block content_container_style %}margin-left: 260px; padding: 24px; min-width: 0;{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
+{% block content %}
+<div class="production-page brief-page">
+    <div class="production-heading"><div><a class="back-link" href="{% url 'portal:production_board' %}">← Centre de production</a><h1>Brief opérationnel</h1><p>Les priorités calculées à partir des données actuelles, sans modification automatique.</p></div></div>
+    <div class="recommendation-grid">
+        {% for item in brief.recommendations %}<article class="recommendation {{ item.severity }}"><strong>{{ item.title }}</strong><p>{{ item.detail }}</p></article>{% endfor %}
+    </div>
+    <div class="detail-summary-grid">
+        <div><span>Retards</span><strong>{{ brief.late|length }}</strong></div>
+        <div><span>Blocages</span><strong>{{ brief.blocked|length }}</strong></div>
+        <div><span>Validations</span><strong>{{ brief.review|length }}</strong></div>
+        <div><span>Solde visible</span><strong>{{ brief.outstanding|floatformat:2 }}</strong></div>
+    </div>
+    <div class="metric-grid brief-metrics">
+        <div class="metric-card"><span>Panier moyen</span><strong>{{ brief.average_order|floatformat:2 }}</strong></div>
+        <div class="metric-card"><span>Corrections ouvertes</span><strong>{{ brief.open_revisions }}</strong></div>
+        {% if brief.sales_metrics %}<div class="metric-card"><span>Prospects</span><strong>{{ brief.sales_metrics.prospect_total }}</strong></div><div class="metric-card metric-info"><span>Conversion</span><strong>{{ brief.sales_metrics.conversion_rate|floatformat:1 }}%</strong></div>{% endif %}
+    </div>
+    <section class="portal-panel">
+        <div class="panel-heading"><h2>Actions prioritaires</h2></div>
+        {% for video in brief.videos %}
+            {% if video.is_late or video.production_stage == 'blocked' or video.production_stage == 'awaiting_balance' or video.production_stage == 'client_review' or video.production_stage == 'revisions' %}
+                <a class="list-row" href="{% url 'portal:production_video' video.pk %}"><div><strong>{{ video.player.name }}</strong><small>{{ video.production_stage_label }} · {{ video.deadline|date:"d/m/Y" }}</small></div><span>{{ video.production_next_action }} →</span></a>
+            {% endif %}
+        {% empty %}<div class="empty-state">Aucune production active.</div>{% endfor %}
+    </section>
+    <div class="production-layout">
+        <section class="portal-panel"><div class="panel-heading"><h2>Charge des monteurs</h2></div>{% for item in brief.editor_workloads %}<div class="list-row"><strong>{{ item.editor }}</strong><span>{{ item.count }} production(s) active(s)</span></div>{% empty %}<div class="empty-state">Aucune production active.</div>{% endfor %}</section>
+        {% if brief.sales_metrics %}<section class="portal-panel"><div class="panel-heading"><h2>Origine des prospects</h2></div>{% for source in brief.sales_metrics.source_performance %}<div class="list-row"><strong>{{ source.source }}</strong><span>{{ source.converted }} converti(s) / {{ source.total }}</span></div>{% empty %}<div class="empty-state">Aucune source disponible.</div>{% endfor %}</section>{% endif %}
+    </div>
+</div>
+{% endblock %}

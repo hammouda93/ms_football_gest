@@ -25,13 +25,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-kx5#*2*9l*64p#o^&zk!++t0m&_(1&bi@+kur$up%=#*ra9m^^'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-""" DEBUG = True """
-DEBUG = True
+# Keep the historical local-development behaviour, but never expose debug pages
+# from a Heroku dyno. DEBUG can still be set explicitly through configuration.
+IS_HEROKU = bool(os.getenv('DYNO'))
+DEBUG = os.getenv(
+    'DEBUG',
+    'False' if IS_HEROKU else 'True',
+).strip().lower() in {'1', 'true', 'yes', 'on'}
 ALLOWED_HOSTS = ['msfootball-1a882b44ed52.herokuapp.com', 'localhost', '127.0.0.1']
+
+# Heroku terminates TLS at its router. These settings avoid redirect loops while
+# keeping production sessions and CSRF tokens on HTTPS only.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = IS_HEROKU
+SESSION_COOKIE_SECURE = IS_HEROKU
+CSRF_COOKIE_SECURE = IS_HEROKU
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SECURE_HSTS_SECONDS = int(
+    os.getenv('SECURE_HSTS_SECONDS', '3600' if IS_HEROKU else '0')
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 # Add your Telegram bot token
 TELEGRAM_BOT_TOKEN = '7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8'
+# Prefer Heroku/local environment secrets when configured. The legacy values
+# remain only as compatibility fallbacks until they are rotated in deployment.
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN)
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -43,6 +67,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'gestion_joueurs',
     'prospects.apps.ProspectsConfig',
+    'client_portal.apps.ClientPortalConfig',
     'crispy_forms',
     'crispy_bootstrap4',
     'whitenoise.runserver_nostatic',
@@ -64,6 +89,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'client_portal.middleware.PortalAreaIsolationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'gestion_joueurs.middleware.CurrentUserMiddleware',

@@ -1,0 +1,5 @@
+{% extends "client_portal/portal_base.html" %}
+{% block title %}Lien expiré{% endblock %}
+{% block portal_content %}
+<div class="portal-auth-wrap"><section class="portal-auth-card"><span class="portal-state-icon">!</span><h1>Ce lien n’est plus utilisable</h1><p>Il a déjà été utilisé, a expiré ou a été remplacé. Demandez un nouveau lien sécurisé à MS Football.</p><a class="portal-button secondary" href="{% url 'portal:login' %}">Retour à la connexion</a></section></div>
+{% endblock %}
