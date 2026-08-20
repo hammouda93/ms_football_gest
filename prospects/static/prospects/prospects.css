@@ -170,6 +170,60 @@ a {
     color: var(--green);
 }
 
+.transfermarkt-import-card {
+    margin-bottom: 1.25rem;
+    border: 1px solid #b8dbc8;
+    border-radius: 14px;
+    background: var(--green-soft);
+    padding: 1rem;
+}
+
+.transfermarkt-import-card > label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.transfermarkt-input-group {
+    display: flex;
+    gap: 0.65rem;
+}
+
+.transfermarkt-import-button {
+    min-width: 7.5rem;
+    border: 1px solid var(--green);
+    border-radius: 11px;
+    background: var(--green);
+    color: #fff;
+    padding: 0.7rem 1rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.transfermarkt-import-button:disabled {
+    cursor: wait;
+    opacity: 0.68;
+}
+
+.transfermarkt-message {
+    min-height: 1.2rem;
+    margin: 0.55rem 0 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.transfermarkt-message.is-success {
+    color: var(--green-dark);
+}
+
+.transfermarkt-message.is-error {
+    color: var(--danger);
+}
+
+.transfermarkt-message.is-loading {
+    color: var(--muted);
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -272,6 +326,20 @@ textarea.form-control {
     color: var(--ink);
 }
 
+.danger-button {
+    display: inline-flex;
+    min-height: 2.8rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e6b3ae;
+    border-radius: 10px;
+    background: #fff5f4;
+    color: var(--danger);
+    padding: 0.7rem 1rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
 .privacy-note {
     text-align: center;
 }
@@ -322,6 +390,29 @@ textarea.form-control {
     background: #f3f6f4;
 }
 
+.prospect-management {
+    padding: 1.5rem 0 3rem;
+}
+
+.prospect-content-container {
+    width: calc(100% - 260px);
+    max-width: none;
+    min-width: 0;
+    padding-right: 1rem;
+    padding-left: 1rem;
+}
+
+.prospect-management .management-header {
+    margin-bottom: 1.5rem;
+    border-radius: 18px;
+    padding: 2rem;
+}
+
+.prospect-management .management-shell {
+    width: 100%;
+    padding: 0;
+}
+
 .management-header {
     display: flex;
     gap: 2rem;
@@ -349,6 +440,19 @@ textarea.form-control {
     display: flex;
     gap: 0.7rem;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.action-cluster,
+.inline-action-form {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    margin: 0;
+}
+
+.action-cluster {
+    flex-wrap: wrap;
 }
 
 .management-header .ghost-button {
@@ -554,6 +658,35 @@ textarea.form-control {
     color: #fff;
 }
 
+.linked-player-note {
+    margin: 0;
+    color: var(--green-dark);
+    font-size: 0.82rem;
+    font-weight: 750;
+}
+
+.management-form-card {
+    max-width: 900px;
+    margin: 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 8px 30px rgba(20, 47, 33, 0.055);
+    padding: 1.5rem;
+}
+
+.management-form-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+.management-form-actions .primary-button {
+    width: auto;
+    margin: 0;
+}
+
 .status-form .form-control {
     min-width: 9.5rem;
 }
@@ -607,6 +740,13 @@ textarea.form-control {
 }
 
 @media (max-width: 900px) {
+    .prospect-content-container {
+        width: 100%;
+        margin-left: 0 !important;
+        padding-right: 0.65rem;
+        padding-left: 2.75rem;
+    }
+
     .public-page {
         background: linear-gradient(180deg, #063824 0%, #08714a 38%, #edf5f0 38%);
     }
@@ -650,7 +790,9 @@ textarea.form-control {
 
     .header-actions,
     .prospect-actions,
-    .status-form {
+    .status-form,
+    .action-cluster,
+    .management-form-actions {
         width: 100%;
         align-items: stretch;
         flex-direction: column;
@@ -658,8 +800,15 @@ textarea.form-control {
 
     .header-actions a,
     .prospect-actions a,
-    .status-form button {
+    .prospect-actions button,
+    .status-form button,
+    .management-form-actions a,
+    .management-form-actions button {
         width: 100%;
+    }
+
+    .transfermarkt-input-group {
+        flex-direction: column;
     }
 
     .filter-bar {

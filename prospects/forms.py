@@ -6,17 +6,21 @@ from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
 from .models import Prospect
+from .services import validate_transfermarkt_profile_url
 
 
 class ProspectRequestForm(forms.ModelForm):
     class Meta:
         model = Prospect
         fields = (
+            "transfermarkt_url",
             "full_name",
+            "date_of_birth",
             "whatsapp_number",
             "email",
             "country",
             "club",
+            "league",
             "position",
             "season",
             "service_type",
@@ -25,9 +29,16 @@ class ProspectRequestForm(forms.ModelForm):
             "message",
         )
         widgets = {
+            "transfermarkt_url": forms.URLInput(
+                attrs={
+                    "autocomplete": "url",
+                    "placeholder": "Collez le lien Transfermarkt du joueur",
+                }
+            ),
             "full_name": forms.TextInput(
                 attrs={"autocomplete": "name", "placeholder": "Nom et prénom"}
             ),
+            "date_of_birth": forms.DateInput(attrs={"type": "date"}),
             "whatsapp_number": forms.TextInput(
                 attrs={
                     "autocomplete": "tel",
@@ -60,6 +71,10 @@ class ProspectRequestForm(forms.ModelForm):
             ),
         }
         help_texts = {
+            "transfermarkt_url": (
+                "Facultatif. Utilisez le bouton Importer pour préremplir les données."
+            ),
+            "date_of_birth": "Facultatif si aucune date n’est disponible.",
             "whatsapp_number": "Incluez l’indicatif du pays pour que nous puissions vous répondre.",
             "email": "Facultatif.",
             "club": "Facultatif si vous êtes actuellement sans club.",
@@ -82,6 +97,11 @@ class ProspectRequestForm(forms.ModelForm):
         # Model validators run after clean_<field>(); this makes spaces and dashes
         # convenient for mobile users while keeping a predictable stored value.
         return normalized
+
+    def clean_transfermarkt_url(self):
+        return validate_transfermarkt_profile_url(
+            self.cleaned_data.get("transfermarkt_url", "")
+        )
 
     def clean_match_links(self):
         raw_links = self.cleaned_data["match_links"]
@@ -114,3 +134,24 @@ class ProspectRequestForm(forms.ModelForm):
 
 class ProspectStatusForm(forms.Form):
     status = forms.ChoiceField(choices=Prospect.Status.choices)
+
+
+class ProspectManagementForm(ProspectRequestForm):
+    class Meta(ProspectRequestForm.Meta):
+        fields = ProspectRequestForm.Meta.fields + (
+            "status",
+            "internal_notes",
+        )
+        widgets = {
+            **ProspectRequestForm.Meta.widgets,
+            "internal_notes": forms.Textarea(
+                attrs={
+                    "rows": 5,
+                    "placeholder": "Notes visibles uniquement par l’équipe MS Football",
+                }
+            ),
+        }
+        help_texts = {
+            **ProspectRequestForm.Meta.help_texts,
+            "internal_notes": "Ces notes ne sont jamais affichées au prospect.",
+        }

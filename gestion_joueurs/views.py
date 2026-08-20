@@ -47,9 +47,17 @@ def create_video_highlight(request):
     player_form = PlayerForm()
     video_form = VideoForm(user=request.user)
     player = None
-    selected_player_id = request.POST.get('selected_player_id')
+    selected_player_id = (
+        request.POST.get('selected_player_id')
+        or request.GET.get('player_id')
+    )
 
     print(f'Selected Player ID: {selected_player_id}')
+
+    if request.method == 'GET' and selected_player_id:
+        player = Player.objects.filter(id=selected_player_id).first()
+        if player:
+            player_form = PlayerForm(instance=player)
 
     if request.method == 'POST':
         if 'add_player' in request.POST:
@@ -1923,7 +1931,6 @@ def mark_intro_automation_completed(request, video_id):
         'video_id': video.id,
         'intro_automation_completed': video.intro_automation_completed
     })
-
 
 
 

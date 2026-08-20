@@ -144,6 +144,7 @@
     </style>
 
     
+    {% block extra_css %}{% endblock %}
     <title>{% block title %}Votre Titre{% endblock %}</title>
 </head>
 
@@ -253,6 +254,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.namespace == 'prospects' %}active{% endif %}" href="{% url 'prospects:prospect_list' %}">
+                        <i class="fas fa-user-plus"></i> Gestion des Prospects
+                    </a>
+                </li>
+                <li class="nav-item">
                     {% url 'view_payments' as view_payments_url %}
                     {% url 'view_invoices' as view_invoices_url %}
                     {% url 'non_video_income_list' as non_video_income_list_url %}
@@ -332,9 +338,10 @@
             </ul>
         </div>
 
-        <div class="container" style="margin-left: 260px;">
+        <div class="{% block content_container_class %}container{% endblock %}" style="{% block content_container_style %}margin-left: 260px;{% endblock %}">
             {% block content %}{% endblock %}
         </div>
     </div>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

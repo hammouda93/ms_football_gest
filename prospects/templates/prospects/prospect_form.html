@@ -1,0 +1,81 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+
+{% block title %}Modifier {{ prospect.full_name }} | MS Football{% endblock %}
+
+{% block content_container_class %}container-fluid prospect-content-container{% endblock %}
+{% block content_container_style %}margin-left: 260px;{% endblock %}
+
+{% block extra_css %}
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="prospect-management">
+    <header class="management-header">
+        <div>
+            <p class="eyebrow">Gestion des prospects</p>
+            <h1>Modifier la demande</h1>
+            <p>{{ prospect.full_name }} · reçue le {{ prospect.created_at|date:"d/m/Y à H:i" }}</p>
+        </div>
+        <nav class="header-actions" aria-label="Navigation">
+            <a class="ghost-button" href="{% url 'prospects:prospect_list' %}">Retour aux prospects</a>
+        </nav>
+    </header>
+
+    <main class="management-shell">
+        <section class="management-form-card" aria-labelledby="form-title">
+            <div class="form-heading">
+                <h2 id="form-title">Informations du prospect</h2>
+                <p>Vous pouvez corriger les données importées et ajouter des notes internes.</p>
+                {% if prospect.player %}
+                    <p class="linked-player-note">
+                        Joueur associé : {{ prospect.player.name }} (#{{ prospect.player_id }}).
+                    </p>
+                {% endif %}
+            </div>
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-error" role="alert">{{ form.non_field_errors }}</div>
+                {% endif %}
+
+                <div class="form-grid">
+                    {% for field in form %}
+                        <div class="field{% if field.name == 'match_links' or field.name == 'message' or field.name == 'internal_notes' or field.name == 'transfermarkt_url' %} field-wide{% endif %}">
+                            <label for="{{ field.id_for_label }}">
+                                {{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span>{% endif %}
+                            </label>
+                            {{ field }}
+                            {% if field.help_text %}
+                                <p class="help-text" id="{{ field.id_for_label }}_help">{{ field.help_text }}</p>
+                            {% endif %}
+                            {% if field.errors %}
+                                <div class="field-errors" role="alert">{{ field.errors }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="management-form-actions">
+                    <a class="ghost-button" href="{% url 'prospects:prospect_list' %}">Annuler</a>
+                    <button class="primary-button" type="submit">Enregistrer les modifications</button>
+                </div>
+            </form>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (window.matchMedia("(max-width: 900px)").matches) {
+        $(".sidebar").addClass("closed");
+        $("#sidebarToggle i").removeClass("fa-chevron-left").addClass("fa-chevron-right");
+        localStorage.setItem("sidebarVisible", "false");
+    }
+</script>
+{% endblock %}

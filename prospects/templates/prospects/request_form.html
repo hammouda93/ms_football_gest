@@ -44,20 +44,45 @@
                     </div>
                 {% endif %}
 
+                <div class="transfermarkt-import-card">
+                    <label for="{{ form.transfermarkt_url.id_for_label }}">
+                        <strong>Lien Transfermarkt</strong>
+                    </label>
+                    <div class="transfermarkt-input-group">
+                        {{ form.transfermarkt_url }}
+                        <button
+                            class="transfermarkt-import-button"
+                            id="importTransfermarktBtn"
+                            type="button"
+                        >
+                            Importer
+                        </button>
+                    </div>
+                    {% if form.transfermarkt_url.help_text %}
+                        <p class="help-text">{{ form.transfermarkt_url.help_text }}</p>
+                    {% endif %}
+                    {% if form.transfermarkt_url.errors %}
+                        <div class="field-errors" role="alert">{{ form.transfermarkt_url.errors }}</div>
+                    {% endif %}
+                    <p class="transfermarkt-message" id="transfermarktMessage" aria-live="polite"></p>
+                </div>
+
                 <div class="form-grid">
                     {% for field in form %}
-                        <div class="field{% if field.name == 'match_links' or field.name == 'message' %} field-wide{% endif %}">
-                            <label for="{{ field.id_for_label }}">
-                                {{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span>{% endif %}
-                            </label>
-                            {{ field }}
-                            {% if field.help_text %}
-                                <p class="help-text" id="{{ field.id_for_label }}_help">{{ field.help_text }}</p>
-                            {% endif %}
-                            {% if field.errors %}
-                                <div class="field-errors" role="alert">{{ field.errors }}</div>
-                            {% endif %}
-                        </div>
+                        {% if field.name != 'transfermarkt_url' %}
+                            <div class="field{% if field.name == 'match_links' or field.name == 'message' %} field-wide{% endif %}">
+                                <label for="{{ field.id_for_label }}">
+                                    {{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span>{% endif %}
+                                </label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <p class="help-text" id="{{ field.id_for_label }}_help">{{ field.help_text }}</p>
+                                {% endif %}
+                                {% if field.errors %}
+                                    <div class="field-errors" role="alert">{{ field.errors }}</div>
+                                {% endif %}
+                            </div>
+                        {% endif %}
                     {% endfor %}
                 </div>
 
@@ -68,5 +93,68 @@
             </form>
         </section>
     </main>
+    <script>
+        const importButton = document.getElementById("importTransfermarktBtn");
+        const transfermarktInput = document.getElementById("id_transfermarkt_url");
+        const importMessage = document.getElementById("transfermarktMessage");
+
+        function setImportMessage(message, state) {
+            importMessage.textContent = message;
+            importMessage.className = `transfermarkt-message is-${state}`;
+        }
+
+        function fillField(fieldId, value) {
+            const field = document.getElementById(fieldId);
+            if (field && value !== null && value !== undefined) {
+                field.value = value;
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }
+
+        importButton.addEventListener("click", async () => {
+            const url = transfermarktInput.value.trim();
+            if (!url) {
+                setImportMessage("Veuillez coller un lien Transfermarkt.", "error");
+                return;
+            }
+
+            importButton.disabled = true;
+            importButton.textContent = "Importation…";
+            setImportMessage("Chargement des informations du joueur…", "loading");
+
+            try {
+                const response = await fetch("{% url 'prospects:transfermarkt_import' %}", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "X-CSRFToken": "{{ csrf_token }}",
+                    },
+                    body: new URLSearchParams({ url }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Impossible d’importer ce joueur.");
+                }
+
+                const player = data.player || {};
+                fillField("id_transfermarkt_url", player.transfermarkt_url || url);
+                fillField("id_full_name", player.name || "");
+                fillField("id_date_of_birth", player.date_of_birth || "");
+                fillField("id_club", player.club || "");
+                fillField("id_league", player.league || "OC");
+                fillField("id_position", player.position || "other");
+                setImportMessage(
+                    "Informations chargées. Vous pouvez maintenant les modifier avant l’envoi.",
+                    "success",
+                );
+            } catch (error) {
+                setImportMessage(error.message || "Erreur lors de l’import.", "error");
+            } finally {
+                importButton.disabled = false;
+                importButton.textContent = "Importer";
+            }
+        });
+    </script>
 </body>
 </html>

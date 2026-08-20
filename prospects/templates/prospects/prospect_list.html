@@ -1,14 +1,18 @@
+{% extends "gestion_joueurs/base.html" %}
 {% load static %}
-<!doctype html>
-<html lang="fr">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+{% block title %}Prospects vidéo | MS Football{% endblock %}
+
+{% block content_container_class %}container-fluid prospect-content-container{% endblock %}
+{% block content_container_style %}margin-left: 260px;{% endblock %}
+
+{% block extra_css %}
     <meta name="robots" content="noindex, nofollow">
-    <title>Prospects vidéo | MS Football</title>
     <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
-</head>
-<body class="management-page">
+{% endblock %}
+
+{% block content %}
+<div class="prospect-management">
     <header class="management-header">
         <div>
             <p class="eyebrow">Espace privé</p>
@@ -16,7 +20,6 @@
             <p>{{ total_count }} demande{{ total_count|pluralize }} trouvée{{ total_count|pluralize }}</p>
         </div>
         <nav class="header-actions" aria-label="Actions principales">
-            <a class="ghost-button" href="{% url 'dashboard' %}">Tableau de bord</a>
             <a class="secondary-button" href="{% url 'prospects:request_create' %}" target="_blank" rel="noopener">
                 Voir le formulaire public
             </a>
@@ -35,14 +38,7 @@
         <form class="filter-bar" method="get">
             <div class="filter-field filter-search">
                 <label for="prospect-search">Rechercher</label>
-                <input
-                    id="prospect-search"
-                    class="form-control"
-                    type="search"
-                    name="q"
-                    value="{{ query }}"
-                    placeholder="Nom, WhatsApp, club, pays..."
-                >
+                <input id="prospect-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Nom, WhatsApp, club, pays...">
             </div>
             <div class="filter-field">
                 <label for="status-filter">Statut</label>
@@ -73,46 +69,55 @@
                         </div>
 
                         <dl class="prospect-details">
-                            <div>
-                                <dt>Service</dt>
-                                <dd>{{ prospect.get_service_type_display }}</dd>
-                            </div>
-                            <div>
-                                <dt>Saison</dt>
-                                <dd>{{ prospect.season }}</dd>
-                            </div>
-                            <div>
-                                <dt>WhatsApp</dt>
-                                <dd>{{ prospect.whatsapp_number }}</dd>
-                            </div>
-                            <div>
-                                <dt>Date souhaitée</dt>
-                                <dd>{{ prospect.desired_deadline|date:"d/m/Y"|default:"Non précisée" }}</dd>
-                            </div>
+                            <div><dt>Service</dt><dd>{{ prospect.get_service_type_display }}</dd></div>
+                            <div><dt>Saison</dt><dd>{{ prospect.season }}</dd></div>
+                            <div><dt>Championnat</dt><dd>{{ prospect.get_league_display }}</dd></div>
+                            <div><dt>Naissance</dt><dd>{{ prospect.date_of_birth|date:"d/m/Y"|default:"Non précisée" }}</dd></div>
+                            <div><dt>WhatsApp</dt><dd>{{ prospect.whatsapp_number }}</dd></div>
+                            <div><dt>Date souhaitée</dt><dd>{{ prospect.desired_deadline|date:"d/m/Y"|default:"Non précisée" }}</dd></div>
                             {% if prospect.email %}
-                                <div class="detail-wide">
-                                    <dt>E-mail</dt>
-                                    <dd><a href="mailto:{{ prospect.email }}">{{ prospect.email }}</a></dd>
-                                </div>
+                                <div><dt>E-mail</dt><dd><a href="mailto:{{ prospect.email }}">{{ prospect.email }}</a></dd></div>
+                            {% endif %}
+                            {% if prospect.player %}
+                                <div><dt>Joueur associé</dt><dd>{{ prospect.player.name }} (#{{ prospect.player_id }})</dd></div>
                             {% endif %}
                         </dl>
 
                         <details class="prospect-extra">
                             <summary>Liens et informations</summary>
                             <div class="extra-content">
+                                {% if prospect.transfermarkt_url %}
+                                    <h3>Transfermarkt</h3>
+                                    <p><a href="{{ prospect.transfermarkt_url }}" target="_blank" rel="noopener noreferrer">Ouvrir le profil Transfermarkt</a></p>
+                                {% endif %}
                                 <h3>Liens des matchs</h3>
                                 <div class="match-links">{{ prospect.match_links|urlize|linebreaksbr }}</div>
-                                {% if prospect.message %}
-                                    <h3>Message du joueur</h3>
-                                    <p>{{ prospect.message|linebreaksbr }}</p>
-                                {% endif %}
+                                {% if prospect.message %}<h3>Message du joueur</h3><p>{{ prospect.message|linebreaksbr }}</p>{% endif %}
+                                {% if prospect.internal_notes %}<h3>Notes internes</h3><p>{{ prospect.internal_notes|linebreaksbr }}</p>{% endif %}
                             </div>
                         </details>
 
                         <div class="prospect-actions">
-                            <a class="whatsapp-button" href="{{ prospect.whatsapp_url }}" target="_blank" rel="noopener noreferrer">
-                                Ouvrir WhatsApp
-                            </a>
+                            <div class="action-cluster">
+                                <form method="post" action="{% url 'prospects:prospect_whatsapp_start' prospect.pk %}" target="_blank" class="inline-action-form">
+                                    {% csrf_token %}
+                                    <button class="whatsapp-button" type="submit">Démarrer sur WhatsApp</button>
+                                </form>
+                                <a class="ghost-button" href="{% url 'prospects:prospect_edit' prospect.pk %}">Modifier</a>
+                                {% if prospect.player %}
+                                    <a class="secondary-button" href="{% url 'create_video_request' %}?player_id={{ prospect.player_id }}">Créer la vidéo</a>
+                                {% else %}
+                                    <form method="post" action="{% url 'prospects:prospect_convert' prospect.pk %}" class="inline-action-form">
+                                        {% csrf_token %}
+                                        <button class="secondary-button" type="submit">Convertir en joueur</button>
+                                    </form>
+                                {% endif %}
+                                <form method="post" action="{% url 'prospects:prospect_delete' prospect.pk %}" class="inline-action-form" onsubmit="return confirm('Supprimer définitivement cette demande ?');">
+                                    {% csrf_token %}
+                                    <button class="danger-button" type="submit">Supprimer</button>
+                                </form>
+                            </div>
+
                             <form method="post" action="{% url 'prospects:prospect_status_update' prospect.pk %}" class="status-form">
                                 {% csrf_token %}
                                 <label class="sr-only" for="status-{{ prospect.pk }}">Statut de {{ prospect.full_name }}</label>
@@ -130,13 +135,9 @@
 
             {% if page.paginator.num_pages > 1 %}
                 <nav class="pagination" aria-label="Pagination">
-                    {% if page.has_previous %}
-                        <a href="?page={{ page.previous_page_number }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}">Précédent</a>
-                    {% endif %}
+                    {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}">Précédent</a>{% endif %}
                     <span>Page {{ page.number }} sur {{ page.paginator.num_pages }}</span>
-                    {% if page.has_next %}
-                        <a href="?page={{ page.next_page_number }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}">Suivant</a>
-                    {% endif %}
+                    {% if page.has_next %}<a href="?page={{ page.next_page_number }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}">Suivant</a>{% endif %}
                 </nav>
             {% endif %}
         {% else %}
@@ -147,5 +148,15 @@
             </section>
         {% endif %}
     </main>
-</body>
-</html>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (window.matchMedia("(max-width: 900px)").matches) {
+        $(".sidebar").addClass("closed");
+        $("#sidebarToggle i").removeClass("fa-chevron-left").addClass("fa-chevron-right");
+        localStorage.setItem("sidebarVisible", "false");
+    }
+</script>
+{% endblock %}
