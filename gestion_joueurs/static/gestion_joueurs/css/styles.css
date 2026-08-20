@@ -490,6 +490,18 @@ p{
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
+    position: relative;
+    z-index: 1030;
+    overflow: visible;
+}
+
+.account-navbar .dropdown {
+    position: relative;
+    z-index: 1031;
+}
+
+.account-navbar .dropdown-menu {
+    z-index: 1035;
 }
 
 .navbar-account-actions {
@@ -521,6 +533,7 @@ p{
     width: min(420px, calc(100vw - 1rem));
     max-height: min(70vh, 560px);
     padding: 0;
+    z-index: 1035;
     overflow: hidden;
 }
 
