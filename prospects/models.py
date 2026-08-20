@@ -49,7 +49,7 @@ class Prospect(models.Model):
         validators=[whatsapp_validator],
     )
     email = models.EmailField("Adresse e-mail", blank=True)
-    country = models.CharField("Pays", max_length=80)
+    country = models.CharField("Pays", max_length=80, blank=True)
     club = models.CharField("Club actuel", max_length=120, blank=True)
     league = models.CharField(
         "Championnat",
@@ -68,7 +68,7 @@ class Prospect(models.Model):
         max_length=20,
         choices=Service.choices,
     )
-    match_links = models.TextField("Liens des matchs")
+    match_links = models.TextField("Liens des matchs", blank=True)
     desired_deadline = models.DateField("Date souhaitée", blank=True, null=True)
     message = models.TextField("Informations complémentaires", blank=True)
     source = models.CharField("Source", max_length=80, default="Formulaire web")

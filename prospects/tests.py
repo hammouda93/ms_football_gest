@@ -171,6 +171,37 @@ class ProspectFeatureTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("match_links", form.errors)
 
+    def test_transfermarkt_makes_country_and_match_links_optional(self):
+        data = self.valid_form_data()
+        data.update(
+            {
+                "full_name": "Joueur Sans Liens",
+                "country": "",
+                "match_links": "",
+            }
+        )
+
+        response = self.client.post(
+            reverse("prospects:request_create"),
+            data=data,
+        )
+
+        self.assertRedirects(response, reverse("prospects:request_success"))
+        prospect = Prospect.objects.get(full_name="Joueur Sans Liens")
+        self.assertEqual(prospect.country, "")
+        self.assertEqual(prospect.match_links, "")
+        self.assertTrue(prospect.transfermarkt_url)
+
+    def test_match_links_are_required_without_transfermarkt(self):
+        data = self.valid_form_data()
+        data.update({"transfermarkt_url": "", "match_links": ""})
+
+        form = ProspectRequestForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("match_links", form.errors)
+        self.assertIn("Transfermarkt", form.errors["match_links"][0])
+
     def test_past_deadline_is_rejected(self):
         data = self.valid_form_data()
         data["desired_deadline"] = (date.today() - timedelta(days=1)).isoformat()

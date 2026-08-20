@@ -58,7 +58,8 @@ class ProspectRequestForm(forms.ModelForm):
                 attrs={
                     "rows": 5,
                     "placeholder": (
-                        "https://...\nAjoutez un lien par ligne (YouTube, Drive, etc.)"
+                        "https://...\nAjoutez un lien par ligne "
+                        "(facultatif avec Transfermarkt)"
                     ),
                 }
             ),
@@ -77,8 +78,12 @@ class ProspectRequestForm(forms.ModelForm):
             "date_of_birth": "Facultatif si aucune date n’est disponible.",
             "whatsapp_number": "Incluez l’indicatif du pays pour que nous puissions vous répondre.",
             "email": "Facultatif.",
+            "country": "Facultatif.",
             "club": "Facultatif si vous êtes actuellement sans club.",
-            "match_links": "Un lien HTTP ou HTTPS par ligne.",
+            "match_links": (
+                "Facultatif avec un profil Transfermarkt. Sinon, ajoutez au "
+                "moins un lien HTTP ou HTTPS."
+            ),
             "desired_deadline": "Facultatif.",
             "message": "Facultatif.",
         }
@@ -104,12 +109,16 @@ class ProspectRequestForm(forms.ModelForm):
         )
 
     def clean_match_links(self):
-        raw_links = self.cleaned_data["match_links"]
+        raw_links = self.cleaned_data.get("match_links", "")
         links = [line.strip() for line in raw_links.splitlines() if line.strip()]
         validator = URLValidator(schemes=("http", "https"))
 
         if not links:
-            raise ValidationError("Ajoutez au moins un lien de match.")
+            if self.cleaned_data.get("transfermarkt_url"):
+                return ""
+            raise ValidationError(
+                "Ajoutez au moins un lien de match ou un lien Transfermarkt."
+            )
 
         invalid_links = []
         for link in links:
