@@ -27,5 +27,8 @@ class PortalAreaIsolationMiddleware:
         if request.path.startswith("/portal/"):
             response["Cache-Control"] = "no-store, private"
             response["Pragma"] = "no-cache"
-            response["Referrer-Policy"] = "no-referrer"
+            # YouTube embeds require an origin identity (otherwise player error 153).
+            # This policy sends only the site origin cross-domain, never the portal path
+            # or a reusable access token.
+            response["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response

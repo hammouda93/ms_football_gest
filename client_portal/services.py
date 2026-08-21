@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -47,7 +47,69 @@ class PortalCredentialDelivery:
     whatsapp_url: str
 
 
+@dataclass(frozen=True)
+class ClientTimelineEvent:
+    kind: str
+    tone: str
+    icon: str
+    title: str
+    message: str
+    occurred_at: date | datetime
+    has_time: bool
+    sort_at: datetime
+
+
 PORTAL_ACCESS_LINK_LIFETIME = timedelta(days=365)
+
+
+CLIENT_COMPLETED_COLLAB_LABEL = (
+    "En cours de finition et classification des séquences"
+)
+
+
+CLIENT_STATUS_TITLES = {
+    Video.StatusChoices.PENDING: "Commande enregistrée",
+    Video.StatusChoices.IN_PROGRESS: "Production démarrée",
+    Video.StatusChoices.COMPLETED_COLLAB: CLIENT_COMPLETED_COLLAB_LABEL,
+    Video.StatusChoices.COMPLETED: "Montage terminé",
+    Video.StatusChoices.DELIVERED: "Vidéo livrée",
+    Video.StatusChoices.PROBLEMATIC: "Vérification complémentaire",
+}
+
+
+CLIENT_STATUS_ICONS = {
+    Video.StatusChoices.PENDING: "fa-clipboard-check",
+    Video.StatusChoices.IN_PROGRESS: "fa-clapperboard",
+    Video.StatusChoices.COMPLETED_COLLAB: "fa-wand-magic-sparkles",
+    Video.StatusChoices.COMPLETED: "fa-circle-check",
+    Video.StatusChoices.DELIVERED: "fa-circle-play",
+    Video.StatusChoices.PROBLEMATIC: "fa-magnifying-glass",
+}
+
+
+PAYMENT_EVENT_TITLES = {
+    "advance": "Acompte enregistré",
+    "partial": "Paiement partiel enregistré",
+    "final": "Paiement final enregistré",
+}
+
+
+PAYMENT_METHOD_LABELS = {
+    "cash": "espèces",
+    "bank_transfer": "virement bancaire",
+    "la_poste": "La Poste",
+}
+
+
+ACTIVITY_ICONS = {
+    VideoActivity.Kind.NOTE: "fa-note-sticky",
+    VideoActivity.Kind.STAGE: "fa-route",
+    VideoActivity.Kind.MEDIA: "fa-link",
+    VideoActivity.Kind.VERSION: "fa-film",
+    VideoActivity.Kind.REVIEW: "fa-comments",
+    VideoActivity.Kind.PAYMENT: "fa-wallet",
+    VideoActivity.Kind.MESSAGE: "fa-message",
+}
 
 
 STAGE_PROGRESS = {
@@ -103,6 +165,115 @@ def invoice_snapshot(video):
     )
 
 
+def _timeline_datetime(value):
+    if isinstance(value, datetime):
+        result = value
+    else:
+        result = datetime.combine(value, time.min)
+    if timezone.is_naive(result):
+        return timezone.make_aware(result, timezone.get_current_timezone())
+    return result
+
+
+def _client_status_message(video, status):
+    deadline = video.deadline.strftime("%d/%m/%Y")
+    messages = {
+        Video.StatusChoices.PENDING: (
+            "La commande est enregistrée et attend le démarrage de la production."
+        ),
+        Video.StatusChoices.IN_PROGRESS: (
+            f"Le montage est en cours. La livraison est prévue le {deadline}."
+        ),
+        Video.StatusChoices.COMPLETED_COLLAB: (
+            "Les premières étapes du montage sont terminées. Notre équipe finalise "
+            "la vidéo et classe les séquences sélectionnées."
+        ),
+        Video.StatusChoices.COMPLETED: (
+            "Le montage est terminé et passe aux dernières vérifications avant livraison."
+        ),
+        Video.StatusChoices.DELIVERED: (
+            "La vidéo finale a été livrée et reste disponible dans votre espace."
+        ),
+        Video.StatusChoices.PROBLEMATIC: (
+            "Une vérification complémentaire est en cours sur la production."
+        ),
+    }
+    return messages.get(status, "L’état de la production a été mis à jour.")
+
+
+def client_video_timeline(video, activities=()):
+    """Build a client-facing timeline without writing or altering legacy data."""
+    events = []
+
+    for history in video.status_history.order_by("changed_at", "pk"):
+        occurred_at = history.changed_at
+        events.append(
+            ClientTimelineEvent(
+                kind="status",
+                tone=history.status,
+                icon=CLIENT_STATUS_ICONS.get(history.status, "fa-route"),
+                title=CLIENT_STATUS_TITLES.get(
+                    history.status,
+                    "État de la vidéo mis à jour",
+                ),
+                message=_client_status_message(video, history.status),
+                occurred_at=occurred_at,
+                has_time=True,
+                sort_at=_timeline_datetime(occurred_at),
+            )
+        )
+
+    for payment in video.payments.order_by("payment_date", "pk"):
+        occurred_at = payment.payment_date
+        payment_method = PAYMENT_METHOD_LABELS.get(payment.payment_method)
+        method_text = f" via {payment_method}" if payment_method else ""
+        if payment.remaining_balance > 0:
+            balance_text = (
+                f" Solde restant après ce règlement : "
+                f"{payment.remaining_balance:.2f}."
+            )
+        elif payment.payment_type == "final":
+            balance_text = " La commande est entièrement réglée."
+        else:
+            balance_text = ""
+        events.append(
+            ClientTimelineEvent(
+                kind="payment",
+                tone="payment",
+                icon="fa-wallet",
+                title=PAYMENT_EVENT_TITLES.get(
+                    payment.payment_type,
+                    "Paiement enregistré",
+                ),
+                message=(
+                    f"Un paiement de {payment.amount:.2f} a été enregistré"
+                    f"{method_text}.{balance_text}"
+                ),
+                occurred_at=occurred_at,
+                has_time=False,
+                sort_at=_timeline_datetime(occurred_at),
+            )
+        )
+
+    for activity in activities:
+        occurred_at = activity.created_at
+        events.append(
+            ClientTimelineEvent(
+                kind="activity",
+                tone=activity.kind,
+                icon=ACTIVITY_ICONS.get(activity.kind, "fa-bell"),
+                title=activity.get_kind_display(),
+                message=activity.message,
+                occurred_at=occurred_at,
+                has_time=True,
+                sort_at=_timeline_datetime(occurred_at),
+            )
+        )
+
+    events.sort(key=lambda event: event.sort_at, reverse=True)
+    return events[:60]
+
+
 def _saved_workflow(video):
     try:
         return video.production_workflow
@@ -152,6 +323,12 @@ def decorate_video(video):
         if workflow and workflow.next_action
         else STAGE_NEXT_ACTION.get(stage, "")
     )
+    if video.status == Video.StatusChoices.COMPLETED_COLLAB:
+        video.production_stage_label = CLIENT_COMPLETED_COLLAB_LABEL
+        if not workflow or not workflow.next_action:
+            video.production_next_action = (
+                "Notre équipe finalise le montage et classe les séquences sélectionnées."
+            )
     video.production_blocked_reason = workflow.blocked_reason if workflow else ""
     video.payment_snapshot = payment
     video.final_delivery_available = bool(

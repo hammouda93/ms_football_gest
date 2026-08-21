@@ -7,7 +7,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from gestion_joueurs.models import Invoice, Player, Video, VideoEditor
+from gestion_joueurs.models import Invoice, Payment, Player, Video, VideoEditor
 from gestion_joueurs.utils import set_current_user
 
 from .models import (
@@ -849,10 +849,76 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         player_page = self.client.get(
             reverse("portal:player", args=(self.player.pk,))
         )
+        video_page = self.client.get(
+            reverse("portal:video", args=(self.video.pk,))
+        )
         expected_embed = "https://www.youtube-nocookie.com/embed/abcdefghijk"
         self.assertContains(dashboard, expected_embed)
         self.assertContains(player_page, expected_embed)
+        self.assertContains(video_page, expected_embed)
+        self.assertContains(video_page, "Ouvrir sur YouTube")
+        self.assertContains(video_page, "Vidéo livrée")
         self.assertContains(dashboard, "Historique des vidéos")
+
+    def test_video_timeline_combines_saved_statuses_payments_and_updates(self):
+        self.video.status = Video.StatusChoices.IN_PROGRESS
+        self.video.save(update_fields=("status",))
+        Payment.objects.create(
+            player=self.player,
+            video=self.video,
+            amount=Decimal("150"),
+            payment_type="partial",
+            payment_method="bank_transfer",
+            remaining_balance=Decimal("250"),
+            invoice=self.invoice,
+            created_by=self.admin,
+        )
+        VideoActivity.objects.create(
+            video=self.video,
+            kind=VideoActivity.Kind.VERSION,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message="Une nouvelle prévisualisation est disponible.",
+            created_by=self.admin,
+        )
+        counts_before = (
+            self.video.status_history.count(),
+            self.video.payments.count(),
+            self.video.portal_activities.count(),
+        )
+        self.client.force_login(self.portal_user)
+
+        response = self.client.get(reverse("portal:video", args=(self.video.pk,)))
+
+        self.assertContains(response, "Production démarrée")
+        self.assertContains(response, "Paiement partiel enregistré")
+        self.assertContains(response, "150.00")
+        self.assertContains(response, "virement bancaire")
+        self.assertContains(response, "Une nouvelle prévisualisation est disponible.")
+        self.assertContains(response, "portal-finance-card", count=3)
+        self.assertEqual(
+            (
+                self.video.status_history.count(),
+                self.video.payments.count(),
+                self.video.portal_activities.count(),
+            ),
+            counts_before,
+        )
+
+    def test_completed_collab_has_a_clear_client_facing_explanation(self):
+        self.video.status = Video.StatusChoices.COMPLETED_COLLAB
+        self.video.save(update_fields=("status",))
+        self.client.force_login(self.portal_user)
+
+        response = self.client.get(reverse("portal:video", args=(self.video.pk,)))
+
+        self.assertContains(
+            response,
+            "En cours de finition et classification des séquences",
+        )
+        self.assertContains(
+            response,
+            "Notre équipe finalise le montage et classe les séquences sélectionnées.",
+        )
 
     def test_timecoded_revision_creates_overlay_only(self):
         self.client.force_login(self.portal_user)
@@ -919,4 +985,7 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.client.force_login(self.portal_user)
         response = self.client.get(reverse("portal:video", args=(self.video.pk,)))
         self.assertEqual(response["Cache-Control"], "no-store, private")
-        self.assertEqual(response["Referrer-Policy"], "no-referrer")
+        self.assertEqual(
+            response["Referrer-Policy"],
+            "strict-origin-when-cross-origin",
+        )

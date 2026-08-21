@@ -17,10 +17,19 @@
     <div class="progress-caption"><strong>{{ video.production_progress }}%</strong><span>{{ video.production_next_action }}</span></div>
 </section>
 
-<section class="portal-metrics three" aria-label="Résumé financier">
-    <article><span>Montant total</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong><small>commande complète</small></article>
-    <article><span>Déjà payé</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong><small>paiements reçus</small></article>
-    <article class="{% if video.payment_snapshot.balance %}needs-attention{% endif %}"><span>Solde</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong><small>reste à régler</small></article>
+<section class="portal-metrics three portal-finance-summary" aria-label="Résumé financier">
+    <article class="portal-finance-card finance-total">
+        <i class="portal-finance-icon fas fa-receipt" aria-hidden="true"></i>
+        <div><span class="finance-label">Montant total</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong><small>Commande complète</small></div>
+    </article>
+    <article class="portal-finance-card finance-paid">
+        <i class="portal-finance-icon fas fa-circle-check" aria-hidden="true"></i>
+        <div><span class="finance-label">Déjà payé</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong><small>Paiements reçus</small></div>
+    </article>
+    <article class="portal-finance-card finance-balance {% if video.payment_snapshot.balance %}needs-attention{% else %}is-settled{% endif %}">
+        <i class="portal-finance-icon fas {% if video.payment_snapshot.balance %}fa-hourglass-half{% else %}fa-check-double{% endif %}" aria-hidden="true"></i>
+        <div><span class="finance-label">Solde</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong><small>{% if video.payment_snapshot.balance %}Reste à régler{% else %}Commande réglée{% endif %}</small></div>
+    </article>
 </section>
 
 {% if payment_requests %}
@@ -33,6 +42,27 @@
             </article>
         {% endfor %}
     </section>
+{% endif %}
+
+{% if video.final_delivery_available %}
+    {% with embed_url=video.video_link|youtube_embed_url %}
+        <section class="portal-section portal-final-video-section">
+            <div class="portal-section-heading">
+                <div><span class="eyebrow">Livraison</span><h2>Votre vidéo finale</h2><p>Regardez directement la vidéo livrée depuis votre espace.</p></div>
+                <span class="portal-count"><i class="fas fa-check" aria-hidden="true"></i></span>
+            </div>
+            {% if embed_url %}
+                <div class="portal-video-embed portal-final-video-player">
+                    <iframe src="{{ embed_url }}" title="Vidéo finale {{ video.season }} de {{ video.player.name }}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                </div>
+            {% endif %}
+            <div class="final-delivery">
+                <span aria-hidden="true"><i class="fas fa-circle-check"></i></span>
+                <div><h2>Votre vidéo finale est disponible</h2><p>{% if embed_url %}Lancez la lecture ci-dessus ou ouvrez-la dans YouTube.{% else %}Le lien officiel de livraison est maintenant accessible.{% endif %}</p></div>
+                <a class="portal-button delivery-link" href="{{ video.video_link }}" target="_blank" rel="noopener"><i class="{% if embed_url %}fa-brands fa-youtube{% else %}fas fa-arrow-up-right-from-square{% endif %}" aria-hidden="true"></i>{% if embed_url %}Ouvrir sur YouTube{% else %}Ouvrir la vidéo{% endif %}</a>
+            </div>
+        </section>
+    {% endwith %}
 {% endif %}
 
 <section class="portal-section">
@@ -97,17 +127,16 @@
 {% endif %}
 
 <section class="portal-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Chronologie</span><h2>Suivi de la commande</h2><p>Les étapes et décisions importantes de la production.</p></div></div>
+    <div class="portal-section-heading"><div><span class="eyebrow">Chronologie</span><h2>Suivi de la commande</h2><p>Les changements d’état, paiements et mises à jour de la production.</p></div><span class="portal-count">{{ timeline_events|length }}</span></div>
     <div class="portal-timeline">
-        {% for activity in activities %}
-            <div><span></span><article><strong>{{ activity.get_kind_display }}</strong><p>{{ activity.message }}</p><small>{{ activity.created_at|date:"d/m/Y H:i" }}</small></article></div>
+        {% for event in timeline_events %}
+            <div class="portal-timeline-event timeline-{{ event.kind }} timeline-{{ event.tone }}">
+                <span class="portal-timeline-marker" aria-hidden="true"><i class="fas {{ event.icon }}"></i></span>
+                <article><strong>{{ event.title }}</strong><p>{{ event.message }}</p><small>{{ event.occurred_at|date:"d/m/Y" }}{% if event.has_time %} · {{ event.occurred_at|date:"H:i" }}{% endif %}</small></article>
+            </div>
         {% empty %}
-            <div class="portal-empty">Les mises à jour apparaîtront ici.</div>
+            <div class="portal-empty portal-timeline-empty"><strong>Aucune mise à jour pour le moment</strong><span>Les changements d’état et paiements apparaîtront ici.</span></div>
         {% endfor %}
     </div>
 </section>
-
-{% if video.final_delivery_available %}
-    <section class="final-delivery"><span>✓</span><div><h2>Votre vidéo finale est disponible</h2><p>Le lien officiel de livraison est maintenant accessible.</p></div><a class="portal-button approve" href="{{ video.video_link }}" target="_blank" rel="noopener">Télécharger / regarder</a></section>
-{% endif %}
 {% endblock %}

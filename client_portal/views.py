@@ -50,6 +50,7 @@ from .services import (
     accessible_players_for,
     accessible_videos_for,
     build_video_whatsapp_url,
+    client_video_timeline,
     decorate_video,
     deliver_portal_credentials,
     editable_videos_for,
@@ -807,9 +808,12 @@ def portal_video_detail(request, video_id):
         get_object_or_404(accessible_videos_for(request.user), pk=video_id)
     )
     versions = video.portal_versions.prefetch_related("revision_requests")
-    activities = video.portal_activities.filter(
-        visibility=VideoActivity.Visibility.CLIENT
-    ).select_related("created_by")[:30]
+    activities = list(
+        video.portal_activities.filter(
+            visibility=VideoActivity.Visibility.CLIENT
+        ).select_related("created_by")[:30]
+    )
+    timeline_events = client_video_timeline(video, activities)
     return render(
         request,
         "client_portal/video_detail.html",
@@ -820,6 +824,7 @@ def portal_video_detail(request, video_id):
             "versions": versions,
             "media_submissions": video.media_submissions.select_related("submitted_by"),
             "activities": activities,
+            "timeline_events": timeline_events,
             "payment_requests": video.portal_payment_requests.exclude(
                 status__in={PaymentRequest.Status.CANCELLED, PaymentRequest.Status.EXPIRED}
             ),

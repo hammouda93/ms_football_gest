@@ -76,7 +76,7 @@
             {% with embed_url=video.video_link|youtube_embed_url %}
                 <article class="portal-archive-card">
                     {% if video.final_delivery_available and embed_url %}
-                        <div class="portal-video-embed"><iframe src="{{ embed_url }}" title="Vidéo de {{ video.player.name }} — {{ video.season }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+                        <div class="portal-video-embed"><iframe src="{{ embed_url }}" title="Vidéo de {{ video.player.name }} — {{ video.season }}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>
                     {% else %}
                         <a class="archive-placeholder" href="{% url 'portal:video' video.pk %}"><i class="fas {% if video.final_delivery_available %}fa-play{% else %}fa-lock{% endif %}"></i></a>
                     {% endif %}
