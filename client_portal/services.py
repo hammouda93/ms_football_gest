@@ -1,6 +1,7 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -20,6 +21,7 @@ from .models import (
     OrganizationMembership,
     OrganizationPlayer,
     PlayerAccess,
+    PortalAccessLink,
     PortalProfile,
     RevisionRequest,
     VideoActivity,
@@ -43,6 +45,9 @@ class PortalCredentialDelivery:
     email_sent: bool
     email_error: bool
     whatsapp_url: str
+
+
+PORTAL_ACCESS_LINK_LIFETIME = timedelta(days=365)
 
 
 STAGE_PROGRESS = {
@@ -376,21 +381,24 @@ def ensure_player_portal_account(player, *, created_by):
 
 
 @transaction.atomic
-def renew_portal_credentials(profile):
-    temporary_password = generate_temporary_password()
-    profile.user.set_password(temporary_password)
-    profile.user.is_active = True
-    profile.user.save(update_fields=("password", "is_active"))
-    if not profile.is_active:
-        profile.is_active = True
-        profile.save(update_fields=("is_active", "updated_at"))
-    return temporary_password
+def issue_reusable_portal_access_link(profile, *, created_by):
+    """Issue one reusable, revocable link and retire older links for the account."""
+    PortalAccessLink.objects.filter(
+        user=profile.user,
+        revoked_at__isnull=True,
+    ).update(revoked_at=timezone.now())
+    return PortalAccessLink.issue(
+        user=profile.user,
+        created_by=created_by,
+        lifetime=PORTAL_ACCESS_LINK_LIFETIME,
+    )
 
 
 def deliver_portal_credentials(
     profile,
     temporary_password,
     *,
+    access_url,
     login_url,
     actor,
     player=None,
@@ -401,15 +409,26 @@ def deliver_portal_credentials(
         player.whatsapp_number if player else ""
     )
     phone = normalize_whatsapp_number(phone_value)
-    message = (
-        f"Bonjour {recipient_name} 👋\n\n"
-        "Votre espace client MS Football est prêt.\n\n"
-        f"Connexion : {login_url}\n"
-        f"E-mail : {email}\n"
-        f"Mot de passe temporaire : {temporary_password}\n\n"
-        "Après connexion, vous pourrez consulter vos anciennes vidéos et suivre la production en cours. "
-        "Merci de changer le mot de passe depuis votre profil."
+    message_parts = [
+        f"Bonjour {recipient_name} 👋",
+        "Votre espace client MS Football est prêt.",
+        f"Ouvrir mon espace : {access_url}",
+        (
+            "Ce lien est personnel et réutilisable tant que MS Football maintient "
+            "votre compte actif."
+        ),
+    ]
+    if temporary_password:
+        message_parts.append(
+            "Connexion de secours :\n"
+            f"{login_url}\n"
+            f"E-mail : {email}\n"
+            f"Mot de passe temporaire : {temporary_password}"
+        )
+    message_parts.append(
+        "Vous pourrez consulter vos anciennes vidéos et suivre la production en cours."
     )
+    message = "\n\n".join(message_parts)
 
     email_sent = False
     email_error = False
@@ -431,7 +450,7 @@ def deliver_portal_credentials(
             channel=CommunicationLog.Channel.EMAIL,
             template_key="portal_credentials",
             recipient=email,
-            message="Identifiants du portail client préparés par MS Football.",
+            message="Lien sécurisé du portail client préparé par MS Football.",
             state=(
                 CommunicationLog.State.SENT
                 if email_sent
@@ -448,7 +467,7 @@ def deliver_portal_credentials(
             channel=CommunicationLog.Channel.WHATSAPP,
             template_key="portal_credentials",
             recipient=phone_value,
-            message="Brouillon WhatsApp des identifiants du portail préparé.",
+            message="Brouillon WhatsApp du lien sécurisé du portail préparé.",
             state=CommunicationLog.State.DRAFT_OPENED,
             actor=actor,
         )

@@ -8,9 +8,9 @@
 <div class="production-page narrow-page">
     <section class="portal-panel access-link-panel account-ready-panel">
         <span class="success-icon" aria-hidden="true">✓</span>
-        <span class="eyebrow">Compte permanent prêt</span>
+        <span class="eyebrow">Lien sécurisé prêt</span>
         <h1>Accès de {{ profile.display_name }}</h1>
-        <p>Le joueur ou l’agent pourra revenir à tout moment avec son e-mail et son mot de passe. Ce n’est pas un lien à usage unique.</p>
+        <p>Ce lien personnel peut être ouvert plusieurs fois jusqu’au {{ access_link.expires_at|date:"d/m/Y" }}, tant que le compte reste actif.</p>
 
         <div class="delivery-status-grid">
             <div class="delivery-status {% if delivery.email_sent %}success{% else %}warning{% endif %}">
@@ -25,26 +25,32 @@
 
         <div class="credential-card">
             <div>
-                <label for="portal-login-url">Page de connexion</label>
-                <div class="copy-row"><input id="portal-login-url" class="form-control" value="{{ login_url }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-url" type="button"><i class="far fa-copy"></i></button></div>
+                <label for="portal-access-url">Lien sécurisé principal</label>
+                <div class="copy-row"><input id="portal-access-url" class="form-control" value="{{ access_url }}" readonly><button class="btn btn-primary copy-credential" data-copy-target="portal-access-url" type="button"><i class="far fa-copy"></i></button></div>
             </div>
-            <div>
-                <label for="portal-login-email">E-mail de connexion</label>
-                <div class="copy-row"><input id="portal-login-email" class="form-control" value="{{ login_email }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-email" type="button"><i class="far fa-copy"></i></button></div>
-            </div>
-            <div>
-                <label for="portal-temporary-password">Mot de passe temporaire</label>
-                <div class="copy-row"><input id="portal-temporary-password" class="form-control" value="{{ temporary_password }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-temporary-password" type="button"><i class="far fa-copy"></i></button></div>
-            </div>
+            {% if temporary_password %}
+                <div>
+                    <label for="portal-login-url">Page de connexion de secours</label>
+                    <div class="copy-row"><input id="portal-login-url" class="form-control" value="{{ login_url }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-url" type="button"><i class="far fa-copy"></i></button></div>
+                </div>
+                <div>
+                    <label for="portal-login-email">E-mail de connexion</label>
+                    <div class="copy-row"><input id="portal-login-email" class="form-control" value="{{ login_email }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-email" type="button"><i class="far fa-copy"></i></button></div>
+                </div>
+                <div>
+                    <label for="portal-temporary-password">Mot de passe temporaire</label>
+                    <div class="copy-row"><input id="portal-temporary-password" class="form-control" value="{{ temporary_password }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-temporary-password" type="button"><i class="far fa-copy"></i></button></div>
+                </div>
+            {% endif %}
         </div>
 
-        <div class="form-assurance"><i class="fas fa-key"></i><div><strong>Accès durable et révocable</strong><p>Le client peut changer son mot de passe. Vous gardez la main pour désactiver le compte ou renouveler ses identifiants.</p></div></div>
+        <div class="form-assurance"><i class="fas fa-key"></i><div><strong>Accès durable et contrôlé</strong><p>Désactiver le compte bloque immédiatement ce lien. Une réactivation permet de réutiliser le même lien ; un renouvellement invalide l’ancien.</p></div></div>
 
         <div class="form-actions account-ready-actions">
             <a class="btn btn-outline-secondary" href="{{ back_url|default:'/gestion/portail/' }}">Continuer</a>
             <div class="ui-actions">
                 {% if status_whatsapp_url %}<a class="btn btn-outline-success" href="{{ status_whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Notifier le nouveau statut</a>{% endif %}
-                {% if delivery.whatsapp_url %}<a class="btn btn-success" href="{{ delivery.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Envoyer les identifiants</a>{% endif %}
+                {% if delivery.whatsapp_url %}<a class="btn btn-success" href="{{ delivery.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Envoyer le lien sécurisé</a>{% endif %}
             </div>
         </div>
     </section>

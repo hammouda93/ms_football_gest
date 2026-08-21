@@ -8,13 +8,23 @@
         <span class="eyebrow">Espace sécurisé</span>
         <h1>Retrouvez vos productions</h1>
         <p>Connectez-vous pour suivre vos vidéos, envoyer vos matchs et valider vos versions.</p>
-        <form method="post" class="portal-form">
+        <form method="post" action="{% url 'portal:login' %}" class="portal-form" autocomplete="on">
             {% csrf_token %}
             {{ form.as_p }}
             <button class="portal-button primary full-width" type="submit">Se connecter</button>
         </form>
         <div class="portal-security-note"><span aria-hidden="true">✓</span><p>Vos données et vos liens vidéo restent accessibles uniquement aux comptes autorisés.</p></div>
-        <p class="portal-help">Utilisez l’e-mail et le mot de passe reçus de MS Football. En cas d’oubli, demandez le renouvellement de vos accès.</p>
+        <p class="portal-help">Le lien sécurisé reçu de MS Football est recommandé. L’e-mail et le mot de passe restent disponibles comme solution de secours.</p>
     </section>
 </div>
+{% endblock %}
+
+{% block portal_js %}
+<script>
+    // Safari et Chrome mobile peuvent restaurer un ancien formulaire depuis
+    // leur mémoire. Un rechargement récupère alors un jeton CSRF actuel.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) window.location.reload();
+    });
+</script>
 {% endblock %}

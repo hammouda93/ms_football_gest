@@ -51,6 +51,7 @@ from .video_status_whatsapp import (
 from client_portal.services import (
     deliver_portal_credentials,
     ensure_player_portal_account,
+    issue_reusable_portal_access_link,
 )
 
 
@@ -67,20 +68,29 @@ def _prepare_player_portal_access(request, player):
     if not temporary_password:
         messages.info(
             request,
-            f"Le compte client de {player.name} existe déjà et reste actif.",
+            f"Le compte client de {player.name} existe déjà ; un nouveau lien sécurisé a été préparé.",
         )
-        return None
 
+    access_link, raw_token = issue_reusable_portal_access_link(
+        profile,
+        created_by=request.user,
+    )
+    access_url = request.build_absolute_uri(
+        reverse("portal:magic_access", args=(raw_token,))
+    )
     login_url = request.build_absolute_uri(reverse("portal:login"))
     delivery = deliver_portal_credentials(
         profile,
         temporary_password,
+        access_url=access_url,
         login_url=login_url,
         actor=request.user,
         player=player,
     )
     return {
         "profile": profile,
+        "access_link": access_link,
+        "access_url": access_url,
         "login_url": login_url,
         "login_email": profile.user.email,
         "temporary_password": temporary_password,

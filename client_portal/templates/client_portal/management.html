@@ -75,7 +75,7 @@
         </main>
         <aside>
             <section class="portal-panel sticky-panel">
-                <div class="panel-heading"><div><h2>Comptes portail</h2><small>Accès permanents par e-mail et mot de passe</small></div><span class="portal-count">{{ profiles|length }}</span></div>
+                <div class="panel-heading"><div><h2>Comptes portail</h2><small>Liens sécurisés réutilisables et révocables</small></div><span class="portal-count">{{ profiles|length }}</span></div>
                 {% for profile in profiles %}
                     <article class="account-access-card portal-filter-item {% if not profile.access_enabled %}inactive{% endif %}" data-filter-text="{{ profile.display_name }} {{ profile.get_account_type_display }} {{ profile.user.email }}">
                         <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }}</small></div><span class="account-state {% if profile.access_enabled %}active{% else %}inactive{% endif %}">{% if profile.access_enabled %}Actif{% else %}Désactivé{% endif %}</span></div>
@@ -86,7 +86,7 @@
                         </div>
                         <form method="post" action="{% url 'portal:account_credentials' profile.pk %}">
                             {% csrf_token %}
-                            <button class="btn btn-sm btn-outline-primary btn-block" type="submit"><i class="fas fa-key"></i> Renouveler et envoyer les accès</button>
+                            <button class="btn btn-sm btn-outline-primary btn-block" type="submit" {% if not profile.access_enabled %}disabled title="Réactivez d’abord le compte"{% endif %}><i class="fas fa-link"></i> Renouveler et envoyer le lien</button>
                         </form>
                         <form method="post" action="{% url 'portal:account_toggle' profile.pk %}" class="mt-2">
                             {% csrf_token %}

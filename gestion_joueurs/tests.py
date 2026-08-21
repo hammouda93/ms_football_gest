@@ -17,7 +17,7 @@ from .video_status_whatsapp import (
     get_payment_snapshot,
 )
 
-from client_portal.models import PlayerAccess, PortalProfile
+from client_portal.models import PlayerAccess, PortalAccessLink, PortalProfile
 
 
 class VideoStatusWhatsappTests(TestCase):
@@ -446,7 +446,7 @@ class PlayerPortalProvisioningTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Compte permanent prêt")
+        self.assertContains(response, "Lien sécurisé prêt")
         profile = PortalProfile.objects.get(user__email=self.player.email)
         self.assertTrue(profile.user.has_usable_password())
         self.assertTrue(
@@ -457,6 +457,13 @@ class PlayerPortalProvisioningTests(TestCase):
             ).exists()
         )
         self.assertEqual(len(mail.outbox), 1)
+        self.assertTrue(
+            PortalAccessLink.objects.filter(
+                user=profile.user,
+                revoked_at__isnull=True,
+            ).exists()
+        )
+        self.assertIn("/portal/access/", mail.outbox[0].body)
         self.player.refresh_from_db()
         self.assertEqual(
             (self.player.name, self.player.club, self.player.email),
@@ -503,7 +510,7 @@ class PlayerPortalProvisioningTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Compte permanent prêt")
+        self.assertContains(response, "Lien sécurisé prêt")
         self.assertContains(response, "Notifier le nouveau statut")
         self.assertTrue(response.context["status_whatsapp_url"].startswith(
             "https://wa.me/21620123123"

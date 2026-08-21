@@ -248,8 +248,7 @@ class PortalAccessLink(models.Model):
         except PortalProfile.DoesNotExist:
             active_profile = False
         return (
-            self.used_at is None
-            and self.revoked_at is None
+            self.revoked_at is None
             and self.expires_at > timezone.now()
             and self.user.is_active
             and active_profile

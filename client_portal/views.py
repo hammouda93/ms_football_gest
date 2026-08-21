@@ -12,6 +12,7 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from gestion_joueurs.models import Player, VideoEditor
@@ -53,10 +54,10 @@ from .services import (
     deliver_portal_credentials,
     editable_videos_for,
     invoice_snapshot,
+    issue_reusable_portal_access_link,
     provision_portal_account,
     production_brief,
     production_queryset_for,
-    renew_portal_credentials,
     update_workflow,
 )
 
@@ -85,6 +86,7 @@ def _portal_user_from_login_data(request):
 
 
 @never_cache
+@ensure_csrf_cookie
 def portal_login(request):
     if request.user.is_authenticated:
         try:
@@ -122,11 +124,6 @@ def portal_password_change(request):
     form = PasswordChangeForm(request.user, request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        PortalAccessLink.objects.filter(
-            user=user,
-            used_at__isnull=True,
-            revoked_at__isnull=True,
-        ).update(revoked_at=timezone.now())
         update_session_auth_hash(request, user)
         messages.success(request, "Votre mot de passe a été modifié.")
         return redirect("portal:dashboard")
@@ -583,11 +580,19 @@ def _account_player(profile):
     return access.player if access else None
 
 
-def _render_account_credentials(request, profile, temporary_password, *, player=None):
+def _render_account_credentials(request, profile, temporary_password=None, *, player=None):
+    access_link, raw_token = issue_reusable_portal_access_link(
+        profile,
+        created_by=request.user,
+    )
+    access_url = request.build_absolute_uri(
+        reverse("portal:magic_access", args=(raw_token,))
+    )
     login_url = request.build_absolute_uri(reverse("portal:login"))
     delivery = deliver_portal_credentials(
         profile,
         temporary_password,
+        access_url=access_url,
         login_url=login_url,
         actor=request.user,
         player=player or _account_player(profile),
@@ -597,6 +602,8 @@ def _render_account_credentials(request, profile, temporary_password, *, player=
         "client_portal/access_link_created.html",
         {
             "profile": profile,
+            "access_link": access_link,
+            "access_url": access_url,
             "login_url": login_url,
             "login_email": profile.user.email,
             "temporary_password": temporary_password,
@@ -633,13 +640,13 @@ def portal_access_link_generate(request, profile_id):
         PortalProfile.objects.select_related("user"),
         pk=profile_id,
     )
-    PortalAccessLink.objects.filter(
-        user=profile.user,
-        used_at__isnull=True,
-        revoked_at__isnull=True,
-    ).update(revoked_at=timezone.now())
-    temporary_password = renew_portal_credentials(profile)
-    return _render_account_credentials(request, profile, temporary_password)
+    if not profile.access_enabled:
+        messages.error(
+            request,
+            "Réactivez d’abord le compte avant de renouveler son lien sécurisé.",
+        )
+        return redirect("portal:management")
+    return _render_account_credentials(request, profile)
 
 
 @portal_admin_required
@@ -659,12 +666,6 @@ def portal_account_toggle(request, profile_id):
         profile.save(update_fields=("is_active", "updated_at"))
         profile.user.is_active = activate
         profile.user.save(update_fields=("is_active",))
-        if not activate:
-            PortalAccessLink.objects.filter(
-                user=profile.user,
-                used_at__isnull=True,
-                revoked_at__isnull=True,
-            ).update(revoked_at=timezone.now())
     messages.success(
         request,
         f"Le compte de {profile.display_name} est maintenant "

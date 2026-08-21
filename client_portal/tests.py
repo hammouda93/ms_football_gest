@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -389,7 +389,7 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
             snapshot,
         )
 
-    def test_magic_link_is_single_use(self):
+    def test_magic_link_is_reusable_while_account_is_active(self):
         link, raw_token = PortalAccessLink.issue(
             user=self.player_user,
             created_by=self.admin,
@@ -402,7 +402,32 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertIsNotNone(link.used_at)
         self.client.post(reverse("portal:logout"))
         second = self.client.get(url)
-        self.assertEqual(second.status_code, 410)
+        self.assertRedirects(second, reverse("portal:dashboard"))
+
+    def test_same_magic_link_follows_account_activation(self):
+        profile = self.player_user.portal_profile
+        _link, raw_token = PortalAccessLink.issue(
+            user=self.player_user,
+            created_by=self.admin,
+            lifetime=timedelta(days=1),
+        )
+        url = reverse("portal:magic_access", args=(raw_token,))
+
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("portal:account_toggle", args=(profile.pk,)),
+            {"action": "deactivate"},
+        )
+        self.client.logout()
+        self.assertEqual(self.client.get(url).status_code, 410)
+
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("portal:account_toggle", args=(profile.pk,)),
+            {"action": "activate"},
+        )
+        self.client.logout()
+        self.assertRedirects(self.client.get(url), reverse("portal:dashboard"))
 
     def test_inactive_profile_cannot_use_magic_link(self):
         profile = self.player_user.portal_profile
@@ -459,7 +484,7 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Compte permanent prêt")
+        self.assertContains(response, "Lien sécurisé prêt")
         profile = PortalProfile.objects.get(user__email="hidden-client@example.com")
         self.assertTrue(
             PlayerAccess.objects.filter(
@@ -496,8 +521,11 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         temporary_password = response.context["temporary_password"]
         self.assertTrue(profile.user.has_usable_password())
         self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/portal/access/", mail.outbox[0].body)
+        self.assertIn("réutilisable", mail.outbox[0].body)
         self.assertIn(reverse("portal:login"), mail.outbox[0].body)
         self.assertIn(temporary_password, mail.outbox[0].body)
+        self.assertContains(response, "Lien sécurisé principal")
 
         self.client.logout()
         login_response = self.client.post(
@@ -545,25 +573,56 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertTrue(profile.is_active)
         self.assertTrue(profile.user.is_active)
 
-    def test_admin_can_renew_credentials_and_prepare_whatsapp(self):
+    def test_admin_can_renew_reusable_link_and_prepare_whatsapp(self):
         profile = self.player_user.portal_profile
-        legacy_link, _raw_token = PortalAccessLink.issue(
+        legacy_link, legacy_raw_token = PortalAccessLink.issue(
             user=profile.user,
             created_by=self.admin,
             lifetime=timedelta(days=1),
         )
+        self.client.get(reverse("portal:magic_access", args=(legacy_raw_token,)))
         self.client.force_login(self.admin)
         response = self.client.post(
             reverse("portal:account_credentials", args=(profile.pk,))
         )
         self.assertEqual(response.status_code, 200)
-        temporary_password = response.context["temporary_password"]
-        profile.user.refresh_from_db()
-        self.assertTrue(profile.user.check_password(temporary_password))
+        self.assertIsNone(response.context["temporary_password"])
         self.assertEqual(len(mail.outbox), 1)
-        self.assertContains(response, "Envoyer les identifiants")
+        self.assertContains(response, "Envoyer le lien sécurisé")
+        self.assertContains(response, "peut être ouvert plusieurs fois")
         legacy_link.refresh_from_db()
         self.assertIsNotNone(legacy_link.revoked_at)
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(
+                reverse("portal:magic_access", args=(legacy_raw_token,))
+            ).status_code,
+            410,
+        )
+
+    def test_portal_login_accepts_a_fresh_https_csrf_token(self):
+        self.player_user.set_password("Player-password-123")
+        self.player_user.save(update_fields=("password",))
+        csrf_client = Client(enforce_csrf_checks=True)
+        login_url = reverse("portal:login")
+
+        page = csrf_client.get(login_url, secure=True)
+        csrf_token = csrf_client.cookies["csrftoken"].value
+        response = csrf_client.post(
+            login_url,
+            {
+                "username": self.player_user.email,
+                "password": "Player-password-123",
+                "csrfmiddlewaretoken": csrf_token,
+            },
+            secure=True,
+            HTTP_ORIGIN="https://testserver",
+            HTTP_REFERER=f"https://testserver{login_url}",
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, f'action="{login_url}"')
+        self.assertRedirects(response, reverse("portal:dashboard"))
 
     def test_portal_session_can_switch_to_staff_login_in_same_browser(self):
         self.client.force_login(self.player_user)
@@ -636,6 +695,11 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
             )
 
     def test_password_change_keeps_portal_session_active(self):
+        _link, raw_token = PortalAccessLink.issue(
+            user=self.player_user,
+            created_by=self.admin,
+            lifetime=timedelta(days=1),
+        )
         self.player_user.set_password("Old-password-123")
         self.player_user.save(update_fields=("password",))
         self.client.force_login(self.player_user)
@@ -653,6 +717,11 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertEqual(
             self.client.get(reverse("portal:dashboard")).status_code,
             200,
+        )
+        self.client.post(reverse("portal:logout"))
+        self.assertRedirects(
+            self.client.get(reverse("portal:magic_access", args=(raw_token,))),
+            reverse("portal:dashboard"),
         )
 
 

@@ -20,12 +20,14 @@
                 <span class="eyebrow">Compte client prêt</span>
                 <h2 id="portal-access-title">Accès de {{ portal_access.profile.display_name }}</h2>
                 <p>
-                    {% if portal_access.delivery.email_sent %}Les identifiants ont été envoyés par e-mail.{% else %}L’e-mail n’a pas pu être envoyé automatiquement ; utilisez les informations ci-dessous.{% endif %}
+                    {% if portal_access.delivery.email_sent %}Le lien sécurisé a été envoyé par e-mail.{% else %}L’e-mail n’a pas pu être envoyé automatiquement ; utilisez le lien ci-dessous.{% endif %}
                 </p>
                 <div class="credential-inline-grid">
-                    <div><small>Connexion</small><strong>{{ portal_access.login_url }}</strong></div>
-                    <div><small>E-mail</small><strong>{{ portal_access.login_email }}</strong></div>
-                    <div><small>Mot de passe temporaire</small><strong>{{ portal_access.temporary_password }}</strong></div>
+                    <div><small>Lien sécurisé réutilisable</small><strong>{{ portal_access.access_url }}</strong></div>
+                    {% if portal_access.temporary_password %}
+                        <div><small>E-mail de secours</small><strong>{{ portal_access.login_email }}</strong></div>
+                        <div><small>Mot de passe temporaire</small><strong>{{ portal_access.temporary_password }}</strong></div>
+                    {% endif %}
                 </div>
                 <div class="ui-actions mt-3">
                     {% if portal_access.delivery.whatsapp_url %}<a class="btn btn-success" href="{{ portal_access.delivery.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Ouvrir et envoyer sur WhatsApp</a>{% endif %}
