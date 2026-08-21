@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 
 from django.contrib import messages
@@ -15,7 +16,13 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
-from gestion_joueurs.models import Player, VideoEditor
+from gestion_joueurs.models import Player, Video, VideoEditor
+from gestion_joueurs.video_status_whatsapp import (
+    PAYMENT_MODE_CHOICES,
+    build_status_notification_context,
+    build_whatsapp_url,
+    ensure_delivery_link_in_message,
+)
 
 from .decorators import portal_admin_required, portal_required, production_required
 from .forms import (
@@ -26,6 +33,7 @@ from .forms import (
     PaymentRequestForm,
     PortalAccountForm,
     PortalLoginForm,
+    ProductionVideoStatusForm,
     RevisionRequestForm,
     RevisionResolutionForm,
     VideoActivityForm,
@@ -34,6 +42,7 @@ from .forms import (
 )
 from .models import (
     AgentPlayerRequest,
+    CommunicationLog,
     Organization,
     OrganizationPlayer,
     PaymentRequest,
@@ -51,11 +60,13 @@ from .services import (
     accessible_videos_for,
     build_video_whatsapp_url,
     client_video_timeline,
+    decorate_client_video,
     decorate_video,
     deliver_portal_credentials,
     editable_videos_for,
     invoice_snapshot,
     issue_reusable_portal_access_link,
+    portal_access_states_for_players,
     provision_portal_account,
     production_brief,
     production_queryset_for,
@@ -253,33 +264,121 @@ def production_video_detail(request, video_id):
     revisions = RevisionRequest.objects.filter(
         version__video=video
     ).select_related("version", "requested_by", "resolved_by")
+    portal_state = portal_access_states_for_players((video.player_id,)).get(
+        video.player_id,
+        "none",
+    )
+    context = {
+        "video": video,
+        "client_portal_state": portal_state,
+        "status_form": ProductionVideoStatusForm(
+            user=request.user,
+            video=video,
+        ),
+        "workflow_form": VideoWorkflowForm(
+            instance=workflow,
+            initial=workflow_initial,
+        ),
+        "activity_form": VideoActivityForm(),
+        "version_form": VideoVersionForm(),
+        "payment_request_form": PaymentRequestForm(
+            initial={"amount": video.payment_snapshot.balance}
+        ),
+        "versions": video.portal_versions.select_related(
+            "uploaded_by", "approved_by"
+        ).prefetch_related("revision_requests"),
+        "revisions": revisions,
+        "media_submissions": video.media_submissions.select_related(
+            "submitted_by"
+        ),
+        "activities": video.portal_activities.select_related("created_by")[:50],
+        "payment_requests": video.portal_payment_requests.all(),
+        "communications": video.communication_logs.select_related("actor")[:20],
+        "whatsapp_actions": WHATSAPP_ACTIONS,
+    }
+    context.update(build_status_notification_context(video))
     return render(
         request,
         "client_portal/production_video_detail.html",
-        {
-            "video": video,
-            "workflow_form": VideoWorkflowForm(
-                instance=workflow,
-                initial=workflow_initial,
-            ),
-            "activity_form": VideoActivityForm(),
-            "version_form": VideoVersionForm(),
-            "payment_request_form": PaymentRequestForm(
-                initial={"amount": video.payment_snapshot.balance}
-            ),
-            "versions": video.portal_versions.select_related(
-                "uploaded_by", "approved_by"
-            ).prefetch_related("revision_requests"),
-            "revisions": revisions,
-            "media_submissions": video.media_submissions.select_related(
-                "submitted_by"
-            ),
-            "activities": video.portal_activities.select_related("created_by")[:50],
-            "payment_requests": video.portal_payment_requests.all(),
-            "communications": video.communication_logs.select_related("actor")[:20],
-            "whatsapp_actions": WHATSAPP_ACTIONS,
-        },
+        context,
     )
+
+
+@production_required
+@require_POST
+def production_video_status_update(request, video_id):
+    video = _staff_video_or_404(request.user, video_id)
+    form = ProductionVideoStatusForm(
+        request.POST,
+        user=request.user,
+        video=video,
+    )
+    if not form.is_valid():
+        messages.error(
+            request,
+            "L’état n’a pas été modifié. Vérifiez les informations proposées.",
+        )
+        return redirect("portal:production_video", video_id=video.pk)
+
+    previous_status = video.status
+    new_status = form.cleaned_data["status"]
+    update_fields = []
+    if previous_status != new_status:
+        video.status = new_status
+        update_fields.append("status")
+
+    if new_status == Video.StatusChoices.DELIVERED:
+        submitted_link = (form.cleaned_data.get("video_link") or "").strip()
+        if submitted_link != (video.video_link or ""):
+            video.video_link = submitted_link
+            update_fields.append("video_link")
+
+    if update_fields:
+        video.save(update_fields=tuple(update_fields))
+        messages.success(request, "L’état officiel de la vidéo a été mis à jour.")
+    else:
+        messages.info(request, "Aucun changement d’état n’était nécessaire.")
+
+    status_changed = previous_status != new_status
+    if status_changed and request.POST.get("notification_action") == "whatsapp":
+        payment_mode = request.POST.get("payment_message_mode", "auto")
+        valid_payment_modes = {value for value, _label in PAYMENT_MODE_CHOICES}
+        if payment_mode not in valid_payment_modes:
+            payment_mode = "auto"
+
+        notification_context = build_status_notification_context(video)
+        whatsapp_message = request.POST.get("whatsapp_message", "").strip()
+        if not whatsapp_message:
+            whatsapp_message = notification_context["status_whatsapp_messages"][
+                video.status
+            ][payment_mode]
+        whatsapp_message = ensure_delivery_link_in_message(
+            whatsapp_message,
+            video,
+            video.status,
+        )
+        whatsapp_url = build_whatsapp_url(
+            video.player.whatsapp_number,
+            whatsapp_message[:4000],
+        )
+        if whatsapp_url:
+            CommunicationLog.objects.create(
+                video=video,
+                player=video.player,
+                channel=CommunicationLog.Channel.WHATSAPP,
+                template_key=f"status_{video.status}",
+                recipient=video.player.whatsapp_number or "",
+                message=whatsapp_message[:4000],
+                state=CommunicationLog.State.DRAFT_OPENED,
+                actor=request.user,
+            )
+            return redirect(whatsapp_url)
+        messages.warning(
+            request,
+            "L’état est enregistré, mais aucun numéro WhatsApp n’est renseigné.",
+        )
+
+    return redirect("portal:production_video", video_id=video.pk)
 
 
 @production_required
@@ -723,7 +822,7 @@ def agent_player_request_review(request, request_id):
 def portal_dashboard(request):
     players = list(accessible_players_for(request.user).order_by("name", "club"))
     videos = [
-        decorate_video(video)
+        decorate_client_video(video)
         for video in accessible_videos_for(request.user).order_by("-video_creation_date")
     ]
     current_videos = [
@@ -742,6 +841,25 @@ def portal_dashboard(request):
         is_active=True,
     ).distinct()
     agent_request_form = AgentPlayerRequestForm(user=request.user)
+    player_videos = defaultdict(list)
+    for video in videos:
+        player_videos[video.player_id].append(video)
+    for player in players:
+        related_videos = player_videos.get(player.pk, [])
+        player.portal_active_count = sum(
+            video.production_stage != VideoWorkflow.Stage.DELIVERED
+            for video in related_videos
+        )
+        player.portal_review_count = sum(
+            video.client_review_count for video in related_videos
+        )
+        player.portal_action_count = sum(
+            video.client_action_count for video in related_videos
+        )
+        player.portal_balance = sum(
+            (video.payment_snapshot.balance for video in related_videos),
+            Decimal("0"),
+        )
     return render(
         request,
         "client_portal/dashboard.html",
@@ -757,9 +875,10 @@ def portal_dashboard(request):
             ].queryset.exists(),
             "active_count": len(current_videos),
             "review_count": sum(
-                video.production_stage
-                in {VideoWorkflow.Stage.CLIENT_REVIEW, VideoWorkflow.Stage.REVISIONS}
-                for video in videos
+                video.client_review_count for video in current_videos
+            ),
+            "required_action_count": sum(
+                video.client_action_count for video in current_videos
             ),
             "balance": sum(
                 (video.payment_snapshot.balance for video in videos),
@@ -774,7 +893,7 @@ def portal_dashboard(request):
 def portal_player_detail(request, player_id):
     player = get_object_or_404(accessible_players_for(request.user), pk=player_id)
     videos = [
-        decorate_video(video)
+        decorate_client_video(video)
         for video in accessible_videos_for(request.user)
         .filter(player=player)
         .order_by("-video_creation_date")

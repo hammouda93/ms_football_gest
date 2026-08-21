@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import unquote
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -211,6 +212,105 @@ class ProductionCenterTests(PortalFixtureMixin, TestCase):
         self.assertContains(response, "Suivi de production")
         self.assertContains(response, "Demande de paiement")
         self.assertContains(response, "WhatsApp")
+        self.assertContains(response, "État officiel de la vidéo")
+        self.assertContains(
+            response,
+            reverse("portal:production_video_status_update", args=(self.video.pk,)),
+        )
+        self.assertNotContains(response, "sticky-panel")
+
+    def test_admin_updates_official_status_from_production_detail(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse(
+                "portal:production_video_status_update",
+                args=(self.video.pk,),
+            ),
+            {
+                "status": Video.StatusChoices.IN_PROGRESS,
+                "video_link": "",
+                "notification_action": "skip",
+                "payment_message_mode": "auto",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("portal:production_video", args=(self.video.pk,)),
+        )
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.IN_PROGRESS)
+
+    def test_editor_cannot_set_admin_only_delivered_status(self):
+        self.client.force_login(self.editor_user)
+        response = self.client.post(
+            reverse(
+                "portal:production_video_status_update",
+                args=(self.video.pk,),
+            ),
+            {
+                "status": Video.StatusChoices.DELIVERED,
+                "video_link": "https://www.youtube.com/watch?v=abcdefghijk",
+                "notification_action": "skip",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
+
+    def test_delivered_status_can_open_whatsapp_with_final_link(self):
+        self.client.force_login(self.admin)
+        final_link = "https://www.youtube.com/watch?v=abcdefghijk"
+        response = self.client.post(
+            reverse(
+                "portal:production_video_status_update",
+                args=(self.video.pk,),
+            ),
+            {
+                "status": Video.StatusChoices.DELIVERED,
+                "video_link": final_link,
+                "notification_action": "whatsapp",
+                "payment_message_mode": "none",
+                "whatsapp_message": "Bonjour, la vidéo est livrée.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith("https://wa.me/21620111222"))
+        self.assertIn(final_link, unquote(response.url))
+        self.assertTrue(
+            CommunicationLog.objects.filter(
+                video=self.video,
+                channel=CommunicationLog.Channel.WHATSAPP,
+                template_key="status_delivered",
+            ).exists()
+        )
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.DELIVERED)
+        self.assertEqual(self.video.video_link, final_link)
+
+    def test_video_orders_distinguish_active_client_space_and_link_dossier(self):
+        portal_user = self.make_portal_user("alpha-client-space")
+        PlayerAccess.objects.create(
+            user=portal_user,
+            player=self.player,
+            granted_by=self.admin,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, "Espace actif")
+        self.assertContains(
+            response,
+            reverse("portal:production_video", args=(self.video.pk,)),
+        )
+
+        portal_user.portal_profile.is_active = False
+        portal_user.portal_profile.save(update_fields=("is_active",))
+        response = self.client.get(reverse("dashboard"))
+        self.assertContains(response, "Espace désactivé")
 
     def test_staff_can_publish_version_without_changing_video_status(self):
         self.client.force_login(self.admin)
@@ -760,6 +860,19 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.assertTrue(MediaSubmission.objects.filter(video=self.video).exists())
         self.player.refresh_from_db()
         self.assertEqual(self.player.name, "Alpha Player")
+
+    def test_dashboard_highlights_required_actions_and_order_finances(self):
+        self.client.force_login(self.portal_user)
+
+        response = self.client.get(reverse("portal:dashboard"))
+
+        self.assertContains(response, "Actions requises")
+        self.assertContains(response, "1 version à valider")
+        self.assertContains(response, "Montant total")
+        self.assertContains(response, "Déjà payé")
+        self.assertContains(response, "Solde")
+        self.assertContains(response, "Joueurs suivis")
+        self.assertContains(response, "commande active")
 
     def test_client_cannot_submit_media_for_hidden_video(self):
         self.client.force_login(self.portal_user)

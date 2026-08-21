@@ -20,11 +20,13 @@ from .models import (
     CommunicationLog,
     OrganizationMembership,
     OrganizationPlayer,
+    PaymentRequest,
     PlayerAccess,
     PortalAccessLink,
     PortalProfile,
     RevisionRequest,
     VideoActivity,
+    VideoVersion,
     VideoWorkflow,
 )
 
@@ -341,6 +343,129 @@ def decorate_video(video):
         and stage != VideoWorkflow.Stage.DELIVERED
     )
     return video
+
+
+def decorate_client_video(video):
+    """Add client-facing actions without writing to legacy or portal records."""
+    video = decorate_video(video)
+    versions = list(video.portal_versions.all())
+    submissions = list(video.media_submissions.all())
+    payment_requests = list(video.portal_payment_requests.all())
+
+    pending_versions = [
+        version
+        for version in versions
+        if version.status == VideoVersion.Status.PENDING
+    ]
+    active_payment_requests = [
+        payment_request
+        for payment_request in payment_requests
+        if payment_request.status
+        in {PaymentRequest.Status.PENDING, PaymentRequest.Status.OPENED}
+    ]
+
+    actions = []
+    if pending_versions:
+        count = len(pending_versions)
+        actions.append(
+            {
+                "key": "review",
+                "tone": "review",
+                "icon": "fa-circle-check",
+                "label": (
+                    "1 version à valider"
+                    if count == 1
+                    else f"{count} versions à valider"
+                ),
+            }
+        )
+    if (
+        video.production_stage == VideoWorkflow.Stage.AWAITING_MEDIA
+        and not submissions
+    ):
+        actions.append(
+            {
+                "key": "media",
+                "tone": "media",
+                "icon": "fa-cloud-arrow-up",
+                "label": "Matchs ou éléments à transmettre",
+            }
+        )
+    if video.payment_snapshot.balance > 0 and (
+        active_payment_requests
+        or video.production_stage == VideoWorkflow.Stage.AWAITING_BALANCE
+    ):
+        actions.append(
+            {
+                "key": "payment",
+                "tone": "payment",
+                "icon": "fa-wallet",
+                "label": "Règlement demandé",
+            }
+        )
+    if video.production_stage == VideoWorkflow.Stage.BLOCKED:
+        actions.append(
+            {
+                "key": "contact",
+                "tone": "warning",
+                "icon": "fa-message",
+                "label": "Contacter MS Football",
+            }
+        )
+
+    video.client_actions = actions
+    video.client_action_count = len(actions)
+    video.client_review_count = len(pending_versions)
+    return video
+
+
+def portal_access_states_for_players(player_ids):
+    """Return active/inactive/none portal state for existing players."""
+    player_ids = {int(player_id) for player_id in player_ids if player_id}
+    if not player_ids:
+        return {}
+
+    direct_accounts = PlayerAccess.objects.filter(
+        player_id__in=player_ids,
+        user__portal_profile__isnull=False,
+    )
+    organization_accounts = OrganizationPlayer.objects.filter(
+        player_id__in=player_ids,
+        organization__memberships__user__portal_profile__isnull=False,
+    )
+    account_ids = set(direct_accounts.values_list("player_id", flat=True))
+    account_ids.update(
+        organization_accounts.values_list("player_id", flat=True)
+    )
+
+    active_direct = direct_accounts.filter(
+        is_active=True,
+        user__is_active=True,
+        user__portal_profile__is_active=True,
+    )
+    active_organization = organization_accounts.filter(
+        is_active=True,
+        ended_at__isnull=True,
+        organization__is_active=True,
+        organization__memberships__is_active=True,
+        organization__memberships__user__is_active=True,
+        organization__memberships__user__portal_profile__is_active=True,
+    )
+    active_ids = set(active_direct.values_list("player_id", flat=True))
+    active_ids.update(
+        active_organization.values_list("player_id", flat=True)
+    )
+
+    return {
+        player_id: (
+            "active"
+            if player_id in active_ids
+            else "inactive"
+            if player_id in account_ids
+            else "none"
+        )
+        for player_id in player_ids
+    }
 
 
 def production_queryset_for(user):

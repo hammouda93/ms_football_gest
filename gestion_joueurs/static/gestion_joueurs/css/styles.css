@@ -1330,6 +1330,32 @@ textarea.form-control { min-height: 100px; resize: vertical; }
     .card, .ui-panel { box-shadow: none; }
 }
 
+/* Video orders: client relationship state and direct communication access */
+.video-orders-table-wrap { margin-top: 14px; }
+.video-orders-table td > strong { color: var(--ms-slate-950); }
+.client-space-badge {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.client-space-badge.active { color: var(--ms-success-700); background: var(--ms-success-100); border-color: #b7ebd4; }
+.client-space-badge.inactive { color: var(--ms-warning-700); background: var(--ms-warning-100); border-color: #f5d59f; }
+.client-space-badge.none { color: var(--ms-slate-500); background: var(--ms-slate-100); border-color: var(--ms-slate-200); }
+.client-space-action { box-shadow: 0 5px 14px rgba(10, 126, 92, .14); }
+
+@media (max-width: 767.98px) {
+    .video-orders-table-wrap { margin-top: 12px; }
+    .video-orders-table .client-space-badge { margin-left: auto; }
+    .video-orders-table .btn-group { max-width: 290px; }
+}
+
 /* Pages de notifications */
 .notification-list-message,
 .notification-internal-message {

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
-from gestion_joueurs.models import Player
+from gestion_joueurs.models import Player, Video
 from prospects.services import validate_transfermarkt_profile_url
 
 from .models import (
@@ -196,6 +196,54 @@ class VideoWorkflowForm(StyledModelForm):
                 "Indiquez pourquoi la production est bloquée.",
             )
         return cleaned_data
+
+
+class ProductionVideoStatusForm(forms.Form):
+    """Small, permission-aware status control for the production workspace."""
+
+    STATUS_LABELS = {
+        Video.StatusChoices.PENDING: "En attente",
+        Video.StatusChoices.IN_PROGRESS: "En cours",
+        Video.StatusChoices.COMPLETED_COLLAB: "Fini par le collaborateur",
+        Video.StatusChoices.COMPLETED: "Terminé",
+        Video.StatusChoices.DELIVERED: "Livré",
+        Video.StatusChoices.PROBLEMATIC: "Problématique",
+    }
+
+    status = forms.ChoiceField(label="État officiel de la vidéo")
+    video_link = forms.URLField(
+        label="Lien final de la vidéo",
+        required=False,
+        help_text="Facultatif. Il sera proposé au joueur lorsque l’état devient « Livré ».",
+    )
+
+    def __init__(self, *args, user=None, video=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        allowed_statuses = [
+            Video.StatusChoices.PENDING,
+            Video.StatusChoices.IN_PROGRESS,
+            Video.StatusChoices.COMPLETED_COLLAB,
+            Video.StatusChoices.PROBLEMATIC,
+        ]
+        if user and user.is_superuser:
+            allowed_statuses[3:3] = [
+                Video.StatusChoices.COMPLETED,
+                Video.StatusChoices.DELIVERED,
+            ]
+        elif video and video.status in {
+            Video.StatusChoices.COMPLETED,
+            Video.StatusChoices.DELIVERED,
+        }:
+            # Editors may see an admin-validated terminal state, but cannot
+            # accidentally reopen it from this compact control.
+            allowed_statuses = [video.status]
+        self.fields["status"].choices = [
+            (status, self.STATUS_LABELS[status]) for status in allowed_statuses
+        ]
+        if video:
+            self.initial.setdefault("status", video.status)
+            self.initial.setdefault("video_link", video.video_link or "")
+        _style_fields(self)
 
 
 class VideoActivityForm(StyledModelForm):

@@ -102,46 +102,55 @@
             <div class="tab-content" id="videoTabsContent">
                 <div class="tab-pane {% if request.GET.tab == 'delivered' %} fade{% else %} show active{% endif %}" id="ongoing" role="tabpanel" aria-labelledby="ongoing-tab">
                     {% if videos %}
-                        <table class="table table-striped table-bordered table-hover mt-3 small-table">
+                        <div class="ui-table-scroll video-orders-table-wrap">
+                        <table class="table table-striped table-hover small-table ui-responsive-table video-orders-table">
                             <thead class="thead-light">
                                 <tr>
-                                    <th scope="col"></th>
                                     <th scope="col">Joueur</th>
                                     <th scope="col">Éditeur</th>
                                     <th scope="col">Statut</th>
                                     <th scope="col">Deadline</th>
                                     <th scope="col">Ligue</th>
+                                    <th scope="col">Relation client</th>
                                     <th scope="col" class="text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for video in videos %}
                                     <tr>
-                                        <td>
-                                            {% if request.user.is_superuser %}
-                                                <a href="{% url 'edit_player' video.player.id %}" class="btn btn-success btn-sm" title="Modifier le joueur">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ video.player.name }}</td>
-                                        <td>{{ video.editor.user.username }}</td>
-                                        <td>
+                                        <td data-label="Joueur"><strong>{{ video.player.name }}</strong></td>
+                                        <td data-label="Éditeur">{{ video.editor.user.username }}</td>
+                                        <td data-label="Statut">
                                             <span class="badge 
                                                 {% if video.status == 'completed' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">
-                                                {{ video.status }}
+                                                {{ video.get_status_display }}
                                             </span>
                                         </td>
-                                        <td class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
+                                        <td data-label="Deadline" class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
                                             {{ video.deadline|date:"d/m/Y" }}
                                         </td>
-                                        <td>{{ video.get_league_name }}</td>
-                                        <td class="text-center">
+                                        <td data-label="Ligue">{{ video.get_league_name }}</td>
+                                        <td data-label="Relation client">
+                                            {% if video.client_portal_state == 'active' %}
+                                                <span class="client-space-badge active"><i class="fas fa-user-check"></i> Espace actif</span>
+                                            {% elif video.client_portal_state == 'inactive' %}
+                                                <span class="client-space-badge inactive"><i class="fas fa-user-lock"></i> Espace désactivé</span>
+                                            {% else %}
+                                                <span class="client-space-badge none"><i class="fas fa-user-slash"></i> Sans espace</span>
+                                            {% endif %}
+                                        </td>
+                                        <td data-label="Actions" class="text-center">
                                             <div class="btn-group" role="group">
+                                                <a href="{% url 'portal:production_video' video.id %}" class="btn btn-sm {% if video.client_portal_state == 'active' %}btn-success client-space-action{% else %}btn-outline-primary{% endif %}" title="Ouvrir le dossier de communication client" aria-label="Ouvrir le dossier de communication de {{ video.player.name }}">
+                                                    <i class="fas {% if video.client_portal_state == 'active' %}fa-comments{% else %}fa-clapperboard{% endif %}"></i>
+                                                </a>
                                                 <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Modifier le statut">
                                                     <i class="fas fa-sync-alt"></i>
                                                 </a>
-                                                {% if request.user.is_superuser %}    
+                                                {% if request.user.is_superuser %}
+                                                    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-outline-success btn-sm" title="Modifier le joueur">
+                                                        <i class="fas fa-user-pen"></i>
+                                                    </a>
                                                     <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo">
                                                         <i class="fas fa-pencil-alt"></i>
                                                     </a>
@@ -172,6 +181,7 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        </div>
                     {% else %}
                         <div class="alert alert-warning" role="alert">
                             Aucune vidéo en cours à afficher.
@@ -181,7 +191,8 @@
 
                 <div class="tab-pane fade {% if request.GET.tab == 'delivered' %}show active{% endif %}" id="delivered" role="tabpanel" aria-labelledby="delivered-tab">
                     {% if videos %}
-                        <table class="table table-striped table-bordered table-hover mt-3 small-table">
+                        <div class="ui-table-scroll video-orders-table-wrap">
+                        <table class="table table-striped table-hover small-table ui-responsive-table video-orders-table">
                             <thead class="thead-light">
                                 <tr>
                                     <th scope="col">Joueur</th>
@@ -189,22 +200,34 @@
                                     <th scope="col">Statut</th>
                                     <th scope="col">Deadline</th>
                                     <th scope="col">Ligue</th>
+                                    <th scope="col">Relation client</th>
                                     <th scope="col" class="text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for video in videos %}
                                     <tr>
-                                        <td>{{ video.player.name }}</td>
-                                        <td>{{ video.editor.user.username }}</td>
-                                        <td><span class="badge badge-success">{{ video.status }}</span></td>
-                                        <td>{{ video.deadline|date:"d/m/Y" }}</td>
-                                        <td>{{ video.get_league_name }}</td>
-                                        <td class="text-center">
+                                        <td data-label="Joueur"><strong>{{ video.player.name }}</strong></td>
+                                        <td data-label="Éditeur">{{ video.editor.user.username }}</td>
+                                        <td data-label="Statut"><span class="badge badge-success">{{ video.get_status_display }}</span></td>
+                                        <td data-label="Deadline">{{ video.deadline|date:"d/m/Y" }}</td>
+                                        <td data-label="Ligue">{{ video.get_league_name }}</td>
+                                        <td data-label="Relation client">
+                                            {% if video.client_portal_state == 'active' %}
+                                                <span class="client-space-badge active"><i class="fas fa-user-check"></i> Espace actif</span>
+                                            {% elif video.client_portal_state == 'inactive' %}
+                                                <span class="client-space-badge inactive"><i class="fas fa-user-lock"></i> Espace désactivé</span>
+                                            {% else %}
+                                                <span class="client-space-badge none"><i class="fas fa-user-slash"></i> Sans espace</span>
+                                            {% endif %}
+                                        </td>
+                                        <td data-label="Actions" class="text-center">
                                             <div class="btn-group" role="group">
+                                                <a href="{% url 'portal:production_video' video.id %}" class="btn btn-sm {% if video.client_portal_state == 'active' %}btn-success client-space-action{% else %}btn-outline-primary{% endif %}" title="Ouvrir le dossier de communication client" aria-label="Ouvrir le dossier de communication de {{ video.player.name }}"><i class="fas {% if video.client_portal_state == 'active' %}fa-comments{% else %}fa-clapperboard{% endif %}"></i></a>
                                                 <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Voir le statut"><i class="fas fa-eye"></i></a>
                                                 <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning btn-sm" title="Modifier le statut"><i class="fas fa-sync-alt"></i></a>
                                                 {% if request.user.is_superuser %}    
+                                                    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-outline-success btn-sm" title="Modifier le joueur"><i class="fas fa-user-pen"></i></a>
                                                     <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo"><i class="fas fa-pencil-alt"></i></a>
                                                     <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement"><i class="fas fa-dollar-sign"></i></a>
                                                 {% endif %}
@@ -217,6 +240,7 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        </div>
                     {% else %}
                         <div class="alert alert-warning" role="alert">
                             Aucune vidéo livrée à afficher.

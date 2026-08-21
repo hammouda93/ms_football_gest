@@ -19,8 +19,8 @@
 <section class="portal-metrics" aria-label="Résumé de votre espace">
     <article><span>Joueurs suivis</span><strong>{{ players|length }}</strong><small>dans votre espace</small></article>
     <article><span>En production</span><strong>{{ active_count }}</strong><small>commande{{ active_count|pluralize }} active{{ active_count|pluralize }}</small></article>
-    <article class="{% if review_count %}needs-attention{% endif %}"><span>À valider</span><strong>{{ review_count }}</strong><small>action{{ review_count|pluralize }} requise{{ review_count|pluralize }}</small></article>
-    <article><span>Solde visible</span><strong>{{ balance|floatformat:2 }}</strong><small>sur les commandes</small></article>
+    <article class="{% if required_action_count %}needs-attention{% endif %}"><span>À valider</span><strong>{{ review_count }}</strong><small>{{ required_action_count }} action{{ required_action_count|pluralize }} requise{{ required_action_count|pluralize }} au total</small></article>
+    <article class="{% if balance %}needs-attention{% endif %}"><span>Solde à régler</span><strong>{{ balance|floatformat:2 }}</strong><small>visible sur les commandes</small></article>
 </section>
 
 <section class="portal-section" id="players">
@@ -32,10 +32,15 @@
         {% for player in players %}
             <a class="player-portal-card" href="{% url 'portal:player' player.pk %}">
                 <div class="player-avatar">{{ player.name|first|upper }}</div>
-                <div>
+                <div class="player-portal-copy">
                     <strong>{{ player.name }}</strong>
                     <span>{{ player.club|default:"Club non renseigné" }}</span>
                     <small>{{ player.get_position_display }} · {{ player.get_league_name }}</small>
+                    <div class="player-relationship-stats">
+                        <span><i class="fas fa-clapperboard" aria-hidden="true"></i> {{ player.portal_active_count }} active{{ player.portal_active_count|pluralize }}</span>
+                        {% if player.portal_review_count %}<span class="attention"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ player.portal_review_count }} à valider</span>{% endif %}
+                        <span class="{% if player.portal_balance %}attention{% endif %}"><i class="fas fa-wallet" aria-hidden="true"></i> Solde {{ player.portal_balance|floatformat:2 }}</span>
+                    </div>
                 </div>
                 <b aria-hidden="true">→</b>
             </a>
@@ -52,14 +57,7 @@
     </div>
     <div class="portal-video-list">
         {% for video in current_videos %}
-            <a class="portal-video-card" href="{% url 'portal:video' video.pk %}">
-                <div class="portal-video-main">
-                    <div><span class="status-dot stage-{{ video.production_stage }}"></span><strong>{{ video.player.name }} · {{ video.season }}</strong></div>
-                    <span>{{ video.production_stage_label }}</span>
-                </div>
-                <div class="portal-progress" aria-label="Progression {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
-                <div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Prévue le {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div>
-            </a>
+            {% include "client_portal/includes/video_order_card.html" with video=video show_player=True only %}
         {% empty %}
             <div class="portal-empty"><strong>Aucune production en cours</strong><span>Les nouvelles commandes apparaîtront ici dès leur création.</span></div>
         {% endfor %}

@@ -19,6 +19,11 @@ urlpatterns = [
         name="production_workflow_update",
     ),
     path(
+        "production/video/<int:video_id>/status/",
+        views.production_video_status_update,
+        name="production_video_status_update",
+    ),
+    path(
         "production/video/<int:video_id>/activity/",
         views.production_activity_add,
         name="production_activity_add",

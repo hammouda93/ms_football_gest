@@ -52,6 +52,7 @@ from client_portal.services import (
     deliver_portal_credentials,
     ensure_player_portal_account,
     issue_reusable_portal_access_link,
+    portal_access_states_for_players,
 )
 
 
@@ -353,6 +354,11 @@ def dashboard(request):
     paginator = Paginator(videos, 20)  # Show 20 videos per page
     page_number = request.GET.get('page')  # Get the page number from the query parameters
     page_obj = paginator.get_page(page_number)  # This is the page object
+    portal_states = portal_access_states_for_players(
+        video.player_id for video in page_obj.object_list
+    )
+    for video in page_obj.object_list:
+        video.client_portal_state = portal_states.get(video.player_id, 'none')
 
     ongoing_videos_count  = videos.exclude(status='delivered').count()
     delivered_videos_count = videos.filter(status='delivered').count()

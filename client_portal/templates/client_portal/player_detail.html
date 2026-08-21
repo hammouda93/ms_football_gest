@@ -21,11 +21,7 @@
     </div>
     <div class="portal-video-list">
         {% for video in current_videos %}
-            <a class="portal-video-card" href="{% url 'portal:video' video.pk %}">
-                <div class="portal-video-main"><strong>{{ video.season }} · {{ video.club|default:player.club }}</strong><span>{{ video.production_stage_label }}</span></div>
-                <div class="portal-progress" aria-label="Progression {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
-                <div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Échéance {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div>
-            </a>
+            {% include "client_portal/includes/video_order_card.html" with video=video show_player=False only %}
         {% empty %}
             <div class="portal-empty"><strong>Aucune production en cours</strong><span>Une nouvelle commande apparaîtra ici dès sa création.</span></div>
         {% endfor %}

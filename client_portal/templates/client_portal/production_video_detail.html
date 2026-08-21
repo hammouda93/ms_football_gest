@@ -12,7 +12,16 @@
             <h1>{{ video.player.name }}</h1>
             <p>{{ video.club|default:video.player.club }} · {{ video.season }} · État vidéo : {{ video.get_status_display }}</p>
         </div>
-        <a class="btn btn-outline-secondary" href="{% url 'view_video' video.pk %}">Fiche existante</a>
+        <div class="production-heading-actions">
+            {% if client_portal_state == 'active' %}
+                <span class="production-client-state active"><i class="fas fa-user-check"></i> Espace client actif</span>
+            {% elif client_portal_state == 'inactive' %}
+                <span class="production-client-state inactive"><i class="fas fa-user-lock"></i> Espace client désactivé</span>
+            {% else %}
+                <span class="production-client-state none"><i class="fas fa-user-slash"></i> Aucun espace client</span>
+            {% endif %}
+            <a class="btn btn-outline-secondary" href="{% url 'view_video' video.pk %}">Fiche existante</a>
+        </div>
     </div>
 
     {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
@@ -91,7 +100,34 @@
         </main>
 
         <aside>
-            <section class="portal-panel sticky-panel">
+            <section class="portal-panel production-status-panel">
+                <div class="panel-heading">
+                    <div><h2>État officiel de la vidéo</h2><small>Visible dans l’historique du joueur</small></div>
+                </div>
+                <form
+                    method="post"
+                    action="{% url 'portal:production_video_status_update' video.pk %}"
+                    class="compact-form"
+                    id="production-status-form"
+                    data-original-status="{{ video.status }}"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="notification_action" id="production-notification-action" value="skip">
+                    <p>
+                        <label for="{{ status_form.status.id_for_label }}">{{ status_form.status.label }}</label>
+                        {{ status_form.status }}
+                    </p>
+                    <p id="production-video-link-field" {% if video.status != 'delivered' %}hidden{% endif %}>
+                        <label for="{{ status_form.video_link.id_for_label }}">{{ status_form.video_link.label }}</label>
+                        {{ status_form.video_link }}
+                        <span class="helptext">{{ status_form.video_link.help_text }}</span>
+                    </p>
+                    <p class="form-note production-status-note"><i class="fas fa-circle-info"></i> Le suivi détaillé ci-dessous reste indépendant : vous gardez la main sur l’étape, la priorité et la progression.</p>
+                    <button class="btn btn-primary btn-block" type="submit"><i class="fas fa-arrows-rotate"></i> Enregistrer l’état</button>
+                </form>
+            </section>
+
+            <section class="portal-panel">
                 <div class="panel-heading"><h2>Suivi de production</h2></div>
                 <form method="post" action="{% url 'portal:production_workflow_update' video.pk %}" class="compact-form">
                     {% csrf_token %}{{ workflow_form.as_p }}
@@ -109,6 +145,20 @@
             </section>
 
             <section class="portal-panel">
+                <div class="panel-heading"><h2>Journal des communications</h2><span>{{ communications|length }}</span></div>
+                <div class="communication-log-list">
+                    {% for communication in communications %}
+                        <article class="communication-log-item">
+                            <i class="{% if communication.channel == 'whatsapp' %}fab fa-whatsapp{% elif communication.channel == 'email' %}fas fa-envelope{% else %}fas fa-window-maximize{% endif %}" aria-hidden="true"></i>
+                            <div><strong>{{ communication.get_channel_display }} · {{ communication.get_state_display }}</strong><span>{{ communication.message|truncatechars:85 }}</span><small>{{ communication.created_at|date:"d/m/Y H:i" }}{% if communication.actor %} · {{ communication.actor.username }}{% endif %}</small></div>
+                        </article>
+                    {% empty %}
+                        <div class="empty-state communication-empty">Aucun échange enregistré pour cette vidéo.</div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="portal-panel">
                 <div class="panel-heading"><h2>Demande de paiement</h2></div>
                 <form method="post" action="{% url 'portal:production_payment_request_add' video.pk %}" class="compact-form">
                     {% csrf_token %}{{ payment_request_form.as_p }}
@@ -118,5 +168,134 @@
             </section>
         </aside>
     </div>
+
+    <div
+        class="modal fade production-status-modal"
+        id="production-status-notification-modal"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="production-status-notification-title"
+        aria-hidden="true"
+    >
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="production-status-notification-title">Informer {{ video.player.name }} du nouvel état ?</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Fermer"><span aria-hidden="true">&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div class="status-payment-snapshot">
+                        <i class="fas fa-wallet" aria-hidden="true"></i>
+                        <div>
+                            <strong>{{ payment_snapshot.status_label }}</strong>
+                            <span>Payé : {{ payment_snapshot.amount_paid_display }} / {{ payment_snapshot.total_display }} · Solde : {{ payment_snapshot.remaining_display }}</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="production-payment-message-mode">Information de paiement à inclure</label>
+                        <select name="payment_message_mode" id="production-payment-message-mode" class="form-control" form="production-status-form">
+                            {% for value, label in payment_mode_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                        </select>
+                        <small class="form-text text-primary" id="production-payment-recommendation"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="production-whatsapp-message">Message proposé — modifiable</label>
+                        <textarea name="whatsapp_message" id="production-whatsapp-message" class="form-control" form="production-status-form" rows="10" maxlength="4000"></textarea>
+                    </div>
+                    {% if player_has_whatsapp %}
+                        <div class="alert alert-info mb-0">WhatsApp s’ouvrira avec ce brouillon. Le message ne partira qu’après votre appui sur « Envoyer » dans WhatsApp.</div>
+                    {% else %}
+                        <div class="alert alert-warning mb-0">Aucun numéro WhatsApp n’est enregistré. Vous pouvez tout de même mettre à jour l’état.</div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer flex-column flex-sm-row">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                    <button type="button" class="btn btn-outline-primary" id="production-save-without-whatsapp">Mettre à jour sans WhatsApp</button>
+                    <button type="button" class="btn btn-success" id="production-save-with-whatsapp" {% if not player_has_whatsapp %}disabled{% endif %}><i class="fab fa-whatsapp"></i> Mettre à jour et ouvrir WhatsApp</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+{{ status_whatsapp_messages|json_script:"production-status-whatsapp-messages" }}
+{{ status_payment_recommendations|json_script:"production-status-payment-recommendations" }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('production-status-form');
+    const statusSelect = form ? form.querySelector('[name="status"]') : null;
+    const videoLinkInput = form ? form.querySelector('[name="video_link"]') : null;
+    const videoLinkField = document.getElementById('production-video-link-field');
+    const notificationAction = document.getElementById('production-notification-action');
+    const modal = document.getElementById('production-status-notification-modal');
+    const paymentMode = document.getElementById('production-payment-message-mode');
+    const paymentRecommendation = document.getElementById('production-payment-recommendation');
+    const whatsappMessage = document.getElementById('production-whatsapp-message');
+    const saveWithoutWhatsapp = document.getElementById('production-save-without-whatsapp');
+    const saveWithWhatsapp = document.getElementById('production-save-with-whatsapp');
+    const messageData = document.getElementById('production-status-whatsapp-messages');
+    const recommendationData = document.getElementById('production-status-payment-recommendations');
+
+    if (!form || !statusSelect || !modal || !messageData || !recommendationData) return;
+
+    document.body.appendChild(modal);
+    const messages = JSON.parse(messageData.textContent);
+    const recommendations = JSON.parse(recommendationData.textContent);
+    let confirmationCompleted = false;
+
+    function toggleDeliveryLink() {
+        if (videoLinkField) videoLinkField.hidden = statusSelect.value !== 'delivered';
+    }
+
+    function addDeliveryLink(message) {
+        const link = videoLinkInput ? videoLinkInput.value.trim() : '';
+        if (statusSelect.value !== 'delivered' || !link || message.includes(link)) return message;
+        const signature = '\n\nMoataz — MS Football';
+        const paragraph = `\n\nVoici le lien de la vidéo : ${link}`;
+        return message.includes(signature)
+            ? message.replace(signature, `${paragraph}${signature}`)
+            : `${message}${paragraph}`;
+    }
+
+    function updatePreview() {
+        const status = statusSelect.value;
+        const recommendation = recommendations[status] || {};
+        const statusMessages = messages[status] || {};
+        if (paymentMode.value === 'auto') {
+            const automaticOption = paymentMode.querySelector('option[value="auto"]');
+            if (automaticOption) automaticOption.textContent = recommendation.label
+                ? `Automatique — ${recommendation.label}`
+                : 'Selon le paiement enregistré';
+        }
+        paymentRecommendation.textContent = recommendation.label
+            ? `Recommandation : ${recommendation.label}`
+            : '';
+        whatsappMessage.value = addDeliveryLink(
+            statusMessages[paymentMode.value] || statusMessages.auto || ''
+        );
+    }
+
+    function submitConfirmed(action) {
+        notificationAction.value = action;
+        confirmationCompleted = true;
+        $('#production-status-notification-modal').modal('hide');
+        if (typeof form.requestSubmit === 'function') form.requestSubmit();
+        else form.submit();
+    }
+
+    statusSelect.addEventListener('change', toggleDeliveryLink);
+    paymentMode.addEventListener('change', updatePreview);
+    form.addEventListener('submit', function (event) {
+        if (confirmationCompleted || statusSelect.value === form.dataset.originalStatus) return;
+        event.preventDefault();
+        paymentMode.value = 'auto';
+        updatePreview();
+        $('#production-status-notification-modal').modal('show');
+    });
+    saveWithoutWhatsapp.addEventListener('click', function () { submitConfirmed('skip'); });
+    saveWithWhatsapp.addEventListener('click', function () { submitConfirmed('whatsapp'); });
+    toggleDeliveryLink();
+});
+</script>
 {% endblock %}
