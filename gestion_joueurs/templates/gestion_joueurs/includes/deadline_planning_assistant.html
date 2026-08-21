@@ -1,0 +1,132 @@
+<section
+    class="deadline-assistant"
+    id="deadline-planning-assistant"
+    data-endpoint="{% url 'deadline_planning_assistant' %}"
+    data-mode="{{ planner_mode|default:'create' }}"
+    data-exclude-video-id="{{ planner_video_id|default:'' }}"
+    aria-labelledby="deadline-assistant-title"
+>
+    <div class="deadline-assistant-header">
+        <div class="deadline-assistant-heading">
+            <span class="deadline-assistant-icon" aria-hidden="true">
+                <i class="fas fa-calendar-check"></i>
+            </span>
+            <div>
+                <span class="ui-eyebrow">Assistant de planification</span>
+                <h3 id="deadline-assistant-title">Choisir une deadline réaliste</h3>
+                <p>Visualisez la charge avant de choisir. Les conseils restent toujours non bloquants.</p>
+            </div>
+        </div>
+        <span class="deadline-live-badge"><i class="fas fa-wand-magic-sparkles"></i> Analyse en direct</span>
+    </div>
+
+    <div class="deadline-past-warning" data-role="past-warning" hidden>
+        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <div>
+            <strong>Cette deadline est passée</strong>
+            <span data-role="past-warning-copy"></span>
+        </div>
+    </div>
+
+    <div class="deadline-assistant-error" data-role="error" hidden>
+        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+        <span>Les indicateurs ne sont pas disponibles pour le moment. Vous pouvez quand même choisir et enregistrer la date.</span>
+    </div>
+
+    <div class="deadline-assistant-loading" data-role="loading" aria-live="polite">
+        <span class="deadline-loading-spinner" aria-hidden="true"></span>
+        <span>Analyse des prochaines échéances…</span>
+    </div>
+
+    <div class="deadline-assistant-content" data-role="content" hidden>
+        <div class="deadline-summary-grid" aria-label="Indicateurs de charge">
+            <article class="deadline-summary-card">
+                <span class="deadline-summary-icon blue"><i class="fas fa-layer-group"></i></span>
+                <div><small>Vidéos actives</small><strong data-role="active-count">0</strong><span>à planifier</span></div>
+            </article>
+            <article class="deadline-summary-card">
+                <span class="deadline-summary-icon cyan"><i class="fas fa-calendar-week"></i></span>
+                <div><small>7 prochains jours</small><strong data-role="week-count">0</strong><span>deadlines</span></div>
+            </article>
+            <article class="deadline-summary-card">
+                <span class="deadline-summary-icon amber"><i class="fas fa-clock-rotate-left"></i></span>
+                <div><small>En retard</small><strong data-role="overdue-count">0</strong><span>à surveiller</span></div>
+            </article>
+            <article class="deadline-summary-card">
+                <span class="deadline-summary-icon green"><i class="fas fa-wand-magic-sparkles"></i></span>
+                <div><small>En finition</small><strong data-role="finishing-count">0</strong><span>Completed Collab</span></div>
+            </article>
+        </div>
+
+        <div class="deadline-selection-card" data-role="selection-card">
+            <div class="deadline-selection-main">
+                <span class="deadline-selection-eyebrow" data-role="selection-eyebrow">Aperçu de la date</span>
+                <strong data-role="selection-date">—</strong>
+                <p data-role="selection-copy">Sélectionnez une date pour obtenir une analyse précise.</p>
+            </div>
+            <div class="deadline-selection-score">
+                <span class="deadline-load-pill" data-role="load-pill">Disponible</span>
+                <strong data-role="load-score">0</strong>
+                <small>indice de charge</small>
+            </div>
+        </div>
+
+        <div class="deadline-suggestions-block">
+            <div class="deadline-section-heading">
+                <div>
+                    <span class="ui-eyebrow">Recommandations</span>
+                    <h4>Dates les plus équilibrées à proximité</h4>
+                </div>
+                <small data-role="editor-scope">Toute l’équipe</small>
+            </div>
+            <div class="deadline-suggestions" data-role="suggestions"></div>
+        </div>
+
+        <div class="deadline-calendar-block">
+            <div class="deadline-section-heading deadline-calendar-heading">
+                <div>
+                    <span class="ui-eyebrow">Calendrier de charge</span>
+                    <h4>Prochaines deadlines actives</h4>
+                </div>
+                <div class="deadline-legend" aria-label="Légende">
+                    <span><i class="legend-dot free"></i>Disponible</span>
+                    <span><i class="legend-dot balanced"></i>Équilibrée</span>
+                    <span><i class="legend-dot busy"></i>Chargée</span>
+                </div>
+            </div>
+            <div class="deadline-calendar-grid" data-role="calendar" aria-label="Calendrier des échéances"></div>
+        </div>
+
+        <div class="deadline-detail-grid">
+            <section class="deadline-detail-panel">
+                <div class="deadline-section-heading compact">
+                    <div>
+                        <span class="ui-eyebrow">Période sélectionnée</span>
+                        <h4>Deadlines à ± 2 jours</h4>
+                    </div>
+                    <span class="deadline-count-chip" data-role="period-count">0</span>
+                </div>
+                <div class="deadline-video-list" data-role="period-videos"></div>
+            </section>
+            <section class="deadline-detail-panel">
+                <div class="deadline-section-heading compact">
+                    <div>
+                        <span class="ui-eyebrow">Attention</span>
+                        <h4>Deadlines actives dépassées</h4>
+                    </div>
+                    <span class="deadline-count-chip warning" data-role="attention-count">0</span>
+                </div>
+                <div class="deadline-video-list" data-role="attention-videos"></div>
+            </section>
+        </div>
+
+        <p class="deadline-method-note">
+            <i class="fas fa-circle-info" aria-hidden="true"></i>
+            <span data-role="method-note"></span>
+        </p>
+    </div>
+
+    <noscript>
+        <p class="deadline-method-note">Activez JavaScript pour afficher l’assistant. Le champ deadline reste utilisable normalement.</p>
+    </noscript>
+</section>

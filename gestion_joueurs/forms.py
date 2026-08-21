@@ -104,6 +104,20 @@ class VideoForm(forms.ModelForm):
         # Récupérer l'utilisateur connecté
         user = kwargs.pop('user', None)
         super(VideoForm, self).__init__(*args, **kwargs)
+        self.is_editing = bool(self.instance and self.instance.pk)
+        self.fields['deadline'].label = "Deadline de livraison"
+        self.fields['deadline'].widget.attrs['data-deadline-planner-target'] = 'true'
+        if self.is_editing:
+            self.fields['deadline'].widget.attrs.pop('min', None)
+            self.fields['deadline'].help_text = (
+                "Une deadline passée reste modifiable. L’assistant vous signalera "
+                "simplement le retard sans empêcher l’enregistrement."
+            )
+        else:
+            self.fields['deadline'].widget.attrs['min'] = timezone.localdate().isoformat()
+            self.fields['deadline'].help_text = (
+                "Choisissez librement une date future ; l’assistant vous indique la charge."
+            )
         self.fields['seasons_to_process'].widget = forms.Select(choices=Video.SeasonsToProcessChoices.choices)
         if user and hasattr(user, 'videoeditor'):
             # Définir l'éditeur par défaut sur l'utilisateur connecté
@@ -126,7 +140,7 @@ class VideoForm(forms.ModelForm):
     
     def clean_deadline(self):
         deadline = self.cleaned_data.get('deadline')
-        if deadline and deadline < timezone.now().date():
+        if deadline and deadline < timezone.localdate() and not self.is_editing:
             raise ValidationError("La date de deadline ne peut pas être dans le passé.")
         return deadline
 

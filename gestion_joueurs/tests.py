@@ -8,6 +8,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .deadline_planning import ACTIVE_PLANNING_STATUSES
+from .forms import VideoForm
 from .models import Invoice, Notification, Player, Video, VideoEditor
 from .utils import set_current_user
 from .video_status_whatsapp import (
@@ -524,3 +526,218 @@ class PlayerPortalProvisioningTests(TestCase):
                 user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
             ).exists()
         )
+
+
+class DeadlinePlanningAssistantTests(TestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.admin = User.objects.create_superuser(
+            username="admin-deadline-planning",
+            email="planning@example.com",
+            password="test-password",
+        )
+        editor_user = User.objects.create_user(
+            username="monteur-principal",
+            password="test-password",
+        )
+        other_editor_user = User.objects.create_user(
+            username="monteur-secondaire",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=editor_user)
+        self.other_editor = VideoEditor.objects.create(user=other_editor_user)
+        self.client.force_login(self.admin)
+
+    def make_video(self, *, status, deadline, editor=None, seasons=1, suffix=""):
+        player = Player.objects.create(
+            name=f"Joueur planning {suffix or Video.objects.count() + 1}",
+            club="Club Planning",
+        )
+        return Video.objects.create(
+            player=player,
+            editor=editor or self.editor,
+            status=status,
+            advance_payment=Decimal("0.00"),
+            total_payment=Decimal("200.00"),
+            deadline=deadline,
+            season="2025/2026",
+            club=player.club,
+            league=player.league,
+            seasons_to_process=seasons,
+        )
+
+    def form_data(self, video, deadline):
+        return {
+            "status": video.status,
+            "advance_payment": str(video.advance_payment),
+            "total_payment": str(video.total_payment),
+            "deadline": deadline.isoformat(),
+            "video_link": video.video_link or "",
+            "client_portal_visible": "on",
+            "info": video.info or "",
+            "season": video.season,
+            "editor": str(video.editor_id),
+            "seasons_to_process": str(video.seasons_to_process),
+        }
+
+    def test_only_work_statuses_are_counted(self):
+        selected_date = self.today + timedelta(days=6)
+        included_pending = self.make_video(
+            status=Video.StatusChoices.PENDING,
+            deadline=selected_date,
+            suffix="pending",
+        )
+        included_progress = self.make_video(
+            status=Video.StatusChoices.IN_PROGRESS,
+            deadline=selected_date,
+            editor=self.other_editor,
+            seasons=2,
+            suffix="progress",
+        )
+        included_collab = self.make_video(
+            status=Video.StatusChoices.COMPLETED_COLLAB,
+            deadline=selected_date + timedelta(days=1),
+            suffix="collab",
+        )
+        for status in (
+            Video.StatusChoices.COMPLETED,
+            Video.StatusChoices.DELIVERED,
+            Video.StatusChoices.PROBLEMATIC,
+        ):
+            self.make_video(
+                status=status,
+                deadline=selected_date,
+                suffix=status,
+            )
+
+        before = list(Video.objects.values_list("pk", "deadline", "status"))
+        response = self.client.get(
+            reverse("deadline_planning_assistant"),
+            {
+                "date": selected_date.isoformat(),
+                "editor_id": self.editor.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(set(ACTIVE_PLANNING_STATUSES), {
+            Video.StatusChoices.PENDING,
+            Video.StatusChoices.IN_PROGRESS,
+            Video.StatusChoices.COMPLETED_COLLAB,
+        })
+        self.assertEqual(payload["summary"]["active_count"], 3)
+        self.assertEqual(payload["summary"]["finishing_count"], 1)
+        self.assertEqual(payload["selection"]["global_count"], 2)
+        self.assertEqual(payload["selection"]["editor_count"], 1)
+        self.assertEqual(
+            {video["id"] for video in payload["period_videos"]},
+            {included_pending.pk, included_progress.pk, included_collab.pk},
+        )
+        self.assertEqual(len(payload["calendar"]), 28)
+        self.assertEqual(len(payload["suggestions"]), 3)
+        self.assertEqual(
+            list(Video.objects.values_list("pk", "deadline", "status")),
+            before,
+        )
+
+    def test_current_video_is_excluded_from_edit_planning(self):
+        selected_date = self.today + timedelta(days=4)
+        current_video = self.make_video(
+            status=Video.StatusChoices.IN_PROGRESS,
+            deadline=selected_date,
+            suffix="current",
+        )
+        other_video = self.make_video(
+            status=Video.StatusChoices.PENDING,
+            deadline=selected_date,
+            suffix="other",
+        )
+
+        response = self.client.get(
+            reverse("deadline_planning_assistant"),
+            {
+                "date": selected_date.isoformat(),
+                "exclude_video_id": current_video.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["selection"]["global_count"], 1)
+        self.assertEqual(
+            [video["id"] for video in payload["period_videos"]],
+            [other_video.pk],
+        )
+
+    def test_create_rejects_a_past_deadline_but_edit_allows_it(self):
+        past_deadline = self.today - timedelta(days=5)
+        video = self.make_video(
+            status=Video.StatusChoices.PENDING,
+            deadline=self.today + timedelta(days=8),
+            suffix="past-edit",
+        )
+        create_form = VideoForm(
+            data=self.form_data(video, past_deadline),
+            user=self.admin,
+        )
+        self.assertFalse(create_form.is_valid())
+        self.assertIn("passé", create_form.errors["deadline"][0])
+        self.assertEqual(
+            create_form.fields["deadline"].widget.attrs["min"],
+            self.today.isoformat(),
+        )
+
+        edit_form = VideoForm(
+            data=self.form_data(video, past_deadline),
+            instance=video,
+            user=self.admin,
+        )
+        self.assertTrue(edit_form.is_valid(), edit_form.errors)
+        self.assertNotIn("min", edit_form.fields["deadline"].widget.attrs)
+        edit_form.save()
+        video.refresh_from_db()
+        self.assertEqual(video.deadline, past_deadline)
+
+    def test_edit_page_exposes_non_blocking_assistant(self):
+        video = self.make_video(
+            status=Video.StatusChoices.IN_PROGRESS,
+            deadline=self.today - timedelta(days=2),
+            suffix="template",
+        )
+
+        response = self.client.get(reverse("edit_video", args=(video.pk,)))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assistant de planification")
+        self.assertContains(response, 'data-mode="edit"')
+        self.assertContains(response, f'data-exclude-video-id="{video.pk}"')
+        self.assertContains(response, "deadline_planner.js")
+        self.assertContains(response, "Une deadline passée reste modifiable")
+
+    def test_create_page_exposes_non_blocking_assistant(self):
+        video = self.make_video(
+            status=Video.StatusChoices.PENDING,
+            deadline=self.today + timedelta(days=8),
+            suffix="create-template",
+        )
+
+        response = self.client.get(
+            reverse("create_video_request"),
+            {"player_id": video.player_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assistant de planification")
+        self.assertContains(response, 'data-mode="create"')
+        self.assertContains(response, "deadline_planner.js")
+        self.assertContains(response, "Choisissez librement une date future")
+
+    def test_invalid_planning_date_is_rejected(self):
+        response = self.client.get(
+            reverse("deadline_planning_assistant"),
+            {"date": "21-08-2026"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("AAAA-MM-JJ", response.json()["error"])

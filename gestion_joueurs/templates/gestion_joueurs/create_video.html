@@ -1,6 +1,10 @@
 {% extends 'gestion_joueurs/base.html' %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags static %}
 {% block title %}Créer Vidéo Highlight{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/deadline_planner.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="container mt-4 ui-page workflow-page">
@@ -94,7 +98,8 @@
                     <div class="card-body">
                         <form method="POST">
                             {% csrf_token %}
-                            {{ video_form|crispy }}  
+                            {{ video_form|crispy }}
+                            {% include 'gestion_joueurs/includes/deadline_planning_assistant.html' with planner_mode='create' %}
                             <input type="hidden" name="player" value="{{ added_player.id }}">
                             
                             <button type="submit" name="create_video" class="btn btn-primary">
@@ -248,4 +253,8 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
         border-color: darkblue; /* Color when focused */
     }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'gestion_joueurs/js/deadline_planner.js' %}"></script>
 {% endblock %}

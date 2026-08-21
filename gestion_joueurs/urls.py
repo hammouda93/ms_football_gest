@@ -5,12 +5,14 @@ from. views import register_video_editor,search_players,view_invoices,view_payme
 from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance,create_invoice,StatisticalDashboardView,get_months
 from .views import mark_notification_as_read,test_task, non_video_income_list,add_non_video_income,edit_non_video_income,financial_report_list,view_financial_report,get_days
 from .views import add_notification, notification_list, view_notification,run_all_tasks,import_transfermarkt_player,dashboard_cards_view
+from .deadline_planning import deadline_planning_assistant
 from django.conf import settings
 from django.conf.urls.static import static
 urlpatterns = [
     path('', dashboard, name='dashboard'),
     path('players/', player_dashboard, name='player_dashboard'),
     path('create/', create_video_highlight, name='create_video_request'),
+    path('planning/deadlines/', deadline_planning_assistant, name='deadline_planning_assistant'),
     path('status/<int:video_id>/', video_status, name='video_status'),
     path('update_status/<int:video_id>/', update_video_status, name='update_video_status'),
     path('register/editor/', register_video_editor, name='register_video_editor'),

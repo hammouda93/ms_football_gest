@@ -1,7 +1,11 @@
 {% extends 'gestion_joueurs/base.html' %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags static %}
 
 {% block title %}Modifier La Vidéo - {{ video.player.name }}{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/deadline_planner.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="container mt-4 ui-page workflow-page video-form-page">
@@ -36,7 +40,8 @@
                     >
                         {% csrf_token %}
                         <input type="hidden" name="notification_action" id="edit_notification_action" value="skip">
-                        {{ form|crispy }}  
+                        {{ form|crispy }}
+                        {% include 'gestion_joueurs/includes/deadline_planning_assistant.html' with planner_mode='edit' planner_video_id=video.pk %}
                         <button type="submit" class="btn btn-primary btn-block mt-3" aria-label="Mettre à jour la vidéo">Mettre à jour la Vidéo</button>
                         <div class="d-flex justify-content-between mt-3">
                             <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
@@ -324,4 +329,8 @@
         });
     });
 </script>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'gestion_joueurs/js/deadline_planner.js' %}"></script>
 {% endblock %}

@@ -78,8 +78,10 @@ class VideoEditor(models.Model):
 
 
 def validate_deadline(value):
+    """Conservé pour permettre le chargement des anciennes migrations Django."""
     if value < timezone.now().date():
         raise ValidationError('The deadline cannot be in the past.')
+
 
 class Video(models.Model):
     class StatusChoices(models.TextChoices):
@@ -111,7 +113,7 @@ class Video(models.Model):
     status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.PENDING)
     advance_payment = models.DecimalField(max_digits=10, decimal_places=2)
     total_payment = models.DecimalField(max_digits=10, decimal_places=2)
-    deadline = models.DateField(validators=[validate_deadline])
+    deadline = models.DateField()
     video_link = models.URLField(blank=True, null=True)
     client_portal_visible = models.BooleanField(
         default=True,
