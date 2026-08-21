@@ -1,14 +1,23 @@
 {% extends 'gestion_joueurs/base.html' %}
 
+{% block title %}Centre de notifications{% endblock %}
+
 {% block content %}
-<h1>Centre de Notifications</h1>
-<ul>
-    {% for notification in notifications %}
-        <li {% if notification.is_read %}class="read"{% endif %}>
-            {{ notification.message }} - {{ notification.created_at }}
-        </li>
-    {% empty %}
-        <li>Aucune notification.</li>
-    {% endfor %}
-</ul>
+<div class="ui-page notification-center-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Centre d’activité</span><h1>Notifications</h1><p>Consultez les mises à jour importantes liées à votre travail.</p></div>
+        <div class="ui-page-actions"><a class="btn btn-primary" href="{% url 'notification_list' %}">Voir le centre complet</a></div>
+    </header>
+    <section class="ui-panel activity-feed">
+        {% for notification in notifications %}
+            <a class="activity-feed-item {% if not notification.is_read %}unread{% endif %}" href="{% url 'view_notification' notification.id %}">
+                <span class="activity-icon"><i class="far fa-bell"></i></span>
+                <div><strong>{{ notification.message }}</strong><small>{{ notification.created_at|date:"d/m/Y à H:i" }}</small></div>
+                <i class="fas fa-chevron-right"></i>
+            </a>
+        {% empty %}
+            <div class="ui-empty-state"><i class="far fa-bell-slash"></i><span>Aucune notification pour le moment.</span></div>
+        {% endfor %}
+    </section>
+</div>
 {% endblock %}

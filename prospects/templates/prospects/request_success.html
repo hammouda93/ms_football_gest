@@ -5,11 +5,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#081426">
     <title>Demande envoyée | MS Football</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
 </head>
 <body class="success-page">
     <main class="success-card">
+        <div class="success-brand"><img src="{% static 'gestion_joueurs/images/logoMS.png' %}" alt=""></div>
         <div class="success-icon" aria-hidden="true">✓</div>
         <p class="eyebrow">Demande envoyée</p>
         <h1>Merci, votre projet est bien enregistré.</h1>
@@ -17,6 +22,7 @@
             L’équipe MS Football va étudier vos informations et vous répondre sur
             WhatsApp dès que possible.
         </p>
+        <div class="success-next-step"><span>Prochaine étape</span><strong>Gardez votre téléphone disponible sur WhatsApp</strong><small>Nous vérifierons votre besoin, votre délai et les matchs disponibles avec vous.</small></div>
         <a class="secondary-button" href="{% url 'prospects:request_create' %}">
             Envoyer une autre demande
         </a>

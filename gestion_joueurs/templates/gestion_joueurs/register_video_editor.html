@@ -1,42 +1,28 @@
 {% extends 'gestion_joueurs/base.html' %}
-{% load crispy_forms_tags %}  <!-- Charger les tags Crispy Forms -->
 
-{% block title %}Ajouter Éditeurs Vidéo{% endblock %}
+{% block title %}Gestion des monteurs{% endblock %}
 
 {% block content %}
-<h1>Ajouter Éditeurs Vidéo</h1>
-
-{% if messages %}
-    <div>
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-        {% endfor %}
+<div class="ui-page editor-management-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Équipe de production</span><h1>Monteurs vidéo</h1><p>Consultez l’équipe et attribuez le rôle de monteur à un utilisateur existant.</p></div>
+    </header>
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}{% endif %}
+    <div class="ui-two-column-layout">
+        <section class="ui-panel">
+            <div class="panel-heading compact-heading"><div><h2>Équipe actuelle</h2><small>{{ editors|length }} monteur{{ editors|length|pluralize }}</small></div></div>
+            <div class="member-list">
+                {% for editor in editors %}<article class="member-card"><span class="member-avatar">{{ editor.user.username|first|upper }}</span><div><strong>{{ editor.user.username }}</strong><small>Monteur vidéo</small></div><span class="badge badge-success">Actif</span></article>{% empty %}<div class="ui-empty-state"><span>Aucun monteur enregistré.</span></div>{% endfor %}
+            </div>
+        </section>
+        <section class="ui-panel sticky-form-panel">
+            <div class="panel-heading compact-heading"><div><h2>Ajouter un monteur</h2><small>Sélectionnez un compte existant</small></div></div>
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group"><label for="user">Utilisateur</label><select name="user" class="form-control" id="user" required><option value="">Choisir un utilisateur</option>{% for account in users %}<option value="{{ account.id }}">{{ account.username }}</option>{% endfor %}</select></div>
+                <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-user-plus"></i> Ajouter à l’équipe</button>
+            </form>
+        </section>
     </div>
-{% endif %}
-
-<h2>Éditeurs Vidéo Existants</h2>
-<ul class="list-group mb-4">
-    {% for editor in editors %}
-        <li class="list-group-item">{{ editor.user.username }}</li>
-    {% empty %}
-        <li class="list-group-item">Aucun éditeur vidéo trouvé.</li>
-    {% endfor %}
-</ul>
-
-<h2>Ajouter un Nouvel Éditeur Vidéo</h2>
-<form method="POST">
-    {% csrf_token %}
-    <div class="form-group">
-        <label for="user">Sélectionnez un utilisateur</label>
-        <select name="user" class="form-control" id="user" required>
-            <option value="">Choisir un utilisateur</option>
-            {% for user in users %}
-                <option value="{{ user.id }}">{{ user.username }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <button type="submit" class="btn btn-primary">Ajouter Éditeur Vidéo</button>
-</form>
-
-<a href="{% url 'dashboard' %}" class="btn btn-secondary mt-3">Retour au tableau de bord</a>
+</div>
 {% endblock %}

@@ -839,3 +839,109 @@ textarea.form-control {
         transition: none !important;
     }
 }
+
+/* ======================================================================
+   MS FOOTBALL — PROSPECT EXPERIENCE 2026
+   Public conversion form and internal CRM harmonization.
+   ====================================================================== */
+
+.public-page {
+    background:
+        radial-gradient(circle at 12% 16%, rgba(21, 184, 166, .20), transparent 30rem),
+        radial-gradient(circle at 86% 88%, rgba(41, 112, 255, .12), transparent 34rem),
+        linear-gradient(135deg, #06101f 0%, #102d51 48%, #f1f5fa 48%, #f1f5fa 100%);
+}
+.public-shell { width: min(1240px, calc(100% - 2rem)); grid-template-columns: minmax(0, .9fr) minmax(34rem, 1.1fr); gap: clamp(2rem, 5vw, 5.5rem); }
+.brand { align-items: center; margin-bottom: clamp(3rem, 8vh, 5rem); text-transform: none; }
+.brand-mark { width: 3rem; height: 3rem; overflow: hidden; background: #fff; border-radius: 13px; box-shadow: 0 10px 28px rgba(0, 0, 0, .24); }
+.brand-mark img { width: 88%; height: 88%; object-fit: contain; }
+.brand > span:last-child { display: flex; flex-direction: column; line-height: 1.15; }
+.brand strong { font-size: 1rem; letter-spacing: .01em; }
+.brand small { margin-top: 4px; color: rgba(255, 255, 255, .62); font-size: .66rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.public-intro .eyebrow { color: #7ee9d0; }
+.public-intro h1 { max-width: 11ch; font-size: clamp(2.65rem, 5vw, 4.8rem); letter-spacing: -.06em; }
+.intro-copy { color: rgba(255, 255, 255, .74); }
+.benefit-list { gap: 10px; }
+.benefit-list li { align-items: center; gap: 12px; padding: 11px 13px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .09); border-radius: 13px; backdrop-filter: blur(8px); }
+.benefit-list li::before { display: none; }
+.benefit-list li > span { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; color: #7ee9d0; background: rgba(21, 184, 166, .14); border-radius: 9px; font-size: .66rem; font-weight: 900; }
+.benefit-list li > div { display: flex; flex-direction: column; }
+.benefit-list li strong { font-size: .84rem; }
+.benefit-list li small { margin-top: 2px; color: rgba(255, 255, 255, .65); font-size: .71rem; font-weight: 500; line-height: 1.4; }
+
+.form-card { border: 1px solid rgba(208, 213, 221, .75); border-radius: 24px; box-shadow: 0 28px 80px rgba(6, 16, 31, .18); }
+.form-heading .step-label { color: #175cd3; }
+.form-heading h2 { color: #101828; }
+.transfermarkt-import-card { padding: 16px; background: #f0f7ff; border-color: #bed6ff; }
+.import-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.import-card-heading > div { display: flex; flex-direction: column; }
+.import-card-heading label { margin: 4px 0 0; color: #153b6e; }
+.recommended-label { align-self: flex-start; padding: 3px 7px; color: #087a55; background: #dff8ec; border-radius: 999px; font-size: .62rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.import-step { color: #667085; font-size: .68rem; font-weight: 750; }
+.transfermarkt-import-button { background: #175cd3; border-color: #175cd3; box-shadow: 0 8px 18px rgba(23, 92, 211, .18); }
+.transfermarkt-import-button:hover { background: #134eaf; }
+.manual-entry-divider { display: flex; align-items: center; gap: 11px; margin: 18px 0; color: #98a2b3; font-size: .68rem; font-weight: 700; text-align: center; text-transform: uppercase; }
+.manual-entry-divider::before, .manual-entry-divider::after { content: ""; height: 1px; flex: 1; background: #e4e7ec; }
+.field input, .field select, .field textarea, .transfermarkt-input-group input { min-height: 46px; color: #1d2939; background: #fff; border: 1px solid #d0d5dd; border-radius: 11px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+.field input:focus, .field select:focus, .field textarea:focus, .transfermarkt-input-group input:focus { border-color: #4788ff; box-shadow: 0 0 0 4px rgba(41, 112, 255, .12); outline: none; }
+.request-assurance { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 12px; padding: 12px; color: #175cd3; background: #f2f7ff; border: 1px solid #c7dcff; border-radius: 12px; }
+.request-assurance > span { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; color: #fff; background: #2970ff; border-radius: 8px; font-size: .72rem; font-weight: 900; }
+.request-assurance p { margin: 1px 0 0; font-size: .74rem; line-height: 1.5; }
+.primary-button.request-submit { display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: space-between; padding: 0 17px; background: linear-gradient(135deg, #2970ff, #175cd3); box-shadow: 0 11px 24px rgba(23, 92, 211, .24); }
+.request-submit b { display: grid; width: 28px; height: 28px; place-items: center; background: rgba(255, 255, 255, .14); border-radius: 8px; }
+.privacy-note { color: #667085; }
+
+.success-page { background: radial-gradient(circle at 50% 0%, rgba(41, 112, 255, .15), transparent 34rem), #f2f5f9; }
+.success-card { position: relative; overflow: hidden; max-width: 610px; padding: clamp(1.6rem, 5vw, 3rem); color: #1d2939; border-color: #e4e7ec; box-shadow: 0 24px 64px rgba(6, 16, 31, .14); }
+.success-brand { position: absolute; top: 20px; left: 20px; display: grid; width: 42px; height: 42px; place-items: center; background: #fff; border: 1px solid #e4e7ec; border-radius: 12px; }
+.success-brand img { width: 86%; height: 86%; object-fit: contain; }
+.success-card .success-icon { color: #087a55; background: #dff8ec; }
+.success-card .eyebrow { color: #175cd3; }
+.success-next-step { display: flex; align-items: flex-start; flex-direction: column; margin: 22px 0; padding: 15px; text-align: left; background: #f8fafc; border: 1px solid #e4e7ec; border-radius: 13px; }
+.success-next-step span { color: #175cd3; font-size: .63rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.success-next-step strong { margin-top: 5px; color: #101828; font-size: .86rem; }
+.success-next-step small { margin-top: 4px; color: #667085; line-height: 1.5; }
+
+/* Internal prospect management */
+.prospect-management { max-width: 1600px; padding: 0; color: #1d2939; }
+.prospect-management .management-header { margin-bottom: 22px; padding: 0; color: #1d2939; background: transparent; border: 0; box-shadow: none; }
+.management-header h1 { color: #101828; font-size: clamp(1.55rem, 3vw, 2.15rem); letter-spacing: -.04em; }
+.management-header p:last-child { color: #667085; }
+.management-header .eyebrow { color: #175cd3; }
+.prospect-management .management-shell { padding: 0; }
+.prospect-management .filter-bar { align-items: end; padding: 13px; background: #fff; border: 1px solid #e4e7ec; border-radius: 14px; box-shadow: 0 2px 8px rgba(16, 24, 40, .06); }
+.prospect-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 470px), 1fr)); gap: 14px; }
+.prospect-card { padding: 18px; border-color: #e4e7ec; border-radius: 16px; box-shadow: 0 3px 12px rgba(16, 24, 40, .055); }
+.prospect-card:hover { border-color: #c9d9f4; box-shadow: 0 12px 30px rgba(16, 24, 40, .09); }
+.prospect-card-header h2 { color: #101828; }
+.prospect-details { overflow: hidden; background: #f8fafc; border: 1px solid #eef1f5; border-radius: 12px; }
+.prospect-details > div { padding: 10px 12px; }
+.prospect-actions { padding-top: 15px; border-top: 1px solid #e4e7ec; }
+.whatsapp-button { background: #087a55; border-radius: 9px; }
+.whatsapp-button:hover { background: #066443; }
+.prospect-management .primary-button, .prospect-management .secondary-button, .prospect-management .ghost-button, .prospect-management .danger-button, .prospect-management .whatsapp-button { min-height: 39px; padding: 8px 12px; border-radius: 9px; font-size: .72rem; font-weight: 750; }
+.status-form { padding: 9px; background: #f8fafc; border: 1px solid #e4e7ec; border-radius: 11px; }
+.management-form-card { border-color: #e4e7ec; box-shadow: 0 5px 18px rgba(16, 24, 40, .06); }
+
+@media (max-width: 900px) {
+    .public-page { background: linear-gradient(180deg, #06101f 0%, #12345d 39%, #f1f5fa 39%); }
+    .public-shell { grid-template-columns: 1fr; }
+    .public-intro h1 { max-width: 14ch; }
+    .brand { margin-bottom: 2.4rem; }
+}
+
+@media (max-width: 680px) {
+    .public-shell { width: min(100% - 18px, 700px); padding-top: 1rem; }
+    .public-intro { padding: 8px; }
+    .public-intro h1 { font-size: clamp(2.25rem, 11vw, 3.3rem); }
+    .intro-copy { margin-top: 1.2rem; }
+    .benefit-list li small { display: block; }
+    .form-card { padding: 18px 15px; border-radius: 18px; }
+    .transfermarkt-input-group { gap: 8px; }
+    .transfermarkt-import-button { min-height: 46px; }
+    .manual-entry-divider { font-size: .58rem; }
+    .prospect-grid { grid-template-columns: 1fr; }
+    .prospect-card { padding: 14px; }
+    .prospect-details { grid-template-columns: 1fr 1fr; }
+    .management-header.ui-page-header { align-items: stretch; }
+}

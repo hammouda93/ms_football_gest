@@ -1,16 +1,20 @@
 {% extends "client_portal/portal_base.html" %}
 {% block title %}Connexion — MS Football{% endblock %}
+{% block portal_body_class %}portal-auth-page{% endblock %}
 {% block portal_content %}
 <div class="portal-auth-wrap">
     <section class="portal-auth-card">
-        <span class="eyebrow">Accès sécurisé</span>
-        <h1>Retrouvez vos vidéos</h1>
-        <p>Utilisez le lien reçu par MS Football ou vos identifiants personnels.</p>
+        <div class="portal-auth-icon" aria-hidden="true">MS</div>
+        <span class="eyebrow">Espace sécurisé</span>
+        <h1>Retrouvez vos productions</h1>
+        <p>Connectez-vous pour suivre vos vidéos, envoyer vos matchs et valider vos versions.</p>
         <form method="post" class="portal-form">
-            {% csrf_token %}{{ form.as_p }}
-            <button class="portal-button primary" type="submit">Se connecter</button>
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class="portal-button primary full-width" type="submit">Se connecter</button>
         </form>
-        <p class="portal-help">Vous n’avez pas encore de lien ? Contactez directement votre interlocuteur MS Football.</p>
+        <div class="portal-security-note"><span aria-hidden="true">✓</span><p>Vos données et vos liens vidéo restent accessibles uniquement aux comptes autorisés.</p></div>
+        <p class="portal-help">Vous n’avez pas encore de lien ? Contactez votre interlocuteur MS Football.</p>
     </section>
 </div>
 {% endblock %}

@@ -3,16 +3,17 @@
 {% block title %}Aperçu Dashboard{% endblock %}
 
 {% block content %}
-<div class="container mt-4 dashboard-cards-page">
+<div class="container mt-4 ui-page dashboard-cards-page">
     <div class="page-hero-card mb-4">
         <div class="d-flex justify-content-between align-items-center flex-wrap">
             <div>
-                <h1 class="mb-2">Aperçu Dashboard</h1>
-                <p class="mb-0">Vue synthétique des vidéos, factures, clients et notifications.</p>
+                <span class="ui-eyebrow">Tableau de bord</span>
+                <h1 class="mb-2">Aperçu de l’activité</h1>
+                <p class="mb-0">Les productions, paiements et actions prioritaires réunis en un coup d’œil.</p>
             </div>
             <div class="hero-actions mt-3 mt-md-0">
                 <a href="{% url 'dashboard' %}" class="btn btn-primary">
-                    <i class="fas fa-tachometer-alt mr-2"></i>Tableau de bord
+                    <i class="fas fa-list-check mr-2"></i>Voir les commandes
                 </a>
             </div>
         </div>

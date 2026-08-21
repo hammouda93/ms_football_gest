@@ -3,32 +3,79 @@
 {% block title %}Mon espace — MS Football{% endblock %}
 {% block portal_content %}
 <section class="portal-hero">
-    <div><span class="eyebrow">Bienvenue</span><h1>{{ request.portal_profile.display_name }}</h1><p>Suivez les productions, transmettez les matchs et validez les versions depuis votre téléphone.</p></div>
-    {% if organizations %}<div class="organization-badges">{% for organization in organizations %}<span>{{ organization.name }}</span>{% endfor %}</div>{% endif %}
+    <div>
+        <span class="eyebrow">Votre tableau de bord</span>
+        <h1>Bonjour {{ request.portal_profile.display_name }}</h1>
+        <p>Suivez vos productions, transmettez vos matchs et validez chaque version depuis un seul espace.</p>
+    </div>
+    {% if organizations %}
+        <div class="organization-badges" aria-label="Organisations liées">
+            {% for organization in organizations %}<span>{{ organization.name }}</span>{% endfor %}
+        </div>
+    {% endif %}
 </section>
 
-<section class="portal-metrics">
-    <div><span>Joueurs</span><strong>{{ players|length }}</strong></div>
-    <div><span>En production</span><strong>{{ active_count }}</strong></div>
-    <div><span>À valider</span><strong>{{ review_count }}</strong></div>
-    <div><span>Solde visible</span><strong>{{ balance|floatformat:2 }}</strong></div>
+<section class="portal-metrics" aria-label="Résumé de votre espace">
+    <article><span>Joueurs suivis</span><strong>{{ players|length }}</strong><small>dans votre espace</small></article>
+    <article><span>En production</span><strong>{{ active_count }}</strong><small>commande{{ active_count|pluralize }} active{{ active_count|pluralize }}</small></article>
+    <article class="{% if review_count %}needs-attention{% endif %}"><span>À valider</span><strong>{{ review_count }}</strong><small>action{{ review_count|pluralize }} requise{{ review_count|pluralize }}</small></article>
+    <article><span>Solde visible</span><strong>{{ balance|floatformat:2 }}</strong><small>sur les commandes</small></article>
 </section>
 
-<section class="portal-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Effectif</span><h2>Mes joueurs</h2></div><span>{{ players|length }}</span></div>
+<section class="portal-section" id="players">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">Effectif</span><h2>Mes joueurs</h2><p>Accédez à chaque fiche et à ses productions.</p></div>
+        <span class="portal-count">{{ players|length }}</span>
+    </div>
     <div class="player-card-grid">
-        {% for player in players %}<a class="player-portal-card" href="{% url 'portal:player' player.pk %}"><div class="player-avatar">{{ player.name|first|upper }}</div><div><strong>{{ player.name }}</strong><span>{{ player.club|default:"Club non renseigné" }}</span><small>{{ player.get_position_display }} · {{ player.get_league_name }}</small></div><b>→</b></a>{% empty %}<div class="portal-empty">Aucun joueur n’est encore rattaché à cet espace.</div>{% endfor %}
+        {% for player in players %}
+            <a class="player-portal-card" href="{% url 'portal:player' player.pk %}">
+                <div class="player-avatar">{{ player.name|first|upper }}</div>
+                <div>
+                    <strong>{{ player.name }}</strong>
+                    <span>{{ player.club|default:"Club non renseigné" }}</span>
+                    <small>{{ player.get_position_display }} · {{ player.get_league_name }}</small>
+                </div>
+                <b aria-hidden="true">→</b>
+            </a>
+        {% empty %}
+            <div class="portal-empty"><strong>Aucun joueur rattaché</strong><span>Votre interlocuteur MS Football peut ajouter vos joueurs à cet espace.</span></div>
+        {% endfor %}
     </div>
 </section>
 
-<section class="portal-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Commandes</span><h2>Vidéos récentes</h2></div><span>{{ videos|length }}</span></div>
+<section class="portal-section" id="videos">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">Commandes</span><h2>Vidéos récentes</h2><p>Progression, échéance et solde en un coup d’œil.</p></div>
+        <span class="portal-count">{{ videos|length }}</span>
+    </div>
     <div class="portal-video-list">
-        {% for video in videos %}<a class="portal-video-card" href="{% url 'portal:video' video.pk %}"><div class="portal-video-main"><div><span class="status-dot stage-{{ video.production_stage }}"></span><strong>{{ video.player.name }} · {{ video.season }}</strong></div><span>{{ video.production_stage_label }}</span></div><div class="portal-progress"><div style="width: {{ video.production_progress }}%"></div></div><div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Prévue le {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div></a>{% empty %}<div class="portal-empty">Aucune vidéo disponible.</div>{% endfor %}
+        {% for video in videos %}
+            <a class="portal-video-card" href="{% url 'portal:video' video.pk %}">
+                <div class="portal-video-main">
+                    <div><span class="status-dot stage-{{ video.production_stage }}"></span><strong>{{ video.player.name }} · {{ video.season }}</strong></div>
+                    <span>{{ video.production_stage_label }}</span>
+                </div>
+                <div class="portal-progress" aria-label="Progression {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
+                <div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Prévue le {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div>
+            </a>
+        {% empty %}
+            <div class="portal-empty"><strong>Aucune vidéo disponible</strong><span>Vos commandes apparaîtront ici dès leur création.</span></div>
+        {% endfor %}
     </div>
 </section>
 
 {% if can_request_players %}
-<details class="portal-section agent-request-panel"><summary>Demander l’ajout d’un joueur</summary><p>La demande sera vérifiée par MS Football. Elle ne crée et ne modifie aucun joueur automatiquement.</p><form method="post" action="{% url 'portal:agent_player_request' %}" class="portal-form">{% csrf_token %}{{ agent_request_form.as_p }}<button class="portal-button primary" type="submit">Envoyer la demande</button></form></details>
+    <details class="portal-section agent-request-panel">
+        <summary><span>Ajouter un joueur à mon espace</span><small>Demande vérifiée par MS Football</small></summary>
+        <div class="details-content">
+            <p>Transmettez ses informations. Aucun joueur existant ne sera créé ou modifié automatiquement.</p>
+            <form method="post" action="{% url 'portal:agent_player_request' %}" class="portal-form">
+                {% csrf_token %}
+                {{ agent_request_form.as_p }}
+                <button class="portal-button primary" type="submit">Envoyer la demande</button>
+            </form>
+        </div>
+    </details>
 {% endif %}
 {% endblock %}

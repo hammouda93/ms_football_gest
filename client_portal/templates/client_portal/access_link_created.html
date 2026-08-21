@@ -1,4 +1,41 @@
-{% extends "gestion_joueurs/base.html" %}{% load static %}
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+
 {% block title %}Lien d’accès créé{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
-{% block content %}<div class="production-page narrow-page"><section class="portal-panel access-link-panel"><span class="success-icon">✓</span><h1>Lien sécurisé créé</h1><p>Envoie ce lien à <strong>{{ profile.display_name }}</strong>. Il est utilisable une seule fois et expire le {{ access_link.expires_at|date:"d/m/Y H:i" }}.</p><label for="access-link">Lien à copier</label><div class="copy-row"><input id="access-link" class="form-control" value="{{ absolute_link }}" readonly><button class="btn btn-primary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('access-link').value)">Copier</button></div><p class="form-note">Le mot de passe ou le jeton n’est jamais demandé dans WhatsApp. Le client touche simplement ce lien officiel.</p><a class="btn btn-outline-secondary" href="{% url 'portal:management' %}">Retour à la gestion</a></section></div>{% endblock %}
+
+{% block content %}
+<div class="production-page narrow-page">
+    <section class="portal-panel access-link-panel">
+        <span class="success-icon" aria-hidden="true">✓</span>
+        <span class="eyebrow">Accès prêt</span>
+        <h1>Lien sécurisé créé</h1>
+        <p>Envoyez ce lien à <strong>{{ profile.display_name }}</strong>. Il est utilisable une seule fois et expire le {{ access_link.expires_at|date:"d/m/Y à H:i" }}.</p>
+        <label for="access-link">Lien à copier</label>
+        <div class="copy-row">
+            <input id="access-link" class="form-control" value="{{ absolute_link }}" readonly>
+            <button class="btn btn-primary" id="copy-access-link" type="button"><i class="far fa-copy"></i> Copier</button>
+        </div>
+        <div class="form-assurance"><i class="fas fa-shield-halved"></i><div><strong>Partage sûr</strong><p>Ne demandez jamais de mot de passe ou de jeton sur WhatsApp. Le client touche seulement ce lien officiel.</p></div></div>
+        <a class="btn btn-outline-secondary" href="{% url 'portal:management' %}">Retour à la gestion</a>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('copy-access-link').addEventListener('click', async function () {
+        const button = this;
+        const input = document.getElementById('access-link');
+        try {
+            await navigator.clipboard.writeText(input.value);
+            button.innerHTML = '<i class="fas fa-check"></i> Copié';
+        } catch (error) {
+            input.select();
+            document.execCommand('copy');
+            button.innerHTML = '<i class="fas fa-check"></i> Copié';
+        }
+        window.setTimeout(function () { button.innerHTML = '<i class="far fa-copy"></i> Copier'; }, 1800);
+    });
+</script>
+{% endblock %}

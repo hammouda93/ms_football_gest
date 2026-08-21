@@ -4,7 +4,11 @@
 
 {% block content %}
     <!-- Main Content -->
-    <div class="container">
+    <div class="container ui-page analytics-page">
+        <header class="ui-page-header">
+            <div class="ui-page-title-group"><span class="ui-eyebrow">Analyse opérationnelle</span><h1>Statistiques</h1><p>Priorités de production, échéances, paiements et performance clients en un coup d’œil.</p></div>
+            <div class="ui-page-actions"><a class="btn btn-outline-primary" href="{% url 'portal:operations_brief' %}"><i class="fas fa-wand-magic-sparkles"></i> Brief du jour</a></div>
+        </header>
         <div class="row mb-4">
             <div class="col-lg-7 mb-4">
                 <div class="card border-primary shadow-lg h-100">
@@ -46,19 +50,19 @@
                         <div class="row w-100" id="dynamic_table" style="margin-top: 50px;">
                             <ul class="nav nav-tabs" id="myTab" role="tablist">
                                 <li class="nav-item" role="presentation">
-                                    <a class="nav-link active" id="past-deadline-tab" data-bs-toggle="tab" href="#past-deadline" role="tab" aria-controls="past-deadline" aria-selected="true">VDP</a>
+                                    <a class="nav-link active" id="past-deadline-tab" data-toggle="tab" href="#past-deadline" role="tab" aria-controls="past-deadline" aria-selected="true">Deadlines dépassées</a>
                                 </li>
                                 <li class="nav-item" role="presentation">
-                                    <a class="nav-link" id="completed-not-paid-tab" data-bs-toggle="tab" href="#completed-not-paid" role="tab" aria-controls="completed-not-paid" aria-selected="true">VFNP</a>
+                                    <a class="nav-link" id="completed-not-paid-tab" data-toggle="tab" href="#completed-not-paid" role="tab" aria-controls="completed-not-paid" aria-selected="false">Finies non payées</a>
                                 </li>
                                 <li class="nav-item" role="presentation">
-                                    <a class="nav-link" id="delivered-not-paid-tab" data-bs-toggle="tab" href="#delivered-not-paid" role="tab" aria-controls="delivered-not-paid" aria-selected="false">VLNP</a>
+                                    <a class="nav-link" id="delivered-not-paid-tab" data-toggle="tab" href="#delivered-not-paid" role="tab" aria-controls="delivered-not-paid" aria-selected="false">Livrées non payées</a>
                                 </li>
                                 <li class="nav-item" role="presentation">
-                                    <a class="nav-link" id="pending-no-advance-tab" data-bs-toggle="tab" href="#pending-no-advance" role="tab" aria-controls="pending-no-advance" aria-selected="false">VEA (A=0)</a>
+                                    <a class="nav-link" id="pending-no-advance-tab" data-toggle="tab" href="#pending-no-advance" role="tab" aria-controls="pending-no-advance" aria-selected="false">Sans avance</a>
                                 </li>
                                 <li class="nav-item" role="presentation">
-                                    <a class="nav-link" id="completed-collab-tab" data-bs-toggle="tab" href="#completed-collab" role="tab" aria-controls="completed-collab" aria-selected="false">VFPC</a>
+                                    <a class="nav-link" id="completed-collab-tab" data-toggle="tab" href="#completed-collab" role="tab" aria-controls="completed-collab" aria-selected="false">Finies par collaborateur</a>
                                 </li>
                             </ul>
     
@@ -302,10 +306,10 @@
                     <div class="card-body text-center">
                         <h5 class="text-center">Gestion de payement des Collaborateurs</h5>
                         <!-- Badges pointing to the two tables -->
-                        <span class="badge bg-primary fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#deliveredNotPaidTable">
+                        <span class="badge bg-primary fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-toggle="collapse" data-target="#deliveredNotPaidTable">
                             Vidéos Livrées (Collab Non Payé) : {{count_videos_delivered_not_paid}}
                         </span>
-                        <span class="badge bg-warning fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#completedCollabTable">
+                        <span class="badge bg-warning fs-5 w-100 mb-1 clickable-row" style="cursor: pointer;" data-toggle="collapse" data-target="#completedCollabTable">
                             Vidéos Finis  (Collab Non Payé) : {{count_completed_collab_videos}}
                         </span>
             

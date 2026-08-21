@@ -3,24 +3,21 @@
 
 {% block title %}Modifier {{ prospect.full_name }} | MS Football{% endblock %}
 
-{% block content_container_class %}container-fluid prospect-content-container{% endblock %}
-{% block content_container_style %}margin-left: 260px;{% endblock %}
-
 {% block extra_css %}
     <meta name="robots" content="noindex, nofollow">
     <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="prospect-management">
-    <header class="management-header">
+<div class="prospect-management ui-page">
+    <header class="management-header ui-page-header">
         <div>
-            <p class="eyebrow">Gestion des prospects</p>
+            <p class="eyebrow ui-eyebrow">Gestion des prospects</p>
             <h1>Modifier la demande</h1>
             <p>{{ prospect.full_name }} · reçue le {{ prospect.created_at|date:"d/m/Y à H:i" }}</p>
         </div>
         <nav class="header-actions" aria-label="Navigation">
-            <a class="ghost-button" href="{% url 'prospects:prospect_list' %}">Retour aux prospects</a>
+            <a class="btn btn-secondary" href="{% url 'prospects:prospect_list' %}"><i class="fas fa-arrow-left"></i> Retour aux prospects</a>
         </nav>
     </header>
 
@@ -68,14 +65,4 @@
         </section>
     </main>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    if (window.matchMedia("(max-width: 900px)").matches) {
-        $(".sidebar").addClass("closed");
-        $("#sidebarToggle i").removeClass("fa-chevron-left").addClass("fa-chevron-right");
-        localStorage.setItem("sidebarVisible", "false");
-    }
-</script>
 {% endblock %}

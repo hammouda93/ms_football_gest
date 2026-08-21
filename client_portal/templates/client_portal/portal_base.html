@@ -4,36 +4,82 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#0d6efd">
+    <meta name="theme-color" content="#081426">
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="no-referrer">
+    <meta name="color-scheme" content="light">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="manifest" href="{% url 'portal:manifest' %}">
     <link rel="icon" href="{% static 'client_portal/ms-football-app.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">
     <title>{% block title %}Espace MS Football{% endblock %}</title>
 </head>
-<body class="portal-body">
+<body class="portal-body {% block portal_body_class %}{% endblock %}">
+    <a class="portal-skip-link" href="#portal-main">Aller au contenu</a>
+
     <header class="portal-topbar">
         <a class="portal-brand" href="{% if request.user.is_authenticated %}{% url 'portal:dashboard' %}{% else %}{% url 'portal:login' %}{% endif %}">
-            <img src="{% static 'client_portal/ms-football-app.svg' %}" alt="MS Football">
-            <span><strong>MS Football</strong><small>Espace client</small></span>
+            <img src="{% static 'client_portal/ms-football-app.svg' %}" alt="">
+            <span><strong>MS Football</strong><small>Espace client sécurisé</small></span>
         </a>
+
         {% if request.user.is_authenticated %}
-            <div class="portal-account">
-                <span>{{ request.user.portal_profile.display_name|default:request.user.username }}</span>
-                <form method="post" action="{% url 'portal:logout' %}">{% csrf_token %}<button type="submit">Déconnexion</button></form>
-            </div>
+            <details class="portal-account-menu">
+                <summary aria-label="Ouvrir le menu du compte">
+                    <span class="portal-account-avatar">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
+                    <span class="portal-account-copy">
+                        <strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong>
+                        <small>Mon compte</small>
+                    </span>
+                    <span class="portal-account-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div class="portal-account-dropdown">
+                    <div class="portal-account-summary">
+                        <span class="portal-account-avatar large">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
+                        <div><strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:"Compte MS Football" }}</small></div>
+                    </div>
+                    <a href="{% url 'portal:dashboard' %}">Mon espace</a>
+                    <form method="post" action="{% url 'portal:logout' %}">
+                        {% csrf_token %}
+                        <button type="submit">Déconnexion</button>
+                    </form>
+                </div>
+            </details>
         {% endif %}
     </header>
-    <main class="portal-shell">
-        {% if messages %}<div class="portal-messages">{% for message in messages %}<div class="portal-alert {{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+
+    <main class="portal-shell" id="portal-main">
+        {% if messages %}
+            <div class="portal-messages" aria-live="polite">
+                {% for message in messages %}<div class="portal-alert {{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
+            </div>
+        {% endif %}
         {% block portal_content %}{% endblock %}
     </main>
+
     <footer class="portal-footer">MS Football · Suivi sécurisé de votre production</footer>
+
+    {% if request.user.is_authenticated %}
+        <nav class="portal-mobile-nav" aria-label="Navigation mobile">
+            <a href="{% url 'portal:dashboard' %}"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
+            <a href="{% url 'portal:dashboard' %}#players"><span aria-hidden="true">◎</span><small>Joueurs</small></a>
+            <a href="{% url 'portal:dashboard' %}#videos"><span aria-hidden="true">▶</span><small>Vidéos</small></a>
+        </nav>
+    {% endif %}
+
     <script>
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => navigator.serviceWorker.register('{% url "portal:service_worker" %}'));
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('{% url "portal:service_worker" %}');
+            });
         }
+        document.addEventListener('click', function (event) {
+            document.querySelectorAll('.portal-account-menu[open]').forEach(function (menu) {
+                if (!menu.contains(event.target)) menu.removeAttribute('open');
+            });
+        });
     </script>
     {% block portal_js %}{% endblock %}
 </body>

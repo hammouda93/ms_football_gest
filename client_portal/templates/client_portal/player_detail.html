@@ -1,7 +1,33 @@
 {% extends "client_portal/portal_base.html" %}
 {% block title %}{{ player.name }} — MS Football{% endblock %}
 {% block portal_content %}
-<a class="portal-back" href="{% url 'portal:dashboard' %}">← Mon espace</a>
-<section class="player-profile-hero"><div class="player-avatar large">{{ player.name|first|upper }}</div><div><span class="eyebrow">Profil joueur</span><h1>{{ player.name }}</h1><p>{{ player.club }} · {{ player.get_position_display }} · {{ player.get_league_name }}</p>{% if player.transfermarkt_url %}<a href="{{ player.transfermarkt_url }}" target="_blank" rel="noopener">Voir Transfermarkt</a>{% endif %}</div></section>
-<section class="portal-section"><div class="portal-section-heading"><div><h2>Productions</h2></div><span>{{ videos|length }}</span></div><div class="portal-video-list">{% for video in videos %}<a class="portal-video-card" href="{% url 'portal:video' video.pk %}"><div class="portal-video-main"><strong>{{ video.season }} · {{ video.club }}</strong><span>{{ video.production_stage_label }}</span></div><div class="portal-progress"><div style="width: {{ video.production_progress }}%"></div></div><div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>{{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div></a>{% empty %}<div class="portal-empty">Aucune production pour ce joueur.</div>{% endfor %}</div></section>
+<nav class="portal-breadcrumb" aria-label="Fil d’Ariane"><a href="{% url 'portal:dashboard' %}">Mon espace</a><span>›</span><span>{{ player.name }}</span></nav>
+
+<section class="player-profile-hero">
+    <div class="player-avatar large">{{ player.name|first|upper }}</div>
+    <div class="player-profile-copy">
+        <span class="eyebrow">Fiche joueur</span>
+        <h1>{{ player.name }}</h1>
+        <p>{{ player.club|default:"Club non renseigné" }} · {{ player.get_position_display }} · {{ player.get_league_name }}</p>
+    </div>
+    {% if player.transfermarkt_url %}<a class="portal-button secondary profile-source-link" href="{{ player.transfermarkt_url }}" target="_blank" rel="noopener">Profil Transfermarkt ↗</a>{% endif %}
+</section>
+
+<section class="portal-section">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">Production</span><h2>Vidéos du joueur</h2><p>Consultez l’avancement, les versions et les paiements.</p></div>
+        <span class="portal-count">{{ videos|length }}</span>
+    </div>
+    <div class="portal-video-list">
+        {% for video in videos %}
+            <a class="portal-video-card" href="{% url 'portal:video' video.pk %}">
+                <div class="portal-video-main"><strong>{{ video.season }} · {{ video.club|default:player.club }}</strong><span>{{ video.production_stage_label }}</span></div>
+                <div class="portal-progress" aria-label="Progression {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
+                <div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Échéance {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div>
+            </a>
+        {% empty %}
+            <div class="portal-empty"><strong>Aucune production</strong><span>Les vidéos de ce joueur apparaîtront ici.</span></div>
+        {% endfor %}
+    </div>
+</section>
 {% endblock %}

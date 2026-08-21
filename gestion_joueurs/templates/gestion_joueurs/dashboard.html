@@ -3,21 +3,23 @@
 {% block title %}Tableau de bord{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h1>Listes des Vidéos</h1>
+<div class="container mt-4 ui-page list-page video-list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Production</span><h1>Commandes vidéo</h1><p>Recherchez, filtrez et pilotez chaque production depuis une seule liste.</p></div>
+        <div class="ui-page-actions">
             {% if request.user.is_superuser %}
                 <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-0 mt-0">
-                    <i class="fas fa-video"></i> Nouvelle Vidéo
+                    <i class="fas fa-plus"></i> Nouvelle vidéo
                 </a>
                 <a href="?{% if request.GET.show_problematic == 'true' %}{% else %}show_problematic=true{% endif %}" 
                     class="btn {% if request.GET.show_problematic == 'true' %}btn-secondary{% else %}btn-danger{% endif %}">
                     <i class="fas fa-exclamation-triangle"></i> 
-                    {% if request.GET.show_problematic == 'true' %}Masquer les vidéos problématiques{% else %}Afficher les vidéos problématiques{% endif %}
+                    {% if request.GET.show_problematic == 'true' %}Toutes les vidéos{% else %}Priorités{% endif %}
                 </a>
             {% endif %}
         </div>
+    </header>
+    <div class="card">
         <div class="card-body">
             <form method="GET" class="mb-3" id="filter-form">
                 <input type="hidden" name="tab" value="{{ request.GET.tab|default:'ongoing' }}">
@@ -70,7 +72,7 @@
                         </select>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
                     </div>
                 </div>
             </form>
@@ -86,13 +88,13 @@
                 <li class="nav-item">
                     <a class="nav-link {% if request.GET.tab == 'ongoing' %}active{% endif %}" 
                        href="?tab=ongoing&search={{ request.GET.search|default:'' }}&status={{ request.GET.status|default:'' }}&deadline_filter={{ request.GET.deadline_filter|default:'' }}&league={{ request.GET.league|default:'' }}&editor={{ request.GET.editor}}">
-                       Vidéos en Cours ({{ongoing_videos_count}})
+                       En cours <span class="tab-count">{{ ongoing_videos_count }}</span>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link {% if request.GET.tab == 'delivered' %}active{% endif %}" 
                        href="?tab=delivered&search={{ request.GET.search|default:'' }}&status={{ request.GET.status|default:'' }}&deadline_filter={{ request.GET.deadline_filter|default:'' }}&league={{ request.GET.league|default:'' }}&editor={{ request.GET.editor}}">
-                       Vidéos Livrées ({{delivered_videos_count}})
+                       Livrées <span class="tab-count">{{ delivered_videos_count }}</span>
                     </a>
                 </li>
             </ul>

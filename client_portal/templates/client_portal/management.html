@@ -1,23 +1,110 @@
 {% extends "gestion_joueurs/base.html" %}
 {% load static %}
 {% block title %}Gestion du portail{% endblock %}
-{% block content_container_class %}container-fluid{% endblock %}
-{% block content_container_style %}margin-left: 260px; padding: 24px; min-width: 0;{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
 {% block content %}
 <div class="production-page">
-    <div class="production-heading"><div><span class="eyebrow">Accès clients</span><h1>Espaces joueurs et agents</h1><p>Les accès sont séparés des fiches joueurs existantes.</p></div><div><a class="btn btn-outline-primary" href="{% url 'portal:organization_create' %}">Nouvelle organisation</a> <a class="btn btn-primary" href="{% url 'portal:account_create' %}">Nouveau compte</a></div></div>
+    <header class="production-heading">
+        <div>
+            <span class="eyebrow">Accès clients</span>
+            <h1>Espaces joueurs et agents</h1>
+            <p>Gérez les organisations, les joueurs visibles et les comptes sans modifier les fiches joueurs existantes.</p>
+        </div>
+        <div class="ui-page-actions">
+            <a class="btn btn-outline-primary" href="{% url 'portal:organization_create' %}"><i class="fas fa-building-circle-check"></i> Nouvelle organisation</a>
+            <a class="btn btn-primary" href="{% url 'portal:account_create' %}"><i class="fas fa-user-plus"></i> Nouveau compte</a>
+        </div>
+    </header>
+
     {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
+
+    <section class="metric-grid portal-admin-metrics" aria-label="Résumé des accès">
+        <article class="metric-card"><span>Organisations</span><strong>{{ organizations|length }}</strong></article>
+        <article class="metric-card"><span>Comptes actifs</span><strong>{{ profiles|length }}</strong></article>
+        <article class="metric-card {% if agent_requests %}metric-warning{% endif %}"><span>Demandes agents</span><strong>{{ agent_requests|length }}</strong></article>
+    </section>
+
+    <div class="portal-management-toolbar">
+        <label class="sr-only" for="portal-management-search">Rechercher dans les accès</label>
+        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+        <input id="portal-management-search" class="form-control" type="search" placeholder="Rechercher une organisation, un joueur ou un compte…" data-portal-filter>
+        <span class="form-note">Filtre instantané sur cette page</span>
+    </div>
+
     <div class="production-layout">
         <main>
-            <section class="portal-panel"><div class="panel-heading"><h2>Organisations</h2><span>{{ organizations|length }}</span></div>
-                {% for organization in organizations %}<a class="list-row" href="{% url 'portal:organization_detail' organization.pk %}"><div><strong>{{ organization.name }}</strong><small>{{ organization.get_kind_display }} · {{ organization.player_links.count }} joueur(s) · {{ organization.memberships.count }} accès</small></div><span>Gérer →</span></a>{% empty %}<div class="empty-state">Aucune organisation.</div>{% endfor %}
+            <section class="portal-panel">
+                <div class="panel-heading"><div><h2>Organisations</h2><small>Agents, clubs et structures</small></div><span class="portal-count">{{ organizations|length }}</span></div>
+                <div class="relation-list">
+                    {% for organization in organizations %}
+                        <a class="relation-card portal-filter-item" data-filter-text="{{ organization.name }} {{ organization.get_kind_display }}" href="{% url 'portal:organization_detail' organization.pk %}">
+                            <span class="relation-avatar"><i class="fas fa-building"></i></span>
+                            <div><strong>{{ organization.name }}</strong><small>{{ organization.get_kind_display }}</small></div>
+                            <div class="relation-stats"><span><b>{{ organization.player_links.count }}</b> joueur{{ organization.player_links.count|pluralize }}</span><span><b>{{ organization.memberships.count }}</b> accès</span></div>
+                            <span class="relation-action">Gérer <i class="fas fa-arrow-right"></i></span>
+                        </a>
+                    {% empty %}
+                        <div class="empty-state">Aucune organisation. Créez la première pour regrouper les joueurs d’un agent ou d’un club.</div>
+                    {% endfor %}
+                </div>
             </section>
-            <section class="portal-panel"><div class="panel-heading"><h2>Demandes de joueurs des agents</h2></div>
-                {% for item in agent_requests %}<div class="request-review"><div><strong>{{ item.full_name }}</strong><small>{{ item.organization }} · {{ item.get_status_display }}</small>{% if item.transfermarkt_url %}<a href="{{ item.transfermarkt_url }}" target="_blank" rel="noopener">Transfermarkt</a>{% endif %}</div>{% if item.status == 'new' or item.status == 'reviewing' %}<form method="post" action="{% url 'portal:agent_request_review' item.pk %}">{% csrf_token %}<select name="player_id" class="form-control form-control-sm"><option value="">Associer à un joueur existant</option>{% for player in all_players %}<option value="{{ player.pk }}">{{ player.name }} — {{ player.club }}</option>{% endfor %}</select><button class="btn btn-sm btn-primary" name="decision" value="link">Associer</button><button class="btn btn-sm btn-outline-danger" name="decision" value="reject">Refuser</button></form>{% endif %}</div>{% empty %}<div class="empty-state">Aucune demande.</div>{% endfor %}
+
+            <section class="portal-panel">
+                <div class="panel-heading"><div><h2>Demandes des agents</h2><small>Validation manuelle avant toute association</small></div><span class="portal-count">{{ agent_requests|length }}</span></div>
+                {% for item in agent_requests %}
+                    <article class="request-review portal-filter-item" data-filter-text="{{ item.full_name }} {{ item.organization }} {{ item.get_status_display }}">
+                        <div class="request-person">
+                            <span class="relation-avatar player"><i class="fas fa-user"></i></span>
+                            <div><strong>{{ item.full_name }}</strong><small>{{ item.organization }} · {{ item.get_status_display }}</small>{% if item.transfermarkt_url %}<a href="{{ item.transfermarkt_url }}" target="_blank" rel="noopener">Voir Transfermarkt ↗</a>{% endif %}</div>
+                        </div>
+                        {% if item.status == 'new' or item.status == 'reviewing' %}
+                            <form method="post" action="{% url 'portal:agent_request_review' item.pk %}">
+                                {% csrf_token %}
+                                <select name="player_id" class="form-control form-control-sm" aria-label="Joueur à associer">
+                                    <option value="">Associer à un joueur existant</option>
+                                    {% for player in all_players %}<option value="{{ player.pk }}">{{ player.name }} — {{ player.club }}</option>{% endfor %}
+                                </select>
+                                <div class="ui-actions"><button class="btn btn-sm btn-primary" name="decision" value="link">Associer</button><button class="btn btn-sm btn-outline-danger" name="decision" value="reject">Refuser</button></div>
+                            </form>
+                        {% endif %}
+                    </article>
+                {% empty %}
+                    <div class="empty-state">Aucune demande en attente.</div>
+                {% endfor %}
             </section>
         </main>
-        <aside><section class="portal-panel"><div class="panel-heading"><h2>Comptes portail</h2><span>{{ profiles|length }}</span></div>{% for profile in profiles %}<div class="mini-card"><strong>{{ profile.display_name }}</strong><span>{{ profile.get_account_type_display }} · {{ profile.user.email }}</span><form method="post" action="{% url 'portal:access_link_generate' profile.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Créer un lien sécurisé</button></form></div>{% empty %}<div class="empty-state">Aucun compte.</div>{% endfor %}</section></aside>
+        <aside>
+            <section class="portal-panel sticky-panel">
+                <div class="panel-heading"><div><h2>Comptes portail</h2><small>Liens d’accès personnels</small></div><span class="portal-count">{{ profiles|length }}</span></div>
+                {% for profile in profiles %}
+                    <article class="account-access-card portal-filter-item" data-filter-text="{{ profile.display_name }} {{ profile.get_account_type_display }} {{ profile.user.email }}">
+                        <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }}</small></div></div>
+                        <p>{{ profile.user.email|default:"Aucun e-mail renseigné" }}</p>
+                        <form method="post" action="{% url 'portal:access_link_generate' profile.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-primary btn-block" type="submit"><i class="fas fa-link"></i> Créer un lien sécurisé</button>
+                        </form>
+                    </article>
+                {% empty %}
+                    <div class="empty-state">Aucun compte portail.</div>
+                {% endfor %}
+            </section>
+        </aside>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const input = document.querySelector('[data-portal-filter]');
+        if (!input) return;
+        input.addEventListener('input', function () {
+            const query = input.value.trim().toLocaleLowerCase('fr');
+            document.querySelectorAll('.portal-filter-item').forEach(function (item) {
+                item.hidden = Boolean(query) && !item.dataset.filterText.toLocaleLowerCase('fr').includes(query);
+            });
+        });
+    }());
+</script>
 {% endblock %}

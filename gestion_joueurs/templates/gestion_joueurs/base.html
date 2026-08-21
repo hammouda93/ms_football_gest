@@ -1,404 +1,213 @@
 {% load static %}
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/styles.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#081426">
+    <meta name="color-scheme" content="light">
+    <title>{% block title %}MS Football{% endblock %}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet"> <!-- Google Font -->
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/styles.css' %}">
+    {% block extra_css %}{% endblock %}
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('#id_deadline').datepicker({
-                format: 'yyyy-mm-dd',
-                autoclose: true,
-            });
-
-            // Check localStorage for sidebar state
-            if (localStorage.getItem('sidebarVisible') === 'false') {
-                $('.sidebar').removeClass('active').addClass('closed');
-                $('#sidebarToggle i').removeClass('fa-chevron-left').addClass('fa-chevron-right');
-            }
-
-            $('#sidebarToggle').on('click', function() {
-                $('.sidebar').toggleClass('closed');
-                if ($('.sidebar').hasClass('closed')) {
-                    $('#sidebarToggle i').removeClass('fa-chevron-left').addClass('fa-chevron-right');
-                    localStorage.setItem('sidebarVisible', 'false');
-                } else {
-                    $('#sidebarToggle i').removeClass('fa-chevron-right').addClass('fa-chevron-left');
-                    localStorage.setItem('sidebarVisible', 'true');
-                }
-            });
-        });
-    
-        // Function to mark notifications as read
-        function markAsRead(notificationId, event) {
-            if (event) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-            $.ajax({
-                url: "{% url 'mark_notification_as_read' 0 %}".replace('0', notificationId),
-                type: "POST",
-                data: {
-                    'csrfmiddlewaretoken': '{{ csrf_token }}',
-                },
-                success: function(response) {
-                    $(`#notification-${notificationId}`).remove();
-                    updateNotificationCount(response.unread_count);
-                },
-                error: function(xhr) {
-                    console.error('Error marking notification as read:', xhr);
-                }
-            });
-        }
-    
-        // Function to update notification count display
-        function updateNotificationCount(unreadCount) {
-            const badge = $('#notificationDropdown .notification-count-badge');
-            $('.notification-dropdown-header .badge').text(unreadCount);
-            if (unreadCount === 0) {
-                badge.remove();
-                if ($('.notification-dropdown-item').length === 0) {
-                    $('.notification-dropdown-list').html(
-                        '<div class="dropdown-item text-muted text-center py-3">Aucune nouvelle notification.</div>'
-                    );
-                }
-            } else {
-                if (badge.length) {
-                    badge.text(unreadCount);
-                } else {
-                    $('#notificationDropdown').append(
-                        `<span class="badge badge-danger notification-count-badge">${unreadCount}</span>`
-                    );
-                }
-            }
-        }
-    </script>
-    <script>
-        function runTasks() {
-            // Trigger AJAX call to the view that runs all tasks
-            fetch("{% url 'run_all_tasks' %}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                alert(data.message);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Something went wrong!');
-            });
-        }
-    </script>
-    <style>
-        .sidebar {
-            width: 260px; /* Sidebar width */
-            height: 100vh; /* Full height */
-            position: fixed; /* Keep it fixed */
-            left: 0; /* Start shown */
-            top: 53px; /* Adjusted for navbar height */
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-            transition: left 0.3s ease; /* Smooth transition */
-            
-        }
-
-        .sidebar.active {
-            left: 0; /* Slide in */
-        }
-
-        .sidebar.closed {
-            left: -260px; /* Hide the sidebar */
-        }
-
-        #sidebarToggle {
-            position: absolute;
-            top: 50%; /* Center vertically */
-            right: -10px; /* Stick to the right edge */
-            transform: translateY(-50%); /* Adjust to center */
-            transition: right 0.3s ease; /* Smooth transition for the button */
-        }
-
-        .sidebar.closed #sidebarToggle {
-            right: -30px; /* Position outside when closed */
-        }
-        body {
-            font-family: 'Roboto', sans-serif; /* Main font for body */
-        }
-        .navbar {
-            padding: 0.5rem 1rem; /* Reduce padding for a thinner navbar */
-            min-height: 50px;
-        }
-        .small-table th, .small-table td {
-            padding: 0.20rem;  /* Réduit le padding des cellules */
-            font-size: 0.8rem; /* Réduit la taille de la police */
-        }
-
-        .small-table .btn {
-            padding: 0.1rem 0.3rem; /* Réduit le padding pour tous les boutons dans le tableau */
-            font-size: 0.75rem; /* Réduit la taille de la police des boutons */
-        }
-    </style>
-
-    
-    {% block extra_css %}{% endblock %}
-    <title>{% block title %}Votre Titre{% endblock %}</title>
 </head>
 
-<body>
-    <nav class="navbar navbar-light account-navbar">
-        <a class="navbar-brand" href="{% url 'dashboard' %}">
-            <img src="{% static 'gestion_joueurs/images/logoMS.png' %}" alt="Logo" style="height: 40px; width: auto;">
-            <span class="brand-name mt-2">MS Solution</span>
-        </a>
-        <div class="navbar-account-actions ml-auto">
+<body class="app-body {% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main-content">Aller au contenu</a>
+
+    <header class="app-topbar" role="banner">
+        <div class="topbar-left">
             {% if user.is_authenticated %}
-                <div class="dropdown">
-                    <button
-                        class="btn btn-secondary dropdown-toggle notification-toggle"
-                        type="button"
-                        id="notificationDropdown"
-                        data-toggle="dropdown"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                        aria-label="Afficher les notifications"
-                    >
-                        <i class="fas fa-bell"></i>
-                        {% if unread_notifications_count %}
-                            <span class="badge badge-danger notification-count-badge">
-                                {{ unread_notifications_count }}
-                            </span>
-                        {% endif %}
+                <button class="topbar-icon-button mobile-menu-button" id="mobileMenuToggle" type="button" aria-label="Ouvrir le menu" aria-controls="appSidebar" aria-expanded="false">
+                    <i class="fas fa-bars"></i>
+                </button>
+            {% endif %}
+            <a class="app-brand" href="{% if user.is_authenticated %}{% url 'dashboard_cards_view' %}{% else %}{% url 'user_login' %}{% endif %}">
+                <span class="brand-mark"><img src="{% static 'gestion_joueurs/images/logoMS.png' %}" alt=""></span>
+                <span class="brand-copy">
+                    <strong>MS Football</strong>
+                    <small>Production & gestion</small>
+                </span>
+            </a>
+        </div>
+
+        <div class="topbar-actions navbar-account-actions">
+            {% if user.is_authenticated %}
+                {% if request.user.is_superuser %}
+                    <a class="topbar-quick-action d-none d-lg-inline-flex" href="{% url 'create_video_request' %}">
+                        <i class="fas fa-plus"></i><span>Nouvelle vidéo</span>
+                    </a>
+                {% endif %}
+
+                <div class="dropdown topbar-dropdown">
+                    <button class="topbar-icon-button notification-toggle" type="button" id="notificationDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="Afficher les notifications">
+                        <i class="far fa-bell"></i>
+                        {% if unread_notifications_count %}<span class="notification-count-badge">{{ unread_notifications_count }}</span>{% endif %}
                     </button>
-                    <div
-                        class="dropdown-menu dropdown-menu-right notification-dropdown-menu"
-                        aria-labelledby="notificationDropdown"
-                    >
+                    <div class="dropdown-menu dropdown-menu-right notification-dropdown-menu" aria-labelledby="notificationDropdown">
                         <div class="notification-dropdown-header">
-                            <strong>Notifications</strong>
-                            <span class="badge badge-secondary">{{ unread_notifications_count }}</span>
+                            <div><span class="dropdown-eyebrow">Centre d’activité</span><strong>Notifications</strong></div>
+                            <span class="ui-count-badge">{{ unread_notifications_count }}</span>
                         </div>
                         <div class="notification-dropdown-list">
                             {% for notification in notifications %}
-                                <div class="notification-dropdown-item" id="notification-{{ notification.id }}">
+                                <article class="notification-dropdown-item" id="notification-{{ notification.id }}">
+                                    <span class="notification-item-icon"><i class="far fa-bell"></i></span>
                                     <a class="notification-message-link" href="{% url 'view_notification' notification.id %}">
                                         <span class="notification-message-text">{{ notification.message }}</span>
-                                        <small>{{ notification.created_at|date:"d/m/Y H:i" }}</small>
+                                        <small>{{ notification.created_at|date:"d/m/Y · H:i" }}</small>
                                     </a>
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-primary notification-read-button"
-                                        onclick="markAsRead({{ notification.id }}, event)"
-                                        title="Marquer comme lue"
-                                        aria-label="Marquer la notification comme lue"
-                                    >
+                                    <button type="button" class="notification-read-button" onclick="markAsRead({{ notification.id }}, event)" title="Marquer comme lue" aria-label="Marquer la notification comme lue">
                                         <i class="fas fa-check"></i>
                                     </button>
-                                </div>
+                                </article>
                             {% empty %}
-                                <div class="dropdown-item text-muted text-center py-3">
-                                    Aucune nouvelle notification.
-                                </div>
+                                <div class="ui-empty-state compact"><i class="far fa-bell-slash"></i><span>Aucune nouvelle notification</span></div>
                             {% endfor %}
                         </div>
-                        <a class="dropdown-item text-center notification-all-link" href="{% url 'notification_list' %}">
-                            Voir toutes les notifications
-                        </a>
+                        <a class="notification-all-link" href="{% url 'notification_list' %}">Voir toutes les notifications <i class="fas fa-arrow-right"></i></a>
                     </div>
                 </div>
 
-                <div class="dropdown">
-                    <button
-                        class="btn btn-secondary dropdown-toggle user-menu-toggle"
-                        type="button"
-                        id="userDropdown"
-                        data-toggle="dropdown"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                        aria-label="Ouvrir le menu du profil"
-                    >
-                        <i class="fas fa-user-circle"></i>
-                        <span class="d-none d-sm-inline">{{ user.username }}</span>
+                <div class="dropdown topbar-dropdown">
+                    <button class="user-menu-toggle" type="button" id="userDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar">{{ user.username|first|upper }}</span>
+                        <span class="user-menu-copy d-none d-sm-flex"><strong>{{ user.username }}</strong><small>{% if user.is_superuser %}Administrateur{% else %}Collaborateur{% endif %}</small></span>
+                        <i class="fas fa-chevron-down d-none d-sm-inline"></i>
                     </button>
-                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="userDropdown">
-                        <a class="dropdown-item" href="{% url 'view_profile' %}">
-                            <i class="fas fa-id-card mr-2"></i>Voir Profil
-                        </a>
-                        <a class="dropdown-item" href="{% url 'user_logout' %}">
-                            <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
-                        </a>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item" href="{% url 'notification_list' %}">
-                            <i class="fas fa-list mr-2"></i>Centre de notifications
-                        </a>
+                    <div class="dropdown-menu dropdown-menu-right user-dropdown-menu" aria-labelledby="userDropdown">
+                        <div class="user-dropdown-summary">
+                            <span class="user-avatar large">{{ user.username|first|upper }}</span>
+                            <div><strong>{{ user.username }}</strong><small>{% if user.email %}{{ user.email }}{% else %}Compte MS Football{% endif %}</small></div>
+                        </div>
+                        <a class="dropdown-item" href="{% url 'view_profile' %}"><i class="far fa-id-card"></i><span>Mon profil</span><span class="sr-only">Voir Profil</span></a>
+                        <a class="dropdown-item" href="{% url 'notification_list' %}"><i class="far fa-bell"></i><span>Notifications</span></a>
                         {% if user.is_superuser %}
-                            <a class="dropdown-item" href="{% url 'register_video_editor' %}">
-                                <i class="fas fa-user-plus mr-2"></i>Créer Éditeur Vidéo
-                            </a>
-                            <div class="d-flex align-items-center justify-content-center mt-2 px-2">
-                                <button class="nav-link btn btn-danger text-white text-center btn-sm" onclick="runTasks()">
-                                    <i class="fa fa-cogs mr-1"></i>Commande Système
-                                </button>
-                            </div>
+                            <a class="dropdown-item" href="{% url 'register_video_editor' %}"><i class="fas fa-user-plus"></i><span>Créer un monteur</span></a>
+                            <button class="dropdown-item system-command-button" type="button" onclick="runTasks()"><i class="fas fa-gears"></i><span>Commande système</span></button>
                         {% endif %}
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item logout-item" href="{% url 'user_logout' %}"><i class="fas fa-arrow-right-from-bracket"></i><span>Déconnexion</span></a>
                     </div>
                 </div>
             {% else %}
-                <a href="{% url 'user_login' %}" class="btn btn-outline-light mobile-login-link">
-                    <i class="fas fa-sign-in-alt mr-1"></i>Connexion
-                </a>
+                <a href="{% url 'user_login' %}" class="topbar-quick-action"><i class="fas fa-arrow-right-to-bracket"></i><span>Connexion</span></a>
             {% endif %}
-            </div>
-    </nav>
+        </div>
+    </header>
 
-    <div class="d-flex">
-        <div class=" sidebar" style="width: 260px; height: 100vh; position: fixed; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);">
-            <button id="sidebarToggle" class="btn btn-secondary">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            <ul class="nav flex-column p-3">
+    {% if user.is_authenticated %}
+        <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+        <aside class="app-sidebar" id="appSidebar" aria-label="Navigation principale">
+            <div class="sidebar-scroll">
                 {% if request.user.is_superuser %}
-                <li class="nav-item mb-3">
-                    <a class="nav-link btn btn-primary text-white" href="{% url 'create_video_request' %}">
-                        <i class="fas fa-video"></i> Nouvelle Vidéo
-                    </a>
-                </li>
-                {%endif%}
-                {% url 'dashboard_cards_view' as dashboard_cards_url %}
-                <li class="nav-item">
-                    <a class="nav-link {% if request.path == dashboard_cards_url %}active{% endif %}" href="{{ dashboard_cards_url }}">
-                        <i class="fas fa-th-large"></i> Aperçu Dashboard
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'dashboard/' %}active{% endif %}" href="{% url 'dashboard' %}">
-                        <i class="fas fa-tachometer-alt"></i> Tableau de bord
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.resolver_match.namespace == 'portal' and '/production/' in request.path %}active{% endif %}" href="{% url 'portal:production_board' %}">
-                        <i class="fas fa-clapperboard"></i> Centre de production
-                    </a>
-                </li>
-                {% if request.user.is_superuser %}
-                <li class="nav-item">
-                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'statistics/' %}active{% endif %}" href="{% url 'statistical_dashboard' %}">
-                        <i class="fas fa-chart-pie"></i> Tableau de bord Statistique
-                    </a>
-                </li>
-                {%endif%}
-                {% if request.user.is_superuser %}
-                <li class="nav-item">
-                    <a class="nav-link {% if request.path == request.build_absolute_uri|slice:":-1"|add:'players/' %}active{% endif %}" href="{% url 'player_dashboard' %}">
-                        <i class="fas fa-users"></i> Liste des Joueurs
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.resolver_match.namespace == 'prospects' %}active{% endif %}" href="{% url 'prospects:prospect_list' %}">
-                        <i class="fas fa-user-plus"></i> Gestion des Prospects
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.resolver_match.namespace == 'portal' and '/gestion/portail/' in request.path %}active{% endif %}" href="{% url 'portal:management' %}">
-                        <i class="fas fa-people-group"></i> Espaces joueurs / agents
-                    </a>
-                </li>
-                <li class="nav-item">
-                    {% url 'view_payments' as view_payments_url %}
-                    {% url 'view_invoices' as view_invoices_url %}
-                    {% url 'non_video_income_list' as non_video_income_list_url %}
-                    <a class="nav-link {% if request.path == view_payments_url or request.path == view_invoices_url or request.path == non_video_income_list_url %}active{% endif %}" data-toggle="collapse" href="#paymentSubmenu" role="button" aria-expanded="false" aria-controls="paymentSubmenu">
-                        <i class="fas fa-dollar-sign"></i> Revenus
-                    </a>
-                    <div class="collapse {% if request.path == view_payments_url or request.path == view_invoices_url  or request.path == non_video_income_list_url %}show{% endif %}" id="paymentSubmenu">
-                        <ul class="nav flex-column ml-3">
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == view_invoices_url %}active{% endif %}" href="{{ view_invoices_url }}">Factures Videos</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == non_video_income_list_url %}active{% endif %}" href="{{ non_video_income_list_url }}">
-                                    <i class="fas fa-wallet"></i> Revenus Non-Vidéo
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == view_payments_url %}active{% endif %}" href="{{ view_payments_url }}">Details Paiements</a>
-                            </li>
-                        </ul>
-                    </div>
-                </li>
-                <li class="nav-item">
-                    {% url 'add_expense' as add_expense_url %}
-                    {% url 'view_expenses' as view_expenses_url %}
-                    <a class="nav-link {% if request.path == add_expense_url or request.path == view_expenses_url %}active{% endif %}" data-toggle="collapse" href="#expenseSubmenu" role="button" aria-expanded="false" aria-controls="expenseSubmenu">
-                        <i class="fas fa-money-bill-wave"></i> Dépenses
-                    </a>
-                    <div class="collapse {% if request.path == add_expense_url or request.path == view_expenses_url %}show{% endif %}" id="expenseSubmenu">
-                        <ul class="nav flex-column ml-3">
-                            <!-- <li class="nav-item">
-                                <a class="nav-link {% if request.path == add_expense_url %}active{% endif %}" href="{{ add_expense_url }}">Créer une Dépense</a>
-                            </li> -->
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == view_expenses_url %}active{% endif %}" href="{{ view_expenses_url }}">Voir les Dépenses</a>
-                            </li>
-                        </ul>
-                    </div>
-                </li>
-                {% url 'financial_report_list' as financial_report_list_url %}
-                <li class="nav-item">
-                    <a class="nav-link {% if request.path == financial_report_list_url %}active{% endif %}" href="{{ financial_report_list_url }}">
-                        <i class="fas fa-chart-line"></i> Rapports Financiers
-                    </a>
-                </li>
-                <!-- <li class="nav-item">
-                    {% url 'create_invoice' as create_invoice_url %}
-                    <a class="nav-link {% if request.path ==  create_invoice_url %}active{% endif %}" data-toggle="collapse" href="#invoiceSubmenu" role="button" aria-expanded="false" aria-controls="invoiceSubmenu">
-                        <i class="fas fa-file-invoice"></i> Factures
-                    </a>
-                    <div class="collapse {% if request.path == create_invoice_url %}show{% endif %}" id="invoiceSubmenu">
-                        <ul class="nav flex-column ml-3">
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == create_invoice_url %}active{% endif %}" href="{{ create_invoice_url }}">Créer une Facture</a>
-                            </li>
-                        </ul>
-                    </div>
-                </li> -->
-                {%endif%}
-                <li class="nav-item">
+                    <a class="sidebar-primary-action" href="{% url 'create_video_request' %}"><i class="fas fa-plus"></i><span>Créer une vidéo</span></a>
+                {% endif %}
+
+                <nav class="sidebar-nav">
+                    <span class="nav-section-title">Pilotage</span>
+                    {% url 'dashboard_cards_view' as dashboard_cards_url %}
+                    <a class="sidebar-link {% if request.path == dashboard_cards_url %}active{% endif %}" href="{{ dashboard_cards_url }}"><i class="fas fa-table-cells-large"></i><span>Aperçu</span></a>
+                    <a class="sidebar-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i class="fas fa-list-check"></i><span>Commandes vidéo</span></a>
+                    <a class="sidebar-link {% if request.resolver_match.namespace == 'portal' and '/production/' in request.path %}active{% endif %}" href="{% url 'portal:production_board' %}"><i class="fas fa-clapperboard"></i><span>Centre de production</span></a>
+                    {% if request.user.is_superuser %}
+                        <a class="sidebar-link {% if request.resolver_match.url_name == 'statistical_dashboard' %}active{% endif %}" href="{% url 'statistical_dashboard' %}"><i class="fas fa-chart-pie"></i><span>Statistiques</span></a>
+
+                        <span class="nav-section-title">Clients & réseau</span>
+                        <a class="sidebar-link {% if request.resolver_match.url_name == 'player_dashboard' %}active{% endif %}" href="{% url 'player_dashboard' %}"><i class="fas fa-users"></i><span>Joueurs</span></a>
+                        <a class="sidebar-link {% if request.resolver_match.namespace == 'prospects' %}active{% endif %}" href="{% url 'prospects:prospect_list' %}"><i class="fas fa-user-plus"></i><span>Prospects</span></a>
+                        <a class="sidebar-link {% if request.resolver_match.namespace == 'portal' and '/gestion/portail/' in request.path %}active{% endif %}" href="{% url 'portal:management' %}"><i class="fas fa-building-user"></i><span>Espaces clients</span></a>
+
+                        <span class="nav-section-title">Finance</span>
+                        {% url 'view_payments' as view_payments_url %}
+                        {% url 'view_invoices' as view_invoices_url %}
+                        {% url 'non_video_income_list' as non_video_income_list_url %}
+                        <button class="sidebar-link sidebar-collapse-toggle {% if request.path == view_payments_url or request.path == view_invoices_url or request.path == non_video_income_list_url %}active{% endif %}" type="button" data-toggle="collapse" data-target="#revenueSubmenu" aria-expanded="{% if request.path == view_payments_url or request.path == view_invoices_url or request.path == non_video_income_list_url %}true{% else %}false{% endif %}" aria-controls="revenueSubmenu">
+                            <i class="fas fa-wallet"></i><span>Revenus</span><i class="fas fa-chevron-down collapse-chevron"></i>
+                        </button>
+                        <div class="collapse sidebar-submenu {% if request.path == view_payments_url or request.path == view_invoices_url or request.path == non_video_income_list_url %}show{% endif %}" id="revenueSubmenu">
+                            <a class="{% if request.path == view_invoices_url %}active{% endif %}" href="{{ view_invoices_url }}">Factures vidéo</a>
+                            <a class="{% if request.path == view_payments_url %}active{% endif %}" href="{{ view_payments_url }}">Paiements</a>
+                            <a class="{% if request.path == non_video_income_list_url %}active{% endif %}" href="{{ non_video_income_list_url }}">Autres revenus</a>
+                        </div>
+
+                        {% url 'view_expenses' as view_expenses_url %}
+                        <a class="sidebar-link {% if request.path == view_expenses_url %}active{% endif %}" href="{{ view_expenses_url }}"><i class="fas fa-receipt"></i><span>Dépenses</span></a>
+                        {% url 'financial_report_list' as financial_report_list_url %}
+                        <a class="sidebar-link {% if request.path == financial_report_list_url %}active{% endif %}" href="{{ financial_report_list_url }}"><i class="fas fa-chart-line"></i><span>Rapports financiers</span></a>
+                    {% endif %}
+
                     {% url 'manage_salaries' as manage_salaries_url %}
-                    {% url 'add_salary' as add_salary_url %}
-                    <a class="nav-link {% if request.path == manage_salaries_url or request.path == add_salary_url %}active{% endif %}" data-toggle="collapse" href="#salarySubmenu" role="button" aria-expanded="false" aria-controls="salarySubmenu">
-                        <i class="fas fa-users"></i> Salaires
-                    </a>
-                    <div class="collapse {% if request.path == manage_salaries_url or request.path == add_salary_url %}show{% endif %}" id="salarySubmenu">
-                        <ul class="nav flex-column ml-3">
-                            <li class="nav-item">
-                                <a class="nav-link {% if request.path == manage_salaries_url %}active{% endif %}" href="{{ manage_salaries_url }}">Gérer les Salaires</a>
-                            </li>
-                            <!-- <li class="nav-item">
-                                <a class="nav-link {% if request.path == add_salary_url %}active{% endif %}" href="{{ add_salary_url }}">Ajouter un Salaire</a>
-                            </li> -->
-                        </ul>
-                    </div>
-                </li>
-            </ul>
-        </div>
+                    <a class="sidebar-link {% if request.path == manage_salaries_url %}active{% endif %}" href="{{ manage_salaries_url }}"><i class="fas fa-money-check-dollar"></i><span>Salaires</span></a>
+                </nav>
+            </div>
+            <div class="sidebar-footer">
+                <button id="sidebarToggle" class="sidebar-collapse-button" type="button" aria-label="Réduire le menu"><i class="fas fa-angles-left"></i><span>Réduire le menu</span></button>
+                <span class="sidebar-version">MS Football · Workspace</span>
+            </div>
+        </aside>
+    {% endif %}
 
-        <div class="{% block content_container_class %}container{% endblock %}" style="{% block content_container_style %}margin-left: 260px;{% endblock %}">
-            {% block content %}{% endblock %}
-        </div>
-    </div>
+    <main id="main-content" class="{% block content_container_class %}{% if user.is_authenticated %}app-main{% else %}public-main{% endif %}{% endblock %}" style="{% block content_container_style %}{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        window.msFootball = {
+            csrfToken: '{{ csrf_token }}',
+            markNotificationUrl: "{% url 'mark_notification_as_read' 0 %}",
+            runTasksUrl: "{% url 'run_all_tasks' %}"
+        };
+
+        function markAsRead(notificationId, event) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            $.ajax({
+                url: window.msFootball.markNotificationUrl.replace('0', notificationId),
+                type: 'POST',
+                data: { csrfmiddlewaretoken: window.msFootball.csrfToken },
+                success: function(response) {
+                    $('#notification-' + notificationId).remove();
+                    updateNotificationCount(response.unread_count);
+                }
+            });
+        }
+
+        function updateNotificationCount(unreadCount) {
+            const toggle = $('#notificationDropdown');
+            toggle.find('.notification-count-badge').remove();
+            $('.notification-dropdown-header .ui-count-badge').text(unreadCount);
+            if (unreadCount > 0) toggle.append('<span class="notification-count-badge">' + unreadCount + '</span>');
+            if (unreadCount === 0 && $('.notification-dropdown-item').length === 0) {
+                $('.notification-dropdown-list').html('<div class="ui-empty-state compact"><i class="far fa-bell-slash"></i><span>Aucune nouvelle notification</span></div>');
+            }
+        }
+
+        function runTasks() {
+            if (!window.confirm('Lancer les tâches système maintenant ?')) return;
+            fetch(window.msFootball.runTasksUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.msFootball.csrfToken },
+                credentials: 'same-origin'
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) { window.alert(data.message); })
+            .catch(function() { window.alert('La commande système n’a pas pu être lancée.'); });
+        }
+    </script>
+    <script src="{% static 'gestion_joueurs/js/app.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

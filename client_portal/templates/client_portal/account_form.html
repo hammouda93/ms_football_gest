@@ -1,4 +1,22 @@
-{% extends "gestion_joueurs/base.html" %}{% load static %}
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+
 {% block title %}Nouveau compte portail{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
-{% block content %}<div class="production-page narrow-page"><a class="back-link" href="{% url 'portal:management' %}">← Gestion du portail</a><section class="portal-panel"><div class="panel-heading"><h1>Nouveau compte portail</h1></div><p>Le compte sera lié au joueur ou à l’organisation sans modifier leurs données.</p><form method="post" class="compact-form">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Créer et générer le lien</button></form></section></div>{% endblock %}
+
+{% block content %}
+<div class="production-page narrow-page">
+    <nav class="ui-breadcrumb"><a href="{% url 'portal:management' %}">Espaces clients</a><span>›</span><span>Nouveau compte</span></nav>
+    <header class="production-heading">
+        <div><span class="eyebrow">Accès sécurisé</span><h1>Nouveau compte portail</h1><p>Créez un accès personnel pour un joueur, un agent ou un collaborateur.</p></div>
+    </header>
+    <section class="portal-panel form-panel">
+        <div class="form-assurance"><i class="fas fa-shield-halved"></i><div><strong>Aucune donnée joueur modifiée</strong><p>Le compte est seulement relié aux fiches ou organisations sélectionnées.</p></div></div>
+        <form method="post" class="compact-form">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="form-actions"><a class="btn btn-secondary" href="{% url 'portal:management' %}">Annuler</a><button class="btn btn-primary" type="submit"><i class="fas fa-user-check"></i> Créer et générer le lien</button></div>
+        </form>
+    </section>
+</div>
+{% endblock %}

@@ -3,25 +3,23 @@
 
 {% block title %}Prospects vidéo | MS Football{% endblock %}
 
-{% block content_container_class %}container-fluid prospect-content-container{% endblock %}
-{% block content_container_style %}margin-left: 260px;{% endblock %}
-
 {% block extra_css %}
     <meta name="robots" content="noindex, nofollow">
     <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="prospect-management">
-    <header class="management-header">
+<div class="prospect-management ui-page">
+    <header class="management-header ui-page-header">
         <div>
-            <p class="eyebrow">Espace privé</p>
+            <p class="eyebrow ui-eyebrow">Acquisition clients</p>
+            <span class="sr-only">Gestion des Prospects</span>
             <h1>Prospects vidéo</h1>
-            <p>{{ total_count }} demande{{ total_count|pluralize }} trouvée{{ total_count|pluralize }}</p>
+            <p>{{ total_count }} demande{{ total_count|pluralize }} trouvée{{ total_count|pluralize }} · du premier contact à la conversion.</p>
         </div>
         <nav class="header-actions" aria-label="Actions principales">
-            <a class="secondary-button" href="{% url 'prospects:request_create' %}" target="_blank" rel="noopener">
-                Voir le formulaire public
+            <a class="btn btn-outline-primary" href="{% url 'prospects:request_create' %}" target="_blank" rel="noopener">
+                <i class="fas fa-arrow-up-right-from-square"></i> Formulaire public
             </a>
         </nav>
     </header>
@@ -49,7 +47,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <button class="primary-button compact-button" type="submit">Filtrer</button>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Filtrer</button>
             {% if query or selected_status %}
                 <a class="text-link" href="{% url 'prospects:prospect_list' %}">Réinitialiser</a>
             {% endif %}
@@ -101,11 +99,11 @@
                             <div class="action-cluster">
                                 <form method="post" action="{% url 'prospects:prospect_whatsapp_start' prospect.pk %}" target="_blank" class="inline-action-form">
                                     {% csrf_token %}
-                                    <button class="whatsapp-button" type="submit">Démarrer sur WhatsApp</button>
+                                    <button class="whatsapp-button" type="submit"><i class="fab fa-whatsapp"></i> Démarrer sur WhatsApp</button>
                                 </form>
                                 <a class="ghost-button" href="{% url 'prospects:prospect_edit' prospect.pk %}">Modifier</a>
                                 {% if prospect.player %}
-                                    <a class="secondary-button" href="{% url 'create_video_request' %}?player_id={{ prospect.player_id }}">Créer la vidéo</a>
+                                    <a class="secondary-button" href="{% url 'create_video_request' %}?player_id={{ prospect.player_id }}">Créer la vidéo →</a>
                                 {% else %}
                                     <form method="post" action="{% url 'prospects:prospect_convert' prospect.pk %}" class="inline-action-form">
                                         {% csrf_token %}
@@ -149,14 +147,4 @@
         {% endif %}
     </main>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    if (window.matchMedia("(max-width: 900px)").matches) {
-        $(".sidebar").addClass("closed");
-        $("#sidebarToggle i").removeClass("fa-chevron-left").addClass("fa-chevron-right");
-        localStorage.setItem("sidebarVisible", "false");
-    }
-</script>
 {% endblock %}

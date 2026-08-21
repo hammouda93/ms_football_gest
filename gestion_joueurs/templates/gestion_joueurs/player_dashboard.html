@@ -3,16 +3,18 @@
 {% block title %}Tableau de bord des Joueurs{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h1>Listes des Joueurs ({{players_count}})</h1>
+<div class="container mt-4 ui-page list-page player-list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Clients</span><h1>Joueurs</h1><p>{{ players_count }} fiche{{ players_count|pluralize }} · recherchez par club, ligue ou poste.</p></div>
+        <div class="ui-page-actions">
             {% if request.user.is_superuser %}
             <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-0 mt-0">
-                <i class="fas fa-user-plus"></i> Nouveau Joueur
+                <i class="fas fa-user-plus"></i> Nouveau joueur
             </a>
             {% endif %}
         </div>
+    </header>
+    <div class="card">
         <div class="card-body">
             <form method="GET" class="mb-3" id="filter-form">
                 <div class="form-row">
@@ -52,7 +54,7 @@
                         </select>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
                     </div>
                 </div>
             </form>
@@ -80,12 +82,12 @@
                     <tbody>
                         {% for player in page_obj %}
                             <tr>
-                                <td>{{ player.name }}</td>
+                                <td><strong>{{ player.name }}</strong></td>
                                 <td>{{ player.club }}</td>
                                 <td>{{ player.get_league_name }}</td>
                                 <td>{{ player.position }}</td>
-                                <td>{{ player.client_fidel|yesno:"Oui,Non" }}</td>
-                                <td>{{ player.client_vip|yesno:"Oui,Non" }}</td>
+                                <td><span class="badge {% if player.client_fidel %}badge-success{% else %}badge-secondary{% endif %}">{{ player.client_fidel|yesno:"Oui,Non" }}</span></td>
+                                <td><span class="badge {% if player.client_vip %}badge-primary{% else %}badge-secondary{% endif %}">{{ player.client_vip|yesno:"Oui,Non" }}</span></td>
                                 <td>{{ player.whatsapp_number|default:"Non renseigné" }}</td>
                                 {% if request.user.is_superuser %}
                                 <td class="text-center">

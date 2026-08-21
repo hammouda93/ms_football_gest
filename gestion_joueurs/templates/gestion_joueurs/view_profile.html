@@ -1,13 +1,27 @@
-<!-- view_profile.html -->
 {% extends 'gestion_joueurs/base.html' %}
-
 
 {% block title %}Profil de {{ user.username }}{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h1>Profil de {{ user.username }}</h1>
-    <p>Email: {{ user.email }}</p>
-    <!-- Add more user details as needed -->
+<div class="container ui-page profile-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Compte personnel</span><h1>Mon profil</h1><p>Informations du compte utilisé pour accéder à MS Football.</p></div>
+    </header>
+    <div class="profile-layout">
+        <section class="ui-panel profile-identity-card">
+            <span class="profile-avatar">{{ user.username|first|upper }}</span>
+            <div><h2>{{ user.username }}</h2><span class="badge {% if user.is_superuser %}badge-primary{% else %}badge-secondary{% endif %}">{% if user.is_superuser %}Administrateur{% else %}Collaborateur{% endif %}</span></div>
+        </section>
+        <section class="ui-panel">
+            <div class="panel-heading compact-heading"><div><h2>Détails du compte</h2><small>Accès et coordonnées</small></div></div>
+            <dl class="ui-key-value">
+                <dt>Nom d’utilisateur</dt><dd>{{ user.username }}</dd>
+                <dt>Adresse e-mail</dt><dd>{{ user.email|default:"Non renseignée" }}</dd>
+                <dt>Type d’accès</dt><dd>{% if user.is_superuser %}Administration complète{% else %}Espace collaborateur{% endif %}</dd>
+                <dt>État du compte</dt><dd><span class="badge badge-success">Actif</span></dd>
+            </dl>
+            <div class="form-actions"><a class="btn btn-secondary" href="{% url 'dashboard_cards_view' %}">Retour à l’aperçu</a><a class="btn btn-outline-danger" href="{% url 'user_logout' %}"><i class="fas fa-arrow-right-from-bracket"></i> Déconnexion</a></div>
+        </section>
+    </div>
 </div>
 {% endblock %}

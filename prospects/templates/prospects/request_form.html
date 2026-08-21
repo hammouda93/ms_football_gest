@@ -5,34 +5,38 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Demandez votre vidéo highlights ou votre CV vidéo de football.">
+    <meta name="theme-color" content="#081426">
     <title>Demande de vidéo | MS Football</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'prospects/prospects.css' %}">
 </head>
 <body class="public-page">
     <main class="public-shell">
         <section class="public-intro" aria-labelledby="page-title">
             <a class="brand" href="{% url 'prospects:request_create' %}" aria-label="MS Football">
-                <span class="brand-mark">MS</span>
-                <span>Football</span>
+                <span class="brand-mark"><img src="{% static 'gestion_joueurs/images/logoMS.png' %}" alt=""></span>
+                <span><strong>MS Football</strong><small>Highlights & CV vidéo</small></span>
             </a>
-            <p class="eyebrow">Votre carrière en images</p>
+            <p class="eyebrow">Votre carrière, mieux présentée</p>
             <h1 id="page-title">Une vidéo qui montre vraiment votre niveau.</h1>
             <p class="intro-copy">
                 Envoyez les informations de votre projet. Nous étudions vos matchs et
                 nous vous répondons directement sur WhatsApp.
             </p>
             <ul class="benefit-list" aria-label="Avantages du service">
-                <li>Highlights professionnels</li>
-                <li>CV vidéo pour clubs et agents</li>
-                <li>Échange rapide sur WhatsApp</li>
+                <li><span>01</span><div><strong>Profil rapide</strong><small>Importez Transfermarkt ou complétez manuellement.</small></div></li>
+                <li><span>02</span><div><strong>Projet précis</strong><small>Indiquez la saison, le service et votre délai.</small></div></li>
+                <li><span>03</span><div><strong>Contact personnel</strong><small>Notre équipe vous répond directement sur WhatsApp.</small></div></li>
             </ul>
         </section>
 
         <section class="form-card" aria-labelledby="form-title">
             <div class="form-heading">
-                <p class="step-label">Demande gratuite</p>
+                <p class="step-label">Demande gratuite · 3 minutes</p>
                 <h2 id="form-title">Parlez-nous de votre projet</h2>
-                <p>Les champs marqués d’un astérisque sont obligatoires.</p>
+                <p>Les champs marqués d’un astérisque sont obligatoires. Vous pourrez tout vérifier avant l’envoi.</p>
             </div>
 
             <form method="post" novalidate>
@@ -45,9 +49,7 @@
                 {% endif %}
 
                 <div class="transfermarkt-import-card">
-                    <label for="{{ form.transfermarkt_url.id_for_label }}">
-                        <strong>Lien Transfermarkt</strong>
-                    </label>
+                    <div class="import-card-heading"><div><span class="recommended-label">Recommandé</span><label for="{{ form.transfermarkt_url.id_for_label }}"><strong>Importer avec Transfermarkt</strong></label></div><span class="import-step">Option 1</span></div>
                     <div class="transfermarkt-input-group">
                         {{ form.transfermarkt_url }}
                         <button
@@ -66,6 +68,8 @@
                     {% endif %}
                     <p class="transfermarkt-message" id="transfermarktMessage" aria-live="polite"></p>
                 </div>
+
+                <div class="manual-entry-divider"><span>ou complétez les informations manuellement</span></div>
 
                 <div class="form-grid">
                     {% for field in form %}
@@ -86,9 +90,10 @@
                     {% endfor %}
                 </div>
 
-                <button class="primary-button" type="submit">Envoyer ma demande</button>
+                <div class="request-assurance"><span aria-hidden="true">✓</span><p>Avec un lien Transfermarkt, le pays et les liens des matchs peuvent rester vides. Sans Transfermarkt, ajoutez au moins un lien de match.</p></div>
+                <button class="primary-button request-submit" type="submit"><span>Envoyer ma demande</span><b aria-hidden="true">→</b></button>
                 <p class="privacy-note">
-                    Vos coordonnées servent uniquement à traiter votre demande et à vous recontacter.
+                    🔒 Vos coordonnées servent uniquement à traiter votre demande et à vous recontacter.
                 </p>
             </form>
         </section>
