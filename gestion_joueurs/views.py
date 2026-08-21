@@ -40,12 +40,52 @@ from django.views.decorators.http import require_POST
 from .utils import parse_transfermarkt_player
 from decimal import Decimal
 from django.db import transaction
+from django.urls import reverse
 from .video_status_whatsapp import (
     PAYMENT_MODE_CHOICES,
     build_notification_whatsapp_url,
     build_status_notification_context,
     build_whatsapp_url,
 )
+from client_portal.services import (
+    deliver_portal_credentials,
+    ensure_player_portal_account,
+)
+
+
+def _prepare_player_portal_access(request, player):
+    try:
+        profile, temporary_password, created = ensure_player_portal_account(
+            player,
+            created_by=request.user,
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return None
+
+    if not temporary_password:
+        messages.info(
+            request,
+            f"Le compte client de {player.name} existe déjà et reste actif.",
+        )
+        return None
+
+    login_url = request.build_absolute_uri(reverse("portal:login"))
+    delivery = deliver_portal_credentials(
+        profile,
+        temporary_password,
+        login_url=login_url,
+        actor=request.user,
+        player=player,
+    )
+    return {
+        "profile": profile,
+        "login_url": login_url,
+        "login_email": profile.user.email,
+        "temporary_password": temporary_password,
+        "delivery": delivery,
+        "account_created": created,
+    }
 
 @superadmin_required
 @login_required
@@ -67,12 +107,15 @@ def create_video_highlight(request):
 
     if request.method == 'POST':
         if 'add_player' in request.POST:
+            portal_access = None
             if selected_player_id:
                 try:
                     player = Player.objects.get(id=selected_player_id)
                     player_form = PlayerForm(request.POST, instance=player)
                     if player_form.is_valid():
                         player = player_form.save()
+                        if player_form.cleaned_data.get('create_client_account'):
+                            portal_access = _prepare_player_portal_access(request, player)
                         messages.success(request, "Les informations du joueur ont été mises à jour avec succès !")
                     else:
                         messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
@@ -82,6 +125,8 @@ def create_video_highlight(request):
                 player_form = PlayerForm(request.POST)
                 if player_form.is_valid():
                     player = player_form.save()
+                    if player_form.cleaned_data.get('create_client_account'):
+                        portal_access = _prepare_player_portal_access(request, player)
                     messages.success(request, "Le nouveau joueur a été ajouté avec succès !")
                 else:
                     messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
@@ -93,6 +138,7 @@ def create_video_highlight(request):
                 'players': Player.objects.all(),
                 'new_player_added': player is not None,
                 'added_player': player,
+                'portal_access': portal_access,
             })
 
         elif 'create_video' in request.POST:
@@ -201,6 +247,15 @@ def create_video_highlight(request):
                         )
 
                 messages.success(request, "La vidéo a été créée avec succès avec sa facture !")
+                if video_form.cleaned_data.get('create_client_account'):
+                    portal_access = _prepare_player_portal_access(request, player)
+                    if portal_access:
+                        portal_access["back_url"] = reverse('dashboard')
+                        return render(
+                            request,
+                            'client_portal/access_link_created.html',
+                            portal_access,
+                        )
                 return redirect('dashboard')
 
             except Player.DoesNotExist:
@@ -434,6 +489,21 @@ def player_dashboard(request):
     })
 
 def user_login(request):
+    if request.user.is_authenticated:
+        is_internal_user = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or hasattr(request.user, 'videoeditor')
+        )
+        if is_internal_user:
+            return redirect('dashboard')
+        if hasattr(request.user, 'portal_profile'):
+            logout(request)
+            messages.info(
+                request,
+                "La session client a été fermée. Connectez-vous avec votre compte de gestion.",
+            )
+
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
@@ -445,9 +515,6 @@ def user_login(request):
                 return redirect('dashboard')
     else:
         form = AuthenticationForm()
-    
-    if request.user.is_authenticated:
-        return redirect('dashboard')  # Rediriger si déjà connecté
     
     return render(request, 'gestion_joueurs/login.html', {'form': form})
 
@@ -660,8 +727,17 @@ def edit_player(request, player_id):
     if request.method == 'POST':
         form = PlayerForm(request.POST, instance=player)
         if form.is_valid():
-            form.save()
+            player = form.save()
             messages.success(request, "Les informations du joueur ont été mises à jour avec succès.")
+            if form.cleaned_data.get('create_client_account'):
+                portal_access = _prepare_player_portal_access(request, player)
+                if portal_access:
+                    portal_access["back_url"] = reverse('edit_player', args=(player.pk,))
+                    return render(
+                        request,
+                        'client_portal/access_link_created.html',
+                        portal_access,
+                    )
             return redirect('dashboard')
     else:
         form = PlayerForm(instance=player)
@@ -704,11 +780,24 @@ def edit_video(request, video_id):
                 last_invoice.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
 
+            portal_access = None
+            if form.cleaned_data.get('create_client_account'):
+                portal_access = _prepare_player_portal_access(request, video.player)
+
             whatsapp_response = _redirect_to_status_whatsapp(
                 request,
                 video,
                 original_status != video.status,
             )
+            if portal_access:
+                portal_access["back_url"] = reverse('edit_video', args=(video.pk,))
+                if whatsapp_response:
+                    portal_access["status_whatsapp_url"] = whatsapp_response.url
+                return render(
+                    request,
+                    'client_portal/access_link_created.html',
+                    portal_access,
+                )
             if whatsapp_response:
                 return whatsapp_response
 
@@ -864,7 +953,15 @@ def get_remaining_balance(request, video_id):
 @login_required
 def search_players(request):
     query = request.GET.get('q', '')
-    players = Player.objects.filter(name__icontains=query).values('id', 'name', 'date_of_birth', 'league', 'club', 'whatsapp_number')[:10]
+    players = Player.objects.filter(name__icontains=query).values(
+        'id',
+        'name',
+        'date_of_birth',
+        'league',
+        'club',
+        'email',
+        'whatsapp_number',
+    )[:10]
     return JsonResponse({'players': list(players)})
 
 @superadmin_required
@@ -1811,6 +1908,7 @@ def import_transfermarkt_player(request):
                     "date_of_birth": existing_player.date_of_birth.strftime("%Y-%m-%d") if existing_player.date_of_birth else "",
                     "league": existing_player.league,
                     "club": existing_player.club,
+                    "email": existing_player.email or "",
                     "whatsapp_number": existing_player.whatsapp_number or "",
                     "position": existing_player.position,
                     "client_fidel": existing_player.client_fidel,
@@ -1827,6 +1925,7 @@ def import_transfermarkt_player(request):
                 "date_of_birth": parsed_data.get("date_of_birth", ""),
                 "league": parsed_data.get("league", "OC"),
                 "club": parsed_data.get("club", ""),
+                "email": "",
                 "whatsapp_number": "",
                 "position": parsed_data.get("position", "DF"),
                 "client_fidel": False,
@@ -2027,4 +2126,3 @@ def mark_intro_automation_completed(request, video_id):
         'video_id': video.id,
         'intro_automation_completed': video.intro_automation_completed
     })
-

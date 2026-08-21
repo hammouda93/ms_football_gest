@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -249,7 +250,8 @@ class ProductionCenterTests(PortalFixtureMixin, TestCase):
 
 
 @override_settings(
-    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
 )
 class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
     def setUp(self):
@@ -313,10 +315,13 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Player.objects.filter(pk=self.player.pk).exists())
         self.player.refresh_from_db()
+        self.first_link.refresh_from_db()
         self.assertEqual(
             (self.player.name, self.player.club, self.player.email),
             snapshot,
         )
+        self.assertFalse(self.first_link.is_active)
+        self.assertIsNotNone(self.first_link.ended_at)
 
     def test_agent_request_creates_no_player(self):
         self.client.force_login(self.agent)
@@ -436,29 +441,218 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
 
     def test_admin_creates_player_access_without_editing_player(self):
         self.client.force_login(self.admin)
-        snapshot = (self.player.name, self.player.club, self.player.email)
+        snapshot = (
+            self.hidden_player.name,
+            self.hidden_player.club,
+            self.hidden_player.email,
+        )
         response = self.client.post(
             reverse("portal:account_create"),
             {
                 "account_type": PortalProfile.AccountType.PLAYER,
-                "display_name": "Alpha Client",
-                "email": "alpha-client@example.com",
+                "display_name": "Hidden Client",
+                "email": "hidden-client@example.com",
                 "whatsapp_number": "+21620999111",
                 "preferred_language": "fr",
-                "player": self.player.pk,
+                "player": self.hidden_player.pk,
                 "organization": "",
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Lien sécurisé créé")
-        profile = PortalProfile.objects.get(user__email="alpha-client@example.com")
+        self.assertContains(response, "Compte permanent prêt")
+        profile = PortalProfile.objects.get(user__email="hidden-client@example.com")
         self.assertTrue(
-            PlayerAccess.objects.filter(user=profile.user, player=self.player).exists()
+            PlayerAccess.objects.filter(
+                user=profile.user,
+                player=self.hidden_player,
+            ).exists()
         )
-        self.player.refresh_from_db()
+        self.hidden_player.refresh_from_db()
         self.assertEqual(
-            (self.player.name, self.player.club, self.player.email),
+            (
+                self.hidden_player.name,
+                self.hidden_player.club,
+                self.hidden_player.email,
+            ),
             snapshot,
+        )
+
+    def test_account_creation_uses_persistent_credentials_and_email(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("portal:account_create"),
+            {
+                "account_type": PortalProfile.AccountType.PLAYER,
+                "display_name": self.hidden_player.name,
+                "email": self.hidden_player.email,
+                "whatsapp_number": "+21620999111",
+                "preferred_language": "fr",
+                "player": self.hidden_player.pk,
+                "organization": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        profile = PortalProfile.objects.get(user__email=self.hidden_player.email)
+        temporary_password = response.context["temporary_password"]
+        self.assertTrue(profile.user.has_usable_password())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(reverse("portal:login"), mail.outbox[0].body)
+        self.assertIn(temporary_password, mail.outbox[0].body)
+
+        self.client.logout()
+        login_response = self.client.post(
+            reverse("portal:login"),
+            {
+                "username": self.hidden_player.email,
+                "password": temporary_password,
+            },
+        )
+        self.assertRedirects(login_response, reverse("portal:dashboard"))
+
+    def test_admin_can_deactivate_and_reactivate_portal_account(self):
+        profile = self.player_user.portal_profile
+        profile.user.set_password("Player-password-123")
+        profile.user.save(update_fields=("password",))
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("portal:account_toggle", args=(profile.pk,)),
+            {"action": "deactivate"},
+        )
+        self.assertRedirects(response, reverse("portal:management"))
+        profile.refresh_from_db()
+        profile.user.refresh_from_db()
+        self.assertFalse(profile.is_active)
+        self.assertFalse(profile.user.is_active)
+
+        self.client.logout()
+        blocked_login = self.client.post(
+            reverse("portal:login"),
+            {
+                "username": profile.user.email,
+                "password": "Player-password-123",
+            },
+        )
+        self.assertEqual(blocked_login.status_code, 200)
+
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("portal:account_toggle", args=(profile.pk,)),
+            {"action": "activate"},
+        )
+        profile.refresh_from_db()
+        profile.user.refresh_from_db()
+        self.assertTrue(profile.is_active)
+        self.assertTrue(profile.user.is_active)
+
+    def test_admin_can_renew_credentials_and_prepare_whatsapp(self):
+        profile = self.player_user.portal_profile
+        legacy_link, _raw_token = PortalAccessLink.issue(
+            user=profile.user,
+            created_by=self.admin,
+            lifetime=timedelta(days=1),
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("portal:account_credentials", args=(profile.pk,))
+        )
+        self.assertEqual(response.status_code, 200)
+        temporary_password = response.context["temporary_password"]
+        profile.user.refresh_from_db()
+        self.assertTrue(profile.user.check_password(temporary_password))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertContains(response, "Envoyer les identifiants")
+        legacy_link.refresh_from_db()
+        self.assertIsNotNone(legacy_link.revoked_at)
+
+    def test_portal_session_can_switch_to_staff_login_in_same_browser(self):
+        self.client.force_login(self.player_user)
+        login_page = self.client.get(reverse("user_login"))
+        self.assertEqual(login_page.status_code, 200)
+        self.assertContains(login_page, "Connexion")
+
+        staff_login = self.client.post(
+            reverse("user_login"),
+            {
+                "username": self.admin.username,
+                "password": "test-password",
+            },
+        )
+        self.assertRedirects(staff_login, reverse("dashboard"))
+
+    def test_agent_account_can_link_several_existing_players_without_editing_them(self):
+        agency = Organization.objects.create(
+            name="Next Career",
+            kind=Organization.Kind.AGENT,
+            contact_name="Nadia Agent",
+            email="nadia@example.com",
+            whatsapp_number="+21620777888",
+            created_by=self.admin,
+        )
+        snapshots = {
+            player.pk: (player.name, player.club, player.email)
+            for player in (self.player, self.hidden_player)
+        }
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("portal:account_create"),
+            {
+                "account_type": PortalProfile.AccountType.AGENT,
+                "display_name": "Nadia Agent",
+                "email": "nadia@example.com",
+                "whatsapp_number": "+21620777888",
+                "preferred_language": "fr",
+                # Simule un ancien choix joueur encore présent après changement
+                # de type dans le navigateur : il doit être ignoré.
+                "player": self.second_player.pk,
+                "organization": agency.pk,
+                "players": [self.player.pk, self.hidden_player.pk],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        profile = PortalProfile.objects.get(user__email="nadia@example.com")
+        self.assertTrue(
+            OrganizationMembership.objects.filter(
+                user=profile.user,
+                organization=agency,
+                is_active=True,
+            ).exists()
+        )
+        self.assertFalse(PlayerAccess.objects.filter(user=profile.user).exists())
+        self.assertSetEqual(
+            set(
+                OrganizationPlayer.objects.filter(
+                    organization=agency,
+                    is_active=True,
+                ).values_list("player_id", flat=True)
+            ),
+            {self.player.pk, self.hidden_player.pk},
+        )
+        for player in (self.player, self.hidden_player):
+            player.refresh_from_db()
+            self.assertEqual(
+                (player.name, player.club, player.email),
+                snapshots[player.pk],
+            )
+
+    def test_password_change_keeps_portal_session_active(self):
+        self.player_user.set_password("Old-password-123")
+        self.player_user.save(update_fields=("password",))
+        self.client.force_login(self.player_user)
+        response = self.client.post(
+            reverse("portal:password_change"),
+            {
+                "old_password": "Old-password-123",
+                "new_password1": "New-password-456!",
+                "new_password2": "New-password-456!",
+            },
+        )
+        self.assertRedirects(response, reverse("portal:dashboard"))
+        self.player_user.refresh_from_db()
+        self.assertTrue(self.player_user.check_password("New-password-456!"))
+        self.assertEqual(
+            self.client.get(reverse("portal:dashboard")).status_code,
+            200,
         )
 
 
@@ -556,6 +750,40 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.invoice.save(update_fields=("amount_paid", "status"))
         paid = self.client.get(reverse("portal:video", args=(self.video.pk,)))
         self.assertContains(paid, self.video.video_link)
+
+    def test_hidden_video_is_absent_from_portal_without_changing_its_player(self):
+        player_snapshot = (self.player.name, self.player.club, self.player.email)
+        self.video.client_portal_visible = False
+        self.video.save(update_fields=("client_portal_visible",))
+        self.client.force_login(self.portal_user)
+
+        dashboard = self.client.get(reverse("portal:dashboard"))
+        detail = self.client.get(reverse("portal:video", args=(self.video.pk,)))
+        self.assertNotContains(dashboard, self.video.season)
+        self.assertEqual(detail.status_code, 404)
+        self.player.refresh_from_db()
+        self.assertEqual(
+            (self.player.name, self.player.club, self.player.email),
+            player_snapshot,
+        )
+
+    def test_paid_youtube_delivery_is_embedded_in_video_history(self):
+        self.video.status = Video.StatusChoices.DELIVERED
+        self.video.video_link = "https://www.youtube.com/watch?v=abcdefghijk"
+        self.video.save(update_fields=("status", "video_link"))
+        self.invoice.amount_paid = self.invoice.total_amount
+        self.invoice.status = "paid"
+        self.invoice.save(update_fields=("amount_paid", "status"))
+        self.client.force_login(self.portal_user)
+
+        dashboard = self.client.get(reverse("portal:dashboard"))
+        player_page = self.client.get(
+            reverse("portal:player", args=(self.player.pk,))
+        )
+        expected_embed = "https://www.youtube-nocookie.com/embed/abcdefghijk"
+        self.assertContains(dashboard, expected_embed)
+        self.assertContains(player_page, expected_embed)
+        self.assertContains(dashboard, "Historique des vidéos")
 
     def test_timecoded_revision_creates_overlay_only(self):
         self.client.force_login(self.portal_user)

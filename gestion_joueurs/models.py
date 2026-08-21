@@ -113,6 +113,11 @@ class Video(models.Model):
     total_payment = models.DecimalField(max_digits=10, decimal_places=2)
     deadline = models.DateField(validators=[validate_deadline])
     video_link = models.URLField(blank=True, null=True)
+    client_portal_visible = models.BooleanField(
+        default=True,
+        verbose_name="Visible dans l’espace client",
+        help_text="Décochez pour conserver cette vidéo uniquement dans la gestion interne.",
+    )
     seasons_to_process = models.PositiveSmallIntegerField(
         choices=SeasonsToProcessChoices.choices,
         default=SeasonsToProcessChoices.ONE,

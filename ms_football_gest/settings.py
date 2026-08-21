@@ -192,6 +192,29 @@ LOGOUT_URL = 'user_logout'  # Nom de l'URL pour la page de déconnexion
 LOGIN_REDIRECT_URL = 'dashboard'  # Où rediriger après la connexion
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
+# Envoi des identifiants du portail client. En local, les messages sont affichés
+# dans la console. Sur Heroku, configurez EMAIL_HOST, EMAIL_HOST_USER et
+# EMAIL_HOST_PASSWORD avec votre fournisseur SMTP.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    (
+        'django.core.mail.backends.smtp.EmailBackend'
+        if IS_HEROKU
+        else 'django.core.mail.backends.console.EmailBackend'
+    ),
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').strip().lower() in {
+    '1', 'true', 'yes', 'on'
+}
+DEFAULT_FROM_EMAIL = os.getenv(
+    'DEFAULT_FROM_EMAIL',
+    'MS Football <no-reply@msfootball.tn>',
+)
+
 CELERY_BROKER_URL = 'redis://localhost:6380/0' 
 CELERY_RESULT_BACKEND = 'redis://localhost:6380/0'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True

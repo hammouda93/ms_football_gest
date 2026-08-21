@@ -9,9 +9,14 @@ class PortalAreaIsolationMiddleware:
 
     def __call__(self, request):
         user = request.user
+        internal_auth_paths = {
+            "/gestion_joueurs/login/",
+            "/gestion_joueurs/logout/",
+        }
         if (
             user.is_authenticated
             and request.path.startswith("/gestion_joueurs/")
+            and request.path not in internal_auth_paths
             and not user.is_staff
             and not user.is_superuser
             and not hasattr(user, "videoeditor")

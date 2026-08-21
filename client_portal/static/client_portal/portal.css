@@ -477,3 +477,50 @@
 @media (prefers-reduced-motion: reduce) {
     .portal-body *, .portal-body *::before, .portal-body *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Durable client accounts and video library */
+.account-access-card.inactive, .relation-card.inactive { background: #f8fafc; border-style: dashed; opacity: .82; }
+.account-access-heading .account-state { margin-left: auto; padding: 5px 8px; border-radius: 999px; font-size: .62rem; font-weight: 850; text-transform: uppercase; }
+.account-state.active { color: #087356; background: #d9f6ec; }
+.account-state.inactive { color: #9b2833; background: #ffe5e8; }
+.account-relations { display: flex; gap: 5px; flex-wrap: wrap; margin: 8px 0 11px; }
+.account-relations span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; color: var(--portal-muted); background: #f2f5f8; border-radius: 7px; font-size: .64rem; }
+.account-relations i { color: var(--portal-blue); }
+
+.portal-archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.portal-archive-card { overflow: hidden; background: #fff; border: 1px solid var(--portal-border); border-radius: 15px; box-shadow: 0 4px 14px rgba(7, 20, 35, .05); }
+.portal-video-embed, .archive-placeholder { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: linear-gradient(135deg, #071423, #17385f); }
+.portal-video-embed iframe { width: 100%; height: 100%; border: 0; }
+.archive-placeholder { display: grid; place-items: center; color: #fff; text-decoration: none; }
+.archive-placeholder i { display: grid; width: 50px; height: 50px; place-items: center; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .15); border-radius: 50%; }
+.portal-archive-copy { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; }
+.portal-archive-copy > div { display: flex; min-width: 0; flex-direction: column; }
+.portal-archive-copy span { margin-top: 2px; color: var(--portal-muted); font-size: .68rem; }
+.portal-archive-copy a { color: var(--portal-blue); font-size: .68rem; font-weight: 800; white-space: nowrap; text-decoration: none; }
+
+.account-ready-panel { text-align: left; }
+.account-ready-panel > .success-icon, .account-ready-panel > .eyebrow, .account-ready-panel > h1, .account-ready-panel > p { display: block; text-align: center; }
+.delivery-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 22px 0; }
+.delivery-status { display: flex; align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--portal-border); border-radius: 12px; }
+.delivery-status > i { display: grid; width: 35px; height: 35px; flex: 0 0 35px; place-items: center; border-radius: 10px; }
+.delivery-status > div { display: flex; min-width: 0; flex-direction: column; }
+.delivery-status strong { font-size: .74rem; }
+.delivery-status span { overflow: hidden; margin-top: 2px; color: var(--portal-muted); font-size: .64rem; text-overflow: ellipsis; white-space: nowrap; }
+.delivery-status.success { color: #087356; background: #f2fbf7; border-color: #c9eddf; }
+.delivery-status.success > i { background: #d9f6ec; }
+.delivery-status.warning { color: #8a5a00; background: #fff9e8; border-color: #f2d998; }
+.delivery-status.warning > i { background: #fff0bf; }
+.delivery-status.muted > i { color: var(--portal-muted); background: #eef2f6; }
+.credential-card { display: grid; gap: 13px; padding: 17px; background: #f8fafc; border: 1px solid var(--portal-border); border-radius: 14px; }
+.credential-card label { display: block; margin-bottom: 5px; color: var(--portal-muted); font-size: .68rem; font-weight: 750; }
+.credential-card .copy-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.credential-card .copy-row .btn { min-width: 46px; }
+.account-ready-actions { justify-content: space-between; }
+.password-change-wrap { min-height: auto; }
+
+@media (max-width: 680px) {
+    .portal-archive-grid, .delivery-status-grid { grid-template-columns: 1fr; }
+    .portal-archive-copy { align-items: flex-start; flex-direction: column; }
+    .account-ready-actions { align-items: stretch; flex-direction: column-reverse; }
+    .account-ready-actions .btn { width: 100%; }
+}

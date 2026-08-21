@@ -3,7 +3,8 @@ from decimal import Decimal
 from urllib.parse import unquote
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -15,6 +16,8 @@ from .video_status_whatsapp import (
     build_status_notification_context,
     get_payment_snapshot,
 )
+
+from client_portal.models import PlayerAccess, PortalProfile
 
 
 class VideoStatusWhatsappTests(TestCase):
@@ -364,3 +367,128 @@ class VideoStatusWhatsappTests(TestCase):
 
         self.assertEqual(response.context["unread_notifications_count"], 10)
         self.assertEqual(len(response.context["notifications"]), 8)
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class PlayerPortalProvisioningTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="portal-provision-admin",
+            email="admin@example.com",
+            password="test-password",
+        )
+        self.editor_user = User.objects.create_user(
+            username="portal-provision-editor",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=self.editor_user)
+        self.player = Player.objects.create(
+            name="Client Account Player",
+            club="Account Club",
+            email="client-player@example.com",
+            whatsapp_number="+21620123123",
+            league="L1",
+            position="MF",
+        )
+        set_current_user(self.admin)
+        self.client.force_login(self.admin)
+
+    def player_form_data(self, **overrides):
+        data = {
+            "name": self.player.name,
+            "date_of_birth": "",
+            "league": self.player.league,
+            "club": self.player.club,
+            "email": self.player.email,
+            "whatsapp_number": self.player.whatsapp_number,
+            "position": self.player.position,
+            "sportsbase_url": "",
+            "transfermarkt_url": "",
+            "client_fidel": "",
+            "client_vip": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_player_edit_checkbox_creates_durable_portal_account(self):
+        snapshot = (self.player.name, self.player.club, self.player.email)
+        response = self.client.post(
+            reverse("edit_player", args=(self.player.pk,)),
+            self.player_form_data(create_client_account="on"),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Compte permanent prêt")
+        profile = PortalProfile.objects.get(user__email=self.player.email)
+        self.assertTrue(profile.user.has_usable_password())
+        self.assertTrue(
+            PlayerAccess.objects.filter(
+                user=profile.user,
+                player=self.player,
+                is_active=True,
+            ).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.player.refresh_from_db()
+        self.assertEqual(
+            (self.player.name, self.player.club, self.player.email),
+            snapshot,
+        )
+
+    def test_video_edit_controls_portal_visibility_and_account_creation(self):
+        video = Video.objects.create(
+            player=self.player,
+            editor=self.editor,
+            status=Video.StatusChoices.PENDING,
+            advance_payment=Decimal("0.00"),
+            total_payment=Decimal("200.00"),
+            deadline=timezone.localdate() + timedelta(days=10),
+            season="2025/2026",
+            club=self.player.club,
+            league=self.player.league,
+        )
+        Invoice.objects.create(
+            video=video,
+            total_amount=Decimal("200.00"),
+            amount_paid=Decimal("0.00"),
+            status="unpaid",
+            created_by=self.admin,
+        )
+
+        response = self.client.post(
+            reverse("edit_video", args=(video.pk,)),
+            {
+                "status": Video.StatusChoices.IN_PROGRESS,
+                "advance_payment": "0.00",
+                "total_payment": "200.00",
+                "deadline": video.deadline.isoformat(),
+                "video_link": "",
+                "client_portal_visible": "on",
+                "create_client_account": "on",
+                "info": "",
+                "season": "2025/2026",
+                "editor": self.editor.pk,
+                "seasons_to_process": Video.SeasonsToProcessChoices.ONE,
+                "notification_action": "whatsapp",
+                "payment_message_mode": "auto",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Compte permanent prêt")
+        self.assertContains(response, "Notifier le nouveau statut")
+        self.assertTrue(response.context["status_whatsapp_url"].startswith(
+            "https://wa.me/21620123123"
+        ))
+        video.refresh_from_db()
+        self.assertEqual(video.status, Video.StatusChoices.IN_PROGRESS)
+        self.assertTrue(video.client_portal_visible)
+        self.assertTrue(
+            PlayerAccess.objects.filter(
+                player=self.player,
+                user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
+            ).exists()
+        )

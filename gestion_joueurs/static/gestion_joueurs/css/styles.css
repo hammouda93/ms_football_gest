@@ -1513,3 +1513,18 @@ textarea.form-control { min-height: 100px; resize: vertical; }
     .auth-shell { padding: 10px; }
     .auth-form-panel { min-height: calc(100vh - 20px); }
 }
+
+.portal-access-summary { display: flex; align-items: flex-start; gap: 15px; padding: 18px; color: var(--ms-slate-800); background: linear-gradient(135deg, #f1fbf7, #f7fbff); border: 1px solid #bfe6d8; border-radius: 16px; box-shadow: var(--ms-shadow-sm); }
+.portal-access-summary-icon { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; color: var(--ms-success-700); background: #d9f6ec; border-radius: 12px; font-size: 18px; }
+.portal-access-summary-copy { min-width: 0; flex: 1; }
+.portal-access-summary h2 { margin: 2px 0 5px; color: var(--ms-slate-950); font-size: 19px; }
+.portal-access-summary p { margin: 0; color: var(--ms-slate-600); font-size: 11px; }
+.credential-inline-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; margin-top: 13px; }
+.credential-inline-grid > div { display: flex; min-width: 0; flex-direction: column; padding: 9px; background: rgba(255, 255, 255, .78); border: 1px solid var(--ms-slate-200); border-radius: 9px; }
+.credential-inline-grid small { color: var(--ms-slate-500); font-size: 8px; font-weight: 750; text-transform: uppercase; }
+.credential-inline-grid strong { overflow-wrap: anywhere; margin-top: 3px; font-size: 10px; }
+
+@media (max-width: 767.98px) {
+    .portal-access-summary { flex-direction: column; }
+    .credential-inline-grid { grid-template-columns: 1fr; }
+}

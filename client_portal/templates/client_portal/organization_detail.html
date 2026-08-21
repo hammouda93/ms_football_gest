@@ -11,7 +11,7 @@
             <nav class="ui-breadcrumb"><a href="{% url 'portal:management' %}">Espaces clients</a><span>›</span><span>{{ organization.name }}</span></nav>
             <span class="eyebrow">{{ organization.get_kind_display }}</span>
             <h1>{{ organization.name }}</h1>
-            <p>{{ organization.country|default:"Pays non renseigné" }} · {{ player_links|length }} joueur{{ player_links|length|pluralize }} visible{{ player_links|length|pluralize }} · {{ memberships|length }} utilisateur{{ memberships|length|pluralize }}</p>
+            <p>{{ organization.country|default:"Pays non renseigné" }} · {{ player_links|length }} joueur{{ player_links|length|pluralize }} actif{{ player_links|length|pluralize }} · {{ former_player_links|length }} ancienne{{ former_player_links|length|pluralize }} relation{{ former_player_links|length|pluralize }}</p>
         </div>
         <a class="btn btn-outline-secondary" href="{% url 'portal:management' %}"><i class="fas fa-arrow-left"></i> Retour aux espaces</a>
     </header>
@@ -39,6 +39,21 @@
                 </div>
             </section>
 
+            {% if former_player_links %}
+                <section class="portal-panel">
+                    <div class="panel-heading"><div><h2>Historique des relations</h2><small>Les joueurs ne sont plus visibles par cet agent, mais la relation est conservée.</small></div><span class="portal-count">{{ former_player_links|length }}</span></div>
+                    <div class="relation-list">
+                        {% for link in former_player_links %}
+                            <article class="relation-card static inactive">
+                                <span class="relation-avatar player">{{ link.player.name|first|upper }}</span>
+                                <div><strong>{{ link.player.name }}</strong><small>{{ link.player.club|default:"Sans club" }} · terminée le {{ link.ended_at|date:"d/m/Y"|default:"date inconnue" }}</small></div>
+                                <span class="relation-type">Ancien joueur</span>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endif %}
+
             <section class="portal-panel">
                 <div class="panel-heading"><div><h2>Demandes de nouveaux joueurs</h2><small>À examiner avant association</small></div><span class="portal-count">{{ agent_requests|length }}</span></div>
                 {% for item in agent_requests %}
@@ -47,7 +62,7 @@
                         {% if item.status == 'new' %}
                             <form method="post" action="{% url 'portal:agent_request_review' item.pk %}">
                                 {% csrf_token %}
-                                <select class="form-control form-control-sm" name="player_id" aria-label="Joueur existant à associer">
+                                <select class="form-control form-control-sm searchable-player-select" name="player_id" aria-label="Joueur existant à associer">
                                     <option value="">Sélectionner un joueur existant</option>
                                     {% for player in all_players %}<option value="{{ player.pk }}">{{ player.name }} — {{ player.club }}</option>{% endfor %}
                                 </select>
@@ -85,4 +100,16 @@
         </aside>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (window.jQuery && $.fn.select2) {
+        $('.searchable-player-select').select2({
+            width: '100%',
+            placeholder: 'Rechercher un joueur existant',
+            allowClear: true
+        });
+    }
+</script>
 {% endblock %}

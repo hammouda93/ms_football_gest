@@ -45,6 +45,11 @@ urlpatterns = [
     ),
     path("portal/login/", views.portal_login, name="login"),
     path("portal/logout/", views.portal_logout, name="logout"),
+    path(
+        "portal/mot-de-passe/",
+        views.portal_password_change,
+        name="password_change",
+    ),
     path("portal/access/<str:token>/", views.portal_magic_access, name="magic_access"),
     path("portal/", views.portal_dashboard, name="dashboard"),
     path(
@@ -108,6 +113,16 @@ urlpatterns = [
         "gestion/portail/compte/<int:profile_id>/lien/",
         views.portal_access_link_generate,
         name="access_link_generate",
+    ),
+    path(
+        "gestion/portail/compte/<int:profile_id>/identifiants/",
+        views.portal_access_link_generate,
+        name="account_credentials",
+    ),
+    path(
+        "gestion/portail/compte/<int:profile_id>/statut/",
+        views.portal_account_toggle,
+        name="account_toggle",
     ),
     path(
         "gestion/portail/demande-joueur/<int:request_id>/",

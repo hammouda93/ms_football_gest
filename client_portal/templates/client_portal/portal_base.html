@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="manifest" href="{% url 'portal:manifest' %}">
     <link rel="icon" href="{% static 'client_portal/ms-football-app.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">
@@ -41,6 +42,8 @@
                         <div><strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:"Compte MS Football" }}</small></div>
                     </div>
                     <a href="{% url 'portal:dashboard' %}">Mon espace</a>
+                    <a href="{% url 'portal:password_change' %}">Changer mon mot de passe</a>
+                    <a href="{% url 'user_login' %}">Connexion équipe MS Football</a>
                     <form method="post" action="{% url 'portal:logout' %}">
                         {% csrf_token %}
                         <button type="submit">Déconnexion</button>

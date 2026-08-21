@@ -87,6 +87,10 @@ class PortalProfile(models.Model):
     def __str__(self):
         return self.display_name
 
+    @property
+    def access_enabled(self):
+        return self.is_active and self.user.is_active
+
 
 class OrganizationMembership(models.Model):
     class Role(models.TextChoices):
@@ -133,6 +137,12 @@ class OrganizationPlayer(models.Model):
     )
     label = models.CharField("Référence interne", max_length=100, blank=True)
     is_active = models.BooleanField(default=True)
+    ended_at = models.DateTimeField(
+        "Fin de la relation",
+        null=True,
+        blank=True,
+        help_text="Renseignée lorsque le joueur n’est plus représenté par cette organisation.",
+    )
     added_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

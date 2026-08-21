@@ -1,41 +1,70 @@
 {% extends "gestion_joueurs/base.html" %}
 {% load static %}
 
-{% block title %}Lien d’accès créé{% endblock %}
+{% block title %}Accès client prêt{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
 
 {% block content %}
 <div class="production-page narrow-page">
-    <section class="portal-panel access-link-panel">
+    <section class="portal-panel access-link-panel account-ready-panel">
         <span class="success-icon" aria-hidden="true">✓</span>
-        <span class="eyebrow">Accès prêt</span>
-        <h1>Lien sécurisé créé</h1>
-        <p>Envoyez ce lien à <strong>{{ profile.display_name }}</strong>. Il est utilisable une seule fois et expire le {{ access_link.expires_at|date:"d/m/Y à H:i" }}.</p>
-        <label for="access-link">Lien à copier</label>
-        <div class="copy-row">
-            <input id="access-link" class="form-control" value="{{ absolute_link }}" readonly>
-            <button class="btn btn-primary" id="copy-access-link" type="button"><i class="far fa-copy"></i> Copier</button>
+        <span class="eyebrow">Compte permanent prêt</span>
+        <h1>Accès de {{ profile.display_name }}</h1>
+        <p>Le joueur ou l’agent pourra revenir à tout moment avec son e-mail et son mot de passe. Ce n’est pas un lien à usage unique.</p>
+
+        <div class="delivery-status-grid">
+            <div class="delivery-status {% if delivery.email_sent %}success{% else %}warning{% endif %}">
+                <i class="fas {% if delivery.email_sent %}fa-envelope-circle-check{% else %}fa-envelope-open-text{% endif %}"></i>
+                <div><strong>{% if delivery.email_sent %}E-mail envoyé{% else %}E-mail à transmettre manuellement{% endif %}</strong><span>{{ login_email }}</span></div>
+            </div>
+            <div class="delivery-status {% if delivery.whatsapp_url %}success{% else %}muted{% endif %}">
+                <i class="fab fa-whatsapp"></i>
+                <div><strong>{% if delivery.whatsapp_url %}Message WhatsApp prêt{% else %}WhatsApp non renseigné{% endif %}</strong><span>Confirmation nécessaire dans WhatsApp</span></div>
+            </div>
         </div>
-        <div class="form-assurance"><i class="fas fa-shield-halved"></i><div><strong>Partage sûr</strong><p>Ne demandez jamais de mot de passe ou de jeton sur WhatsApp. Le client touche seulement ce lien officiel.</p></div></div>
-        <a class="btn btn-outline-secondary" href="{% url 'portal:management' %}">Retour à la gestion</a>
+
+        <div class="credential-card">
+            <div>
+                <label for="portal-login-url">Page de connexion</label>
+                <div class="copy-row"><input id="portal-login-url" class="form-control" value="{{ login_url }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-url" type="button"><i class="far fa-copy"></i></button></div>
+            </div>
+            <div>
+                <label for="portal-login-email">E-mail de connexion</label>
+                <div class="copy-row"><input id="portal-login-email" class="form-control" value="{{ login_email }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-login-email" type="button"><i class="far fa-copy"></i></button></div>
+            </div>
+            <div>
+                <label for="portal-temporary-password">Mot de passe temporaire</label>
+                <div class="copy-row"><input id="portal-temporary-password" class="form-control" value="{{ temporary_password }}" readonly><button class="btn btn-outline-primary copy-credential" data-copy-target="portal-temporary-password" type="button"><i class="far fa-copy"></i></button></div>
+            </div>
+        </div>
+
+        <div class="form-assurance"><i class="fas fa-key"></i><div><strong>Accès durable et révocable</strong><p>Le client peut changer son mot de passe. Vous gardez la main pour désactiver le compte ou renouveler ses identifiants.</p></div></div>
+
+        <div class="form-actions account-ready-actions">
+            <a class="btn btn-outline-secondary" href="{{ back_url|default:'/gestion/portail/' }}">Continuer</a>
+            <div class="ui-actions">
+                {% if status_whatsapp_url %}<a class="btn btn-outline-success" href="{{ status_whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Notifier le nouveau statut</a>{% endif %}
+                {% if delivery.whatsapp_url %}<a class="btn btn-success" href="{{ delivery.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Envoyer les identifiants</a>{% endif %}
+            </div>
+        </div>
     </section>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.getElementById('copy-access-link').addEventListener('click', async function () {
-        const button = this;
-        const input = document.getElementById('access-link');
-        try {
-            await navigator.clipboard.writeText(input.value);
-            button.innerHTML = '<i class="fas fa-check"></i> Copié';
-        } catch (error) {
-            input.select();
-            document.execCommand('copy');
-            button.innerHTML = '<i class="fas fa-check"></i> Copié';
-        }
-        window.setTimeout(function () { button.innerHTML = '<i class="far fa-copy"></i> Copier'; }, 1800);
+    document.querySelectorAll('.copy-credential').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            const input = document.getElementById(button.dataset.copyTarget);
+            try {
+                await navigator.clipboard.writeText(input.value);
+            } catch (error) {
+                input.select();
+                document.execCommand('copy');
+            }
+            button.innerHTML = '<i class="fas fa-check"></i>';
+            window.setTimeout(function () { button.innerHTML = '<i class="far fa-copy"></i>'; }, 1600);
+        });
     });
 </script>
 {% endblock %}

@@ -1,5 +1,6 @@
 {% extends "client_portal/portal_base.html" %}
 {% load static %}
+{% load portal_extras %}
 {% block title %}Mon espace — MS Football{% endblock %}
 {% block portal_content %}
 <section class="portal-hero">
@@ -46,11 +47,11 @@
 
 <section class="portal-section" id="videos">
     <div class="portal-section-heading">
-        <div><span class="eyebrow">Commandes</span><h2>Vidéos récentes</h2><p>Progression, échéance et solde en un coup d’œil.</p></div>
-        <span class="portal-count">{{ videos|length }}</span>
+        <div><span class="eyebrow">En cours</span><h2>Productions actuelles</h2><p>Progression, échéance et solde en un coup d’œil.</p></div>
+        <span class="portal-count">{{ current_videos|length }}</span>
     </div>
     <div class="portal-video-list">
-        {% for video in videos %}
+        {% for video in current_videos %}
             <a class="portal-video-card" href="{% url 'portal:video' video.pk %}">
                 <div class="portal-video-main">
                     <div><span class="status-dot stage-{{ video.production_stage }}"></span><strong>{{ video.player.name }} · {{ video.season }}</strong></div>
@@ -60,7 +61,30 @@
                 <div class="portal-video-meta"><span>{{ video.production_progress }}%</span><span>Prévue le {{ video.deadline|date:"d/m/Y" }}</span><span>Solde {{ video.payment_snapshot.balance|floatformat:2 }}</span></div>
             </a>
         {% empty %}
-            <div class="portal-empty"><strong>Aucune vidéo disponible</strong><span>Vos commandes apparaîtront ici dès leur création.</span></div>
+            <div class="portal-empty"><strong>Aucune production en cours</strong><span>Les nouvelles commandes apparaîtront ici dès leur création.</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="portal-section" id="history">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">Vidéothèque</span><h2>Historique des vidéos</h2><p>Retrouvez et regardez les vidéos déjà livrées.</p></div>
+        <span class="portal-count">{{ archived_videos|length }}</span>
+    </div>
+    <div class="portal-archive-grid">
+        {% for video in archived_videos %}
+            {% with embed_url=video.video_link|youtube_embed_url %}
+                <article class="portal-archive-card">
+                    {% if video.final_delivery_available and embed_url %}
+                        <div class="portal-video-embed"><iframe src="{{ embed_url }}" title="Vidéo de {{ video.player.name }} — {{ video.season }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+                    {% else %}
+                        <a class="archive-placeholder" href="{% url 'portal:video' video.pk %}"><i class="fas {% if video.final_delivery_available %}fa-play{% else %}fa-lock{% endif %}"></i></a>
+                    {% endif %}
+                    <div class="portal-archive-copy"><div><strong>{{ video.player.name }}</strong><span>{{ video.season }} · {{ video.club|default:video.player.club }}</span></div><a href="{% url 'portal:video' video.pk %}">Voir la fiche →</a></div>
+                </article>
+            {% endwith %}
+        {% empty %}
+            <div class="portal-empty"><strong>Aucune ancienne vidéo</strong><span>Les vidéos livrées apparaîtront ici automatiquement.</span></div>
         {% endfor %}
     </div>
 </section>

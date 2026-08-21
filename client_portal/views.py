@@ -1,11 +1,11 @@
-from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
@@ -49,12 +49,14 @@ from .services import (
     accessible_players_for,
     accessible_videos_for,
     build_video_whatsapp_url,
-    create_portal_account,
     decorate_video,
+    deliver_portal_credentials,
     editable_videos_for,
     invoice_snapshot,
+    provision_portal_account,
     production_brief,
     production_queryset_for,
+    renew_portal_credentials,
     update_workflow,
 )
 
@@ -112,6 +114,27 @@ def portal_login(request):
 def portal_logout(request):
     logout(request)
     return redirect("portal:login")
+
+
+@never_cache
+@portal_required
+def portal_password_change(request):
+    form = PasswordChangeForm(request.user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        PortalAccessLink.objects.filter(
+            user=user,
+            used_at__isnull=True,
+            revoked_at__isnull=True,
+        ).update(revoked_at=timezone.now())
+        update_session_auth_hash(request, user)
+        messages.success(request, "Votre mot de passe a été modifié.")
+        return redirect("portal:dashboard")
+    return render(
+        request,
+        "client_portal/password_change.html",
+        {"form": form},
+    )
 
 
 @never_cache
@@ -417,14 +440,32 @@ def operations_brief(request):
 
 @portal_admin_required
 def portal_management(request):
+    profiles = list(
+        PortalProfile.objects.select_related("user").prefetch_related(
+            "user__portal_player_accesses__player",
+            "user__portal_memberships__organization",
+        )
+    )
     return render(
         request,
         "client_portal/management.html",
         {
-            "organizations": Organization.objects.prefetch_related(
-                "memberships", "player_links"
+            "organizations": Organization.objects.annotate(
+                active_player_count=Count(
+                    "player_links",
+                    filter=Q(player_links__is_active=True),
+                    distinct=True,
+                ),
+                access_count=Count(
+                    "memberships",
+                    filter=Q(memberships__is_active=True),
+                    distinct=True,
+                ),
+            ).prefetch_related("memberships", "player_links"),
+            "profiles": profiles,
+            "active_profile_count": sum(
+                profile.access_enabled for profile in profiles
             ),
-            "profiles": PortalProfile.objects.select_related("user"),
             "agent_requests": AgentPlayerRequest.objects.select_related(
                 "organization", "requested_by", "linked_player"
             )[:50],
@@ -452,13 +493,15 @@ def organization_create(request):
 @portal_admin_required
 def organization_detail(request, pk):
     organization = get_object_or_404(Organization, pk=pk)
+    player_links = organization.player_links.select_related("player", "added_by")
     return render(
         request,
         "client_portal/organization_detail.html",
         {
             "organization": organization,
             "player_form": OrganizationPlayerForm(organization=organization),
-            "player_links": organization.player_links.select_related("player", "added_by"),
+            "player_links": player_links.filter(is_active=True),
+            "former_player_links": player_links.filter(is_active=False),
             "memberships": organization.memberships.select_related("user", "user__portal_profile"),
             "agent_requests": organization.player_requests.select_related(
                 "requested_by", "linked_player"
@@ -480,6 +523,7 @@ def organization_player_add(request, pk):
             defaults={
                 "label": form.cleaned_data["label"],
                 "is_active": True,
+                "ended_at": None,
                 "added_by": request.user,
             },
         )
@@ -504,40 +548,81 @@ def organization_player_remove(request, pk, link_id):
         organization=organization,
     )
     player_name = link.player.name
-    link.delete()
+    link.is_active = False
+    link.ended_at = timezone.now()
+    link.save(update_fields=("is_active", "ended_at"))
     messages.success(
         request,
-        f"{player_name} a été retiré de cet espace. Sa fiche joueur est intacte.",
+        f"La relation avec {player_name} a été clôturée. Sa fiche et son historique restent intacts.",
     )
     return redirect("portal:organization_detail", pk=organization.pk)
+
+
+def _account_form_context(form):
+    return {
+        "form": form,
+        "player_options": list(
+            Player.objects.order_by("name", "club").values(
+                "id", "name", "club", "email", "whatsapp_number"
+            )
+        ),
+        "organization_options": list(
+            Organization.objects.filter(is_active=True)
+            .order_by("name")
+            .values("id", "name", "contact_name", "email", "whatsapp_number")
+        ),
+    }
+
+
+def _account_player(profile):
+    access = (
+        profile.user.portal_player_accesses.select_related("player")
+        .filter(role="player")
+        .first()
+    )
+    return access.player if access else None
+
+
+def _render_account_credentials(request, profile, temporary_password, *, player=None):
+    login_url = request.build_absolute_uri(reverse("portal:login"))
+    delivery = deliver_portal_credentials(
+        profile,
+        temporary_password,
+        login_url=login_url,
+        actor=request.user,
+        player=player or _account_player(profile),
+    )
+    return render(
+        request,
+        "client_portal/access_link_created.html",
+        {
+            "profile": profile,
+            "login_url": login_url,
+            "login_email": profile.user.email,
+            "temporary_password": temporary_password,
+            "delivery": delivery,
+        },
+    )
 
 
 @portal_admin_required
 def portal_account_create(request):
     form = PortalAccountForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        profile = create_portal_account(form.cleaned_data, created_by=request.user)
-        access_link, raw_token = PortalAccessLink.issue(
-            user=profile.user,
+        profile, temporary_password = provision_portal_account(
+            form.cleaned_data,
             created_by=request.user,
-            lifetime=timedelta(days=7),
         )
-        absolute_link = request.build_absolute_uri(
-            reverse("portal:magic_access", args=(raw_token,))
-        )
-        return render(
+        return _render_account_credentials(
             request,
-            "client_portal/access_link_created.html",
-            {
-                "profile": profile,
-                "access_link": access_link,
-                "absolute_link": absolute_link,
-            },
+            profile,
+            temporary_password,
+            player=form.cleaned_data.get("player"),
         )
     return render(
         request,
         "client_portal/account_form.html",
-        {"form": form},
+        _account_form_context(form),
     )
 
 
@@ -547,30 +632,45 @@ def portal_access_link_generate(request, profile_id):
     profile = get_object_or_404(
         PortalProfile.objects.select_related("user"),
         pk=profile_id,
-        is_active=True,
     )
     PortalAccessLink.objects.filter(
         user=profile.user,
         used_at__isnull=True,
         revoked_at__isnull=True,
     ).update(revoked_at=timezone.now())
-    access_link, raw_token = PortalAccessLink.issue(
-        user=profile.user,
-        created_by=request.user,
-        lifetime=timedelta(days=7),
+    temporary_password = renew_portal_credentials(profile)
+    return _render_account_credentials(request, profile, temporary_password)
+
+
+@portal_admin_required
+@require_POST
+def portal_account_toggle(request, profile_id):
+    profile = get_object_or_404(
+        PortalProfile.objects.select_related("user"),
+        pk=profile_id,
     )
-    absolute_link = request.build_absolute_uri(
-        reverse("portal:magic_access", args=(raw_token,))
-    )
-    return render(
+    action = request.POST.get("action", "")
+    if action not in {"activate", "deactivate"}:
+        messages.error(request, "Action de compte invalide.")
+        return redirect("portal:management")
+    activate = action == "activate"
+    with transaction.atomic():
+        profile.is_active = activate
+        profile.save(update_fields=("is_active", "updated_at"))
+        profile.user.is_active = activate
+        profile.user.save(update_fields=("is_active",))
+        if not activate:
+            PortalAccessLink.objects.filter(
+                user=profile.user,
+                used_at__isnull=True,
+                revoked_at__isnull=True,
+            ).update(revoked_at=timezone.now())
+    messages.success(
         request,
-        "client_portal/access_link_created.html",
-        {
-            "profile": profile,
-            "access_link": access_link,
-            "absolute_link": absolute_link,
-        },
+        f"Le compte de {profile.display_name} est maintenant "
+        f"{'actif' if activate else 'désactivé'}.",
     )
+    return redirect("portal:management")
 
 
 @portal_admin_required
@@ -595,7 +695,11 @@ def agent_player_request_review(request, request_id):
         OrganizationPlayer.objects.update_or_create(
             organization=player_request.organization,
             player=player,
-            defaults={"is_active": True, "added_by": request.user},
+            defaults={
+                "is_active": True,
+                "ended_at": None,
+                "added_by": request.user,
+            },
         )
         player_request.status = AgentPlayerRequest.Status.LINKED
         player_request.linked_player = player
@@ -620,6 +724,16 @@ def portal_dashboard(request):
         decorate_video(video)
         for video in accessible_videos_for(request.user).order_by("-video_creation_date")
     ]
+    current_videos = [
+        video
+        for video in videos
+        if video.production_stage != VideoWorkflow.Stage.DELIVERED
+    ]
+    archived_videos = [
+        video
+        for video in videos
+        if video.production_stage == VideoWorkflow.Stage.DELIVERED
+    ]
     organizations = Organization.objects.filter(
         memberships__user=request.user,
         memberships__is_active=True,
@@ -632,15 +746,14 @@ def portal_dashboard(request):
         {
             "players": players,
             "videos": videos,
+            "current_videos": current_videos,
+            "archived_videos": archived_videos,
             "organizations": organizations,
             "agent_request_form": agent_request_form,
             "can_request_players": agent_request_form.fields[
                 "organization"
             ].queryset.exists(),
-            "active_count": sum(
-                video.production_stage != VideoWorkflow.Stage.DELIVERED
-                for video in videos
-            ),
+            "active_count": len(current_videos),
             "review_count": sum(
                 video.production_stage
                 in {VideoWorkflow.Stage.CLIENT_REVIEW, VideoWorkflow.Stage.REVISIONS}
@@ -664,10 +777,25 @@ def portal_player_detail(request, player_id):
         .filter(player=player)
         .order_by("-video_creation_date")
     ]
+    current_videos = [
+        video
+        for video in videos
+        if video.production_stage != VideoWorkflow.Stage.DELIVERED
+    ]
+    archived_videos = [
+        video
+        for video in videos
+        if video.production_stage == VideoWorkflow.Stage.DELIVERED
+    ]
     return render(
         request,
         "client_portal/player_detail.html",
-        {"player": player, "videos": videos},
+        {
+            "player": player,
+            "videos": videos,
+            "current_videos": current_videos,
+            "archived_videos": archived_videos,
+        },
     )
 
 

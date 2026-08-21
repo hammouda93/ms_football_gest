@@ -20,7 +20,7 @@
 
     <section class="metric-grid portal-admin-metrics" aria-label="Résumé des accès">
         <article class="metric-card"><span>Organisations</span><strong>{{ organizations|length }}</strong></article>
-        <article class="metric-card"><span>Comptes actifs</span><strong>{{ profiles|length }}</strong></article>
+        <article class="metric-card"><span>Comptes actifs</span><strong>{{ active_profile_count }}</strong></article>
         <article class="metric-card {% if agent_requests %}metric-warning{% endif %}"><span>Demandes agents</span><strong>{{ agent_requests|length }}</strong></article>
     </section>
 
@@ -40,7 +40,7 @@
                         <a class="relation-card portal-filter-item" data-filter-text="{{ organization.name }} {{ organization.get_kind_display }}" href="{% url 'portal:organization_detail' organization.pk %}">
                             <span class="relation-avatar"><i class="fas fa-building"></i></span>
                             <div><strong>{{ organization.name }}</strong><small>{{ organization.get_kind_display }}</small></div>
-                            <div class="relation-stats"><span><b>{{ organization.player_links.count }}</b> joueur{{ organization.player_links.count|pluralize }}</span><span><b>{{ organization.memberships.count }}</b> accès</span></div>
+                            <div class="relation-stats"><span><b>{{ organization.active_player_count }}</b> joueur{{ organization.active_player_count|pluralize }}</span><span><b>{{ organization.access_count }}</b> accès</span></div>
                             <span class="relation-action">Gérer <i class="fas fa-arrow-right"></i></span>
                         </a>
                     {% empty %}
@@ -60,7 +60,7 @@
                         {% if item.status == 'new' or item.status == 'reviewing' %}
                             <form method="post" action="{% url 'portal:agent_request_review' item.pk %}">
                                 {% csrf_token %}
-                                <select name="player_id" class="form-control form-control-sm" aria-label="Joueur à associer">
+                                <select name="player_id" class="form-control form-control-sm searchable-player-select" aria-label="Joueur à associer">
                                     <option value="">Associer à un joueur existant</option>
                                     {% for player in all_players %}<option value="{{ player.pk }}">{{ player.name }} — {{ player.club }}</option>{% endfor %}
                                 </select>
@@ -75,14 +75,26 @@
         </main>
         <aside>
             <section class="portal-panel sticky-panel">
-                <div class="panel-heading"><div><h2>Comptes portail</h2><small>Liens d’accès personnels</small></div><span class="portal-count">{{ profiles|length }}</span></div>
+                <div class="panel-heading"><div><h2>Comptes portail</h2><small>Accès permanents par e-mail et mot de passe</small></div><span class="portal-count">{{ profiles|length }}</span></div>
                 {% for profile in profiles %}
-                    <article class="account-access-card portal-filter-item" data-filter-text="{{ profile.display_name }} {{ profile.get_account_type_display }} {{ profile.user.email }}">
-                        <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }}</small></div></div>
+                    <article class="account-access-card portal-filter-item {% if not profile.access_enabled %}inactive{% endif %}" data-filter-text="{{ profile.display_name }} {{ profile.get_account_type_display }} {{ profile.user.email }}">
+                        <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }}</small></div><span class="account-state {% if profile.access_enabled %}active{% else %}inactive{% endif %}">{% if profile.access_enabled %}Actif{% else %}Désactivé{% endif %}</span></div>
                         <p>{{ profile.user.email|default:"Aucun e-mail renseigné" }}</p>
-                        <form method="post" action="{% url 'portal:access_link_generate' profile.pk %}">
+                        <div class="account-relations">
+                            {% for access in profile.user.portal_player_accesses.all %}<span><i class="fas fa-user"></i> {{ access.player.name }}</span>{% endfor %}
+                            {% for membership in profile.user.portal_memberships.all %}<span><i class="fas fa-building"></i> {{ membership.organization.name }}</span>{% endfor %}
+                        </div>
+                        <form method="post" action="{% url 'portal:account_credentials' profile.pk %}">
                             {% csrf_token %}
-                            <button class="btn btn-sm btn-outline-primary btn-block" type="submit"><i class="fas fa-link"></i> Créer un lien sécurisé</button>
+                            <button class="btn btn-sm btn-outline-primary btn-block" type="submit"><i class="fas fa-key"></i> Renouveler et envoyer les accès</button>
+                        </form>
+                        <form method="post" action="{% url 'portal:account_toggle' profile.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            {% if profile.access_enabled %}
+                                <button class="btn btn-sm btn-outline-danger btn-block" name="action" value="deactivate" type="submit" onclick="return confirm('Désactiver ce compte client ?');"><i class="fas fa-user-lock"></i> Désactiver</button>
+                            {% else %}
+                                <button class="btn btn-sm btn-outline-success btn-block" name="action" value="activate" type="submit"><i class="fas fa-user-check"></i> Réactiver</button>
+                            {% endif %}
                         </form>
                     </article>
                 {% empty %}
@@ -105,6 +117,13 @@
                 item.hidden = Boolean(query) && !item.dataset.filterText.toLocaleLowerCase('fr').includes(query);
             });
         });
+        if (window.jQuery && $.fn.select2) {
+            $('.searchable-player-select').select2({
+                width: '100%',
+                placeholder: 'Rechercher un joueur',
+                allowClear: true
+            });
+        }
     }());
 </script>
 {% endblock %}

@@ -13,6 +13,27 @@
     {% for message in messages %}
         <div class="alert alert-{{ message.tags }}">{{ message }}</div>
     {% endfor %}
+    {% if portal_access %}
+        <section class="portal-access-summary mb-4" aria-labelledby="portal-access-title">
+            <div class="portal-access-summary-icon"><i class="fas fa-circle-check"></i></div>
+            <div class="portal-access-summary-copy">
+                <span class="eyebrow">Compte client prêt</span>
+                <h2 id="portal-access-title">Accès de {{ portal_access.profile.display_name }}</h2>
+                <p>
+                    {% if portal_access.delivery.email_sent %}Les identifiants ont été envoyés par e-mail.{% else %}L’e-mail n’a pas pu être envoyé automatiquement ; utilisez les informations ci-dessous.{% endif %}
+                </p>
+                <div class="credential-inline-grid">
+                    <div><small>Connexion</small><strong>{{ portal_access.login_url }}</strong></div>
+                    <div><small>E-mail</small><strong>{{ portal_access.login_email }}</strong></div>
+                    <div><small>Mot de passe temporaire</small><strong>{{ portal_access.temporary_password }}</strong></div>
+                </div>
+                <div class="ui-actions mt-3">
+                    {% if portal_access.delivery.whatsapp_url %}<a class="btn btn-success" href="{{ portal_access.delivery.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Ouvrir et envoyer sur WhatsApp</a>{% endif %}
+                    <a class="btn btn-outline-primary" href="{% url 'portal:management' %}">Gérer le compte</a>
+                </div>
+            </div>
+        </section>
+    {% endif %}
     <!-- Card for player selection and video creation -->
     <div class="row">
         <div class="col-md-6">
@@ -111,6 +132,7 @@ document.getElementById('playerName').addEventListener('input', function() {
                         document.getElementById('id_date_of_birth').value = player.date_of_birth; // Date of birth
                         document.getElementById('id_league').value = player.league; // League
                         document.getElementById('id_club').value = player.club; // Club
+                        document.getElementById('id_email').value = player.email || '';
                         document.getElementById('id_whatsapp_number').value = player.whatsapp_number; // WhatsApp number
                         document.getElementById('selectedPlayerId').value = player.id; // Update the selected player ID
                         // Automatically check the client fidèles checkbox
@@ -182,6 +204,7 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
             document.getElementById('id_date_of_birth').value = player.date_of_birth || '';
             document.getElementById('id_league').value = player.league || 'OC';
             document.getElementById('id_club').value = player.club || '';
+            document.getElementById('id_email').value = player.email || '';
             document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
             document.getElementById('id_position').value = player.position || 'DF';
             document.getElementById('id_client_fidel').checked = !!player.client_fidel;
@@ -196,6 +219,7 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
             document.getElementById('id_date_of_birth').value = player.date_of_birth || '';
             document.getElementById('id_league').value = player.league || 'OC';
             document.getElementById('id_club').value = player.club || '';
+            document.getElementById('id_email').value = player.email || '';
             document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
             document.getElementById('id_position').value = player.position || 'DF';
             document.getElementById('id_client_fidel').checked = false;

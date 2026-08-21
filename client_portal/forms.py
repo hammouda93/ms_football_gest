@@ -10,6 +10,7 @@ from .models import (
     Organization,
     OrganizationMembership,
     PaymentRequest,
+    PlayerAccess,
     PortalProfile,
     RevisionRequest,
     VideoActivity,
@@ -66,7 +67,7 @@ class PortalAccountForm(forms.Form):
         label="Type de compte",
         choices=PortalProfile.AccountType.choices,
     )
-    display_name = forms.CharField(label="Nom affiché", max_length=160)
+    display_name = forms.CharField(label="Nom du joueur ou de l’agent", max_length=160)
     email = forms.EmailField(label="E-mail")
     whatsapp_number = forms.CharField(label="WhatsApp", max_length=24, required=False)
     preferred_language = forms.ChoiceField(
@@ -78,16 +79,38 @@ class PortalAccountForm(forms.Form):
         queryset=Player.objects.none(),
         required=False,
         help_text="Le compte joueur sera lié sans modifier sa fiche.",
+        widget=forms.Select(attrs={"class": "searchable-player-select"}),
     )
     organization = forms.ModelChoiceField(
         label="Organisation",
         queryset=Organization.objects.none(),
         required=False,
+        widget=forms.Select(attrs={"class": "searchable-organization-select"}),
+    )
+    players = forms.ModelMultipleChoiceField(
+        label="Joueurs suivis par l’agent",
+        queryset=Player.objects.none(),
+        required=False,
+        help_text="Vous pouvez rechercher et sélectionner plusieurs joueurs existants.",
+        widget=forms.SelectMultiple(attrs={"class": "searchable-player-select"}),
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.order_fields(
+            (
+                "account_type",
+                "player",
+                "organization",
+                "players",
+                "display_name",
+                "email",
+                "whatsapp_number",
+                "preferred_language",
+            )
+        )
         self.fields["player"].queryset = Player.objects.order_by("name", "club")
+        self.fields["players"].queryset = Player.objects.order_by("name", "club")
         self.fields["organization"].queryset = Organization.objects.filter(
             is_active=True
         ).order_by("name")
@@ -107,11 +130,30 @@ class PortalAccountForm(forms.Form):
 
         if account_type == PortalProfile.AccountType.PLAYER and not player:
             self.add_error("player", "Sélectionnez le joueur associé à ce compte.")
+        if account_type == PortalProfile.AccountType.PLAYER and player:
+            existing_access = PlayerAccess.objects.filter(
+                player=player,
+                role=PlayerAccess.Role.PLAYER,
+                user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
+            ).select_related("user__portal_profile").first()
+            if existing_access:
+                self.add_error(
+                    "player",
+                    "Ce joueur possède déjà un compte client. Réactivez-le ou renouvelez ses identifiants.",
+                )
+        if account_type == PortalProfile.AccountType.PLAYER:
+            cleaned_data["organization"] = None
+            cleaned_data["players"] = ()
         if account_type in {
             PortalProfile.AccountType.AGENT,
             PortalProfile.AccountType.ACADEMY,
         } and not organization:
             self.add_error("organization", "Sélectionnez l’organisation associée.")
+        if account_type in {
+            PortalProfile.AccountType.AGENT,
+            PortalProfile.AccountType.ACADEMY,
+        }:
+            cleaned_data["player"] = None
         return cleaned_data
 
 
@@ -119,6 +161,7 @@ class OrganizationPlayerForm(forms.Form):
     player = forms.ModelChoiceField(
         label="Joueur existant",
         queryset=Player.objects.none(),
+        widget=forms.Select(attrs={"class": "searchable-player-select"}),
     )
     label = forms.CharField(label="Référence interne", max_length=100, required=False)
 

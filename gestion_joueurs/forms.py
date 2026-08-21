@@ -9,6 +9,16 @@ from django.utils import timezone
 
 
 class PlayerForm(forms.ModelForm):
+    email = forms.EmailField(
+        required=False,
+        label="Adresse e-mail",
+        help_text="Obligatoire uniquement si vous créez un compte client.",
+    )
+    create_client_account = forms.BooleanField(
+        required=False,
+        label="Créer un compte client pour ce joueur",
+        help_text="Le compte sera créé seulement si le joueur n’en possède pas déjà un.",
+    )
     date_of_birth = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
         input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
@@ -21,6 +31,7 @@ class PlayerForm(forms.ModelForm):
             'date_of_birth',
             'league',
             'club',
+            'email',
             'whatsapp_number',
             'position',
             'sportsbase_url',
@@ -36,11 +47,26 @@ class PlayerForm(forms.ModelForm):
         self.fields['position'].widget.attrs['placeholder'] = "Sélectionnez la position"
         self.fields['sportsbase_url'].widget.attrs['placeholder'] = "Lien SportsBase du joueur"
         self.fields['transfermarkt_url'].widget.attrs['placeholder'] = "Lien Transfermarkt du joueur"
+        self.fields['email'].widget.attrs['placeholder'] = "E-mail utilisé pour la connexion client"
         
         # Pour le champ de la ligue
         self.fields['league'].widget.attrs['placeholder'] = "Sélectionnez la ligue"
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('create_client_account') and not cleaned_data.get('email'):
+            self.add_error(
+                'email',
+                "Renseignez l’e-mail du joueur pour créer son compte client.",
+            )
+        return cleaned_data
+
 class VideoForm(forms.ModelForm):
+    create_client_account = forms.BooleanField(
+        required=False,
+        label="Créer le compte client du joueur s’il n’existe pas",
+        help_text="Le compte utilise l’e-mail et le WhatsApp enregistrés sur la fiche joueur.",
+    )
     
     SEASONS = [
         ('2022/2023', '2022/2023'),
@@ -59,7 +85,18 @@ class VideoForm(forms.ModelForm):
     )
     class Meta:
         model = Video
-        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info', 'season', 'editor','seasons_to_process']
+        fields = [
+            'status',
+            'advance_payment',
+            'total_payment',
+            'deadline',
+            'video_link',
+            'client_portal_visible',
+            'info',
+            'season',
+            'editor',
+            'seasons_to_process',
+        ]
     
     editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=True)
 

@@ -4,10 +4,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 from urllib.parse import quote
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Q
 from django.template.defaultfilters import slugify
+from django.utils.crypto import get_random_string
 from django.utils import timezone
 
 from gestion_joueurs.models import Invoice, Player, Video
@@ -15,6 +18,7 @@ from gestion_joueurs.models import Invoice, Player, Video
 from .models import (
     CommunicationLog,
     OrganizationMembership,
+    OrganizationPlayer,
     PlayerAccess,
     PortalProfile,
     RevisionRequest,
@@ -32,6 +36,13 @@ class InvoiceSnapshot:
     paid: Decimal
     balance: Decimal
     status: str
+
+
+@dataclass(frozen=True)
+class PortalCredentialDelivery:
+    email_sent: bool
+    email_error: bool
+    whatsapp_url: str
 
 
 STAGE_PROGRESS = {
@@ -184,7 +195,8 @@ def accessible_players_for(user):
 
 def accessible_videos_for(user):
     return Video.objects.filter(
-        player__in=accessible_players_for(user)
+        player__in=accessible_players_for(user),
+        client_portal_visible=True,
     ).select_related(
         "player",
         "editor__user",
@@ -223,7 +235,10 @@ def editable_players_for(user):
 
 
 def editable_videos_for(user):
-    return Video.objects.filter(player__in=editable_players_for(user)).distinct()
+    return Video.objects.filter(
+        player__in=editable_players_for(user),
+        client_portal_visible=True,
+    ).distinct()
 
 
 def user_can_access_video(user, video):
@@ -241,8 +256,12 @@ def unique_portal_username(email, display_name):
     return candidate
 
 
+def generate_temporary_password():
+    return f"Mf!{get_random_string(13, allowed_chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789')}"
+
+
 @transaction.atomic
-def create_portal_account(cleaned_data, *, created_by):
+def create_portal_account(cleaned_data, *, created_by, initial_password=None):
     user = User(
         username=unique_portal_username(
             cleaned_data["email"],
@@ -252,7 +271,10 @@ def create_portal_account(cleaned_data, *, created_by):
         first_name=cleaned_data["display_name"][:150],
         is_active=True,
     )
-    user.set_unusable_password()
+    if initial_password:
+        user.set_password(initial_password)
+    else:
+        user.set_unusable_password()
     user.save()
     profile = PortalProfile.objects.create(
         user=user,
@@ -278,7 +300,164 @@ def create_portal_account(cleaned_data, *, created_by):
             organization=organization,
             role=OrganizationMembership.Role.OWNER,
         )
+        for linked_player in cleaned_data.get("players") or ():
+            OrganizationPlayer.objects.update_or_create(
+                organization=organization,
+                player=linked_player,
+                defaults={
+                    "is_active": True,
+                    "ended_at": None,
+                    "added_by": created_by,
+                },
+            )
     return profile
+
+
+def provision_portal_account(cleaned_data, *, created_by):
+    temporary_password = generate_temporary_password()
+    profile = create_portal_account(
+        cleaned_data,
+        created_by=created_by,
+        initial_password=temporary_password,
+    )
+    return profile, temporary_password
+
+
+@transaction.atomic
+def ensure_player_portal_account(player, *, created_by):
+    existing_access = (
+        PlayerAccess.objects.select_related("user__portal_profile")
+        .filter(
+            player=player,
+            role=PlayerAccess.Role.PLAYER,
+            user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if existing_access:
+        profile = existing_access.user.portal_profile
+        changed_profile = not profile.is_active
+        changed_user = not profile.user.is_active
+        temporary_password = None
+        if not existing_access.is_active:
+            existing_access.is_active = True
+            existing_access.save(update_fields=("is_active",))
+        if changed_profile:
+            profile.is_active = True
+            profile.save(update_fields=("is_active", "updated_at"))
+        if not profile.user.has_usable_password():
+            temporary_password = generate_temporary_password()
+            profile.user.set_password(temporary_password)
+            profile.user.is_active = True
+            profile.user.save(update_fields=("password", "is_active"))
+        elif changed_user:
+            profile.user.is_active = True
+            profile.user.save(update_fields=("is_active",))
+        return profile, temporary_password, False
+
+    if not (player.email or "").strip():
+        raise ValueError("Renseignez l’e-mail du joueur avant de créer son compte client.")
+
+    profile, temporary_password = provision_portal_account(
+        {
+            "account_type": PortalProfile.AccountType.PLAYER,
+            "display_name": player.name,
+            "email": player.email.strip().lower(),
+            "whatsapp_number": player.whatsapp_number or "",
+            "preferred_language": "fr",
+            "player": player,
+            "organization": None,
+            "players": (),
+        },
+        created_by=created_by,
+    )
+    return profile, temporary_password, True
+
+
+@transaction.atomic
+def renew_portal_credentials(profile):
+    temporary_password = generate_temporary_password()
+    profile.user.set_password(temporary_password)
+    profile.user.is_active = True
+    profile.user.save(update_fields=("password", "is_active"))
+    if not profile.is_active:
+        profile.is_active = True
+        profile.save(update_fields=("is_active", "updated_at"))
+    return temporary_password
+
+
+def deliver_portal_credentials(
+    profile,
+    temporary_password,
+    *,
+    login_url,
+    actor,
+    player=None,
+):
+    recipient_name = profile.display_name
+    email = (profile.user.email or "").strip()
+    phone_value = profile.whatsapp_number or (
+        player.whatsapp_number if player else ""
+    )
+    phone = normalize_whatsapp_number(phone_value)
+    message = (
+        f"Bonjour {recipient_name} 👋\n\n"
+        "Votre espace client MS Football est prêt.\n\n"
+        f"Connexion : {login_url}\n"
+        f"E-mail : {email}\n"
+        f"Mot de passe temporaire : {temporary_password}\n\n"
+        "Après connexion, vous pourrez consulter vos anciennes vidéos et suivre la production en cours. "
+        "Merci de changer le mot de passe depuis votre profil."
+    )
+
+    email_sent = False
+    email_error = False
+    if email:
+        try:
+            email_sent = bool(
+                send_mail(
+                    "Votre espace client MS Football",
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+            )
+        except Exception:
+            email_error = True
+        CommunicationLog.objects.create(
+            player=player,
+            channel=CommunicationLog.Channel.EMAIL,
+            template_key="portal_credentials",
+            recipient=email,
+            message="Identifiants du portail client préparés par MS Football.",
+            state=(
+                CommunicationLog.State.SENT
+                if email_sent
+                else CommunicationLog.State.FAILED
+            ),
+            actor=actor,
+        )
+
+    whatsapp_url = ""
+    if phone:
+        whatsapp_url = f"https://wa.me/{phone}?text={quote(message, safe='')}"
+        CommunicationLog.objects.create(
+            player=player,
+            channel=CommunicationLog.Channel.WHATSAPP,
+            template_key="portal_credentials",
+            recipient=phone_value,
+            message="Brouillon WhatsApp des identifiants du portail préparé.",
+            state=CommunicationLog.State.DRAFT_OPENED,
+            actor=actor,
+        )
+
+    return PortalCredentialDelivery(
+        email_sent=email_sent,
+        email_error=email_error,
+        whatsapp_url=whatsapp_url,
+    )
 
 
 def update_workflow(video, cleaned_data, *, actor):
