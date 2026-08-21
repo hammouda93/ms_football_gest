@@ -171,6 +171,7 @@
                                         name="payment_message_mode"
                                         id="payment_message_mode"
                                         class="form-control"
+                                        form="status-update-form"
                                     >
                                         {% for value, label in payment_mode_choices %}
                                             <option value="{{ value }}">{{ label }}</option>
@@ -185,6 +186,7 @@
                                         name="whatsapp_message"
                                         id="whatsapp_message"
                                         class="form-control"
+                                        form="status-update-form"
                                         rows="11"
                                         maxlength="4000"
                                     ></textarea>
@@ -252,12 +254,19 @@
         const videoLinkInput = document.getElementById('video_link');
         const saveWithoutWhatsapp = document.getElementById('save-without-whatsapp');
         const saveWithWhatsapp = document.getElementById('save-with-whatsapp');
+        const notificationModal = document.getElementById('status-notification-modal');
 
         const messageOptionsElement = document.getElementById('status-whatsapp-messages');
         const recommendationsElement = document.getElementById('status-payment-recommendations');
 
         if (!form || !statusSelect || !messageOptionsElement || !recommendationsElement) {
             return;
+        }
+
+        // Bootstrap ajoute le voile directement dans <body>. La fenêtre doit se
+        // trouver au même niveau pour rester claire, visible et cliquable.
+        if (notificationModal && notificationModal.parentElement !== document.body) {
+            document.body.appendChild(notificationModal);
         }
 
         const messageOptions = JSON.parse(messageOptionsElement.textContent);

@@ -80,6 +80,7 @@
                                                 name="payment_message_mode"
                                                 id="edit_payment_message_mode"
                                                 class="form-control"
+                                                form="video-edit-form"
                                             >
                                                 {% for value, label in payment_mode_choices %}
                                                     <option value="{{ value }}">{{ label }}</option>
@@ -254,12 +255,19 @@
         const paymentRecommendation = document.getElementById('edit-payment-recommendation');
         const saveWithoutWhatsapp = document.getElementById('edit-save-without-whatsapp');
         const saveWithWhatsapp = document.getElementById('edit-save-with-whatsapp');
+        const notificationModal = document.getElementById('edit-status-notification-modal');
         const recommendationsElement = document.getElementById(
             'edit-status-payment-recommendations'
         );
 
         if (!form || !statusSelect || !recommendationsElement) {
             return;
+        }
+
+        // Bootstrap ajoute le voile directement dans <body>. La fenêtre doit se
+        // trouver au même niveau pour rester claire, visible et cliquable.
+        if (notificationModal && notificationModal.parentElement !== document.body) {
+            document.body.appendChild(notificationModal);
         }
 
         const recommendations = JSON.parse(recommendationsElement.textContent);

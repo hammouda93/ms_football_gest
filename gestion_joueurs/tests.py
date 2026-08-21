@@ -96,6 +96,11 @@ class VideoStatusWhatsappTests(TestCase):
         self.assertContains(response, "Mettre à jour sans WhatsApp")
         self.assertContains(response, "Mettre à jour et ouvrir WhatsApp")
         self.assertContains(response, "ne sera pas")
+        self.assertContains(response, 'form="status-update-form"', count=2)
+        self.assertContains(
+            response,
+            "document.body.appendChild(notificationModal)",
+        )
 
     def test_status_can_be_updated_without_opening_whatsapp(self):
         response = self._post_status(Video.StatusChoices.IN_PROGRESS)
@@ -116,6 +121,11 @@ class VideoStatusWhatsappTests(TestCase):
         self.assertContains(response, "Informer Joueur Test du nouveau statut ?")
         self.assertContains(response, "Mettre à jour sans WhatsApp")
         self.assertContains(response, "Mettre à jour et ouvrir WhatsApp")
+        self.assertContains(response, 'form="video-edit-form"')
+        self.assertContains(
+            response,
+            "document.body.appendChild(notificationModal)",
+        )
 
     def test_edit_video_status_change_can_open_whatsapp(self):
         response = self.client.post(
@@ -183,6 +193,21 @@ class VideoStatusWhatsappTests(TestCase):
 
         decoded_url = unquote(response["Location"])
         self.assertTrue(decoded_url.endswith(f"?text={custom_message}"))
+
+    def test_delivered_custom_message_always_includes_video_link(self):
+        video_link = "https://youtu.be/ms-football-test"
+        custom_message = "Bonjour, ta vidéo est livrée."
+
+        response = self._post_status(
+            Video.StatusChoices.DELIVERED,
+            notification_action="whatsapp",
+            whatsapp_message=custom_message,
+            video_link=video_link,
+        )
+
+        decoded_url = unquote(response["Location"])
+        self.assertIn(custom_message, decoded_url)
+        self.assertIn(f"Voici le lien de la vidéo : {video_link}", decoded_url)
 
     def test_missing_whatsapp_number_never_opens_external_url(self):
         self.player.whatsapp_number = ""

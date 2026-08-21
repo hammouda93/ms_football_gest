@@ -46,6 +46,7 @@ from .video_status_whatsapp import (
     build_notification_whatsapp_url,
     build_status_notification_context,
     build_whatsapp_url,
+    ensure_delivery_link_in_message,
 )
 from client_portal.services import (
     deliver_portal_credentials,
@@ -557,6 +558,11 @@ def _redirect_to_status_whatsapp(request, video, status_changed):
         whatsapp_message = notification_context['status_whatsapp_messages'][
             video.status
         ][payment_mode]
+    whatsapp_message = ensure_delivery_link_in_message(
+        whatsapp_message,
+        video,
+        video.status,
+    )
 
     whatsapp_url = build_whatsapp_url(
         video.player.whatsapp_number,

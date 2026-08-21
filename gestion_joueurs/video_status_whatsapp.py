@@ -230,6 +230,32 @@ def build_status_message(
     return "\n\n".join(paragraphs)
 
 
+def ensure_delivery_link_in_message(message, video, status=None):
+    """Guarantee that a delivered-video draft contains its saved viewing link."""
+    effective_status = status or video.status
+    video_link = (video.video_link or "").strip()
+    if (
+        effective_status != Video.StatusChoices.DELIVERED
+        or not video_link
+        or video_link in message
+    ):
+        return message
+
+    link_paragraph = f"Voici le lien de la vidéo : {video_link}"
+    signature = "Moataz — MS Football"
+    stripped_message = message.rstrip()
+
+    if stripped_message.endswith(signature):
+        message_without_signature = stripped_message[:-len(signature)].rstrip()
+        return (
+            f"{message_without_signature}\n\n{link_paragraph}\n\n{signature}"
+        )
+
+    if not stripped_message:
+        return link_paragraph
+    return f"{stripped_message}\n\n{link_paragraph}"
+
+
 def build_status_notification_context(video):
     payment_snapshot = get_payment_snapshot(video)
     messages = {}
