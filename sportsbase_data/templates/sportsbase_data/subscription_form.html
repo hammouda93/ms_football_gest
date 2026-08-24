@@ -1,0 +1,25 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}{% if subscription %}Modifier{% else %}Créer{% endif %} l’abonnement Performance{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">{% endblock %}
+{% block content %}
+<div class="performance-form-page">
+    <nav class="ui-breadcrumb"><a href="{% url 'performance:management' %}">Abonnements Performance</a><span>›</span><span>{% if subscription %}{{ subscription.player.name }}{% else %}Nouveau{% endif %}</span></nav>
+    <header><span class="eyebrow">Configuration de l’accès</span><h1>{% if subscription %}Modifier l’abonnement{% else %}Activer Performance{% endif %}</h1><p>Cette configuration ajoute un service au joueur sans modifier ses vidéos, paiements ou informations existantes.</p></header>
+    <form method="post" class="performance-subscription-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="performance-form-grid">
+            {% for field in form %}
+                <label class="{% if field.field.widget.input_type == 'checkbox' %}performance-checkbox{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}{{ field }}<span>{{ field.label }}</span>{% else %}<span>{{ field.label }}</span>{{ field }}{% endif %}
+                    {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                    {% for error in field.errors %}<em class="field-error">{{ error }}</em>{% endfor %}
+                </label>
+            {% endfor %}
+        </div>
+        <div class="performance-form-actions"><a class="btn btn-outline-secondary" href="{% url 'performance:management' %}">Annuler</a><button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> Enregistrer</button></div>
+    </form>
+</div>
+{% endblock %}
+{% block extra_js %}<script>if(window.jQuery&&$.fn.select2){$('.searchable-player-select').select2({width:'100%',placeholder:'Rechercher un joueur'});}</script>{% endblock %}

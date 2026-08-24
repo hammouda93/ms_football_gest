@@ -860,6 +860,19 @@ def portal_dashboard(request):
             (video.payment_snapshot.balance for video in related_videos),
             Decimal("0"),
         )
+    from sportsbase_data.services import active_subscriptions
+
+    performance_subscriptions = list(
+        active_subscriptions()
+        .filter(player_id__in=[player.pk for player in players])
+        .select_related("player")
+    )
+    performance_by_player = {
+        subscription.player_id: subscription
+        for subscription in performance_subscriptions
+    }
+    for player in players:
+        player.portal_performance_subscription = performance_by_player.get(player.pk)
     return render(
         request,
         "client_portal/dashboard.html",
@@ -884,6 +897,7 @@ def portal_dashboard(request):
                 (video.payment_snapshot.balance for video in videos),
                 Decimal("0"),
             ),
+            "performance_subscriptions": performance_subscriptions,
         },
     )
 
@@ -908,6 +922,9 @@ def portal_player_detail(request, player_id):
         for video in videos
         if video.production_stage == VideoWorkflow.Stage.DELIVERED
     ]
+    from sportsbase_data.services import active_subscriptions
+
+    performance_subscription = active_subscriptions().filter(player=player).first()
     return render(
         request,
         "client_portal/player_detail.html",
@@ -916,6 +933,7 @@ def portal_player_detail(request, player_id):
             "videos": videos,
             "current_videos": current_videos,
             "archived_videos": archived_videos,
+            "performance_subscription": performance_subscription,
         },
     )
 

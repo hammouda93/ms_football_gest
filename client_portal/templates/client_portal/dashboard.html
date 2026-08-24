@@ -7,13 +7,26 @@
     <div>
         <span class="eyebrow">Votre tableau de bord</span>
         <h1>Bonjour {{ request.portal_profile.display_name }}</h1>
-        <p>Suivez vos productions, transmettez vos matchs et validez chaque version depuis un seul espace.</p>
+        <p>Suivez vos vidéos et consultez les performances de vos joueurs depuis un seul espace sécurisé.</p>
     </div>
     {% if organizations %}
         <div class="organization-badges" aria-label="Organisations liées">
             {% for organization in organizations %}<span>{{ organization.name }}</span>{% endfor %}
         </div>
     {% endif %}
+</section>
+
+<section class="portal-service-switcher" aria-label="Services MS Football">
+    <a class="portal-service-card video" href="#videos">
+        <span class="service-icon"><i class="fas fa-clapperboard"></i></span>
+        <span><small>Service production</small><strong>Suivi vidéo</strong><em>{{ active_count }} commande{{ active_count|pluralize }} en cours</em></span>
+        <b aria-hidden="true">→</b>
+    </a>
+    <a class="portal-service-card performance" href="{% url 'performance:portal_overview' %}">
+        <span class="service-icon"><i class="fas fa-chart-line"></i></span>
+        <span><small>Abonnement annuel</small><strong>Performances</strong><em>{{ performance_subscriptions|length }} joueur{{ performance_subscriptions|length|pluralize }} suivi{{ performance_subscriptions|length|pluralize }}</em></span>
+        <b aria-hidden="true">→</b>
+    </a>
 </section>
 
 <section class="portal-metrics" aria-label="Résumé de votre espace">
@@ -40,6 +53,7 @@
                         <span><i class="fas fa-clapperboard" aria-hidden="true"></i> {{ player.portal_active_count }} active{{ player.portal_active_count|pluralize }}</span>
                         {% if player.portal_review_count %}<span class="attention"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ player.portal_review_count }} à valider</span>{% endif %}
                         <span class="{% if player.portal_balance %}attention{% endif %}"><i class="fas fa-wallet" aria-hidden="true"></i> Solde {{ player.portal_balance|floatformat:2 }}</span>
+                        {% if player.portal_performance_subscription %}<span class="performance-active"><i class="fas fa-chart-line" aria-hidden="true"></i> Performance actif</span>{% endif %}
                     </div>
                 </div>
                 <b aria-hidden="true">→</b>

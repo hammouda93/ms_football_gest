@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'gestion_joueurs',
     'prospects.apps.ProspectsConfig',
     'client_portal.apps.ClientPortalConfig',
+    'sportsbase_data.apps.SportsbaseDataConfig',
     'crispy_forms',
     'crispy_bootstrap4',
     'whitenoise.runserver_nostatic',
@@ -213,6 +214,16 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').strip().lower() in {
 DEFAULT_FROM_EMAIL = os.getenv(
     'DEFAULT_FROM_EMAIL',
     'MS Football <no-reply@msfootball.tn>',
+)
+
+# L'agent SportsBase s'exécute sur le PC local. Les images légères (heatmaps)
+# sont conservées en base pour rester disponibles sur Heroku, tandis que les
+# vidéos All Actions restent dans le stockage local configuré de l'agent.
+SPORTSBASE_SYNC_INTERVAL_HOURS = int(
+    os.getenv('SPORTSBASE_SYNC_INTERVAL_HOURS', '24')
+)
+SPORTSBASE_JOB_TIMEOUT_HOURS = int(
+    os.getenv('SPORTSBASE_JOB_TIMEOUT_HOURS', '4')
 )
 
 CELERY_BROKER_URL = 'redis://localhost:6380/0' 

@@ -15,6 +15,8 @@
     <link rel="manifest" href="{% url 'portal:manifest' %}">
     <link rel="icon" href="{% static 'client_portal/ms-football-app.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">
+    <link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">
+    {% block portal_extra_css %}{% endblock %}
     <title>{% block title %}Espace MS Football{% endblock %}</title>
 </head>
 <body class="portal-body {% block portal_body_class %}{% endblock %}">
@@ -67,8 +69,9 @@
     {% if request.user.is_authenticated %}
         <nav class="portal-mobile-nav" aria-label="Navigation mobile">
             <a href="{% url 'portal:dashboard' %}"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
-            <a href="{% url 'portal:dashboard' %}#players"><span aria-hidden="true">◎</span><small>Joueurs</small></a>
             <a href="{% url 'portal:dashboard' %}#videos"><span aria-hidden="true">▶</span><small>Vidéos</small></a>
+            <a href="{% url 'performance:portal_overview' %}"><span aria-hidden="true">⌁</span><small>Performance</small></a>
+            <a href="{% url 'portal:dashboard' %}#players"><span aria-hidden="true">◎</span><small>Joueurs</small></a>
         </nav>
     {% endif %}
 

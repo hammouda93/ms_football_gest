@@ -1,0 +1,46 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}Abonnements Performance{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">{% endblock %}
+{% block content %}
+<div class="performance-admin-page">
+    <header class="production-heading performance-admin-heading">
+        <div><span class="eyebrow">SportsBase · Agent local</span><h1>Abonnements Performance</h1><p>Activez le service par joueur, suivez les synchronisations et conservez le suivi vidéo totalement indépendant.</p></div>
+        <a class="btn btn-primary" href="{% url 'performance:subscription_create' %}"><i class="fas fa-plus"></i> Nouvel abonnement</a>
+    </header>
+
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
+
+    <section class="metric-grid performance-admin-metrics">
+        <article class="metric-card"><span>Abonnements</span><strong>{{ subscriptions|length }}</strong></article>
+        <article class="metric-card"><span>Accès actifs</span><strong>{{ active_count }}</strong></article>
+        <article class="metric-card"><span>Tâches récentes</span><strong>{{ jobs|length }}</strong></article>
+    </section>
+
+    <form class="performance-filter-bar" method="get">
+        <label><span>Rechercher</span><input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Joueur, club ou saison"></label>
+        <label><span>État</span><select class="form-control" name="state"><option value="">Tous les états</option>{% for value,label in state_choices %}<option value="{{ value }}" {% if value == selected_state %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-filter"></i> Filtrer</button>
+    </form>
+
+    <section class="performance-admin-list">
+        {% for subscription in subscriptions %}
+            <article class="performance-subscription-row {% if not subscription.access_enabled %}inactive{% endif %}">
+                <div class="performance-player-identity"><span class="performance-avatar">{{ subscription.player.name|first|upper }}</span><div><strong>{{ subscription.player.name }}</strong><span>{{ subscription.player.club }} · {{ subscription.season }}</span><small>{% if subscription.player.sportsbase_url %}Profil SportsBase renseigné{% else %}Lien SportsBase manquant{% endif %}</small></div></div>
+                <div class="performance-row-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span><span><b>{{ subscription.completed_match_count }}</b> synchronisés</span><span><b>{{ subscription.sync_interval_hours }} h</b> fréquence</span></div>
+                <div class="performance-sync-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle"></i><span>{{ subscription.get_last_sync_state_display }}<small>{% if subscription.last_sync_at %}{{ subscription.last_sync_at|date:"d/m/Y H:i" }}{% else %}Agent non lancé{% endif %}</small></span></div>
+                <div class="performance-row-actions">
+                    <a class="btn btn-sm btn-outline-primary" href="{% url 'performance:subscription_edit' subscription.pk %}"><i class="fas fa-pen"></i> Modifier</a>
+                    <form method="post" action="{% url 'performance:subscription_sync' subscription.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit" {% if not subscription.access_enabled %}disabled{% endif %}><i class="fas fa-rotate"></i> Synchroniser</button></form>
+                    <form method="post" action="{% url 'performance:subscription_toggle' subscription.pk %}">{% csrf_token %}{% if subscription.is_active %}<button class="btn btn-sm btn-outline-danger" name="action" value="deactivate"><i class="fas fa-pause"></i> Désactiver</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="activate"><i class="fas fa-play"></i> Activer</button>{% endif %}</form>
+                </div>
+            </article>
+        {% empty %}<div class="empty-state">Aucun abonnement Performance ne correspond à ces critères.</div>{% endfor %}
+    </section>
+
+    <section class="performance-jobs-panel">
+        <div class="panel-heading"><div><h2>Activité de l’agent</h2><small>Les trente dernières tâches</small></div></div>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Type</th><th>État</th><th>Créée</th><th>Résultat</th></tr></thead><tbody>{% for job in jobs %}<tr><td>{{ job.subscription.player.name }}</td><td>{{ job.get_job_type_display }}</td><td><span class="job-status status-{{ job.status }}">{{ job.get_status_display }}</span></td><td>{{ job.created_at|date:"d/m/Y H:i" }}</td><td>{% if job.error_message %}<span class="text-danger">{{ job.error_message|truncatechars:80 }}</span>{% elif job.result_summary %}{{ job.result_summary.matches_received|default:0 }} match(s){% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Aucune tâche pour le moment.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+</div>
+{% endblock %}

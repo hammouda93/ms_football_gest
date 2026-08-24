@@ -14,7 +14,16 @@
     {% if player.transfermarkt_url %}<a class="portal-button secondary profile-source-link" href="{{ player.transfermarkt_url }}" target="_blank" rel="noopener">Profil Transfermarkt ↗</a>{% endif %}
 </section>
 
-<section class="portal-section">
+<nav class="player-service-tabs" aria-label="Services du joueur">
+    <a class="active" href="#video-tracking"><i class="fas fa-clapperboard"></i> Suivi vidéo</a>
+    {% if performance_subscription %}
+        <a href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> Performance</a>
+    {% else %}
+        <span class="disabled"><i class="fas fa-chart-line"></i> Performance non activé</span>
+    {% endif %}
+</nav>
+
+<section class="portal-section" id="video-tracking">
     <div class="portal-section-heading">
         <div><span class="eyebrow">Production</span><h2>Vidéo en cours</h2><p>Consultez l’avancement, les versions et les paiements.</p></div>
         <span class="portal-count">{{ current_videos|length }}</span>

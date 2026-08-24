@@ -130,6 +130,7 @@
                         <a class="sidebar-link {% if request.resolver_match.url_name == 'player_dashboard' %}active{% endif %}" href="{% url 'player_dashboard' %}"><i class="fas fa-users"></i><span>Joueurs</span></a>
                         <a class="sidebar-link {% if request.resolver_match.namespace == 'prospects' %}active{% endif %}" href="{% url 'prospects:prospect_list' %}"><i class="fas fa-user-plus"></i><span>Prospects</span></a>
                         <a class="sidebar-link {% if request.resolver_match.namespace == 'portal' and '/gestion/portail/' in request.path %}active{% endif %}" href="{% url 'portal:management' %}"><i class="fas fa-building-user"></i><span>Espaces clients</span></a>
+                        <a class="sidebar-link {% if request.resolver_match.namespace == 'performance' and '/gestion/performances/' in request.path %}active{% endif %}" href="{% url 'performance:management' %}"><i class="fas fa-chart-line"></i><span>Abonnements performance</span></a>
 
                         <span class="nav-section-title">Finance</span>
                         {% url 'view_payments' as view_payments_url %}
