@@ -6,6 +6,7 @@ Run from the project root with:
 
 import os
 import time
+import traceback
 from pathlib import Path
 
 import requests
@@ -112,6 +113,8 @@ class SportsBaseAgentClient:
         try:
             result = self.scraper.run(job)
         except Exception as exc:
+            print(f"[SPORTSBASE][ERREUR INATTENDUE] {exc}")
+            traceback.print_exc()
             result = {
                 "status": "failed",
                 "profile": {},
@@ -119,6 +122,8 @@ class SportsBaseAgentClient:
                 "summary": {},
                 "error": str(exc),
             }
+        if result.get("error"):
+            print(f"[SPORTSBASE][DETAIL ECHEC] {result['error']}")
         self.submit_result(job["job_id"], result)
         print(
             f"[SPORTSBASE] Tâche {job['job_id']} terminée — "
