@@ -1,16 +1,17 @@
 {% extends "client_portal/portal_base.html" %}
+{% load performance_extras %}
 {% block title %}Performances — MS Football{% endblock %}
 {% block portal_content %}
 <nav class="portal-breadcrumb"><a href="{% url 'portal:dashboard' %}">Mon espace</a><span>›</span><span>Performances</span></nav>
 
 <section class="performance-portal-hero">
     <div><span class="eyebrow">Abonnement annuel</span><h1>Centre de performances</h1><p>Statistiques de saison, cartes d’activité, matchs et livraisons All Actions.</p></div>
-    <span class="performance-live-badge"><i class="fas fa-shield-halved"></i> Données synchronisées</span>
+    <span class="performance-live-badge"><i class="fas fa-shield-halved"></i> Analyses sécurisées</span>
 </section>
 
 <nav class="portal-service-tabs main" aria-label="Services MS Football">
     <a href="{% url 'portal:dashboard' %}#videos"><i class="fas fa-clapperboard"></i><span><small>Production</small>Suivi vidéo</span></a>
-    <a class="active" href="{% url 'performance:portal_overview' %}"><i class="fas fa-chart-line"></i><span><small>SportsBase</small>Performances</span></a>
+    <a class="active" href="{% url 'performance:portal_overview' %}"><i class="fas fa-chart-line"></i><span><small>Analyse</small>Performances</span></a>
 </nav>
 
 <section class="portal-section performance-overview-section">
@@ -20,7 +21,7 @@
             <a class="performance-player-card" href="{% url 'performance:portal_detail' subscription.player.pk %}">
                 <div class="performance-player-card-top">
                     {% if subscription.current_snapshot.profile_image_url %}<img src="{{ subscription.current_snapshot.profile_image_url }}" alt="Photo de {{ subscription.player.name }}" loading="lazy">{% else %}<span class="performance-avatar large">{{ subscription.player.name|first|upper }}</span>{% endif %}
-                    <span class="performance-card-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle"></i> {{ subscription.get_last_sync_state_display }}</span>
+                    <span class="performance-card-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle-check"></i> {{ subscription.last_sync_state|portal_data_state }}</span>
                 </div>
                 <div class="performance-player-card-copy"><small>{{ subscription.season }}</small><strong>{{ subscription.player.name }}</strong><span>{{ subscription.current_snapshot.club_name|default:subscription.player.club }}</span></div>
                 <div class="performance-player-card-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span>{% if subscription.current_snapshot %}<span><b>{{ subscription.current_snapshot.time_on_field_percent|default:"—" }}%</b> temps de jeu</span>{% endif %}</div>

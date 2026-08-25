@@ -236,13 +236,41 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
             home_team="Stade Tunisien",
             away_team="Gabès",
             sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.GENERATING,
+            delivery_error="Erreur de génération SportsBase réservée à l’équipe.",
         )
         SportsBaseMatchStats.objects.create(
             match=self.match,
             team_name="Stade Tunisien",
             index=201,
             minutes_played=90,
-            summary_statistics={"Shots": "3"},
+            summary_statistics={
+                "Passes": "45",
+                "Challenges": "8",
+                "Shots": "3",
+                "Goals": "1",
+            },
+            success_rates={
+                "Passes accurate, %": "89%",
+                "Challenges won, %": "62%",
+                "Shots on target, %": "67%",
+            },
+            detailed_statistics={
+                "Passes": "45",
+                "Passes accurate, %": "89%",
+                "Goals": "1",
+                "Key passes": "2",
+            },
+            team_table=[
+                {
+                    "rank": 1,
+                    "player_name": self.player.name,
+                    "index": 201,
+                    "position": "CM",
+                    "minutes": 90,
+                    "is_current_player": True,
+                }
+            ],
         )
 
     def test_player_sees_only_his_active_performance(self):
@@ -303,9 +331,26 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "Tableau statistique de la saison")
         self.assertContains(detail, "Suivi vidéo")
+        self.assertContains(detail, "Matchs du joueur")
+        self.assertContains(detail, "Fiche et repères du joueur")
+        self.assertNotContains(detail, "SportsBase")
         self.assertEqual(match.status_code, 200)
         self.assertContains(match, "Index du match")
+        self.assertContains(match, "Volume et efficacité")
+        self.assertContains(match, "Passes réussies")
+        self.assertContains(match, "89%")
+        self.assertContains(match, "Autres repères du match")
+        self.assertContains(match, "Vue collective")
         self.assertContains(match, "All Actions")
+        self.assertNotContains(match, "Analyse complète")
+        self.assertNotContains(match, "Indicateurs avancés")
+        self.assertNotContains(match, "Match 772538")
+        self.assertNotContains(match, "SportsBase")
+
+        paired = match.context["analysis_pairs"]
+        passes = next(item for item in paired if item["name"] == "Passes")
+        self.assertEqual(passes["value"], "45")
+        self.assertEqual(passes["rate_value"], "89%")
 
 
 class ScraperNormalizationTests(TestCase):

@@ -89,6 +89,18 @@ CLIENT_STATUS_ICONS = {
 }
 
 
+CLIENT_STAGE_LABELS = {
+    VideoWorkflow.Stage.DOWNLOADING: "Préparation des médias",
+}
+
+
+CLIENT_STAGE_NEXT_ACTIONS = {
+    VideoWorkflow.Stage.DOWNLOADING: (
+        "Les matchs et les séquences du joueur sont en cours de préparation."
+    ),
+}
+
+
 PAYMENT_EVENT_TITLES = {
     "advance": "Acompte enregistré",
     "partial": "Paiement partiel enregistré",
@@ -348,6 +360,14 @@ def decorate_video(video):
 def decorate_client_video(video):
     """Add client-facing actions without writing to legacy or portal records."""
     video = decorate_video(video)
+    video.production_stage_label = CLIENT_STAGE_LABELS.get(
+        video.production_stage,
+        video.production_stage_label,
+    )
+    video.production_next_action = CLIENT_STAGE_NEXT_ACTIONS.get(
+        video.production_stage,
+        video.production_next_action,
+    )
     versions = list(video.portal_versions.all())
     submissions = list(video.media_submissions.all())
     payment_requests = list(video.portal_payment_requests.all())

@@ -60,13 +60,15 @@
 .performance-player-card-metrics b { color: var(--performance-text); font-size: .8rem; }
 .performance-player-card-action { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding: 13px 18px; color: var(--performance-blue); background: #f8fbff; border-top: 1px solid #e8eef5; font-size: .73rem; font-weight: 800; }
 
-.performance-profile-hero { display: grid; grid-template-columns: 128px minmax(0, 1fr) auto; align-items: center; gap: 25px; padding: 28px; }
-.performance-profile-photo { display: grid; overflow: hidden; width: 128px; height: 148px; place-items: center; background: linear-gradient(145deg, rgba(255, 255, 255, .15), rgba(45, 212, 191, .16)); border: 1px solid rgba(255, 255, 255, .16); border-radius: 24px; }
+.performance-profile-hero { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 20px 24px; }
+.performance-profile-hero h1 { margin: 3px 0 4px; font-size: clamp(1.55rem, 4vw, 2.25rem); }
+.performance-profile-hero p { font-size: .78rem; }
+.performance-profile-photo { display: grid; overflow: hidden; width: 92px; height: 104px; place-items: center; background: linear-gradient(145deg, rgba(255, 255, 255, .15), rgba(45, 212, 191, .16)); border: 1px solid rgba(255, 255, 255, .16); border-radius: 19px; }
 .performance-profile-photo img { width: 100%; height: 100%; object-fit: contain; object-position: bottom; }
 .performance-profile-photo span { font-size: 2rem; font-weight: 900; }
 .performance-profile-main { z-index: 1; min-width: 0; }
-.performance-position-list { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
-.performance-position-list span { padding: 6px 9px; color: #dffbf6; background: rgba(13, 148, 136, .2); border: 1px solid rgba(94, 234, 212, .22); border-radius: 999px; font-size: .65rem; font-weight: 750; }
+.performance-position-list { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.performance-position-list span { padding: 4px 8px; color: #dffbf6; background: rgba(13, 148, 136, .2); border: 1px solid rgba(94, 234, 212, .22); border-radius: 999px; font-size: .59rem; font-weight: 750; }
 .performance-sync-copy { display: flex; z-index: 1; align-items: flex-end; flex-direction: column; gap: 10px; text-align: right; }
 .performance-sync-copy small { color: #b6c7d7; font-size: .68rem; line-height: 1.5; }
 
@@ -91,14 +93,48 @@
 .performance-passport dd { overflow: hidden; margin: 3px 0 0; color: var(--performance-text); font-size: .78rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .performance-radar-wrap { position: relative; height: 285px; }
 .performance-radar-image { display: block; width: 100%; max-height: 320px; object-fit: contain; }
-.performance-map-card img { display: block; width: 100%; max-height: 390px; object-fit: contain; background: #f3f8f5; border: 1px solid #d9e7df; border-radius: 16px; }
+.performance-map-card img { display: block; width: 100%; max-height: 285px; object-fit: contain; background: #f3f8f5; border: 1px solid #d9e7df; border-radius: 16px; }
+.performance-map-card.compact-map { min-width: 0; padding: 15px; background: #f8fbfd; border: 1px solid #e1e9f0; border-radius: 16px; }
+.performance-map-card.compact-map .performance-panel-heading { margin-bottom: 10px; }
+.performance-map-card.compact-map img { max-height: 230px; background: #edf4f1; border-radius: 12px; }
 .performance-panel-empty { display: flex; min-height: 150px; align-items: center; justify-content: center; gap: 10px; flex-direction: column; padding: 22px; color: #8390a2; background: #f8fafc; border: 1px dashed #ccd7e3; border-radius: 15px; font-size: .75rem; text-align: center; }
+.performance-panel-empty.compact { min-height: 90px; padding: 14px; }
 .performance-panel-empty i { font-size: 1.4rem; }
 .performance-stat-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .performance-stat-list.advanced { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .performance-stat-list > div:not(.performance-panel-empty) { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 11px; background: var(--performance-soft); border-radius: 11px; }
 .performance-stat-list span { overflow: hidden; color: var(--performance-muted); font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
 .performance-stat-list strong { color: var(--performance-text); font-size: .77rem; }
+.performance-stat-list.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.performance-match-analysis { margin: 16px 0; border-top: 3px solid var(--performance-blue); }
+.performance-paired-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.performance-paired-stat { display: grid; min-width: 0; grid-template-columns: 38px minmax(80px, .75fr) minmax(110px, 1fr); align-items: center; gap: 10px; padding: 12px; background: linear-gradient(135deg, #f7fbff, #f4fbf9); border: 1px solid #dde9ef; border-radius: 14px; }
+.performance-paired-stat > i { display: grid; width: 38px; height: 38px; place-items: center; color: var(--performance-blue); background: #e6f0ff; border-radius: 11px; font-size: .82rem; }
+.performance-paired-main, .performance-paired-rate { display: flex; min-width: 0; flex-direction: column; }
+.performance-paired-main span, .performance-paired-rate span { overflow: hidden; color: var(--performance-muted); font-size: .6rem; text-overflow: ellipsis; white-space: nowrap; }
+.performance-paired-main strong { margin-top: 2px; color: var(--performance-text); font-size: 1.1rem; }
+.performance-paired-rate { padding-left: 10px; border-left: 1px solid #d9e5eb; }
+.performance-paired-rate strong { margin-top: 2px; color: var(--performance-teal); font-size: 1.1rem; }
+.performance-secondary-analysis { margin-top: 18px; padding-top: 15px; border-top: 1px solid #e5ebf1; }
+.performance-secondary-analysis h3 { margin: 0 0 10px; color: var(--performance-text); font-size: .82rem; }
+
+.performance-compact-details { margin: 16px 0; padding: 0; overflow: hidden; }
+.performance-compact-details > summary { display: flex; align-items: center; gap: 12px; padding: 15px 18px; cursor: pointer; list-style: none; }
+.performance-compact-details > summary::-webkit-details-marker { display: none; }
+.performance-compact-details > summary > span { display: flex; flex: 1; color: var(--performance-text); flex-direction: column; font-size: .85rem; font-weight: 850; }
+.performance-compact-details > summary small { color: var(--performance-teal); font-size: .56rem; letter-spacing: .08em; text-transform: uppercase; }
+.performance-compact-details > summary i { color: var(--performance-muted); transition: transform .2s ease; }
+.performance-compact-details[open] > summary { border-bottom: 1px solid #e7edf3; }
+.performance-compact-details[open] > summary i { transform: rotate(180deg); }
+.performance-profile-details-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .8fr); gap: 18px; padding: 18px; }
+.compact-passport, .compact-radar { min-width: 0; }
+.compact-passport .performance-panel-heading, .compact-radar .performance-panel-heading { margin-bottom: 10px; }
+.compact-passport dl div { padding: 8px 10px; }
+.compact-radar .performance-radar-wrap { height: 220px; }
+.compact-radar .performance-radar-image { max-height: 220px; }
+.performance-season-maps > .performance-map-grid { margin: 0; padding: 16px; }
+.priority-panel { border-top: 3px solid var(--performance-teal); }
 
 .performance-matches-panel { margin-top: 16px; }
 .performance-match-list { display: grid; gap: 8px; }
@@ -131,8 +167,11 @@
 .performance-rank-grid strong { margin: 5px 0; font-size: 1.7rem; }
 .performance-team-table { padding: 0; }
 .performance-team-table summary { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; cursor: pointer; list-style: none; }
+.performance-team-table summary::-webkit-details-marker { display: none; }
 .performance-team-table summary span { display: flex; color: var(--performance-text); flex-direction: column; font-weight: 850; }
 .performance-team-table summary small { color: var(--performance-teal); font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; }
+.performance-team-table summary i { color: var(--performance-muted); transition: transform .2s ease; }
+.performance-team-table[open] summary i { transform: rotate(180deg); }
 .performance-team-table table { width: 100%; border-collapse: collapse; }
 .performance-team-table th, .performance-team-table td { padding: 10px 14px; border-top: 1px solid #e7edf3; font-size: .7rem; text-align: left; }
 .performance-team-table th { color: var(--performance-muted); background: #f8fafc; font-size: .6rem; text-transform: uppercase; }
@@ -154,6 +193,8 @@
 .all-actions-delivery p { margin: 0; color: var(--performance-muted); font-size: .72rem; }
 .all-actions-delivery small { display: block; margin-top: 7px; color: #58677a; font-size: .62rem; }
 .all-actions-delivery em { display: block; margin-top: 7px; color: var(--performance-red); font-size: .62rem; font-style: normal; }
+.all-actions-delivery .delivery-note { color: var(--performance-muted); }
+.all-actions-delivery .delivery-downloaded, .all-actions-delivery .delivery-emailed { color: var(--performance-green); }
 .performance-empty { min-height: 220px; }
 
 .performance-admin-page, .performance-form-page { padding: 30px; }
@@ -198,14 +239,15 @@
     .performance-subscription-row { grid-template-columns: minmax(250px, 1fr) minmax(220px, 1fr); }
     .performance-row-actions { justify-content: flex-start; }
     .performance-stat-list.advanced { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .performance-stat-list.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
     .portal-mobile-nav { grid-template-columns: repeat(4, 1fr); }
     .portal-service-switcher, .performance-player-grid, .performance-content-grid, .performance-map-grid { grid-template-columns: 1fr; }
     .performance-portal-hero { min-height: auto; align-items: flex-start; flex-direction: column; padding: 24px; }
-    .performance-profile-hero { grid-template-columns: 82px minmax(0, 1fr); gap: 15px; padding: 20px; }
-    .performance-profile-photo { width: 82px; height: 100px; border-radius: 18px; }
+    .performance-profile-hero { grid-template-columns: 70px minmax(0, 1fr); gap: 13px; padding: 16px; }
+    .performance-profile-photo { width: 70px; height: 82px; border-radius: 16px; }
     .performance-sync-copy { grid-column: 1 / -1; align-items: flex-start; text-align: left; }
     .performance-kpi-grid, .performance-rank-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .performance-match-row { grid-template-columns: 45px minmax(0, 1fr) 48px 15px; gap: 7px; padding: 10px; }
@@ -215,6 +257,9 @@
     .performance-lineup { align-items: flex-start; text-align: left; }
     .performance-scoreboard { order: -1; }
     .performance-stat-list.advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .performance-paired-grid, .performance-profile-details-body { grid-template-columns: 1fr; }
+    .performance-stat-list.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .performance-map-card.compact-map img { max-height: 190px; }
     .all-actions-delivery { grid-template-columns: 50px minmax(0, 1fr); }
     .all-actions-delivery .performance-actions-state { grid-column: 1 / -1; justify-self: start; }
     .performance-admin-page, .performance-form-page { padding: 18px 12px; }
@@ -230,6 +275,7 @@
     .performance-kpi-grid, .performance-rank-grid { gap: 8px; }
     .performance-kpi-grid article, .performance-rank-grid article { padding: 12px; }
     .performance-panel { padding: 16px; border-radius: 18px; }
+    .performance-compact-details, .performance-team-table, .performance-season-table { padding: 0; }
     .performance-stat-list { grid-template-columns: 1fr; }
     .performance-passport dl { grid-template-columns: 1fr; }
     .performance-radar-wrap { height: 245px; }
@@ -237,5 +283,7 @@
     .performance-scoreboard span { font-size: .7rem; }
     .performance-scoreboard strong { padding: 8px 10px; font-size: 1.15rem; }
     .performance-stat-list.advanced { grid-template-columns: 1fr; }
+    .performance-paired-stat { grid-template-columns: 34px minmax(70px, .75fr) minmax(95px, 1fr); gap: 8px; padding: 10px; }
+    .performance-paired-stat > i { width: 34px; height: 34px; }
     .performance-row-metrics { grid-template-columns: repeat(3, 1fr); }
 }

@@ -403,6 +403,21 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(forbidden.status_code, 404)
 
+    def test_client_video_hides_technical_media_source(self):
+        VideoWorkflow.objects.update_or_create(
+            video=self.video,
+            defaults={
+                "stage": VideoWorkflow.Stage.DOWNLOADING,
+                "progress": 35,
+                "next_action": "",
+            },
+        )
+        self.client.force_login(self.player_user)
+        response = self.client.get(reverse("portal:video", args=(self.video.pk,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Préparation des médias")
+        self.assertNotContains(response, "SportsBase")
+
     def test_removing_agent_link_never_deletes_or_changes_player(self):
         self.client.force_login(self.admin)
         snapshot = (self.player.name, self.player.club, self.player.email)

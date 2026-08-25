@@ -4,10 +4,10 @@
 {% block portal_content %}
 <nav class="portal-breadcrumb"><a href="{% url 'portal:dashboard' %}">Mon espace</a><span>›</span><a href="{% url 'performance:portal_overview' %}">Performances</a><span>›</span><span>{{ player.name }}</span></nav>
 
-<section class="performance-profile-hero">
+<section class="performance-profile-hero compact-profile">
     <div class="performance-profile-photo">{% if snapshot.profile_image_url %}<img src="{{ snapshot.profile_image_url }}" alt="Photo de {{ player.name }}">{% else %}<span>{{ player.name|first|upper }}</span>{% endif %}</div>
     <div class="performance-profile-main"><span class="eyebrow">Performance · {{ subscription.season }}</span><h1>{{ snapshot.sportsbase_player_name|default:player.name }}</h1><p>{{ snapshot.club_name|default:player.club }}{% if snapshot.nationality %} · {{ snapshot.nationality }}{% endif %}</p><div class="performance-position-list">{% for position in snapshot.positions %}<span>{{ position.code|default:position.name }}{% if position.percent %} · {{ position.percent }}%{% endif %}</span>{% empty %}<span>{{ player.get_position_display }}</span>{% endfor %}</div></div>
-    <div class="performance-sync-copy"><span class="state-{{ subscription.last_sync_state }}"><i class="fas fa-circle"></i> {{ subscription.get_last_sync_state_display }}</span><small>Dernière mise à jour<br>{% if subscription.last_sync_at %}{{ subscription.last_sync_at|date:"d/m/Y · H:i" }}{% else %}En attente du premier passage de l’agent{% endif %}</small></div>
+    <div class="performance-sync-copy"><span class="state-{{ subscription.last_sync_state }}"><i class="fas fa-circle-check"></i> {{ subscription.last_sync_state|portal_data_state }}</span><small>Dernière mise à jour<br>{% if subscription.last_sync_at %}{{ subscription.last_sync_at|date:"d/m/Y · H:i" }}{% else %}Analyse en préparation{% endif %}</small></div>
 </section>
 
 <nav class="player-service-tabs" aria-label="Services du joueur"><a href="{% url 'portal:player' player.pk %}"><i class="fas fa-clapperboard"></i> Suivi vidéo</a><a class="active" href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> Performance</a></nav>
@@ -16,62 +16,70 @@
 <section class="performance-kpi-grid">
     <article><i class="fas fa-person-running"></i><span>Matchs joués</span><strong>{{ snapshot.season_statistics|dict_get:"Matches played"|default:"—" }}</strong><small>Saison {{ subscription.season }}</small></article>
     <article><i class="fas fa-clock"></i><span>Temps sur le terrain</span><strong>{{ snapshot.time_on_field_percent|default:"—" }}%</strong><small>Dans l’équipe première</small></article>
-    <article><i class="fas fa-futbol"></i><span>Matchs importés</span><strong>{{ matches|length }}</strong><small>Saison {{ subscription.season }}</small></article>
+    <article><i class="fas fa-futbol"></i><span>Matchs analysés</span><strong>{{ matches|length }}</strong><small>Saison {{ subscription.season }}</small></article>
     <article><i class="fas fa-film"></i><span>All Actions</span><strong>{{ action_counts.available }}</strong><small>{{ action_counts.emailed }} envoyé{{ action_counts.emailed|pluralize }} par e-mail</small></article>
 </section>
-
-<section class="performance-content-grid">
-    <article class="performance-panel performance-passport">
-        <div class="performance-panel-heading"><div><span class="eyebrow">Profil</span><h2>Présentation du joueur</h2></div><i class="fas fa-id-card"></i></div>
-        <dl>
-            <div><dt>Date de naissance</dt><dd>{{ snapshot.date_of_birth|date:"d/m/Y"|default:"—" }}</dd></div>
-            <div><dt>Fin de contrat</dt><dd>{{ snapshot.contract_expires|date:"d/m/Y"|default:"—" }}</dd></div>
-            <div><dt>Pied fort</dt><dd>{{ snapshot.strong_foot|default:"—" }}</dd></div>
-            <div><dt>Taille / poids</dt><dd>{{ snapshot.height_weight|default:"—" }}</dd></div>
-            <div><dt>Équipe nationale</dt><dd>{{ snapshot.national_team|default:"—" }}</dd></div>
-            <div><dt>Nationalité</dt><dd>{{ snapshot.nationality|default:"—" }}</dd></div>
-        </dl>
-    </article>
-    <article class="performance-panel performance-radar-panel">
-        <div class="performance-panel-heading"><div><span class="eyebrow">Comparaison</span><h2>Radar de performance</h2></div><i class="fas fa-chart-radar"></i></div>
-        {% if snapshot.radar_png %}<img class="performance-radar-image" src="{% url 'performance:portal_season_map' player.pk 'radar' %}" alt="Radar de performance de {{ player.name }}">{% elif snapshot.radar_metrics %}<div class="performance-radar-wrap"><canvas id="performanceRadar" aria-label="Radar des performances de {{ player.name }}"></canvas></div>{{ snapshot.radar_metrics|json_script:"performance-radar-data" }}{% else %}<div class="performance-panel-empty"><i class="fas fa-chart-line"></i><span>Le radar apparaîtra après la synchronisation des données SportsBase.</span></div>{% endif %}
-    </article>
-</section>
-
-<section class="performance-map-grid">
-    <article class="performance-panel performance-map-card"><div class="performance-panel-heading"><div><span class="eyebrow">5 derniers matchs</span><h2>Heatmap</h2></div><i class="fas fa-fire"></i></div>{% if snapshot.heatmap_png %}<img src="{% url 'performance:portal_season_map' player.pk 'heatmap' %}" alt="Heatmap cumulée des cinq derniers matchs de {{ player.name }}">{% else %}<div class="performance-panel-empty"><i class="fas fa-map"></i><span>Heatmap en attente de capture.</span></div>{% endif %}</article>
-    <article class="performance-panel performance-map-card"><div class="performance-panel-heading"><div><span class="eyebrow">5 derniers matchs</span><h2>Ball touches map</h2></div><i class="fas fa-location-dot"></i></div>{% if snapshot.ball_touches_png %}<img src="{% url 'performance:portal_season_map' player.pk 'touches' %}" alt="Carte des touches de balle des cinq derniers matchs de {{ player.name }}">{% else %}<div class="performance-panel-empty"><i class="fas fa-map-location-dot"></i><span>Carte des touches en attente de capture.</span></div>{% endif %}</article>
-</section>
-
-<section class="performance-content-grid stats-grid">
-    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">Total saison</span><h2>Statistiques</h2></div><span class="performance-count">{{ snapshot.season_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.season_statistics.items %}<div><span>{{ name|stat_label }}</span><strong>{{ value|default:"—" }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>Aucune statistique saisonnière importée.</span></div>{% endfor %}</div></article>
-    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">Rythme de performance</span><h2>Moyennes par match</h2></div><span class="performance-count">{{ snapshot.average_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.average_statistics.items %}<div><span>{{ name|stat_label }}</span><strong>{{ value|default:"—" }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>Aucune moyenne importée.</span></div>{% endfor %}</div></article>
-</section>
-{% if snapshot.season_match_rows %}
-<details class="performance-panel performance-season-table">
-    <summary><span><small>Données SportsBase complètes</small>Tableau statistique de la saison</span><b>{{ snapshot.season_match_rows|length }} ligne{{ snapshot.season_match_rows|length|pluralize }}</b><i class="fas fa-chevron-down"></i></summary>
-    <p>Faites glisser horizontalement pour consulter tous les indicateurs fournis par SportsBase.</p>
-    <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label }}</th>{% endfor %}</tr></thead><tbody>{% for row in snapshot.season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
-</details>
-{% endif %}
-{% else %}
-<section class="portal-empty performance-empty"><i class="fas fa-rotate"></i><strong>Première synchronisation en attente</strong><span>L’abonnement est actif. Les données apparaîtront après le passage de l’agent local.</span></section>
 {% endif %}
 
-<section class="performance-panel performance-matches-panel" id="matches">
-    <div class="performance-panel-heading"><div><span class="eyebrow">Saison {{ subscription.season }}</span><h2>Matchs et All Actions</h2><p>Chaque rencontre possède ses statistiques et une seule vidéo All Actions.</p></div><span class="performance-count">{{ matches|length }}</span></div>
+<section class="performance-panel performance-matches-panel priority-panel" id="matches">
+    <div class="performance-panel-heading"><div><span class="eyebrow">Analyses · Saison {{ subscription.season }}</span><h2>Matchs du joueur</h2><p>Ouvrez une rencontre pour consulter les volumes, les taux de réussite, les cartes d’activité et le classement.</p></div><span class="performance-count">{{ matches|length }}</span></div>
     <div class="performance-match-list">
         {% for match in matches %}
             <a class="performance-match-row" href="{% url 'performance:portal_match' player.pk match.sportsbase_match_id %}">
                 <time>{{ match.match_date|date:"d M"|default:"—" }}<small>{{ match.match_date|date:"Y" }}</small></time>
                 <div class="performance-fixture"><small>{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</small><strong><span>{{ match.home_team }}</span><b>{{ match.score }}</b><span>{{ match.away_team }}</span></strong></div>
-                <div class="performance-match-index"><small>Index</small><strong>{{ match.player_stats.index|default:"—" }}</strong></div>
-                <span class="performance-actions-state state-{{ match.actions_state }}"><i class="fas fa-film"></i> {{ match.get_actions_state_display }}</span>
+                <div class="performance-match-index"><small>Index</small><strong>{{ match.player_stats.index|stat_value }}</strong></div>
+                <span class="performance-actions-state state-{{ match.actions_state }}"><i class="fas fa-film"></i> {{ match.actions_state|portal_action_label }}</span>
                 <i class="fas fa-chevron-right row-arrow"></i>
             </a>
-        {% empty %}<div class="performance-panel-empty"><i class="fas fa-calendar-xmark"></i><span>Aucun match importé pour cette saison.</span></div>{% endfor %}
+        {% empty %}<div class="performance-panel-empty"><i class="fas fa-calendar-xmark"></i><span>Aucun match disponible pour cette saison.</span></div>{% endfor %}
     </div>
 </section>
+
+{% if snapshot %}
+<details class="performance-panel performance-compact-details">
+    <summary><span><small>Informations secondaires</small>Fiche et repères du joueur</span><i class="fas fa-chevron-down"></i></summary>
+    <div class="performance-profile-details-body">
+        <div class="performance-passport compact-passport">
+            <div class="performance-panel-heading"><div><span class="eyebrow">Profil</span><h2>Présentation du joueur</h2></div><i class="fas fa-id-card"></i></div>
+            <dl>
+                <div><dt>Date de naissance</dt><dd>{{ snapshot.date_of_birth|date:"d/m/Y"|default:"—" }}</dd></div>
+                <div><dt>Fin de contrat</dt><dd>{{ snapshot.contract_expires|date:"d/m/Y"|default:"—" }}</dd></div>
+                <div><dt>Pied fort</dt><dd>{{ snapshot.strong_foot|default:"—" }}</dd></div>
+                <div><dt>Taille / poids</dt><dd>{{ snapshot.height_weight|default:"—" }}</dd></div>
+                <div><dt>Équipe nationale</dt><dd>{{ snapshot.national_team|default:"—" }}</dd></div>
+                <div><dt>Nationalité</dt><dd>{{ snapshot.nationality|default:"—" }}</dd></div>
+            </dl>
+        </div>
+        <div class="performance-radar-panel compact-radar">
+            <div class="performance-panel-heading"><div><span class="eyebrow">Comparaison</span><h2>Radar de performance</h2></div><i class="fas fa-chart-radar"></i></div>
+            {% if snapshot.radar_png %}<img class="performance-radar-image" src="{% url 'performance:portal_season_map' player.pk 'radar' %}" alt="Radar de performance de {{ player.name }}">{% elif snapshot.radar_metrics %}<div class="performance-radar-wrap"><canvas id="performanceRadar" aria-label="Radar des performances de {{ player.name }}"></canvas></div>{{ snapshot.radar_metrics|json_script:"performance-radar-data" }}{% else %}<div class="performance-panel-empty compact"><i class="fas fa-chart-line"></i><span>Le radar sera affiché dès qu’il sera disponible.</span></div>{% endif %}
+        </div>
+    </div>
+</details>
+
+<details class="performance-panel performance-compact-details performance-season-maps">
+    <summary><span><small>5 derniers matchs</small>Cartes d’activité</span><i class="fas fa-chevron-down"></i></summary>
+    <div class="performance-map-grid">
+        <article class="performance-map-card compact-map"><div class="performance-panel-heading"><div><span class="eyebrow">Positionnement</span><h2>Zones d’activité</h2></div><i class="fas fa-fire"></i></div>{% if snapshot.heatmap_png %}<img src="{% url 'performance:portal_season_map' player.pk 'heatmap' %}" alt="Zones d’activité cumulées des cinq derniers matchs de {{ player.name }}">{% else %}<div class="performance-panel-empty compact"><i class="fas fa-map"></i><span>Carte en préparation.</span></div>{% endif %}</article>
+        <article class="performance-map-card compact-map"><div class="performance-panel-heading"><div><span class="eyebrow">Implication</span><h2>Touches de balle</h2></div><i class="fas fa-location-dot"></i></div>{% if snapshot.ball_touches_png %}<img src="{% url 'performance:portal_season_map' player.pk 'touches' %}" alt="Touches de balle cumulées des cinq derniers matchs de {{ player.name }}">{% else %}<div class="performance-panel-empty compact"><i class="fas fa-map-location-dot"></i><span>Carte en préparation.</span></div>{% endif %}</article>
+    </div>
+</details>
+
+<section class="performance-content-grid stats-grid">
+    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">Total saison</span><h2>Statistiques</h2></div><span class="performance-count">{{ snapshot.season_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.season_statistics.items %}<div><span>{{ name|stat_label }}</span><strong>{{ value|stat_value }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>Aucune statistique saisonnière disponible.</span></div>{% endfor %}</div></article>
+    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">Rythme de performance</span><h2>Moyennes par match</h2></div><span class="performance-count">{{ snapshot.average_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.average_statistics.items %}<div><span>{{ name|stat_label }}</span><strong>{{ value|stat_value }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>Aucune moyenne disponible.</span></div>{% endfor %}</div></article>
+</section>
+{% if snapshot.season_match_rows %}
+<details class="performance-panel performance-season-table">
+    <summary><span><small>Vue détaillée</small>Tableau statistique de la saison</span><b>{{ snapshot.season_match_rows|length }} ligne{{ snapshot.season_match_rows|length|pluralize }}</b><i class="fas fa-chevron-down"></i></summary>
+    <p>Faites glisser horizontalement pour consulter tous les indicateurs de la saison.</p>
+    <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label }}</th>{% endfor %}</tr></thead><tbody>{% for row in snapshot.season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+</details>
+{% endif %}
+{% else %}
+<section class="portal-empty performance-empty"><i class="fas fa-chart-line"></i><strong>Analyse en préparation</strong><span>L’abonnement est actif. Les premières données apparaîtront dès qu’elles seront disponibles.</span></section>
+{% endif %}
 {% endblock %}
 {% block portal_js %}
 {% if snapshot.radar_metrics %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script><script>(function(){const node=document.getElementById('performance-radar-data');const canvas=document.getElementById('performanceRadar');if(!node||!canvas||typeof Chart==='undefined')return;const rows=JSON.parse(node.textContent);new Chart(canvas,{type:'radar',data:{labels:rows.map(r=>r.label||r.name),datasets:[{label:'Joueur',data:rows.map(r=>Number(r.value||r.player||0)),backgroundColor:'rgba(13,148,136,.18)',borderColor:'#0d9488',pointBackgroundColor:'#0d9488',borderWidth:2},{label:'Moyenne du poste',data:rows.map(r=>Number(r.average||0)),backgroundColor:'rgba(37,99,235,.08)',borderColor:'#2563eb',pointBackgroundColor:'#2563eb',borderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,scales:{r:{beginAtZero:true,grid:{color:'rgba(148,163,184,.25)'},angleLines:{color:'rgba(148,163,184,.25)'},pointLabels:{color:'#334155',font:{size:11,weight:'600'}},ticks:{display:false}}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}}}});})();</script>{% endif %}

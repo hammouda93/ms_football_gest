@@ -941,7 +941,7 @@ def portal_player_detail(request, player_id):
 @never_cache
 @portal_required
 def portal_video_detail(request, video_id):
-    video = decorate_video(
+    video = decorate_client_video(
         get_object_or_404(accessible_videos_for(request.user), pk=video_id)
     )
     versions = video.portal_versions.prefetch_related("revision_requests")

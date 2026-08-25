@@ -32,6 +32,79 @@ from .services import (
 )
 
 
+MATCH_METRIC_PAIRS = (
+    ("Passes", "Passes accurate, %", "fa-share-nodes"),
+    ("Challenges", "Challenges won, %", "fa-people-arrows-left-right"),
+    ("Shots", "Shots on target, %", "fa-bullseye"),
+    ("Crosses", "Crosses accurate, %", "fa-arrows-left-right-to-line"),
+    ("Tackles", "Tackles successful, %", "fa-shield-halved"),
+    ("Dribbles", "Dribbles successful, %", "fa-person-running"),
+    (
+        "Aerial challenges",
+        "Aerial challenges won, %",
+        "fa-arrow-up-wide-short",
+    ),
+)
+
+
+def _normalized_statistics(*collections):
+    """Merge scraped dictionaries while keeping one value per statistic."""
+    merged = {}
+    for collection in collections:
+        if not isinstance(collection, dict):
+            continue
+        for name, value in collection.items():
+            key = str(name).strip().casefold()
+            if key:
+                merged[key] = {"name": str(name).strip(), "value": value}
+    return merged
+
+
+def _build_match_analysis(stats):
+    if stats is None:
+        return [], []
+
+    values = _normalized_statistics(
+        stats.detailed_statistics,
+        stats.summary_statistics,
+    )
+    rates = _normalized_statistics(
+        stats.detailed_statistics,
+        stats.success_rates,
+    )
+    consumed = {"index", "minutes played"}
+    pairs = []
+
+    for metric_name, rate_name, icon in MATCH_METRIC_PAIRS:
+        metric_key = metric_name.casefold()
+        rate_key = rate_name.casefold()
+        metric = values.get(metric_key)
+        rate = rates.get(rate_key)
+        if metric is None and rate is None:
+            continue
+        consumed.update((metric_key, rate_key))
+        pairs.append(
+            {
+                "name": metric_name,
+                "value": metric.get("value") if metric else None,
+                "rate_name": rate_name,
+                "rate_value": rate.get("value") if rate else None,
+                "icon": icon,
+            }
+        )
+
+    other = []
+    for key, item in values.items():
+        if key not in consumed:
+            other.append(item)
+            consumed.add(key)
+    for key, item in rates.items():
+        if key not in consumed:
+            other.append(item)
+            consumed.add(key)
+    return pairs, other
+
+
 def _portal_subscriptions_for(user):
     return active_subscriptions().filter(player__in=accessible_players_for(user))
 
@@ -229,6 +302,7 @@ def portal_match_detail(request, player_id, match_id):
         stats = match.player_stats
     except SportsBaseMatchStats.DoesNotExist:
         stats = None
+    analysis_pairs, analysis_other = _build_match_analysis(stats)
     return render(
         request,
         "sportsbase_data/portal_match_detail.html",
@@ -237,6 +311,8 @@ def portal_match_detail(request, player_id, match_id):
             "player": subscription.player,
             "match": match,
             "stats": stats,
+            "analysis_pairs": analysis_pairs,
+            "analysis_other": analysis_other,
         },
     )
 
