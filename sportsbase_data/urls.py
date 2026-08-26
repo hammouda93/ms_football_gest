@@ -32,6 +32,21 @@ urlpatterns = [
         name="subscription_sync",
     ),
     path(
+        "gestion/performances/youtube/<int:pk>/reprendre/",
+        views.youtube_upload_retry,
+        name="youtube_upload_retry",
+    ),
+    path(
+        "gestion/performances/rapports/<int:pk>/modifier/",
+        views.report_edit,
+        name="report_edit",
+    ),
+    path(
+        "portal/performance/rapports/<int:pk>/pdf/",
+        views.report_pdf,
+        name="report_pdf",
+    ),
+    path(
         "portal/performance/",
         views.portal_performance_overview,
         name="portal_overview",
@@ -65,5 +80,15 @@ urlpatterns = [
         "sportsbase/automation/jobs/<int:job_id>/result/",
         views.api_job_result,
         name="api_job_result",
+    ),
+    path(
+        "sportsbase/automation/youtube/jobs/next/",
+        views.api_next_youtube_job,
+        name="api_next_youtube_job",
+    ),
+    path(
+        "sportsbase/automation/youtube/jobs/<int:job_id>/result/",
+        views.api_youtube_job_result,
+        name="api_youtube_job_result",
     ),
 ]

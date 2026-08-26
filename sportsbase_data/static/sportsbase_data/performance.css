@@ -10,6 +10,11 @@
     --performance-border: #dce4ed;
     --performance-soft: #f4f8fb;
 }
+.performance-localized[dir="rtl"] { text-align: right; }
+.performance-localized[dir="rtl"] .performance-sync-copy,
+.performance-localized[dir="rtl"] .performance-lineup { align-items: flex-start; text-align: right; }
+.performance-localized[dir="rtl"] .performance-fixture strong span:last-child { text-align: left; }
+.performance-localized[dir="rtl"] .performance-paired-rate { padding-right: 10px; padding-left: 0; border-right: 1px solid #d9e5eb; border-left: 0; }
 
 .portal-service-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
 .portal-service-card { display: grid; min-width: 0; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 20px; color: #fff; border-radius: 22px; box-shadow: 0 18px 36px rgba(7, 24, 39, .14); text-decoration: none; transition: transform .2s ease, box-shadow .2s ease; }
@@ -153,6 +158,7 @@
 .performance-match-index strong { font-size: .9rem; }
 .performance-actions-state, .job-status { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; color: var(--performance-muted); background: #eef2f6; border-radius: 999px; font-size: .59rem; font-weight: 800; text-align: center; }
 .state-downloaded, .state-emailed { color: var(--performance-green) !important; background: #e1f8ef !important; }
+.state-uploaded { color: #fff !important; background: linear-gradient(135deg, #07966d, #0d9488) !important; }
 .row-arrow { color: #9aa7b8; font-size: .7rem; }
 
 .performance-match-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1.2fr) minmax(0, 1fr); align-items: center; gap: 22px; padding: 30px; }
@@ -195,6 +201,26 @@
 .all-actions-delivery em { display: block; margin-top: 7px; color: var(--performance-red); font-size: .62rem; font-style: normal; }
 .all-actions-delivery .delivery-note { color: var(--performance-muted); }
 .all-actions-delivery .delivery-downloaded, .all-actions-delivery .delivery-emailed { color: var(--performance-green); }
+.all-actions-player { margin-top: 16px; border-top: 3px solid var(--performance-green); }
+.all-actions-player .performance-panel-heading p { margin: 4px 0 0; color: var(--performance-muted); font-size: .72rem; }
+.all-actions-video-frame { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16 / 9; background: #071827; border-radius: 17px; box-shadow: 0 14px 32px rgba(7, 24, 39, .16); }
+.all-actions-video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.all-actions-open-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 13px; padding: 10px 14px; color: #fff; background: #e11d2e; border-radius: 11px; font-size: .72rem; font-weight: 800; text-decoration: none; }
+.all-actions-open-link:hover { color: #fff; background: #bf1726; text-decoration: none; }
+.analyst-report-card { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 16px; margin-top: 16px; border-top: 3px solid var(--performance-blue); }
+.analyst-report-icon { display: grid; width: 58px; height: 58px; place-items: center; color: #fff; background: linear-gradient(135deg, #1769e0, #0d9488); border-radius: 17px; font-size: 1.2rem; }
+.analyst-report-card h2 { margin: 3px 0; color: var(--performance-text); font-size: 1.15rem; }
+.analyst-report-card p { margin: 0; color: var(--performance-muted); font-size: .72rem; }
+.analyst-report-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 14px; color: #fff; background: var(--performance-blue); border-radius: 11px; font-size: .72rem; font-weight: 800; text-decoration: none; }
+.analyst-report-button:hover { color: #fff; background: #0d55bd; text-decoration: none; }
+.cycle-reports-panel { margin: 16px 0; }
+.cycle-report-list { display: grid; gap: 8px; }
+.cycle-report-list > a { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; color: var(--performance-text); background: var(--performance-soft); border: 1px solid var(--performance-border); border-radius: 13px; text-decoration: none; }
+.cycle-report-list > a:hover { color: var(--performance-blue); border-color: #b8d3f6; text-decoration: none; }
+.cycle-report-list span { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 9px; }
+.cycle-report-list span > i { grid-row: 1 / 3; color: #d32234; }
+.cycle-report-list b { font-size: .76rem; }
+.cycle-report-list small { color: var(--performance-muted); font-size: .6rem; }
 .performance-empty { min-height: 220px; }
 
 .performance-admin-page, .performance-form-page { padding: 30px; }
@@ -233,6 +259,12 @@
 .performance-checkbox > span { display: inline; margin: 0 !important; }
 .field-error { margin-top: 5px; color: var(--performance-red); font-size: .62rem; font-style: normal; }
 .performance-form-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--performance-border); }
+.report-editor-heading { display: flex; max-width: 920px !important; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.report-editor-context { display: flex; max-width: 920px; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.report-editor-context span { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; color: #415167; background: #fff; border: 1px solid var(--performance-border); border-radius: 999px; font-size: .64rem; font-weight: 750; }
+.report-editor-form { margin-top: 14px; }
+.report-wide-field { grid-column: 1 / -1; }
+.report-editor-form textarea { resize: vertical; line-height: 1.55; }
 
 @media (max-width: 1050px) {
     .performance-player-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -262,6 +294,9 @@
     .performance-map-card.compact-map img { max-height: 190px; }
     .all-actions-delivery { grid-template-columns: 50px minmax(0, 1fr); }
     .all-actions-delivery .performance-actions-state { grid-column: 1 / -1; justify-self: start; }
+    .analyst-report-card { grid-template-columns: 50px minmax(0, 1fr); }
+    .analyst-report-button { grid-column: 1 / -1; }
+    .report-editor-heading { align-items: flex-start; flex-direction: column; }
     .performance-admin-page, .performance-form-page { padding: 18px 12px; }
     .performance-filter-bar, .performance-subscription-row { grid-template-columns: 1fr; }
     .performance-row-actions { justify-content: flex-start; }

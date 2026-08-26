@@ -2,8 +2,10 @@
 
 Run from the project root with:
     python -m sportsbase_data.local_agent
+    python -m sportsbase_data.local_agent --check-youtube
 """
 
+import argparse
 import os
 import time
 import traceback
@@ -13,9 +15,17 @@ import requests
 from dotenv import load_dotenv
 
 from .scraper import SportsBaseSubscriptionScraper
+from .youtube_uploader import YouTubeStudioUploader
 
 
 load_dotenv()
+
+
+def _enabled(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().casefold() in {"1", "true", "yes", "on", "oui"}
 
 
 def _site_url():
@@ -43,6 +53,8 @@ class SportsBaseAgentClient:
         )
         self.session = requests.Session()
         self.scraper = SportsBaseSubscriptionScraper(self.storage_root)
+        self.youtube_enabled = _enabled("YOUTUBE_UPLOAD_ENABLED", False)
+        self.youtube_uploader = YouTubeStudioUploader(self.storage_root)
         if not self.username or not self.password:
             raise ValueError(
                 "DJANGO_AUTOMATION_USERNAME et DJANGO_AUTOMATION_PASSWORD sont obligatoires."
@@ -102,38 +114,75 @@ class SportsBaseAgentClient:
             result,
         ).json()
 
+    def next_youtube_job(self):
+        return self._get(
+            "/sportsbase/automation/youtube/jobs/next/"
+        ).json().get("job")
+
+    def submit_youtube_result(self, job_id, result):
+        return self._post_json(
+            f"/sportsbase/automation/youtube/jobs/{job_id}/result/",
+            result,
+        ).json()
+
     def process_once(self):
         job = self.next_job()
-        if not job:
+        if job:
+            print(
+                f"[SPORTSBASE] Tâche {job['job_id']} — "
+                f"{job['player']['name']} — {job['job_type']}"
+            )
+            try:
+                result = self.scraper.run(job)
+            except Exception as exc:
+                print(f"[SPORTSBASE][ERREUR INATTENDUE] {exc}")
+                traceback.print_exc()
+                result = {
+                    "status": "failed",
+                    "profile": {},
+                    "matches": [],
+                    "summary": {},
+                    "error": str(exc),
+                }
+            if result.get("error"):
+                print(f"[SPORTSBASE][DETAIL ECHEC] {result['error']}")
+            self.submit_result(job["job_id"], result)
+            print(
+                f"[SPORTSBASE] Tâche {job['job_id']} terminée — "
+                f"{result['status']} — {len(result.get('matches', []))} match(s)"
+            )
+            return True
+
+        if not self.youtube_enabled:
+            return False
+        youtube_job = self.next_youtube_job()
+        if not youtube_job:
             return False
         print(
-            f"[SPORTSBASE] Tâche {job['job_id']} — "
-            f"{job['player']['name']} — {job['job_type']}"
+            f"[YOUTUBE] Tâche {youtube_job['job_id']} — "
+            f"{youtube_job['player']['name']} — match "
+            f"{youtube_job['match']['match_id']}"
         )
         try:
-            result = self.scraper.run(job)
+            result = self.youtube_uploader.upload(youtube_job)
         except Exception as exc:
-            print(f"[SPORTSBASE][ERREUR INATTENDUE] {exc}")
+            print(f"[YOUTUBE][ERREUR] {exc}")
             traceback.print_exc()
-            result = {
-                "status": "failed",
-                "profile": {},
-                "matches": [],
-                "summary": {},
-                "error": str(exc),
-            }
-        if result.get("error"):
-            print(f"[SPORTSBASE][DETAIL ECHEC] {result['error']}")
-        self.submit_result(job["job_id"], result)
+            result = {"status": "failed", "error": str(exc)}
+        self.submit_youtube_result(youtube_job["job_id"], result)
         print(
-            f"[SPORTSBASE] Tâche {job['job_id']} terminée — "
-            f"{result['status']} — {len(result.get('matches', []))} match(s)"
+            f"[YOUTUBE] Tâche {youtube_job['job_id']} terminée — "
+            f"{result['status']}"
         )
         return True
 
     def run_forever(self):
         self.login()
         print(f"[SPORTSBASE] Agent actif — stockage : {self.storage_root}")
+        print(
+            "[YOUTUBE] Upload automatique : "
+            f"{'actif' if self.youtube_enabled else 'désactivé'}"
+        )
         while True:
             try:
                 if not self.process_once():
@@ -146,5 +195,30 @@ class SportsBaseAgentClient:
                 time.sleep(self.poll_interval)
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Agent local Performance")
+    parser.add_argument(
+        "--check-youtube",
+        action="store_true",
+        help="Ouvre le profil Chrome YouTube sans publier de vidéo.",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Traite au maximum une tâche puis s’arrête.",
+    )
+    args = parser.parse_args()
+    client = SportsBaseAgentClient()
+    if args.check_youtube:
+        client.youtube_uploader.check_access()
+        return
+    if args.once:
+        client.login()
+        if not client.process_once():
+            print("[SPORTSBASE] Aucune tâche en attente.")
+        return
+    client.run_forever()
+
+
 if __name__ == "__main__":
-    SportsBaseAgentClient().run_forever()
+    main()

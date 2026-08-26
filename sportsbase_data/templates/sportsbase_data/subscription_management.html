@@ -14,7 +14,7 @@
     <section class="metric-grid performance-admin-metrics">
         <article class="metric-card"><span>Abonnements</span><strong>{{ subscriptions|length }}</strong></article>
         <article class="metric-card"><span>Accès actifs</span><strong>{{ active_count }}</strong></article>
-        <article class="metric-card"><span>Tâches récentes</span><strong>{{ jobs|length }}</strong></article>
+        <article class="metric-card"><span>Publications vidéo</span><strong>{{ youtube_jobs|length }}</strong></article>
     </section>
 
     <form class="performance-filter-bar" method="get">
@@ -27,7 +27,7 @@
         {% for subscription in subscriptions %}
             <article class="performance-subscription-row {% if not subscription.access_enabled %}inactive{% endif %}">
                 <div class="performance-player-identity"><span class="performance-avatar">{{ subscription.player.name|first|upper }}</span><div><strong>{{ subscription.player.name }}</strong><span>{{ subscription.player.club }} · {{ subscription.season }}</span><small>{% if subscription.player.sportsbase_url %}Profil SportsBase renseigné{% else %}Lien SportsBase manquant{% endif %}</small></div></div>
-                <div class="performance-row-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span><span><b>{{ subscription.completed_match_count }}</b> synchronisés</span><span><b>{{ subscription.sync_interval_hours }} h</b> fréquence</span></div>
+                <div class="performance-row-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span><span><b>{{ subscription.completed_match_count }}</b> synchronisés</span><span><b>{% if subscription.youtube_delivery_enabled %}Actif{% else %}Inactif{% endif %}</b> YouTube</span></div>
                 <div class="performance-sync-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle"></i><span>{{ subscription.get_last_sync_state_display }}<small>{% if subscription.last_sync_at %}{{ subscription.last_sync_at|date:"d/m/Y H:i" }}{% else %}Agent non lancé{% endif %}</small></span></div>
                 <div class="performance-row-actions">
                     <a class="btn btn-sm btn-outline-primary" href="{% url 'performance:subscription_edit' subscription.pk %}"><i class="fas fa-pen"></i> Modifier</a>
@@ -41,6 +41,16 @@
     <section class="performance-jobs-panel">
         <div class="panel-heading"><div><h2>Activité de l’agent</h2><small>Les trente dernières tâches</small></div></div>
         <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Type</th><th>État</th><th>Créée</th><th>Résultat</th></tr></thead><tbody>{% for job in jobs %}<tr><td>{{ job.subscription.player.name }}</td><td>{{ job.get_job_type_display }}</td><td><span class="job-status status-{{ job.status }}">{{ job.get_status_display }}</span></td><td>{{ job.created_at|date:"d/m/Y H:i" }}</td><td>{% if job.error_message %}<span class="text-danger">{{ job.error_message|truncatechars:80 }}</span>{% elif job.result_summary %}{{ job.result_summary.matches_received|default:0 }} match(s){% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Aucune tâche pour le moment.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    <section class="performance-jobs-panel">
+        <div class="panel-heading"><div><h2>Livraison All Actions</h2><small>Publications non répertoriées traitées par l’agent local</small></div></div>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Match</th><th>État</th><th>Tentatives</th><th>Résultat</th><th></th></tr></thead><tbody>{% for upload in youtube_jobs %}<tr><td>{{ upload.match.subscription.player.name }}</td><td>{{ upload.match.home_team }} – {{ upload.match.away_team }}</td><td><span class="job-status status-{{ upload.status }}">{{ upload.get_status_display }}</span></td><td>{{ upload.attempts }}</td><td>{% if upload.youtube_url %}<a href="{{ upload.youtube_url }}" target="_blank" rel="noopener"><i class="fab fa-youtube"></i> Voir</a>{% elif upload.error_message %}<span class="text-danger">{{ upload.error_message|truncatechars:90 }}</span>{% else %}—{% endif %}</td><td>{% if upload.status == "failed" %}<form method="post" action="{% url 'performance:youtube_upload_retry' upload.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Reprendre</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6">Aucune publication planifiée. Activez YouTube dans un abonnement.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    <section class="performance-jobs-panel">
+        <div class="panel-heading"><div><h2>Rapports de l’analyste</h2><small>Générés automatiquement, puis modifiables avant ou après publication</small></div></div>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Rapport</th><th>Langue</th><th>État</th><th>Dernière version</th><th></th></tr></thead><tbody>{% for report in reports %}<tr><td>{{ report.subscription.player.name }}</td><td>{{ report.title }}</td><td>{{ report.get_language_display }}</td><td><span class="job-status status-{{ report.status }}">{{ report.get_status_display }}</span></td><td>{{ report.updated_at|date:"d/m/Y H:i" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'performance:report_edit' report.pk %}"><i class="fas fa-pen"></i> Modifier</a></td></tr>{% empty %}<tr><td colspan="6">Les rapports apparaîtront après la prochaine synchronisation.</td></tr>{% endfor %}</tbody></table></div>
     </section>
 </div>
 {% endblock %}

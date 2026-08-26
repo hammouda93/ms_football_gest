@@ -1,9 +1,11 @@
 import json
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.defaultfilters import slugify
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -15,20 +17,30 @@ from client_portal.decorators import (
 )
 from client_portal.services import accessible_players_for
 
-from .forms import SportsBaseSubscriptionForm
+from .forms import PerformanceReportForm, SportsBaseSubscriptionForm
 from .models import (
+    PerformanceReport,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
     SportsBaseSubscription,
     SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
+)
+from .reports import (
+    generate_reports_for_subscription,
+    render_report_pdf,
+    send_ready_delivery_notification,
 )
 from .services import (
     active_subscriptions,
     apply_sync_result,
+    apply_youtube_upload_result,
     claim_next_job,
+    claim_next_youtube_upload,
     fail_sync_job,
     queue_sync,
+    retry_youtube_upload,
 )
 
 
@@ -140,12 +152,20 @@ def subscription_management(request):
     else:
         state = ""
     jobs = SportsBaseSyncJob.objects.select_related("subscription__player")[:30]
+    youtube_jobs = SportsBaseYouTubeUpload.objects.select_related(
+        "match__subscription__player"
+    )[:30]
+    reports = PerformanceReport.objects.select_related(
+        "subscription__player", "match"
+    )[:30]
     return render(
         request,
         "sportsbase_data/subscription_management.html",
         {
             "subscriptions": subscriptions,
             "jobs": jobs,
+            "youtube_jobs": youtube_jobs,
+            "reports": reports,
             "query": query,
             "selected_state": state,
             "state_choices": SportsBaseSubscription.SyncState.choices,
@@ -165,6 +185,7 @@ def subscription_form(request, pk=None):
         if not item.pk:
             item.created_by = request.user
         item.save()
+        generate_reports_for_subscription(item)
         messages.success(
             request,
             "L’abonnement Performance a été enregistré sans modifier la fiche du joueur.",
@@ -224,6 +245,86 @@ def subscription_sync(request, pk):
     return redirect("performance:management")
 
 
+@portal_admin_required
+@require_POST
+def youtube_upload_retry(request, pk):
+    upload = get_object_or_404(SportsBaseYouTubeUpload, pk=pk)
+    try:
+        retry_youtube_upload(upload)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            "L’upload sera repris par l’agent local sans resynchroniser le match.",
+        )
+    return redirect("performance:management")
+
+
+@portal_admin_required
+def report_edit(request, pk):
+    report = get_object_or_404(
+        PerformanceReport.objects.select_related(
+            "subscription__player", "match__youtube_upload"
+        ),
+        pk=pk,
+    )
+    form = PerformanceReportForm(request.POST or None, instance=report)
+    if request.method == "POST" and form.is_valid():
+        report = form.save(commit=False)
+        report.updated_by = request.user
+        report.is_manually_edited = True
+        report.published_at = (
+            timezone.now()
+            if report.status == PerformanceReport.Status.PUBLISHED
+            else None
+        )
+        report.save()
+        if report.match_id:
+            try:
+                send_ready_delivery_notification(report.match.youtube_upload)
+            except SportsBaseYouTubeUpload.DoesNotExist:
+                pass
+        messages.success(
+            request,
+            "Le rapport est enregistré. Son PDF utilisera immédiatement cette version.",
+        )
+        return redirect("performance:report_edit", pk=report.pk)
+    return render(
+        request,
+        "sportsbase_data/report_form.html",
+        {"form": form, "report": report},
+    )
+
+
+@login_required
+@never_cache
+def report_pdf(request, pk):
+    report = get_object_or_404(
+        PerformanceReport.objects.select_related(
+            "subscription__player", "match"
+        ),
+        pk=pk,
+        status=PerformanceReport.Status.PUBLISHED,
+    )
+    if not request.user.is_superuser:
+        try:
+            profile = request.user.portal_profile
+        except Exception as exc:
+            raise Http404 from exc
+        if not profile.is_active or not _portal_subscriptions_for(request.user).filter(
+            pk=report.subscription_id
+        ).exists():
+            raise Http404
+    content = render_report_pdf(report)
+    response = HttpResponse(content, content_type="application/pdf")
+    filename = slugify(report.title) or f"rapport-performance-{report.pk}"
+    response["Content-Disposition"] = f'inline; filename="{filename}.pdf"'
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @never_cache
 @portal_required
 def portal_performance_overview(request):
@@ -257,15 +358,12 @@ def portal_performance_detail(request, player_id):
     snapshot = subscription.season_snapshots.filter(
         season=subscription.season
     ).first()
-    matches = subscription.matches.select_related("player_stats").order_by(
+    matches = subscription.matches.select_related("player_stats", "youtube_upload").order_by(
         "-match_date", "-sportsbase_match_id"
     )
     action_counts = {
         "available": matches.filter(
-            actions_state__in={
-                SportsBaseMatch.ActionsState.DOWNLOADED,
-                SportsBaseMatch.ActionsState.EMAILED,
-            }
+            youtube_upload__status=SportsBaseYouTubeUpload.Status.UPLOADED,
         ).count(),
         "emailed": matches.filter(
             actions_state=SportsBaseMatch.ActionsState.EMAILED
@@ -277,6 +375,10 @@ def portal_performance_detail(request, player_id):
             }
         ).count(),
     }
+    cycle_reports = subscription.performance_reports.filter(
+        report_type=PerformanceReport.ReportType.CYCLE,
+        status=PerformanceReport.Status.PUBLISHED,
+    ).order_by("-cycle_number")
     return render(
         request,
         "sportsbase_data/portal_performance_detail.html",
@@ -286,6 +388,8 @@ def portal_performance_detail(request, player_id):
             "snapshot": snapshot,
             "matches": matches,
             "action_counts": action_counts,
+            "cycle_reports": cycle_reports,
+            "portal_language": subscription.report_language,
         },
     )
 
@@ -295,7 +399,7 @@ def portal_performance_detail(request, player_id):
 def portal_match_detail(request, player_id, match_id):
     subscription = _portal_subscription_or_404(request.user, player_id)
     match = get_object_or_404(
-        subscription.matches.select_related("player_stats"),
+        subscription.matches.select_related("player_stats", "youtube_upload"),
         sportsbase_match_id=str(match_id),
     )
     try:
@@ -303,6 +407,10 @@ def portal_match_detail(request, player_id, match_id):
     except SportsBaseMatchStats.DoesNotExist:
         stats = None
     analysis_pairs, analysis_other = _build_match_analysis(stats)
+    try:
+        performance_report = match.performance_report
+    except PerformanceReport.DoesNotExist:
+        performance_report = None
     return render(
         request,
         "sportsbase_data/portal_match_detail.html",
@@ -313,6 +421,8 @@ def portal_match_detail(request, player_id, match_id):
             "stats": stats,
             "analysis_pairs": analysis_pairs,
             "analysis_other": analysis_other,
+            "performance_report": performance_report,
+            "portal_language": subscription.report_language,
         },
     )
 
@@ -382,11 +492,57 @@ def api_job_result(request, job_id):
     except ValueError as exc:
         fail_sync_job(job, exc)
         return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    ready_uploads = SportsBaseYouTubeUpload.objects.filter(
+        match__subscription=finished_job.subscription,
+        status=SportsBaseYouTubeUpload.Status.UPLOADED,
+        notification_sent_at__isnull=True,
+    )
+    for ready_upload in ready_uploads:
+        send_ready_delivery_notification(ready_upload)
     return JsonResponse(
         {
             "success": True,
             "job_id": finished_job.pk,
             "status": finished_job.status,
             "finished_at": finished_job.finished_at.isoformat(),
+        }
+    )
+
+
+@production_required
+@require_GET
+def api_next_youtube_job(request):
+    upload = claim_next_youtube_upload()
+    if upload is None:
+        return JsonResponse({"job": None})
+    return JsonResponse({"job": upload.payload})
+
+
+@production_required
+@require_POST
+def api_youtube_job_result(request, job_id):
+    upload = get_object_or_404(SportsBaseYouTubeUpload, pk=job_id)
+    try:
+        result = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"success": False, "error": "JSON invalide."}, status=400)
+    try:
+        finished_upload = apply_youtube_upload_result(upload, result)
+    except ValueError as exc:
+        if upload.status == SportsBaseYouTubeUpload.Status.RUNNING:
+            apply_youtube_upload_result(
+                upload,
+                {"status": SportsBaseYouTubeUpload.Status.FAILED, "error": str(exc)},
+            )
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    if finished_upload.status == SportsBaseYouTubeUpload.Status.UPLOADED:
+        send_ready_delivery_notification(finished_upload)
+    return JsonResponse(
+        {
+            "success": True,
+            "job_id": finished_upload.pk,
+            "status": finished_upload.status,
+            "youtube_url": finished_upload.youtube_url,
+            "finished_at": finished_upload.finished_at.isoformat(),
         }
     )

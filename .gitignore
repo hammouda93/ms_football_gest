@@ -1,1 +1,4 @@
 gestion_joueurs/automated_players/
+gestion_joueurs/sportsbase_subscriptions/
+**/__pycache__/
+*.py[cod]

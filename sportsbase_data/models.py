@@ -6,6 +6,11 @@ from django.utils import timezone
 
 
 class SportsBaseSubscription(models.Model):
+    class ReportLanguage(models.TextChoices):
+        FRENCH = "fr", "Français"
+        ENGLISH = "en", "English"
+        ARABIC = "ar", "العربية"
+
     class SyncState(models.TextChoices):
         NEVER = "never", "Jamais synchronisé"
         QUEUED = "queued", "En attente"
@@ -43,6 +48,20 @@ class SportsBaseSubscription(models.Model):
     email_delivery_enabled = models.BooleanField(
         "Envoyer All Actions par e-mail",
         default=True,
+    )
+    youtube_delivery_enabled = models.BooleanField(
+        "Publier All Actions sur YouTube (non répertoriée)",
+        default=False,
+        help_text=(
+            "L’agent local publie la vidéo sur la chaîne configurée et ajoute le "
+            "lecteur au portail client."
+        ),
+    )
+    report_language = models.CharField(
+        "Langue du portail et des rapports",
+        max_length=5,
+        choices=ReportLanguage.choices,
+        default=ReportLanguage.FRENCH,
     )
     sync_interval_hours = models.PositiveSmallIntegerField(
         "Intervalle de synchronisation (heures)",
@@ -230,6 +249,11 @@ class SportsBaseMatch(models.Model):
         stats_complete = self.sync_state == self.SyncState.SYNCED
         if not self.subscription.all_actions_enabled:
             return stats_complete
+        if self.subscription.youtube_delivery_enabled:
+            return stats_complete and self.actions_state in {
+                self.ActionsState.DOWNLOADED,
+                self.ActionsState.EMAILED,
+            }
         if self.subscription.email_delivery_enabled:
             return stats_complete and self.actions_state == self.ActionsState.EMAILED
         return stats_complete and self.actions_state in {
@@ -319,3 +343,113 @@ class SportsBaseSyncJob(models.Model):
 
     def __str__(self):
         return f"{self.subscription.player} — {self.get_job_type_display()} — {self.get_status_display()}"
+
+
+class SportsBaseYouTubeUpload(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "En attente"
+        RUNNING = "running", "Upload en cours"
+        UPLOADED = "uploaded", "Vidéo disponible"
+        FAILED = "failed", "Échec"
+
+    match = models.OneToOneField(
+        SportsBaseMatch,
+        on_delete=models.CASCADE,
+        related_name="youtube_upload",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    upload_title = models.CharField(max_length=100, blank=True)
+    youtube_url = models.URLField(blank=True)
+    youtube_video_id = models.CharField(max_length=32, blank=True, db_index=True)
+    content_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    file_size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    notification_sent_at = models.DateTimeField(null=True, blank=True)
+    notification_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-match__match_date", "created_at")
+        verbose_name = "Publication YouTube All Actions"
+        verbose_name_plural = "Publications YouTube All Actions"
+
+    def __str__(self):
+        return f"{self.match.subscription.player} — {self.match} — {self.get_status_display()}"
+
+
+class PerformanceReport(models.Model):
+    class ReportType(models.TextChoices):
+        MATCH = "match", "Rapport de match"
+        CYCLE = "cycle", "Rapport de cycle (5 matchs)"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Brouillon"
+        PUBLISHED = "published", "Publié"
+
+    subscription = models.ForeignKey(
+        SportsBaseSubscription,
+        on_delete=models.CASCADE,
+        related_name="performance_reports",
+    )
+    match = models.OneToOneField(
+        SportsBaseMatch,
+        on_delete=models.CASCADE,
+        related_name="performance_report",
+        null=True,
+        blank=True,
+    )
+    report_type = models.CharField(max_length=12, choices=ReportType.choices)
+    cycle_number = models.PositiveSmallIntegerField(null=True, blank=True)
+    language = models.CharField(
+        max_length=5,
+        choices=SportsBaseSubscription.ReportLanguage.choices,
+        default=SportsBaseSubscription.ReportLanguage.FRENCH,
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.PUBLISHED,
+        db_index=True,
+    )
+    title = models.CharField(max_length=220)
+    executive_summary = models.TextField(blank=True)
+    strengths = models.TextField(blank=True)
+    improvement_areas = models.TextField(blank=True)
+    analyst_notes = models.TextField(blank=True)
+    metrics = models.JSONField(default=dict, blank=True)
+    match_ids = models.JSONField(default=list, blank=True)
+    is_manually_edited = models.BooleanField(default=False)
+    generated_at = models.DateTimeField(default=timezone.now)
+    published_at = models.DateTimeField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="updated_performance_reports",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-generated_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("subscription", "report_type", "cycle_number"),
+                name="unique_performance_cycle_report",
+            )
+        ]
+        verbose_name = "Rapport de performance"
+        verbose_name_plural = "Rapports de performance"
+
+    def __str__(self):
+        return self.title

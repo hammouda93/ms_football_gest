@@ -1,11 +1,13 @@
 from django.contrib import admin
 
 from .models import (
+    PerformanceReport,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
     SportsBaseSubscription,
     SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
 )
 
 
@@ -59,3 +61,44 @@ class SportsBaseSyncJobAdmin(admin.ModelAdmin):
     list_filter = ("status", "job_type")
     search_fields = ("subscription__player__name",)
     readonly_fields = ("payload", "result_summary")
+
+
+@admin.register(SportsBaseYouTubeUpload)
+class SportsBaseYouTubeUploadAdmin(admin.ModelAdmin):
+    list_display = (
+        "match",
+        "status",
+        "attempts",
+        "youtube_video_id",
+        "finished_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "match__subscription__player__name",
+        "match__home_team",
+        "match__away_team",
+        "youtube_video_id",
+    )
+    readonly_fields = (
+        "content_sha256",
+        "file_size_bytes",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "updated_at",
+    )
+
+
+@admin.register(PerformanceReport)
+class PerformanceReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "subscription",
+        "report_type",
+        "language",
+        "status",
+        "updated_at",
+    )
+    list_filter = ("report_type", "language", "status", "is_manually_edited")
+    search_fields = ("title", "subscription__player__name")
+    readonly_fields = ("metrics", "match_ids", "generated_at", "created_at", "updated_at")

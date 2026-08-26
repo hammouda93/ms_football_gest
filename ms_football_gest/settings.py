@@ -215,6 +215,10 @@ DEFAULT_FROM_EMAIL = os.getenv(
     'DEFAULT_FROM_EMAIL',
     'MS Football <no-reply@msfootball.tn>',
 )
+PUBLIC_SITE_URL = os.getenv(
+    'PUBLIC_SITE_URL',
+    'https://msfootball-1a882b44ed52.herokuapp.com',
+).rstrip('/')
 
 # L'agent SportsBase s'exécute sur le PC local. Les images légères (heatmaps)
 # sont conservées en base pour rester disponibles sur Heroku, tandis que les

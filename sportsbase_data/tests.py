@@ -1,6 +1,9 @@
 import base64
 from datetime import timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
+from django.core import mail
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -17,14 +20,30 @@ from gestion_joueurs.models import Player
 
 from .forms import SportsBaseSubscriptionForm
 from .models import (
+    PerformanceReport,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
     SportsBaseSubscription,
     SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
+)
+from .reports import (
+    generate_match_report,
+    generate_reports_for_subscription,
+    render_report_pdf,
+    send_ready_delivery_notification,
 )
 from .scraper import SportsBaseSubscriptionScraper
-from .services import apply_sync_result, claim_next_job, queue_sync
+from .services import (
+    apply_sync_result,
+    apply_youtube_upload_result,
+    claim_next_job,
+    claim_next_youtube_upload,
+    ensure_youtube_upload_jobs,
+    queue_sync,
+)
+from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"test-png-content"
@@ -377,3 +396,255 @@ class ScraperNormalizationTests(TestCase):
         self.assertEqual(result["team_rank"], 2)
         self.assertEqual(result["match_rank"], 2)
         self.assertTrue(result["team_table"][1]["is_current_player"])
+
+
+class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="880001",
+            season=self.subscription.season,
+            match_date=timezone.localdate(),
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            home_score=1,
+            away_score=0,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="player_1/season/match_880001",
+            all_actions_filename="all-actions.mp4",
+        )
+        SportsBaseMatchStats.objects.create(
+            match=self.match,
+            minutes_played=90,
+            detailed_statistics={
+                "Passes": "40",
+                "Passes accurate, %": "88%",
+            },
+        )
+
+    def test_upload_queue_is_idempotent_and_contains_no_source_brand(self):
+        self.assertEqual(ensure_youtube_upload_jobs(), 1)
+        self.assertEqual(ensure_youtube_upload_jobs(), 0)
+        upload = claim_next_youtube_upload()
+        self.assertEqual(upload.match, self.match)
+        self.assertEqual(upload.payload["youtube"]["visibility"], "unlisted")
+        self.assertNotIn("sportsbase", str(upload.payload).casefold())
+        self.assertEqual(SportsBaseYouTubeUpload.objects.count(), 1)
+
+    def test_valid_result_links_video_to_match(self):
+        upload = claim_next_youtube_upload()
+        finished = apply_youtube_upload_result(
+            upload,
+            {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": "a" * 64,
+                "file_size_bytes": 31_000_000,
+            },
+        )
+        self.assertEqual(finished.status, SportsBaseYouTubeUpload.Status.UPLOADED)
+        self.assertEqual(finished.match, self.match)
+        self.assertEqual(finished.youtube_video_id, "abcdefghijk")
+
+    def test_disabled_subscription_does_not_queue_upload(self):
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.assertEqual(ensure_youtube_upload_jobs(), 0)
+        self.assertFalse(SportsBaseYouTubeUpload.objects.exists())
+
+
+class YouTubeUploaderPathTests(TestCase):
+    def test_local_video_is_resolved_inside_subscription_storage(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            match_folder = root / "player_1" / "match_1"
+            match_folder.mkdir(parents=True)
+            video = match_folder / "actions.mp4"
+            video.write_bytes(b"video")
+            uploader = YouTubeStudioUploader(root)
+            resolved = uploader.resolve_video_path(
+                {
+                    "match": {
+                        "local_folder_key": r"player_1\match_1",
+                        "filename": "actions.mp4",
+                    }
+                }
+            )
+            self.assertEqual(resolved, video.resolve())
+
+    def test_path_traversal_is_rejected(self):
+        with TemporaryDirectory() as directory:
+            uploader = YouTubeStudioUploader(directory)
+            with self.assertRaises(YouTubeUploadError):
+                uploader.resolve_video_path(
+                    {
+                        "match": {
+                            "local_folder_key": "../outside",
+                            "filename": "actions.mp4",
+                        }
+                    }
+                )
+
+    def test_local_receipt_prevents_duplicate_upload_after_network_failure(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            match_folder = root / "player_1" / "match_1"
+            match_folder.mkdir(parents=True)
+            video = match_folder / "actions.mp4"
+            video.write_bytes(b"same-video-content")
+            uploader = YouTubeStudioUploader(root)
+            job = {
+                "job_id": 91,
+                "match": {
+                    "local_folder_key": "player_1/match_1",
+                    "filename": "actions.mp4",
+                },
+            }
+            digest = "9f49d074192c1a27e5317cae42d054485229606a4bd0fc3592a6c0238716d5d1"
+            receipt = {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": digest,
+                "file_size_bytes": video.stat().st_size,
+            }
+            uploader._save_receipt(job, receipt)
+            self.assertEqual(
+                uploader._load_receipt(
+                    job,
+                    content_sha256=digest,
+                    file_size=video.stat().st_size,
+                ),
+                receipt,
+            )
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    PUBLIC_SITE_URL="https://example.test",
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+)
+class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
+    def _create_match(self, number, pass_rate=85):
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id=str(990000 + number),
+            season=self.subscription.season,
+            match_date=timezone.localdate() - timedelta(days=6 - number),
+            home_team="Stade Tunisien",
+            away_team=f"Club {number}",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key=f"player/match_{number}",
+            all_actions_filename=f"actions-{number}.mp4",
+        )
+        SportsBaseMatchStats.objects.create(
+            match=match,
+            minutes_played=90,
+            detailed_statistics={
+                "Passes": 40 + number,
+                "Passes accurate, %": f"{pass_rate}%",
+                "Challenges": 8,
+                "Challenges won, %": "62%",
+            },
+        )
+        return match
+
+    def test_match_and_five_match_cycle_reports_are_generated_once(self):
+        matches = [self._create_match(number) for number in range(1, 6)]
+        generated = generate_reports_for_subscription(self.subscription)
+        self.assertEqual(len(generated), 6)
+        self.assertEqual(
+            PerformanceReport.objects.filter(
+                report_type=PerformanceReport.ReportType.MATCH
+            ).count(),
+            5,
+        )
+        cycle = PerformanceReport.objects.get(
+            report_type=PerformanceReport.ReportType.CYCLE
+        )
+        self.assertEqual(cycle.match_ids, [item.sportsbase_match_id for item in matches])
+        generate_reports_for_subscription(self.subscription)
+        self.assertEqual(PerformanceReport.objects.count(), 6)
+
+    def test_manual_analysis_is_not_overwritten_by_next_sync(self):
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        report.strengths = "Observation personnelle de l’analyste."
+        report.is_manually_edited = True
+        report.save(update_fields=("strengths", "is_manually_edited", "updated_at"))
+        generate_match_report(match)
+        report.refresh_from_db()
+        self.assertEqual(report.strengths, "Observation personnelle de l’analyste.")
+
+    def test_pdf_is_generated_from_current_report_version(self):
+        report = generate_match_report(self._create_match(1))
+        report.analyst_notes = "Conserver cette observation dans le PDF."
+        report.save(update_fields=("analyst_notes", "updated_at"))
+        pdf = render_report_pdf(report)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 1000)
+
+    def test_email_waits_for_video_and_published_report(self):
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        upload = SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
+        self.assertTrue(send_ready_delivery_notification(upload))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(upload.youtube_url, mail.outbox[0].body)
+        self.assertIn(reverse("performance:report_pdf", args=(report.pk,)), mail.outbox[0].body)
+        self.assertFalse(send_ready_delivery_notification(upload))
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_portal_shows_embedded_video_and_dynamic_report(self):
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
+        user = self.portal_user("report-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        detail = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(detail, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertContains(detail, "Rapport de l’analyste")
+        pdf = self.client.get(reverse("performance:report_pdf", args=(report.pk,)))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+
+    def test_subscription_language_controls_report_and_portal_copy(self):
+        self.subscription.report_language = SportsBaseSubscription.ReportLanguage.ENGLISH
+        self.subscription.save(update_fields=("report_language", "updated_at"))
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        self.assertEqual(report.language, "en")
+        self.assertTrue(report.title.startswith("Performance report"))
+        user = self.portal_user("english-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(response, "Match analysis")
+        self.assertNotContains(response, "Analyse du match")

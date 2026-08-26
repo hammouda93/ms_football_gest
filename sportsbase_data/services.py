@@ -1,6 +1,8 @@
 import base64
 import binascii
+import re
 from datetime import date, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from django.conf import settings
 from django.db import transaction
@@ -14,10 +16,12 @@ from .models import (
     SportsBaseSeasonSnapshot,
     SportsBaseSubscription,
     SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
 )
 
 
 MAX_MAP_BYTES = 5 * 1024 * 1024
+YOUTUBE_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 
 
 def active_subscriptions():
@@ -131,7 +135,11 @@ def _job_payload(job):
         ),
         "first_match_id": subscription.first_match_id,
         "all_actions_enabled": subscription.all_actions_enabled,
-        "email_delivery_enabled": subscription.email_delivery_enabled,
+        "email_delivery_enabled": (
+            subscription.email_delivery_enabled
+            and not subscription.youtube_delivery_enabled
+        ),
+        "youtube_delivery_enabled": subscription.youtube_delivery_enabled,
         "player": {
             "id": player.pk,
             "name": player.name,
@@ -352,6 +360,220 @@ def _upsert_match(subscription, item):
     return match
 
 
+def _youtube_title(match):
+    player_name = match.subscription.player.name.strip()
+    fixture = f"{match.home_team.strip()} vs {match.away_team.strip()}".strip()
+    match_date = match.match_date.strftime("%d-%m-%Y") if match.match_date else ""
+    parts = [player_name, "All Actions", fixture, match_date]
+    return " — ".join(part for part in parts if part)[:100]
+
+
+def _youtube_description(match):
+    lines = [
+        "MS Performance — All Actions",
+        f"Joueur : {match.subscription.player.name}",
+        f"Rencontre : {match.home_team} {match.score} {match.away_team}",
+    ]
+    if match.match_date:
+        lines.append(f"Date : {match.match_date.strftime('%d/%m/%Y')}")
+    if match.competition:
+        lines.append(f"Compétition : {match.competition}")
+    return "\n".join(lines)
+
+
+def ensure_youtube_upload_jobs():
+    """Create one idempotent upload task for every eligible local All Actions file."""
+    eligible = (
+        active_subscriptions()
+        .filter(youtube_delivery_enabled=True)
+        .values_list("pk", flat=True)
+    )
+    matches = SportsBaseMatch.objects.filter(
+        subscription_id__in=eligible,
+        actions_state__in={
+            SportsBaseMatch.ActionsState.DOWNLOADED,
+            SportsBaseMatch.ActionsState.EMAILED,
+        },
+    ).exclude(local_folder_key="").exclude(all_actions_filename="")
+    created = 0
+    for match in matches.iterator():
+        _upload, was_created = SportsBaseYouTubeUpload.objects.get_or_create(
+            match=match,
+            defaults={"upload_title": _youtube_title(match)},
+        )
+        created += int(was_created)
+    return created
+
+
+def _youtube_job_payload(upload):
+    match = upload.match
+    return {
+        "job_id": upload.pk,
+        "player": {
+            "id": match.subscription.player_id,
+            "name": match.subscription.player.name,
+        },
+        "match": {
+            "id": match.pk,
+            "match_id": match.sportsbase_match_id,
+            "date": match.match_date.isoformat() if match.match_date else None,
+            "competition": match.competition,
+            "home_team": match.home_team,
+            "away_team": match.away_team,
+            "score": match.score,
+            "local_folder_key": match.local_folder_key,
+            "filename": match.all_actions_filename,
+        },
+        "youtube": {
+            "title": upload.upload_title or _youtube_title(match),
+            "description": _youtube_description(match),
+            "visibility": "unlisted",
+        },
+    }
+
+
+@transaction.atomic
+def claim_next_youtube_upload():
+    ensure_youtube_upload_jobs()
+    stale_before = timezone.now() - timedelta(
+        hours=getattr(settings, "YOUTUBE_UPLOAD_JOB_TIMEOUT_HOURS", 6)
+    )
+    SportsBaseYouTubeUpload.objects.filter(
+        status=SportsBaseYouTubeUpload.Status.RUNNING,
+        started_at__lt=stale_before,
+    ).update(
+        status=SportsBaseYouTubeUpload.Status.FAILED,
+        error_message="L’agent local n’a pas terminé l’upload dans le délai prévu.",
+        finished_at=timezone.now(),
+    )
+    upload = (
+        SportsBaseYouTubeUpload.objects.select_for_update()
+        .select_related("match__subscription__player")
+        .filter(status=SportsBaseYouTubeUpload.Status.PENDING)
+        .order_by("-match__match_date", "created_at")
+        .first()
+    )
+    if upload is None:
+        return None
+    upload.status = SportsBaseYouTubeUpload.Status.RUNNING
+    upload.started_at = timezone.now()
+    upload.finished_at = None
+    upload.attempts += 1
+    upload.error_message = ""
+    if not upload.upload_title:
+        upload.upload_title = _youtube_title(upload.match)
+    upload.save(
+        update_fields=(
+            "status",
+            "started_at",
+            "finished_at",
+            "attempts",
+            "error_message",
+            "upload_title",
+            "updated_at",
+        )
+    )
+    upload.payload = _youtube_job_payload(upload)
+    return upload
+
+
+def extract_youtube_video_id(value):
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(str(value).strip())
+    except (TypeError, ValueError):
+        return ""
+    host = parsed.netloc.casefold().split(":", 1)[0]
+    video_id = ""
+    if host in {"youtu.be", "www.youtu.be"}:
+        video_id = parsed.path.strip("/").split("/", 1)[0]
+    elif host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        if parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        elif parsed.path.startswith(("/embed/", "/shorts/", "/live/")):
+            parts = parsed.path.strip("/").split("/")
+            video_id = parts[1] if len(parts) > 1 else ""
+    return video_id if YOUTUBE_VIDEO_ID_RE.fullmatch(video_id) else ""
+
+
+@transaction.atomic
+def apply_youtube_upload_result(upload, result):
+    upload = SportsBaseYouTubeUpload.objects.select_for_update().get(pk=upload.pk)
+    if upload.status != SportsBaseYouTubeUpload.Status.RUNNING:
+        raise ValueError("Cette tâche YouTube n’est plus en cours.")
+
+    status = str(result.get("status") or "").strip()
+    if status not in {
+        SportsBaseYouTubeUpload.Status.UPLOADED,
+        SportsBaseYouTubeUpload.Status.FAILED,
+    }:
+        raise ValueError("État final YouTube invalide.")
+
+    now = timezone.now()
+    upload.status = status
+    upload.finished_at = now
+    upload.error_message = str(result.get("error") or "")
+
+    if status == SportsBaseYouTubeUpload.Status.UPLOADED:
+        youtube_url = str(result.get("youtube_url") or "").strip()
+        video_id = extract_youtube_video_id(youtube_url)
+        if not video_id:
+            raise ValueError("L’agent n’a pas fourni de lien YouTube valide.")
+        supplied_video_id = str(result.get("youtube_video_id") or "").strip()
+        if supplied_video_id and supplied_video_id != video_id:
+            raise ValueError("L’identifiant et le lien YouTube ne correspondent pas.")
+        content_sha256 = str(result.get("content_sha256") or "").strip().lower()
+        if content_sha256 and not re.fullmatch(r"[0-9a-f]{64}", content_sha256):
+            raise ValueError("L’empreinte du fichier vidéo est invalide.")
+        try:
+            file_size = int(result.get("file_size_bytes") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("La taille du fichier vidéo est invalide.") from exc
+        if file_size < 0:
+            raise ValueError("La taille du fichier vidéo est invalide.")
+        upload.youtube_url = youtube_url
+        upload.youtube_video_id = video_id
+        upload.content_sha256 = content_sha256
+        upload.file_size_bytes = file_size or None
+        upload.error_message = ""
+
+    upload.save(
+        update_fields=(
+            "status",
+            "youtube_url",
+            "youtube_video_id",
+            "content_sha256",
+            "file_size_bytes",
+            "error_message",
+            "finished_at",
+            "updated_at",
+        )
+    )
+    return upload
+
+
+@transaction.atomic
+def retry_youtube_upload(upload):
+    upload = SportsBaseYouTubeUpload.objects.select_for_update().get(pk=upload.pk)
+    if upload.status == SportsBaseYouTubeUpload.Status.UPLOADED:
+        raise ValueError("Cette vidéo est déjà disponible sur YouTube.")
+    upload.status = SportsBaseYouTubeUpload.Status.PENDING
+    upload.started_at = None
+    upload.finished_at = None
+    upload.error_message = ""
+    upload.save(
+        update_fields=(
+            "status",
+            "started_at",
+            "finished_at",
+            "error_message",
+            "updated_at",
+        )
+    )
+    return upload
+
+
 @transaction.atomic
 def apply_sync_result(job, result):
     job = SportsBaseSyncJob.objects.select_for_update().select_related(
@@ -374,6 +596,26 @@ def apply_sync_result(job, result):
     for item in result.get("matches") or []:
         imported_matches.append(_upsert_match(subscription, item))
 
+    if subscription.youtube_delivery_enabled:
+        for imported_match in imported_matches:
+            if (
+                imported_match.actions_state
+                in {
+                    SportsBaseMatch.ActionsState.DOWNLOADED,
+                    SportsBaseMatch.ActionsState.EMAILED,
+                }
+                and imported_match.local_folder_key
+                and imported_match.all_actions_filename
+            ):
+                SportsBaseYouTubeUpload.objects.get_or_create(
+                    match=imported_match,
+                    defaults={"upload_title": _youtube_title(imported_match)},
+                )
+
+    from .reports import generate_reports_for_subscription
+
+    generated_reports = generate_reports_for_subscription(subscription)
+
     now = timezone.now()
     error_message = str(result.get("error") or "")
     job.status = result_status
@@ -381,6 +623,7 @@ def apply_sync_result(job, result):
         "profile_updated": bool(snapshot),
         "matches_received": len(imported_matches),
         "match_ids": [match.sportsbase_match_id for match in imported_matches],
+        "reports_ready": len(generated_reports),
         **(result.get("summary") or {}),
     }
     job.error_message = error_message

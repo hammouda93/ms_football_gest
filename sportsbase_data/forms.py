@@ -2,7 +2,7 @@ from django import forms
 
 from gestion_joueurs.models import Player
 
-from .models import SportsBaseSubscription
+from .models import PerformanceReport, SportsBaseSubscription
 
 
 class SportsBaseSubscriptionForm(forms.ModelForm):
@@ -17,6 +17,8 @@ class SportsBaseSubscriptionForm(forms.ModelForm):
             "first_match_id",
             "all_actions_enabled",
             "email_delivery_enabled",
+            "youtube_delivery_enabled",
+            "report_language",
             "sync_interval_hours",
             "is_active",
         )
@@ -52,3 +54,27 @@ class SportsBaseSubscriptionForm(forms.ModelForm):
                 "Ajoutez d’abord le lien SportsBase dans la fiche de ce joueur.",
             )
         return cleaned
+
+
+class PerformanceReportForm(forms.ModelForm):
+    class Meta:
+        model = PerformanceReport
+        fields = (
+            "status",
+            "title",
+            "executive_summary",
+            "strengths",
+            "improvement_areas",
+            "analyst_notes",
+        )
+        widgets = {
+            "executive_summary": forms.Textarea(attrs={"rows": 5}),
+            "strengths": forms.Textarea(attrs={"rows": 6}),
+            "improvement_areas": forms.Textarea(attrs={"rows": 6}),
+            "analyst_notes": forms.Textarea(attrs={"rows": 5}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "form-control"
