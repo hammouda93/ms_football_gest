@@ -180,15 +180,42 @@ class YouTubeStudioUploader:
                 )
                 page.wait_for_timeout(3000)
                 if self._authentication_required(page):
+                    if self.headless:
+                        raise YouTubeAuthenticationRequired(
+                            "La première connexion YouTube nécessite "
+                            "YOUTUBE_HEADLESS=false."
+                        )
+                    print()
+                    print("[YOUTUBE] Première connexion nécessaire.")
+                    print(
+                        "[YOUTUBE] Connectez-vous au compte Google de la chaîne "
+                        "MS Performance dans cette fenêtre."
+                    )
+                    print(
+                        "[YOUTUBE] Quand YouTube Studio est visible, revenez dans "
+                        "PowerShell sans fermer Chrome."
+                    )
+                    input(
+                        "[YOUTUBE] Appuyez sur Entrée après avoir terminé "
+                        "la connexion : "
+                    )
+                    page.goto(
+                        self.content_url,
+                        wait_until="domcontentloaded",
+                        timeout=self.navigation_timeout_ms,
+                    )
+                    page.wait_for_timeout(5000)
+                if self._authentication_required(page):
                     raise YouTubeAuthenticationRequired(
-                        "Connectez-vous à la chaîne MS Performance dans cette fenêtre, "
-                        "fermez-la, puis relancez le contrôle."
+                        "La connexion Google n’est pas terminée. Relancez le "
+                        "contrôle après avoir connecté le profil avec Chrome normal."
                     )
                 if "studio.youtube.com" not in page.url.casefold():
                     raise YouTubeUploadError(
                         "YouTube Studio n’est pas accessible avec ce profil Chrome."
                     )
                 print(f"[YOUTUBE] Chaîne accessible : {self.channel_id}")
+                print("[YOUTUBE] Profil Chrome YouTube prêt.")
                 return True
             finally:
                 context.close()
@@ -219,33 +246,105 @@ class YouTubeStudioUploader:
             locator.press("Backspace")
             locator.type(value)
 
-    def _open_upload_dialog(self, page):
-        inputs = page.locator('input[type="file"]')
-        if inputs.count():
-            return inputs.first
-
-        create_button = self._first_visible(
-            page,
-            ("#create-icon", "ytcp-button#create-icon", "button[aria-label*='Create']"),
+    @staticmethod
+    def _attached_file_input(page):
+        inputs = page.locator(
+            'input[type="file"][accept*="video"], input[type="file"]'
         )
-        create_button.click()
-        upload_text = page.get_by_text(
-            re.compile(r"(upload videos|mettre en ligne des vidéos)", re.IGNORECASE)
-        ).first
         try:
-            upload_text.wait_for(state="visible", timeout=15000)
-            upload_text.click()
-        except PlaywrightTimeoutError as exc:
-            raise YouTubeUploadError(
-                "Le bouton de mise en ligne YouTube n’a pas été trouvé."
-            ) from exc
-        deadline = time.monotonic() + 30
+            return inputs.first if inputs.count() else None
+        except Exception:
+            return None
+
+    def _wait_for_file_input(self, page, timeout_ms=15000):
+        deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
-            inputs = page.locator('input[type="file"]')
-            if inputs.count():
-                return inputs.first
-            page.wait_for_timeout(500)
-        raise YouTubeUploadError("Le sélecteur du fichier vidéo n’a pas été trouvé.")
+            file_input = self._attached_file_input(page)
+            if file_input is not None:
+                return file_input
+            page.wait_for_timeout(400)
+        return None
+
+    def _open_upload_dialog(self, page):
+        # L’URL /videos/upload ouvre souvent directement le dialogue. On lui
+        # laisse quelques secondes avant d’utiliser le menu Créer.
+        file_input = self._wait_for_file_input(page, timeout_ms=8000)
+        if file_input is not None:
+            print("[YOUTUBE] Dialogue d’upload ouvert directement.")
+            return file_input
+
+        create_selectors = (
+            "ytcp-button#create-icon",
+            "#create-icon",
+            'button[aria-label*="Create" i]',
+            'button[aria-label*="Créer" i]',
+            '[role="button"][aria-label*="Create" i]',
+            '[role="button"][aria-label*="Créer" i]',
+        )
+        upload_item_selectors = (
+            'tp-yt-paper-item[test-id="upload"]',
+            '[role="menuitem"][test-id="upload"]',
+            "tp-yt-paper-item#text-item-0",
+            '#paper-list tp-yt-paper-item[test-id="upload"]',
+        )
+
+        for attempt in range(1, 4):
+            print(
+                f"[YOUTUBE] Ouverture du menu Créer "
+                f"(tentative {attempt}/3)…"
+            )
+            create_button = self._first_visible(
+                page,
+                create_selectors,
+                timeout_ms=30000,
+            )
+            create_button.click()
+
+            upload_item = None
+            try:
+                upload_item = self._first_visible(
+                    page,
+                    upload_item_selectors,
+                    timeout_ms=12000,
+                )
+            except YouTubeUploadError:
+                # Repli multilingue si YouTube change l’attribut test-id.
+                text_item = page.get_by_text(
+                    re.compile(
+                        r"^(upload videos|mettre en ligne des vidéos|"
+                        r"importer des vidéos)$",
+                        re.IGNORECASE,
+                    )
+                ).first
+                try:
+                    text_item.wait_for(state="visible", timeout=5000)
+                    upload_item = text_item
+                except PlaywrightTimeoutError:
+                    upload_item = None
+
+            if upload_item is None:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(800)
+                continue
+
+            print("[YOUTUBE] Option Mettre en ligne des vidéos détectée.")
+            try:
+                upload_item.click(timeout=10000)
+            except Exception:
+                upload_item.click(force=True, timeout=10000)
+
+            file_input = self._wait_for_file_input(page, timeout_ms=20000)
+            if file_input is not None:
+                print("[YOUTUBE] Dialogue de sélection du fichier prêt.")
+                return file_input
+
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(1000)
+
+        raise YouTubeUploadError(
+            "Le dialogue de mise en ligne ne s’est pas ouvert après trois "
+            "tentatives. Fermez les autres fenêtres YouTube Studio et réessayez."
+        )
 
     @staticmethod
     def _video_id(youtube_url):
@@ -265,20 +364,35 @@ class YouTubeStudioUploader:
         unlisted_selectors = (
             'tp-yt-paper-radio-button[name="UNLISTED"]',
             '#privacy-radios tp-yt-paper-radio-button[name="UNLISTED"]',
+            '[role="radio"][name="UNLISTED"]',
+            '[name="UNLISTED"]',
         )
         for _step in range(4):
             for selector in unlisted_selectors:
                 radio = page.locator(selector).first
                 if radio.count() and radio.is_visible():
                     radio.click()
+                    page.wait_for_timeout(500)
+                    print("[YOUTUBE] Visibilité sélectionnée : Non répertoriée.")
                     return
+            unlisted_text = page.get_by_text(
+                re.compile(r"^(unlisted|non répertoriée?)$", re.IGNORECASE)
+            ).first
+            try:
+                if unlisted_text.count() and unlisted_text.is_visible():
+                    unlisted_text.click()
+                    page.wait_for_timeout(500)
+                    print("[YOUTUBE] Visibilité sélectionnée : Non répertoriée.")
+                    return
+            except Exception:
+                pass
             next_button = self._first_visible(
                 page,
                 ("#next-button", "ytcp-button#next-button"),
                 timeout_ms=30000,
             )
             next_button.click()
-            page.wait_for_timeout(900)
+            page.wait_for_timeout(1200)
         raise YouTubeUploadError("L’option Non répertoriée n’a pas été trouvée.")
 
     @staticmethod
@@ -286,7 +400,14 @@ class YouTubeStudioUploader:
         deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
             try:
-                if locator.is_visible() and locator.is_enabled():
+                aria_disabled = (locator.get_attribute("aria-disabled") or "").lower()
+                disabled = locator.get_attribute("disabled")
+                if (
+                    locator.is_visible()
+                    and locator.is_enabled()
+                    and aria_disabled != "true"
+                    and disabled is None
+                ):
                     return
             except Exception:
                 pass
@@ -294,6 +415,237 @@ class YouTubeStudioUploader:
         raise YouTubeUploadError(
             "L’upload YouTube n’est pas terminé dans le délai configuré."
         )
+
+    def _read_video_url(self, page, timeout_ms=90000):
+        selectors = (
+            'a#video-link[href*="youtu.be/"]',
+            "a#video-link",
+            "#video-link",
+            'a[href*="youtu.be/"]',
+            'a[href*="youtube.com/watch"]',
+        )
+        deadline = time.monotonic() + timeout_ms / 1000
+        while time.monotonic() < deadline:
+            for selector in selectors:
+                links = page.locator(selector)
+                try:
+                    count = min(links.count(), 10)
+                except Exception:
+                    count = 0
+                for index in range(count):
+                    link = links.nth(index)
+                    try:
+                        href = (link.get_attribute("href") or "").strip()
+                        text = (link.inner_text() or "").strip()
+                    except Exception:
+                        continue
+                    for candidate in (href, text):
+                        if candidate.startswith("youtu.be/"):
+                            candidate = f"https://{candidate}"
+                        video_id = self._video_id(candidate)
+                        if video_id:
+                            return f"https://youtu.be/{video_id}"
+            page.wait_for_timeout(500)
+        raise YouTubeUploadError(
+            "YouTube Studio n’a pas fourni l’adresse de la vidéo dans le délai prévu."
+        )
+
+    def _wait_upload_transfer_complete(self, page):
+        progress = self._first_visible(
+            page,
+            ("ytcp-video-upload-progress",),
+            timeout_ms=60000,
+        )
+        deadline = time.monotonic() + self.upload_timeout_ms / 1000
+        last_status = ""
+        consecutive_complete_checks = 0
+
+        while time.monotonic() < deadline:
+            try:
+                is_uploading = progress.get_attribute("uploading") is not None
+                status_locator = progress.locator(".progress-label").first
+                status = (
+                    status_locator.inner_text().strip()
+                    if status_locator.count()
+                    else ""
+                )
+                bars = progress.locator(
+                    'tp-yt-paper-progress[aria-label*="upload" i], '
+                    'tp-yt-paper-progress[aria-label*="mise en ligne" i]'
+                )
+                percentage = ""
+                if bars.count():
+                    percentage = (
+                        bars.first.get_attribute("aria-valuenow") or ""
+                    ).strip()
+
+                display_status = status or (
+                    f"Upload {percentage}%" if percentage else "Upload en cours"
+                )
+                if display_status and display_status != last_status:
+                    print(f"[YOUTUBE] {display_status}")
+                    last_status = display_status
+
+                percentage_complete = False
+                try:
+                    percentage_complete = bool(
+                        percentage and float(percentage) >= 100
+                    )
+                except ValueError:
+                    percentage_complete = False
+
+                status_complete = bool(
+                    re.search(
+                        r"(upload complete|uploaded|mise en ligne terminée|"
+                        r"importation terminée)",
+                        status,
+                        re.IGNORECASE,
+                    )
+                )
+
+                if not is_uploading or percentage_complete or status_complete:
+                    consecutive_complete_checks += 1
+                else:
+                    consecutive_complete_checks = 0
+
+                # Deux lectures successives évitent de considérer comme terminé
+                # un composant transitoire recréé au passage de 99 à 100 %.
+                if consecutive_complete_checks >= 2:
+                    print(
+                        "[YOUTUBE] Transfert du fichier terminé. "
+                        "Les vérifications YouTube peuvent commencer."
+                    )
+                    return
+            except Exception:
+                # YouTube recrée parfois le composant au moment où le transfert
+                # se termine. On recherche alors sa nouvelle instance visible.
+                try:
+                    progress = self._first_visible(
+                        page,
+                        ("ytcp-video-upload-progress",),
+                        timeout_ms=10000,
+                    )
+                except YouTubeUploadError:
+                    print(
+                        "[YOUTUBE] Le composant de transfert a disparu : "
+                        "upload terminé."
+                    )
+                    return
+            page.wait_for_timeout(1500)
+
+        raise YouTubeUploadError(
+            "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
+        )
+
+    @staticmethod
+    def _wait_upload_dialog_closed(page, timeout_ms=45000):
+        dialogs = page.locator(
+            "ytcp-uploads-dialog, ytcp-video-upload-dialog, "
+            "ytcp-uploads-still-processing-dialog"
+        )
+        deadline = time.monotonic() + timeout_ms / 1000
+        while time.monotonic() < deadline:
+            try:
+                visible = any(
+                    dialogs.nth(index).is_visible()
+                    for index in range(dialogs.count())
+                )
+            except Exception:
+                visible = False
+            if not visible:
+                return True
+            page.wait_for_timeout(500)
+        return False
+
+    def _finish_still_processing_dialog(self, page):
+        dialog = page.locator("ytcp-uploads-still-processing-dialog").first
+        try:
+            dialog.wait_for(state="visible", timeout=10000)
+        except PlaywrightTimeoutError:
+            return False
+
+        print(
+            "[YOUTUBE] YouTube confirme l’enregistrement, mais le fichier est "
+            "encore en cours d’envoi."
+        )
+        print("[YOUTUBE] Attente de la fin réelle du transfert…")
+
+        progress = dialog.locator("ytcp-video-upload-progress").first
+        deadline = time.monotonic() + self.upload_timeout_ms / 1000
+        last_status = ""
+        upload_finished = False
+
+        while time.monotonic() < deadline:
+            try:
+                progress_exists = progress.count() > 0
+                is_uploading = (
+                    progress_exists
+                    and progress.get_attribute("uploading") is not None
+                )
+                status_locator = progress.locator(".progress-label").first
+                status = (
+                    status_locator.inner_text().strip()
+                    if status_locator.count()
+                    else ""
+                )
+                bars = progress.locator(
+                    'tp-yt-paper-progress[aria-label*="upload" i], '
+                    'tp-yt-paper-progress[aria-label*="mise en ligne" i]'
+                )
+                percentage = ""
+                if bars.count():
+                    percentage = (
+                        bars.first.get_attribute("aria-valuenow") or ""
+                    ).strip()
+                display_status = status or (
+                    f"Upload {percentage}%" if percentage else "Upload en cours"
+                )
+                if display_status and display_status != last_status:
+                    print(f"[YOUTUBE] {display_status}")
+                    last_status = display_status
+
+                if not progress_exists or not is_uploading:
+                    upload_finished = True
+                    break
+                try:
+                    if percentage and float(percentage) >= 100:
+                        # L’attribut uploading disparaît généralement juste après
+                        # que la barre atteint 100 %.
+                        page.wait_for_timeout(1500)
+                except ValueError:
+                    pass
+            except Exception:
+                # Le composant peut être recréé par YouTube au passage de 99 à
+                # 100 %. S’il disparaît, le transfert est terminé.
+                try:
+                    if not dialog.is_visible():
+                        return True
+                except Exception:
+                    return True
+            page.wait_for_timeout(1500)
+
+        if not upload_finished:
+            raise YouTubeUploadError(
+                "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
+            )
+
+        print("[YOUTUBE] Transfert terminé. Fermeture de la confirmation…")
+        close_button = self._first_visible(
+            page,
+            (
+                "ytcp-uploads-still-processing-dialog ytcp-button#close-button",
+                "ytcp-uploads-still-processing-dialog #close-button",
+                'ytcp-uploads-still-processing-dialog button[aria-label="Close"]',
+                'ytcp-uploads-still-processing-dialog button[aria-label="Fermer"]',
+            ),
+            timeout_ms=30000,
+        )
+        self._wait_button_enabled(page, close_button, timeout_ms=30000)
+        try:
+            close_button.click(timeout=15000)
+        except Exception:
+            close_button.click(force=True, timeout=15000)
+        return True
 
     def upload(self, job):
         video_path = self.resolve_video_path(job)
@@ -368,32 +720,45 @@ class YouTubeStudioUploader:
                 audience.click()
                 self._select_unlisted_visibility(page)
 
-                video_link = self._first_visible(
-                    page,
-                    ("a#video-url", "#video-url"),
-                    timeout_ms=60000,
-                )
-                youtube_url = (video_link.get_attribute("href") or video_link.inner_text()).strip()
-                if not youtube_url.startswith("http"):
-                    raise YouTubeUploadError(
-                        "YouTube Studio n’a pas fourni l’adresse finale de la vidéo."
-                    )
-
-                done_button = self._first_visible(
-                    page,
-                    ("#done-button", "ytcp-button#done-button"),
-                    timeout_ms=30000,
-                )
-                print("[YOUTUBE] Attente de la fin de l’upload…")
-                self._wait_button_enabled(page, done_button, self.upload_timeout_ms)
-                done_button.click()
-                page.wait_for_timeout(2000)
-                print(f"[YOUTUBE] Vidéo non répertoriée disponible : {youtube_url}")
+                youtube_url = self._read_video_url(page, timeout_ms=90000)
                 video_id = self._video_id(youtube_url)
                 if not video_id:
                     raise YouTubeUploadError(
                         "L’adresse obtenue ne contient pas d’identifiant vidéo valide."
                     )
+                print(f"[YOUTUBE] Lien attribué : {youtube_url}")
+
+                done_button = self._first_visible(
+                    page,
+                    (
+                        "ytcp-button#done-button",
+                        "#done-button",
+                        'ytcp-button[aria-label*="Save" i]',
+                        'ytcp-button[aria-label*="Enregistrer" i]',
+                    ),
+                    timeout_ms=30000,
+                )
+                print("[YOUTUBE] Attente du transfert complet avant Enregistrer…")
+                self._wait_upload_transfer_complete(page)
+                self._wait_button_enabled(page, done_button, self.upload_timeout_ms)
+                print("[YOUTUBE] Enregistrement de la vidéo…")
+                try:
+                    done_button.click(timeout=15000)
+                except Exception:
+                    done_button.click(force=True, timeout=15000)
+
+                self._finish_still_processing_dialog(page)
+                dialog_closed = self._wait_upload_dialog_closed(
+                    page,
+                    timeout_ms=60000,
+                )
+                if not dialog_closed:
+                    raise YouTubeUploadError(
+                        "YouTube Studio n’a pas confirmé la fermeture du dialogue "
+                        "après Enregistrer. Vérifiez la vidéo avant toute reprise."
+                    )
+
+                print(f"[YOUTUBE] Vidéo non répertoriée disponible : {youtube_url}")
                 result = {
                     "status": "uploaded",
                     "youtube_url": youtube_url,

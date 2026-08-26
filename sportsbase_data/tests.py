@@ -337,6 +337,12 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
     def test_performance_and_match_pages_render_complete_navigation(self):
         user = self.portal_user("details-user")
         PlayerAccess.objects.create(user=user, player=self.player)
+        SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
         self.client.force_login(user)
         detail = self.client.get(
             reverse("performance:portal_detail", args=(self.player.pk,))
@@ -370,6 +376,11 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         passes = next(item for item in paired if item["name"] == "Passes")
         self.assertEqual(passes["value"], "45")
         self.assertEqual(passes["rate_value"], "89%")
+        self.assertEqual(passes["chart_percent"], 89.0)
+        self.assertTrue(passes["has_rate"])
+        self.assertContains(match, "--analysis-progress: 89.0%")
+        self.assertContains(match, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertNotContains(match, "all-actions-open-link")
 
 
 class ScraperNormalizationTests(TestCase):

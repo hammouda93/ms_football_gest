@@ -72,6 +72,20 @@ def _normalized_statistics(*collections):
     return merged
 
 
+def _percentage_for_chart(value):
+    """Return a safe 0-100 value for portal-only visual indicators."""
+    if value is None or isinstance(value, bool):
+        return None
+    cleaned = str(value).strip().replace("%", "").replace(",", ".")
+    if not cleaned or cleaned in {"-", "–", "—"}:
+        return None
+    try:
+        percentage = float(cleaned)
+    except (TypeError, ValueError):
+        return None
+    return round(max(0.0, min(100.0, percentage)), 1)
+
+
 def _build_match_analysis(stats):
     if stats is None:
         return [], []
@@ -95,12 +109,16 @@ def _build_match_analysis(stats):
         if metric is None and rate is None:
             continue
         consumed.update((metric_key, rate_key))
+        rate_value = rate.get("value") if rate else None
+        chart_percent = _percentage_for_chart(rate_value)
         pairs.append(
             {
                 "name": metric_name,
                 "value": metric.get("value") if metric else None,
                 "rate_name": rate_name,
-                "rate_value": rate.get("value") if rate else None,
+                "rate_value": rate_value,
+                "chart_percent": chart_percent or 0,
+                "has_rate": chart_percent is not None,
                 "icon": icon,
             }
         )

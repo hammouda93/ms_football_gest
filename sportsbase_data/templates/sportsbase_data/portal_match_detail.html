@@ -45,10 +45,20 @@
     {% if analysis_pairs %}
     <div class="performance-paired-grid">
         {% for item in analysis_pairs %}
-        <article class="performance-paired-stat">
-            <i class="fas {{ item.icon }}"></i>
-            <div class="performance-paired-main"><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.value|stat_value }}</strong></div>
-            <div class="performance-paired-rate"><span>{{ item.rate_name|stat_label_for:portal_language }}</span><strong>{{ item.rate_value|stat_value }}</strong></div>
+        <article class="performance-analysis-card{% if not item.has_rate %} is-unrated{% endif %}" style="--analysis-progress: {{ item.chart_percent }}%;">
+            <header>
+                <span class="performance-analysis-icon"><i class="fas {{ item.icon }}"></i></span>
+                <div><small>{{ item.name|stat_label_for:portal_language }}</small><strong>{{ item.value|stat_value }}</strong></div>
+            </header>
+            <div class="performance-analysis-visual">
+                <div class="performance-analysis-ring" role="img" aria-label="{{ item.rate_name|stat_label_for:portal_language }} : {{ item.rate_value|stat_value }}">
+                    <span>{{ item.rate_value|stat_value }}</span>
+                </div>
+                <div class="performance-analysis-rate">
+                    <span>{{ item.rate_name|stat_label_for:portal_language }}</span>
+                    <div class="performance-analysis-track" aria-hidden="true"><i></i></div>
+                </div>
+            </div>
         </article>
         {% endfor %}
     </div>
@@ -104,7 +114,6 @@
     <div class="all-actions-video-frame">
         <iframe src="{{ embed_url }}" title="{{ copy.watch_actions }} — {{ player.name }}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
-    <a class="all-actions-open-link" href="{{ upload.youtube_url }}" target="_blank" rel="noopener"><i class="fab fa-youtube"></i> {{ copy.open_video }}</a>
 </section>
 {% else %}
 <section class="performance-panel all-actions-delivery">
