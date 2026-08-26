@@ -2,8 +2,30 @@ from urllib.parse import parse_qs, urlparse
 
 from django import template
 
+from client_portal.portal_i18n import get_portal_copy, translated_choice
+
 
 register = template.Library()
+
+
+@register.simple_tag
+def portal_copy(language="fr"):
+    return get_portal_copy(language)
+
+
+@register.filter
+def portal_version_status_for(value, language):
+    return translated_choice("version", value, language)
+
+
+@register.filter
+def portal_revision_status_for(value, language):
+    return translated_choice("revision", value, language)
+
+
+@register.filter
+def portal_media_category_for(value, language):
+    return translated_choice("media", value, language)
 
 
 @register.filter

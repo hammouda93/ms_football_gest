@@ -245,6 +245,21 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
             season=self.subscription.season,
             sportsbase_player_name=self.player.name,
             heatmap_png=PNG,
+            season_statistics={
+                "Matches played": "12",
+                "Passes": "540",
+                "Passes accurate, %": "86%",
+                "Challenges": "120",
+                "Challenges won, %": "61%",
+                "Goals": "4",
+            },
+            average_statistics={
+                "Passes": "45",
+                "Passes accurate, %": "86%",
+                "Challenges": "10",
+                "Challenges won, %": "61%",
+                "Goals": "0.33",
+            },
             season_table_headers=["Index", "Passes"],
             season_match_rows=[{"sportsbase_match_id": "772538", "values": ["201", "45"]}],
         )
@@ -358,6 +373,21 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(detail, "Suivi vidéo")
         self.assertContains(detail, "Matchs du joueur")
         self.assertContains(detail, "Fiche et repères du joueur")
+        self.assertContains(detail, "Volume, efficacité et rythme")
+        self.assertContains(detail, "Passes réussies")
+        self.assertContains(detail, "540")
+        self.assertContains(detail, "86%")
+        self.assertContains(detail, "45")
+        self.assertContains(detail, "performance-analysis-card")
+        self.assertContains(detail, "--analysis-progress: 86.0%")
+        season_pairs = detail.context["season_analysis_pairs"]
+        season_passes = next(
+            item for item in season_pairs if item["name"] == "Passes"
+        )
+        self.assertEqual(season_passes["value"], "540")
+        self.assertEqual(season_passes["average_value"], "45")
+        self.assertEqual(season_passes["rate_value"], "86%")
+        self.assertEqual(season_passes["chart_percent"], 86.0)
         self.assertNotContains(detail, "SportsBase")
         self.assertEqual(match.status_code, 200)
         self.assertContains(match, "Index du match")
@@ -641,7 +671,7 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
 
-    def test_subscription_language_controls_report_and_portal_copy(self):
+    def test_subscription_controls_report_but_account_controls_portal_copy(self):
         self.subscription.report_language = SportsBaseSubscription.ReportLanguage.ENGLISH
         self.subscription.save(update_fields=("report_language", "updated_at"))
         match = self._create_match(1)
@@ -649,6 +679,8 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(report.language, "en")
         self.assertTrue(report.title.startswith("Performance report"))
         user = self.portal_user("english-client")
+        user.portal_profile.preferred_language = "ar"
+        user.portal_profile.save(update_fields=("preferred_language", "updated_at"))
         PlayerAccess.objects.create(user=user, player=self.player)
         self.client.force_login(user)
         response = self.client.get(
@@ -657,5 +689,6 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
                 args=(self.player.pk, match.sportsbase_match_id),
             )
         )
-        self.assertContains(response, "Match analysis")
+        self.assertContains(response, "تحليل المباراة")
         self.assertNotContains(response, "Analyse du match")
+        self.assertNotContains(response, "Match analysis")

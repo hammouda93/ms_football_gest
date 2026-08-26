@@ -1,35 +1,38 @@
 {% extends "client_portal/portal_base.html" %}
 {% load performance_extras %}
-{% block title %}Performances — MS Football{% endblock %}
+{% block title %}{{ pc.performance }} — MS Football{% endblock %}
 {% block portal_content %}
-<nav class="portal-breadcrumb"><a href="{% url 'portal:dashboard' %}">Mon espace</a><span>›</span><span>Performances</span></nav>
+{% performance_copy portal_language as copy %}
+<div class="performance-localized" lang="{{ portal_language }}" dir="{% if portal_language == 'ar' %}rtl{% else %}ltr{% endif %}">
+<nav class="portal-breadcrumb"><a href="{% url 'portal:dashboard' %}">{{ copy.home }}</a><span>›</span><span>{{ copy.performances_title }}</span></nav>
 
 <section class="performance-portal-hero">
-    <div><span class="eyebrow">Abonnement annuel</span><h1>Centre de performances</h1><p>Statistiques de saison, cartes d’activité, matchs et livraisons All Actions.</p></div>
-    <span class="performance-live-badge"><i class="fas fa-shield-halved"></i> Analyses sécurisées</span>
+    <div><span class="eyebrow">{{ copy.annual_subscription }}</span><h1>{{ copy.performance_centre }}</h1><p>{{ copy.performance_centre_help }}</p></div>
+    <span class="performance-live-badge"><i class="fas fa-shield-halved"></i> {{ copy.secure_analyses }}</span>
 </section>
 
 <nav class="portal-service-tabs main" aria-label="Services MS Football">
-    <a href="{% url 'portal:dashboard' %}#videos"><i class="fas fa-clapperboard"></i><span><small>Production</small>Suivi vidéo</span></a>
-    <a class="active" href="{% url 'performance:portal_overview' %}"><i class="fas fa-chart-line"></i><span><small>Analyse</small>Performances</span></a>
+    <a href="{% url 'portal:dashboard' %}#videos"><i class="fas fa-clapperboard"></i><span><small>{{ copy.production }}</small>{{ copy.video_tracking }}</span></a>
+    <a class="active" href="{% url 'performance:portal_overview' %}"><i class="fas fa-chart-line"></i><span><small>{{ copy.analysis }}</small>{{ copy.performances_title }}</span></a>
 </nav>
 
 <section class="portal-section performance-overview-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Joueurs autorisés</span><h2>Mes abonnements actifs</h2><p>Sélectionnez un joueur pour consulter sa saison et ses rencontres.</p></div><span class="portal-count">{{ subscriptions|length }}</span></div>
+    <div class="portal-section-heading"><div><span class="eyebrow">{{ copy.authorized_players }}</span><h2>{{ copy.active_subscriptions }}</h2><p>{{ copy.select_player_help }}</p></div><span class="portal-count">{{ subscriptions|length }}</span></div>
     <div class="performance-player-grid">
         {% for subscription in subscriptions %}
             <a class="performance-player-card" href="{% url 'performance:portal_detail' subscription.player.pk %}">
                 <div class="performance-player-card-top">
                     {% if subscription.current_snapshot.profile_image_url %}<img src="{{ subscription.current_snapshot.profile_image_url }}" alt="Photo de {{ subscription.player.name }}" loading="lazy">{% else %}<span class="performance-avatar large">{{ subscription.player.name|first|upper }}</span>{% endif %}
-                    <span class="performance-card-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle-check"></i> {{ subscription.last_sync_state|portal_data_state }}</span>
+                    <span class="performance-card-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle-check"></i> {{ subscription.last_sync_state|portal_data_state_for:portal_language }}</span>
                 </div>
                 <div class="performance-player-card-copy"><small>{{ subscription.season }}</small><strong>{{ subscription.player.name }}</strong><span>{{ subscription.current_snapshot.club_name|default:subscription.player.club }}</span></div>
-                <div class="performance-player-card-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span>{% if subscription.current_snapshot %}<span><b>{{ subscription.current_snapshot.time_on_field_percent|default:"—" }}%</b> temps de jeu</span>{% endif %}</div>
-                <div class="performance-player-card-action">Ouvrir la fiche <i class="fas fa-arrow-right"></i></div>
+                <div class="performance-player-card-metrics"><span><b>{{ subscription.match_count }}</b> {{ copy.matches_short }}</span>{% if subscription.current_snapshot %}<span><b>{{ subscription.current_snapshot.time_on_field_percent|default:"—" }}%</b> {{ copy.playing_time_short }}</span>{% endif %}</div>
+                <div class="performance-player-card-action">{{ copy.open_record }} <i class="fas fa-arrow-right"></i></div>
             </a>
         {% empty %}
-            <div class="portal-empty performance-empty"><i class="fas fa-chart-line"></i><strong>Aucun abonnement Performance actif</strong><span>MS Football doit activer ce service pour l’un de vos joueurs.</span></div>
+            <div class="portal-empty performance-empty"><i class="fas fa-chart-line"></i><strong>{{ copy.no_active_subscription }}</strong><span>{{ copy.activation_required }}</span></div>
         {% endfor %}
     </div>
 </section>
+</div>
 {% endblock %}

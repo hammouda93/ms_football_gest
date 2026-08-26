@@ -111,6 +111,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'gestion_joueurs.context_processors.notifications',
+                'client_portal.context_processors.portal_language',
             ],
         },
     },

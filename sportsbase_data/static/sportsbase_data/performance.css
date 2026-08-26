@@ -131,10 +131,14 @@
 .performance-analysis-rate > span { min-height: 2.4em; color: var(--performance-muted); font-size: .64rem; font-weight: 720; line-height: 1.2; }
 .performance-analysis-track { overflow: hidden; height: 7px; background: #e1e9ed; border-radius: 999px; }
 .performance-analysis-track i { display: block; width: var(--analysis-progress); height: 100%; background: var(--analysis-color); border-radius: inherit; }
+.performance-analysis-average { display: inline-flex; align-items: baseline; gap: 4px; color: var(--performance-muted); font-size: .6rem; font-style: normal; }
+.performance-analysis-average b { color: var(--performance-text); font-size: .72rem; }
 .performance-analysis-card.is-unrated { --analysis-progress: 0% !important; --analysis-color: #98a6b5; }
 .performance-analysis-card.is-unrated .performance-analysis-ring { background: repeating-conic-gradient(#dbe3e8 0 8deg, #edf2f5 8deg 16deg); }
 .performance-secondary-analysis { margin-top: 18px; padding-top: 15px; border-top: 1px solid #e5ebf1; }
 .performance-secondary-analysis h3 { margin: 0 0 10px; color: var(--performance-text); font-size: .82rem; }
+.performance-season-analysis { margin-top: 16px; border-top-color: var(--performance-teal); }
+.performance-season-analysis .season-average-list { border-top-style: dashed; }
 
 .performance-compact-details { margin: 16px 0; padding: 0; overflow: hidden; }
 .performance-compact-details > summary { display: flex; align-items: center; gap: 12px; padding: 15px 18px; cursor: pointer; list-style: none; }

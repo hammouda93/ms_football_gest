@@ -25,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "match-details-scope-v7-20260825"
+SCRAPER_BUILD = "season-efficiency-v8-20260826"
 
 
 def _now_iso():
@@ -294,27 +294,54 @@ class SportsBaseSubscriptionScraper:
             r"""
             () => {
               const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
-              const read = (selector) => {
-                const result = {};
-                const block = document.querySelector(selector);
-                if (!block) return result;
-                block.querySelectorAll('li').forEach((row) => {
-                  const labelNode = row.querySelector('[class*="StatName"], [class*="ParamName"], span');
-                  const values = [...row.querySelectorAll('[class*="StatValue"]')].map(text);
-                  const label = text(labelNode);
-                  if (label && values.length) result[label] = values[0];
-                });
-                return result;
+              const cleanValue = (node) => {
+                if (!node) return '';
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('[class*="Tooltip"], [role="tooltip"]').forEach((item) => item.remove());
+                return text(clone);
               };
-              const season = read('ul[class*="LeftStatBlock"]');
-              let averages = {};
-              document.querySelectorAll('[class*="Average"], [class*="StatBlock"]').forEach((block) => {
+              const tooltipLabel = (node) => text(
+                node?.querySelector('[class*="Tooltip"] [class*="LexicWrapper"], [class*="Tooltip"], [role="tooltip"]')
+              );
+              const headerText = (node) => {
+                if (!node) return '';
+                const tooltip = tooltipLabel(node);
+                if (tooltip) return tooltip;
+                const labels = [...node.querySelectorAll('[class*="LexicWrapper"]')].map(text).filter(Boolean);
+                return labels.length ? labels[labels.length - 1] : text(node);
+              };
+              const addRows = (block, result) => {
+                if (!block) return;
                 block.querySelectorAll('li').forEach((row) => {
-                  const label = text(row.querySelector('[class*="StatName"], [class*="ParamName"], span'));
-                  const value = text(row.querySelector('[class*="StatValue"]'));
-                  if (label && value && !(label in season)) averages[label] = value;
+                  const label = text(row.querySelector(
+                    '[class*="StatsName"], [class*="StatName"], [class*="ParamName"]'
+                  ));
+                  const values = [...row.querySelectorAll('[class*="StatValue"]')];
+                  if (!label || !values.length) return;
+                  const primary = cleanValue(values[0]);
+                  if (primary) result[label] = primary;
+                  values.slice(1).forEach((valueNode) => {
+                    const secondaryLabel = tooltipLabel(valueNode);
+                    const secondaryValue = cleanValue(valueNode);
+                    if (secondaryLabel && secondaryValue) {
+                      result[secondaryLabel] = secondaryValue;
+                    }
+                  });
                 });
-              });
+              };
+
+              const season = {};
+              const seasonBlocks = [
+                ...document.querySelectorAll(
+                  '[class*="PlayerStatsBody"], ul[class*="PlayerStats"], ul[class*="LeftStatBlock"], [class*="SeasonStats"]'
+                )
+              ];
+              seasonBlocks.forEach((block) => addRows(block, season));
+
+              const averages = {};
+              document.querySelectorAll('[class*="AverageStats"], [class*="Averages"]').forEach(
+                (block) => addRows(block, averages)
+              );
               let bestTable = {headers: [], rows: []};
               document.querySelectorAll('[role="table"]').forEach((table) => {
                 const headers = [...table.querySelectorAll('[role="headercell"], [role="columnheader"]')].map(headerText);

@@ -663,6 +663,20 @@
 .portal-timeline .timeline-completed_collab article { border-left-color: var(--portal-warning); }
 .portal-timeline > .portal-timeline-empty { display: flex; width: 100%; min-height: 120px; grid-template-columns: none; }
 
+html[dir="rtl"] .portal-body { direction: rtl; text-align: right; }
+html[dir="rtl"] .portal-account-dropdown { right: auto; left: 0; }
+html[dir="rtl"] .portal-order-open i,
+html[dir="rtl"] .player-portal-card > b,
+html[dir="rtl"] .portal-service-card > b,
+html[dir="rtl"] .portal-archive-copy a,
+html[dir="rtl"] .row-arrow { transform: rotate(180deg); }
+html[dir="rtl"] .portal-timeline .portal-timeline-event article { border-right: 3px solid #7bb1f8; border-left-width: 1px; }
+html[dir="rtl"] .portal-timeline .timeline-payment article,
+html[dir="rtl"] .portal-timeline .timeline-delivered article,
+html[dir="rtl"] .portal-timeline .timeline-completed article { border-right-color: var(--portal-green); }
+html[dir="rtl"] .portal-timeline .timeline-problematic article { border-right-color: var(--portal-danger); }
+html[dir="rtl"] .portal-timeline .timeline-completed_collab article { border-right-color: var(--portal-warning); }
+
 @media (max-width: 680px) {
     .portal-archive-grid, .delivery-status-grid { grid-template-columns: 1fr; }
     .portal-archive-copy { align-items: flex-start; flex-direction: column; }

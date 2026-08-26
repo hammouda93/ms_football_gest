@@ -31,6 +31,17 @@ from .models import (
     VideoVersion,
     VideoWorkflow,
 )
+from .portal_i18n import (
+    CLIENT_ACTION_LABELS,
+    PAYMENT_EVENT_TITLES as PORTAL_PAYMENT_EVENT_TITLES,
+    PAYMENT_METHOD_LABELS as PORTAL_PAYMENT_METHOD_LABELS,
+    VIDEO_STAGE_ACTIONS,
+    VIDEO_STAGE_LABELS,
+    VIDEO_STATUS_MESSAGES,
+    VIDEO_STATUS_TITLES as PORTAL_VIDEO_STATUS_TITLES,
+    normalize_portal_language,
+    translated_choice,
+)
 
 
 User = get_user_model()
@@ -71,16 +82,6 @@ CLIENT_COMPLETED_COLLAB_LABEL = (
 )
 
 
-CLIENT_STATUS_TITLES = {
-    Video.StatusChoices.PENDING: "Commande enregistrée",
-    Video.StatusChoices.IN_PROGRESS: "Production démarrée",
-    Video.StatusChoices.COMPLETED_COLLAB: CLIENT_COMPLETED_COLLAB_LABEL,
-    Video.StatusChoices.COMPLETED: "Montage terminé",
-    Video.StatusChoices.DELIVERED: "Vidéo livrée",
-    Video.StatusChoices.PROBLEMATIC: "Vérification complémentaire",
-}
-
-
 CLIENT_STATUS_ICONS = {
     Video.StatusChoices.PENDING: "fa-clipboard-check",
     Video.StatusChoices.IN_PROGRESS: "fa-clapperboard",
@@ -88,32 +89,6 @@ CLIENT_STATUS_ICONS = {
     Video.StatusChoices.COMPLETED: "fa-circle-check",
     Video.StatusChoices.DELIVERED: "fa-circle-play",
     Video.StatusChoices.PROBLEMATIC: "fa-magnifying-glass",
-}
-
-
-CLIENT_STAGE_LABELS = {
-    VideoWorkflow.Stage.DOWNLOADING: "Préparation des médias",
-}
-
-
-CLIENT_STAGE_NEXT_ACTIONS = {
-    VideoWorkflow.Stage.DOWNLOADING: (
-        "Les matchs et les séquences du joueur sont en cours de préparation."
-    ),
-}
-
-
-PAYMENT_EVENT_TITLES = {
-    "advance": "Acompte enregistré",
-    "partial": "Paiement partiel enregistré",
-    "final": "Paiement final enregistré",
-}
-
-
-PAYMENT_METHOD_LABELS = {
-    "cash": "espèces",
-    "bank_transfer": "virement bancaire",
-    "la_poste": "La Poste",
 }
 
 
@@ -191,34 +166,16 @@ def _timeline_datetime(value):
     return result
 
 
-def _client_status_message(video, status):
-    deadline = video.deadline.strftime("%d/%m/%Y")
-    messages = {
-        Video.StatusChoices.PENDING: (
-            "La commande est enregistrée et attend le démarrage de la production."
-        ),
-        Video.StatusChoices.IN_PROGRESS: (
-            f"Le montage est en cours. La livraison est prévue le {deadline}."
-        ),
-        Video.StatusChoices.COMPLETED_COLLAB: (
-            "Les premières étapes du montage sont terminées. Notre équipe finalise "
-            "la vidéo et classe les séquences sélectionnées."
-        ),
-        Video.StatusChoices.COMPLETED: (
-            "Le montage est terminé et passe aux dernières vérifications avant livraison."
-        ),
-        Video.StatusChoices.DELIVERED: (
-            "La vidéo finale a été livrée et reste disponible dans votre espace."
-        ),
-        Video.StatusChoices.PROBLEMATIC: (
-            "Une vérification complémentaire est en cours sur la production."
-        ),
-    }
-    return messages.get(status, "L’état de la production a été mis à jour.")
+def _client_status_message(video, status, language="fr"):
+    language = normalize_portal_language(language)
+    deadline = video.deadline.strftime("%d/%m/%Y") if video.deadline else "—"
+    messages = VIDEO_STATUS_MESSAGES[language]
+    return messages.get(status, messages["default"]).format(deadline=deadline)
 
 
-def client_video_timeline(video, activities=()):
+def client_video_timeline(video, activities=(), language="fr"):
     """Build a client-facing timeline without writing or altering legacy data."""
+    language = normalize_portal_language(language)
     events = []
 
     for history in video.status_history.order_by("changed_at", "pk"):
@@ -228,11 +185,11 @@ def client_video_timeline(video, activities=()):
                 kind="status",
                 tone=history.status,
                 icon=CLIENT_STATUS_ICONS.get(history.status, "fa-route"),
-                title=CLIENT_STATUS_TITLES.get(
+                title=PORTAL_VIDEO_STATUS_TITLES[language].get(
                     history.status,
-                    "État de la vidéo mis à jour",
+                    VIDEO_STATUS_MESSAGES[language]["default"],
                 ),
-                message=_client_status_message(video, history.status),
+                message=_client_status_message(video, history.status, language),
                 occurred_at=occurred_at,
                 has_time=True,
                 sort_at=_timeline_datetime(occurred_at),
@@ -241,30 +198,49 @@ def client_video_timeline(video, activities=()):
 
     for payment in video.payments.order_by("payment_date", "pk"):
         occurred_at = payment.payment_date
-        payment_method = PAYMENT_METHOD_LABELS.get(payment.payment_method)
-        method_text = f" via {payment_method}" if payment_method else ""
-        if payment.remaining_balance > 0:
+        payment_method = PORTAL_PAYMENT_METHOD_LABELS[language].get(
+            payment.payment_method
+        )
+        if language == "en":
+            method_text = f" via {payment_method}" if payment_method else ""
             balance_text = (
-                f" Solde restant après ce règlement : "
-                f"{payment.remaining_balance:.2f}."
+                f" Remaining balance after this payment: {payment.remaining_balance:.2f}."
+                if payment.remaining_balance > 0
+                else " The order is fully paid."
+                if payment.payment_type == "final"
+                else ""
             )
-        elif payment.payment_type == "final":
-            balance_text = " La commande est entièrement réglée."
+            payment_message = f"A payment of {payment.amount:.2f} was recorded{method_text}.{balance_text}"
+        elif language == "ar":
+            method_text = f" عبر {payment_method}" if payment_method else ""
+            balance_text = (
+                f" الرصيد المتبقي بعد هذه الدفعة: {payment.remaining_balance:.2f}."
+                if payment.remaining_balance > 0
+                else " تم دفع الطلب بالكامل."
+                if payment.payment_type == "final"
+                else ""
+            )
+            payment_message = f"تم تسجيل دفعة بقيمة {payment.amount:.2f}{method_text}.{balance_text}"
         else:
-            balance_text = ""
+            method_text = f" via {payment_method}" if payment_method else ""
+            balance_text = (
+                f" Solde restant après ce règlement : {payment.remaining_balance:.2f}."
+                if payment.remaining_balance > 0
+                else " La commande est entièrement réglée."
+                if payment.payment_type == "final"
+                else ""
+            )
+            payment_message = f"Un paiement de {payment.amount:.2f} a été enregistré{method_text}.{balance_text}"
         events.append(
             ClientTimelineEvent(
                 kind="payment",
                 tone="payment",
                 icon="fa-wallet",
-                title=PAYMENT_EVENT_TITLES.get(
+                title=PORTAL_PAYMENT_EVENT_TITLES[language].get(
                     payment.payment_type,
-                    "Paiement enregistré",
+                    PORTAL_PAYMENT_EVENT_TITLES[language]["default"],
                 ),
-                message=(
-                    f"Un paiement de {payment.amount:.2f} a été enregistré"
-                    f"{method_text}.{balance_text}"
-                ),
+                message=payment_message,
                 occurred_at=occurred_at,
                 has_time=False,
                 sort_at=_timeline_datetime(occurred_at),
@@ -278,7 +254,7 @@ def client_video_timeline(video, activities=()):
                 kind="activity",
                 tone=activity.kind,
                 icon=ACTIVITY_ICONS.get(activity.kind, "fa-bell"),
-                title=activity.get_kind_display(),
+                title=translated_choice("activity", activity.kind, language),
                 message=activity.message,
                 occurred_at=occurred_at,
                 has_time=True,
@@ -359,17 +335,27 @@ def decorate_video(video):
     return video
 
 
-def decorate_client_video(video):
+def decorate_client_video(video, language="fr"):
     """Add client-facing actions without writing to legacy or portal records."""
+    language = normalize_portal_language(language)
     video = decorate_video(video)
-    video.production_stage_label = CLIENT_STAGE_LABELS.get(
+    video.production_stage_label = VIDEO_STAGE_LABELS[language].get(
         video.production_stage,
         video.production_stage_label,
     )
-    video.production_next_action = CLIENT_STAGE_NEXT_ACTIONS.get(
+    video.production_next_action = VIDEO_STAGE_ACTIONS[language].get(
         video.production_stage,
         video.production_next_action,
     )
+    if video.status == Video.StatusChoices.COMPLETED_COLLAB:
+        video.production_stage_label = PORTAL_VIDEO_STATUS_TITLES[language][
+            Video.StatusChoices.COMPLETED_COLLAB
+        ]
+        video.production_next_action = _client_status_message(
+            video,
+            Video.StatusChoices.COMPLETED_COLLAB,
+            language,
+        )
     versions = list(video.portal_versions.all())
     submissions = list(video.media_submissions.all())
     payment_requests = list(video.portal_payment_requests.all())
@@ -387,6 +373,7 @@ def decorate_client_video(video):
     ]
 
     actions = []
+    action_copy = CLIENT_ACTION_LABELS[language]
     if pending_versions:
         count = len(pending_versions)
         actions.append(
@@ -394,11 +381,9 @@ def decorate_client_video(video):
                 "key": "review",
                 "tone": "review",
                 "icon": "fa-circle-check",
-                "label": (
-                    "1 version à valider"
-                    if count == 1
-                    else f"{count} versions à valider"
-                ),
+                "label": action_copy[
+                    "review_one" if count == 1 else "review_many"
+                ].format(count=count),
             }
         )
     if (
@@ -410,7 +395,7 @@ def decorate_client_video(video):
                 "key": "media",
                 "tone": "media",
                 "icon": "fa-cloud-arrow-up",
-                "label": "Matchs ou éléments à transmettre",
+                "label": action_copy["media"],
             }
         )
     if video.payment_snapshot.balance > 0 and (
@@ -422,7 +407,7 @@ def decorate_client_video(video):
                 "key": "payment",
                 "tone": "payment",
                 "icon": "fa-wallet",
-                "label": "Règlement demandé",
+                "label": action_copy["payment"],
             }
         )
     if video.production_stage == VideoWorkflow.Stage.BLOCKED:
@@ -431,7 +416,7 @@ def decorate_client_video(video):
                 "key": "contact",
                 "tone": "warning",
                 "icon": "fa-message",
-                "label": "Contacter MS Football",
+                "label": action_copy["contact"],
             }
         )
 
@@ -589,6 +574,34 @@ def generate_temporary_password():
     return f"Mf!{get_random_string(13, allowed_chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789')}"
 
 
+def sync_portal_profile_performance_language(profile, player=None):
+    """Keep a direct player's future reports aligned with their portal language.
+
+    Only the additive Performance subscription is updated.  The legacy Player
+    record and all previously collected performance data remain untouched.
+    """
+    if profile.account_type != PortalProfile.AccountType.PLAYER:
+        return 0
+    if player is None:
+        access = (
+            profile.user.portal_player_accesses.filter(
+                role=PlayerAccess.Role.PLAYER,
+                is_active=True,
+            )
+            .order_by("created_at")
+            .first()
+        )
+        player = access.player if access else None
+    if player is None:
+        return 0
+
+    from sportsbase_data.models import SportsBaseSubscription
+
+    return SportsBaseSubscription.objects.filter(player=player).exclude(
+        report_language=profile.preferred_language
+    ).update(report_language=profile.preferred_language, updated_at=timezone.now())
+
+
 @transaction.atomic
 def create_portal_account(cleaned_data, *, created_by, initial_password=None):
     user = User(
@@ -639,6 +652,30 @@ def create_portal_account(cleaned_data, *, created_by, initial_password=None):
                     "added_by": created_by,
                 },
             )
+    sync_portal_profile_performance_language(profile, player=player)
+    return profile
+
+
+@transaction.atomic
+def update_portal_account(profile, cleaned_data):
+    """Update portal-only identity and language; never edit a linked Player."""
+    profile.display_name = cleaned_data["display_name"]
+    profile.whatsapp_number = cleaned_data.get("whatsapp_number", "")
+    profile.preferred_language = normalize_portal_language(
+        cleaned_data.get("preferred_language")
+    )
+    profile.save(
+        update_fields=(
+            "display_name",
+            "whatsapp_number",
+            "preferred_language",
+            "updated_at",
+        )
+    )
+    profile.user.email = cleaned_data["email"]
+    profile.user.first_name = profile.display_name[:150]
+    profile.user.save(update_fields=("email", "first_name"))
+    sync_portal_profile_performance_language(profile)
     return profile
 
 

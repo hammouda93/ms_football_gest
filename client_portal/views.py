@@ -31,6 +31,7 @@ from .forms import (
     OrganizationForm,
     OrganizationPlayerForm,
     PaymentRequestForm,
+    PortalAccountEditForm,
     PortalAccountForm,
     PortalLoginForm,
     ProductionVideoStatusForm,
@@ -70,8 +71,10 @@ from .services import (
     provision_portal_account,
     production_brief,
     production_queryset_for,
+    update_portal_account,
     update_workflow,
 )
+from .portal_i18n import get_portal_copy, normalize_portal_language
 
 
 WHATSAPP_ACTIONS = (
@@ -82,6 +85,17 @@ WHATSAPP_ACTIONS = (
     ("balance", "Demander le solde"),
     ("delivery", "Confirmer la livraison"),
 )
+
+
+def _portal_language(request):
+    profile = getattr(request, "portal_profile", None)
+    return normalize_portal_language(
+        getattr(profile, "preferred_language", "fr")
+    )
+
+
+def _portal_text(request, key):
+    return get_portal_copy(_portal_language(request))[key]
 
 
 def _portal_user_from_login_data(request):
@@ -133,11 +147,17 @@ def portal_logout(request):
 @never_cache
 @portal_required
 def portal_password_change(request):
+    language = _portal_language(request)
+    copy = get_portal_copy(language)
     form = PasswordChangeForm(request.user, request.POST or None)
+    form.fields["old_password"].label = copy["current_password"]
+    form.fields["new_password1"].label = copy["new_password"]
+    form.fields["new_password1"].help_text = copy["password_rules"]
+    form.fields["new_password2"].label = copy["confirm_password"]
     if request.method == "POST" and form.is_valid():
         user = form.save()
         update_session_auth_hash(request, user)
-        messages.success(request, "Votre mot de passe a été modifié.")
+        messages.success(request, get_portal_copy(language)["password_changed"])
         return redirect("portal:dashboard")
     return render(
         request,
@@ -660,7 +680,12 @@ def _account_form_context(form):
         "form": form,
         "player_options": list(
             Player.objects.order_by("name", "club").values(
-                "id", "name", "club", "email", "whatsapp_number"
+                "id",
+                "name",
+                "club",
+                "email",
+                "whatsapp_number",
+                "sportsbase_subscription__report_language",
             )
         ),
         "organization_options": list(
@@ -730,6 +755,35 @@ def portal_account_create(request):
         request,
         "client_portal/account_form.html",
         _account_form_context(form),
+    )
+
+
+@portal_admin_required
+def portal_account_edit(request, profile_id):
+    profile = get_object_or_404(
+        PortalProfile.objects.select_related("user"),
+        pk=profile_id,
+    )
+    linked_player = _account_player(profile)
+    form = PortalAccountEditForm(
+        request.POST or None,
+        profile=profile,
+    )
+    if request.method == "POST" and form.is_valid():
+        update_portal_account(profile, form.cleaned_data)
+        messages.success(
+            request,
+            "Le compte et sa langue ont été mis à jour sans modifier la fiche joueur.",
+        )
+        return redirect("portal:management")
+    return render(
+        request,
+        "client_portal/account_edit_form.html",
+        {
+            "form": form,
+            "profile": profile,
+            "linked_player": linked_player,
+        },
     )
 
 
@@ -820,9 +874,10 @@ def agent_player_request_review(request, request_id):
 @never_cache
 @portal_required
 def portal_dashboard(request):
+    language = _portal_language(request)
     players = list(accessible_players_for(request.user).order_by("name", "club"))
     videos = [
-        decorate_client_video(video)
+        decorate_client_video(video, language)
         for video in accessible_videos_for(request.user).order_by("-video_creation_date")
     ]
     current_videos = [
@@ -840,7 +895,10 @@ def portal_dashboard(request):
         memberships__is_active=True,
         is_active=True,
     ).distinct()
-    agent_request_form = AgentPlayerRequestForm(user=request.user)
+    agent_request_form = AgentPlayerRequestForm(
+        user=request.user,
+        language=language,
+    )
     player_videos = defaultdict(list)
     for video in videos:
         player_videos[video.player_id].append(video)
@@ -905,9 +963,10 @@ def portal_dashboard(request):
 @never_cache
 @portal_required
 def portal_player_detail(request, player_id):
+    language = _portal_language(request)
     player = get_object_or_404(accessible_players_for(request.user), pk=player_id)
     videos = [
-        decorate_client_video(video)
+        decorate_client_video(video, language)
         for video in accessible_videos_for(request.user)
         .filter(player=player)
         .order_by("-video_creation_date")
@@ -941,8 +1000,10 @@ def portal_player_detail(request, player_id):
 @never_cache
 @portal_required
 def portal_video_detail(request, video_id):
+    language = _portal_language(request)
     video = decorate_client_video(
-        get_object_or_404(accessible_videos_for(request.user), pk=video_id)
+        get_object_or_404(accessible_videos_for(request.user), pk=video_id),
+        language,
     )
     versions = video.portal_versions.prefetch_related("revision_requests")
     activities = list(
@@ -950,14 +1011,14 @@ def portal_video_detail(request, video_id):
             visibility=VideoActivity.Visibility.CLIENT
         ).select_related("created_by")[:30]
     )
-    timeline_events = client_video_timeline(video, activities)
+    timeline_events = client_video_timeline(video, activities, language)
     return render(
         request,
         "client_portal/video_detail.html",
         {
             "video": video,
-            "media_form": MediaSubmissionForm(),
-            "revision_form": RevisionRequestForm(),
+            "media_form": MediaSubmissionForm(language=language),
+            "revision_form": RevisionRequestForm(language=language),
             "versions": versions,
             "media_submissions": video.media_submissions.select_related("submitted_by"),
             "activities": activities,
@@ -976,7 +1037,7 @@ def portal_video_detail(request, video_id):
 @require_POST
 def portal_media_submit(request, video_id):
     video = get_object_or_404(editable_videos_for(request.user), pk=video_id)
-    form = MediaSubmissionForm(request.POST)
+    form = MediaSubmissionForm(request.POST, language=_portal_language(request))
     if form.is_valid():
         submission = form.save(commit=False)
         submission.video = video
@@ -989,9 +1050,9 @@ def portal_media_submit(request, video_id):
             message=f"Nouvel élément transmis : {submission.title}.",
             created_by=request.user,
         )
-        messages.success(request, "Le lien a été transmis à l’équipe MS Football.")
+        messages.success(request, _portal_text(request, "media_sent"))
     else:
-        messages.error(request, "Vérifiez le lien et les informations saisies.")
+        messages.error(request, _portal_text(request, "media_invalid"))
     return redirect("portal:video", video_id=video.pk)
 
 
@@ -1003,7 +1064,7 @@ def portal_revision_request(request, version_id):
         pk=version_id,
         video__in=editable_videos_for(request.user),
     )
-    form = RevisionRequestForm(request.POST)
+    form = RevisionRequestForm(request.POST, language=_portal_language(request))
     if form.is_valid():
         revision = RevisionRequest.objects.create(
             version=version,
@@ -1037,9 +1098,9 @@ def portal_revision_request(request, version_id):
             metadata={"revision_id": revision.pk},
             created_by=request.user,
         )
-        messages.success(request, "La correction a été envoyée à l’équipe.")
+        messages.success(request, _portal_text(request, "revision_sent"))
     else:
-        messages.error(request, "La correction n’a pas pu être enregistrée.")
+        messages.error(request, _portal_text(request, "revision_invalid"))
     return redirect("portal:video", video_id=version.video_id)
 
 
@@ -1084,7 +1145,7 @@ def portal_version_approve(request, version_id):
             message=f"Version {version.version_number} approuvée.",
             created_by=request.user,
         )
-    messages.success(request, "Merci, la version a été approuvée.")
+    messages.success(request, _portal_text(request, "version_approved"))
     return redirect("portal:video", video_id=version.video_id)
 
 
@@ -1099,7 +1160,7 @@ def portal_payment_open(request, payment_request_id):
     if not payment_request.payment_url:
         messages.info(
             request,
-            "Le lien de paiement n’est pas encore disponible. Contactez MS Football.",
+            _portal_text(request, "payment_unavailable"),
         )
         return redirect("portal:video", video_id=payment_request.video_id)
     if payment_request.status == PaymentRequest.Status.PENDING:
@@ -1111,17 +1172,21 @@ def portal_payment_open(request, payment_request_id):
 @portal_required
 @require_POST
 def portal_agent_player_request(request):
-    form = AgentPlayerRequestForm(request.POST, user=request.user)
+    form = AgentPlayerRequestForm(
+        request.POST,
+        user=request.user,
+        language=_portal_language(request),
+    )
     if form.is_valid():
         player_request = form.save(commit=False)
         player_request.requested_by = request.user
         player_request.save()
         messages.success(
             request,
-            "La demande a été transmise. Aucun joueur n’est créé automatiquement.",
+            _portal_text(request, "player_request_sent"),
         )
     else:
-        messages.error(request, "Vérifiez les informations de la demande.")
+        messages.error(request, _portal_text(request, "player_request_invalid"))
     return redirect("portal:dashboard")
 
 

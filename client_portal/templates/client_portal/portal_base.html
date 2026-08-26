@@ -1,6 +1,6 @@
-{% load static %}
+{% load static portal_extras %}
 <!doctype html>
-<html lang="fr">
+<html lang="{{ portal_language }}" dir="{% if portal_language == 'ar' %}rtl{% else %}ltr{% endif %}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -17,38 +17,38 @@
     <link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">
     <link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">
     {% block portal_extra_css %}{% endblock %}
-    <title>{% block title %}Espace MS Football{% endblock %}</title>
+    <title>{% block title %}{{ pc.portal_title }}{% endblock %}</title>
 </head>
 <body class="portal-body {% block portal_body_class %}{% endblock %}">
-    <a class="portal-skip-link" href="#portal-main">Aller au contenu</a>
+    <a class="portal-skip-link" href="#portal-main">{{ pc.skip_content }}</a>
 
     <header class="portal-topbar">
         <a class="portal-brand" href="{% if request.user.is_authenticated %}{% url 'portal:dashboard' %}{% else %}{% url 'portal:login' %}{% endif %}">
             <img src="{% static 'client_portal/ms-football-app.svg' %}" alt="">
-            <span><strong>MS Football</strong><small>Espace client sécurisé</small></span>
+            <span><strong>MS Football</strong><small>{{ pc.secure_space }}</small></span>
         </a>
 
         {% if request.user.is_authenticated %}
             <details class="portal-account-menu">
-                <summary aria-label="Ouvrir le menu du compte">
+                <summary aria-label="{{ pc.open_account_menu }}">
                     <span class="portal-account-avatar">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
                     <span class="portal-account-copy">
                         <strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong>
-                        <small>Mon compte</small>
+                        <small>{{ pc.my_account }}</small>
                     </span>
                     <span class="portal-account-chevron" aria-hidden="true">⌄</span>
                 </summary>
                 <div class="portal-account-dropdown">
                     <div class="portal-account-summary">
                         <span class="portal-account-avatar large">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
-                        <div><strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:"Compte MS Football" }}</small></div>
+                        <div><strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:pc.ms_account }}</small></div>
                     </div>
-                    <a href="{% url 'portal:dashboard' %}">Mon espace</a>
-                    <a href="{% url 'portal:password_change' %}">Changer mon mot de passe</a>
-                    <a href="{% url 'user_login' %}">Connexion équipe MS Football</a>
+                    <a href="{% url 'portal:dashboard' %}">{{ pc.my_space }}</a>
+                    <a href="{% url 'portal:password_change' %}">{{ pc.change_password }}</a>
+                    <a href="{% url 'user_login' %}">{{ pc.team_login }}</a>
                     <form method="post" action="{% url 'portal:logout' %}">
                         {% csrf_token %}
-                        <button type="submit">Déconnexion</button>
+                        <button type="submit">{{ pc.logout }}</button>
                     </form>
                 </div>
             </details>
@@ -64,14 +64,14 @@
         {% block portal_content %}{% endblock %}
     </main>
 
-    <footer class="portal-footer">MS Football · Suivi sécurisé de votre production</footer>
+    <footer class="portal-footer">MS Football · {{ pc.secure_tracking }}</footer>
 
     {% if request.user.is_authenticated %}
         <nav class="portal-mobile-nav" aria-label="Navigation mobile">
-            <a href="{% url 'portal:dashboard' %}"><span aria-hidden="true">⌂</span><small>Accueil</small></a>
-            <a href="{% url 'portal:dashboard' %}#videos"><span aria-hidden="true">▶</span><small>Vidéos</small></a>
-            <a href="{% url 'performance:portal_overview' %}"><span aria-hidden="true">⌁</span><small>Performance</small></a>
-            <a href="{% url 'portal:dashboard' %}#players"><span aria-hidden="true">◎</span><small>Joueurs</small></a>
+            <a href="{% url 'portal:dashboard' %}"><span aria-hidden="true">⌂</span><small>{{ pc.home }}</small></a>
+            <a href="{% url 'portal:dashboard' %}#videos"><span aria-hidden="true">▶</span><small>{{ pc.videos }}</small></a>
+            <a href="{% url 'performance:portal_overview' %}"><span aria-hidden="true">⌁</span><small>{{ pc.performance }}</small></a>
+            <a href="{% url 'portal:dashboard' %}#players"><span aria-hidden="true">◎</span><small>{{ pc.players }}</small></a>
         </nav>
     {% endif %}
 

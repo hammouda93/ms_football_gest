@@ -80,9 +80,46 @@
     </div>
 </details>
 
-<section class="performance-content-grid stats-grid">
-    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.season_total }}</span><h2>{{ copy.statistics }}</h2></div><span class="performance-count">{{ snapshot.season_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.season_statistics.items %}<div><span>{{ name|stat_label_for:portal_language }}</span><strong>{{ value|stat_value }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>{{ copy.no_season_stats }}</span></div>{% endfor %}</div></article>
-    <article class="performance-panel"><div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.performance_pace }}</span><h2>{{ copy.match_averages }}</h2></div><span class="performance-count">{{ snapshot.average_statistics|length }}</span></div><div class="performance-stat-list">{% for name,value in snapshot.average_statistics.items %}<div><span>{{ name|stat_label_for:portal_language }}</span><strong>{{ value|stat_value }}</strong></div>{% empty %}<div class="performance-panel-empty"><span>{{ copy.no_averages }}</span></div>{% endfor %}</div></article>
+<section class="performance-panel performance-match-analysis performance-season-analysis">
+    <div class="performance-panel-heading">
+        <div><span class="eyebrow">{{ copy.season_analysis }} · {{ subscription.season }}</span><h2>{{ copy.season_volume_efficiency }}</h2><p>{{ copy.season_efficiency_help }}</p></div>
+        <i class="fas fa-chart-simple"></i>
+    </div>
+    {% if season_analysis_pairs %}
+    <div class="performance-paired-grid">
+        {% for item in season_analysis_pairs %}
+        <article class="performance-analysis-card{% if not item.has_rate %} is-unrated{% endif %}" style="--analysis-progress: {{ item.chart_percent }}%;">
+            <header>
+                <span class="performance-analysis-icon"><i class="fas {{ item.icon }}"></i></span>
+                <div><small>{{ item.name|stat_label_for:portal_language }}</small><strong>{{ item.value|stat_value }}</strong></div>
+            </header>
+            <div class="performance-analysis-visual">
+                <div class="performance-analysis-ring" role="img" aria-label="{{ item.rate_name|stat_label_for:portal_language }} : {{ item.rate_value|stat_value }}"><span>{{ item.rate_value|stat_value }}</span></div>
+                <div class="performance-analysis-rate">
+                    <span>{{ item.rate_name|stat_label_for:portal_language }}</span>
+                    <div class="performance-analysis-track" aria-hidden="true"><i></i></div>
+                    {% if item.average_value != None %}<em class="performance-analysis-average"><b>{{ item.average_value|stat_value }}</b> {{ copy.per_match }}</em>{% endif %}
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="performance-panel-empty compact"><i class="fas fa-chart-column"></i><span>{{ copy.no_season_stats }}</span></div>
+    {% endif %}
+
+    {% if season_analysis_other %}
+    <div class="performance-secondary-analysis">
+        <h3>{{ copy.other_season_markers }}</h3>
+        <div class="performance-stat-list compact">{% for item in season_analysis_other %}<div><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.value|stat_value }}</strong></div>{% endfor %}</div>
+    </div>
+    {% endif %}
+    {% if season_average_other %}
+    <div class="performance-secondary-analysis season-average-list">
+        <h3>{{ copy.other_averages }}</h3>
+        <div class="performance-stat-list compact">{% for item in season_average_other %}<div><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.value|stat_value }}</strong></div>{% endfor %}</div>
+    </div>
+    {% endif %}
 </section>
 {% if snapshot.season_match_rows %}
 <details class="performance-panel performance-season-table">

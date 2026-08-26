@@ -1,44 +1,44 @@
 {% extends "client_portal/portal_base.html" %}
 {% load portal_extras %}
 
-{% block title %}Vidéo {{ video.player.name }}{% endblock %}
+{% block title %}{{ pc.videos }} · {{ video.player.name }}{% endblock %}
 
 {% block portal_content %}
-<nav class="portal-breadcrumb" aria-label="Fil d’Ariane"><a href="{% url 'portal:dashboard' %}">Mon espace</a><span>›</span><a href="{% url 'portal:player' video.player.pk %}">{{ video.player.name }}</a><span>›</span><span>{{ video.season }}</span></nav>
+<nav class="portal-breadcrumb" aria-label="{{ pc.breadcrumb }}"><a href="{% url 'portal:dashboard' %}">{{ pc.my_space }}</a><span>›</span><a href="{% url 'portal:player' video.player.pk %}">{{ video.player.name }}</a><span>›</span><span>{{ video.season }}</span></nav>
 
 <section class="portal-video-hero">
     <div>
-        <span class="eyebrow">Commande · {{ video.season }}</span>
+        <span class="eyebrow">{{ pc.order }} · {{ video.season }}</span>
         <h1>{{ video.player.name }}</h1>
-        <p>{{ video.club|default:video.player.club }} · Livraison prévue le {{ video.deadline|date:"d/m/Y" }}</p>
+        <p>{{ video.club|default:video.player.club }} · {{ pc.delivery_due }} {{ video.deadline|date:"d/m/Y" }}</p>
     </div>
     <span class="stage-pill stage-{{ video.production_stage }}">{{ video.production_stage_label }}</span>
-    <div class="portal-progress large" aria-label="Progression {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
+    <div class="portal-progress large" aria-label="{{ pc.progress }} {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
     <div class="progress-caption"><strong>{{ video.production_progress }}%</strong><span>{{ video.production_next_action }}</span></div>
 </section>
 
-<section class="portal-metrics three portal-finance-summary" aria-label="Résumé financier">
+<section class="portal-metrics three portal-finance-summary" aria-label="{{ pc.financial_summary }}">
     <article class="portal-finance-card finance-total">
         <i class="portal-finance-icon fas fa-receipt" aria-hidden="true"></i>
-        <div><span class="finance-label">Montant total</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong><small>Commande complète</small></div>
+        <div><span class="finance-label">{{ pc.total_amount }}</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong><small>{{ pc.full_order }}</small></div>
     </article>
     <article class="portal-finance-card finance-paid">
         <i class="portal-finance-icon fas fa-circle-check" aria-hidden="true"></i>
-        <div><span class="finance-label">Déjà payé</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong><small>Paiements reçus</small></div>
+        <div><span class="finance-label">{{ pc.already_paid }}</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong><small>{{ pc.payments_received }}</small></div>
     </article>
     <article class="portal-finance-card finance-balance {% if video.payment_snapshot.balance %}needs-attention{% else %}is-settled{% endif %}">
         <i class="portal-finance-icon fas {% if video.payment_snapshot.balance %}fa-hourglass-half{% else %}fa-check-double{% endif %}" aria-hidden="true"></i>
-        <div><span class="finance-label">Solde</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong><small>{% if video.payment_snapshot.balance %}Reste à régler{% else %}Commande réglée{% endif %}</small></div>
+        <div><span class="finance-label">{{ pc.order_balance }}</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong><small>{% if video.payment_snapshot.balance %}{{ pc.remaining_due }}{% else %}{{ pc.order_paid }}{% endif %}</small></div>
     </article>
 </section>
 
 {% if payment_requests %}
     <section class="portal-section">
-        <div class="portal-section-heading"><div><span class="eyebrow">Règlement</span><h2>Paiements demandés</h2><p>Ouvrez uniquement les demandes créées par MS Football.</p></div><span class="portal-count">{{ payment_requests|length }}</span></div>
+        <div class="portal-section-heading"><div><span class="eyebrow">{{ pc.payment }}</span><h2>{{ pc.requested_payments }}</h2><p>{{ pc.requested_payments_help }}</p></div><span class="portal-count">{{ payment_requests|length }}</span></div>
         {% for payment in payment_requests %}
             <article class="portal-payment-card">
-                <div><strong>{{ payment.label }}</strong><span>{{ payment.amount|floatformat:2 }}{% if payment.due_date %} · avant le {{ payment.due_date|date:"d/m/Y" }}{% endif %}</span></div>
-                <form method="post" action="{% url 'portal:payment_open' payment.pk %}">{% csrf_token %}<button class="portal-button primary small" type="submit">Ouvrir le paiement</button></form>
+                <div><strong>{{ payment.label }}</strong><span>{{ payment.amount|floatformat:2 }}{% if payment.due_date %} · {{ pc.before_date }} {{ payment.due_date|date:"d/m/Y" }}{% endif %}</span></div>
+                <form method="post" action="{% url 'portal:payment_open' payment.pk %}">{% csrf_token %}<button class="portal-button primary small" type="submit">{{ pc.open_payment }}</button></form>
             </article>
         {% endfor %}
     </section>
@@ -48,7 +48,7 @@
     {% with embed_url=video.video_link|youtube_embed_url %}
         <section class="portal-section portal-final-video-section">
             <div class="portal-section-heading">
-                <div><span class="eyebrow">Livraison</span><h2>Votre vidéo finale</h2><p>Regardez directement la vidéo livrée depuis votre espace.</p></div>
+                <div><span class="eyebrow">{{ pc.delivery }}</span><h2>{{ pc.final_video }}</h2><p>{{ pc.final_video_help }}</p></div>
                 <span class="portal-count"><i class="fas fa-check" aria-hidden="true"></i></span>
             </div>
             {% if embed_url %}
@@ -58,50 +58,50 @@
             {% endif %}
             <div class="final-delivery">
                 <span aria-hidden="true"><i class="fas fa-circle-check"></i></span>
-                <div><h2>Votre vidéo finale est disponible</h2><p>{% if embed_url %}Lancez la lecture ci-dessus ou ouvrez-la dans YouTube.{% else %}Le lien officiel de livraison est maintenant accessible.{% endif %}</p></div>
-                <a class="portal-button delivery-link" href="{{ video.video_link }}" target="_blank" rel="noopener"><i class="{% if embed_url %}fa-brands fa-youtube{% else %}fas fa-arrow-up-right-from-square{% endif %}" aria-hidden="true"></i>{% if embed_url %}Ouvrir sur YouTube{% else %}Ouvrir la vidéo{% endif %}</a>
+                <div><h2>{{ pc.final_video_available }}</h2><p>{% if embed_url %}{{ pc.play_or_youtube }}{% else %}{{ pc.official_link_available }}{% endif %}</p></div>
+                <a class="portal-button delivery-link" href="{{ video.video_link }}" target="_blank" rel="noopener"><i class="{% if embed_url %}fa-brands fa-youtube{% else %}fas fa-arrow-up-right-from-square{% endif %}" aria-hidden="true"></i>{% if embed_url %}{{ pc.open_youtube }}{% else %}{{ pc.open_video }}{% endif %}</a>
             </div>
         </section>
     {% endwith %}
 {% endif %}
 
 <section class="portal-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Vérification</span><h2>Versions de la vidéo</h2><p>Regardez, approuvez ou indiquez une correction précise.</p></div><span class="portal-count">{{ versions|length }}</span></div>
+    <div class="portal-section-heading"><div><span class="eyebrow">{{ pc.verification }}</span><h2>{{ pc.video_versions }}</h2><p>{{ pc.versions_help }}</p></div><span class="portal-count">{{ versions|length }}</span></div>
     <div class="portal-version-list">
         {% for version in versions %}
             <article class="portal-version-card">
                 <div class="portal-version-heading">
-                    <div><strong>Version {{ version.version_number }}</strong><span>{{ version.title }}</span></div>
-                    <span class="stage-pill status-{{ version.status }}">{{ version.get_status_display }}</span>
+                    <div><strong>{{ pc.version }} {{ version.version_number }}</strong><span>{{ version.title }}</span></div>
+                    <span class="stage-pill status-{{ version.status }}">{{ version.status|portal_version_status_for:request.portal_profile.preferred_language }}</span>
                 </div>
                 {% if version.notes %}<p>{{ version.notes }}</p>{% endif %}
                 <div class="portal-version-actions">
-                    <a class="portal-button secondary" href="{{ version.preview_url }}" target="_blank" rel="noopener">Regarder la version ↗</a>
+                    <a class="portal-button secondary" href="{{ version.preview_url }}" target="_blank" rel="noopener">{{ pc.watch_version }} ↗</a>
                     {% if can_edit_video and version.status != 'approved' %}
-                        <form method="post" action="{% url 'portal:version_approve' version.pk %}" onsubmit="return confirm('Confirmer définitivement cette version ?');">
-                            {% csrf_token %}<button class="portal-button approve" type="submit">J’approuve cette version</button>
+                        <form method="post" action="{% url 'portal:version_approve' version.pk %}" onsubmit="return confirm('{{ pc.confirm_version|escapejs }}');">
+                            {% csrf_token %}<button class="portal-button approve" type="submit">{{ pc.approve_version }}</button>
                         </form>
                     {% endif %}
                 </div>
                 {% if can_edit_video and version.status != 'approved' %}
                     <details class="revision-form">
-                        <summary>Demander une correction</summary>
+                        <summary>{{ pc.request_correction }}</summary>
                         <form method="post" action="{% url 'portal:revision_request' version.pk %}" class="portal-form">
                             {% csrf_token %}{{ revision_form.as_p }}
-                            <button class="portal-button primary" type="submit">Envoyer la correction</button>
+                            <button class="portal-button primary" type="submit">{{ pc.send_correction }}</button>
                         </form>
                     </details>
                 {% endif %}
                 {% for revision in version.revision_requests.all %}
                     <div class="portal-revision">
-                        <strong>{% if revision.timecode_seconds != None %}{{ revision.timecode_seconds|timecode }} · {% endif %}{{ revision.get_status_display }}</strong>
+                        <strong>{% if revision.timecode_seconds != None %}{{ revision.timecode_seconds|timecode }} · {% endif %}{{ revision.status|portal_revision_status_for:request.portal_profile.preferred_language }}</strong>
                         <p>{{ revision.comment }}</p>
-                        {% if revision.staff_response %}<small>Réponse MS Football : {{ revision.staff_response }}</small>{% endif %}
+                        {% if revision.staff_response %}<small>{{ pc.staff_answer }} : {{ revision.staff_response }}</small>{% endif %}
                     </div>
                 {% endfor %}
             </article>
         {% empty %}
-            <div class="portal-empty"><strong>Aucune version pour le moment</strong><span>La première prévisualisation apparaîtra ici dès qu’elle sera prête.</span></div>
+            <div class="portal-empty"><strong>{{ pc.no_version }}</strong><span>{{ pc.first_preview }}</span></div>
         {% endfor %}
     </div>
 </section>
@@ -109,25 +109,25 @@
 {% if can_edit_video %}
     <section class="portal-section split-section">
         <div>
-            <div class="portal-section-heading"><div><span class="eyebrow">Sources</span><h2>Envoyer un match ou un élément</h2><p>Ajoutez un lien lisible par l’équipe de montage.</p></div></div>
+            <div class="portal-section-heading"><div><span class="eyebrow">{{ pc.sources }}</span><h2>{{ pc.send_match }}</h2><p>{{ pc.send_match_help }}</p></div></div>
             <form method="post" action="{% url 'portal:media_submit' video.pk %}" class="portal-form">
                 {% csrf_token %}{{ media_form.as_p }}
-                <button class="portal-button primary" type="submit">Transmettre à l’équipe</button>
+                <button class="portal-button primary" type="submit">{{ pc.send_to_team }}</button>
             </form>
         </div>
         <div>
-            <div class="portal-section-heading"><div><h2>Déjà transmis</h2></div><span class="portal-count">{{ media_submissions|length }}</span></div>
+            <div class="portal-section-heading"><div><h2>{{ pc.already_sent }}</h2></div><span class="portal-count">{{ media_submissions|length }}</span></div>
             {% for item in media_submissions %}
-                <a class="portal-media-row" href="{{ item.source_url }}" target="_blank" rel="noopener"><div><strong>{{ item.title }}</strong><span>{{ item.get_category_display }} · {{ item.created_at|date:"d/m/Y" }}</span></div><b>↗</b></a>
+                <a class="portal-media-row" href="{{ item.source_url }}" target="_blank" rel="noopener"><div><strong>{{ item.title }}</strong><span>{{ item.category|portal_media_category_for:request.portal_profile.preferred_language }} · {{ item.created_at|date:"d/m/Y" }}</span></div><b>↗</b></a>
             {% empty %}
-                <div class="portal-empty"><strong>Aucun élément transmis</strong><span>Les liens envoyés apparaîtront ici.</span></div>
+                <div class="portal-empty"><strong>{{ pc.no_item_sent }}</strong><span>{{ pc.sent_links_appear }}</span></div>
             {% endfor %}
         </div>
     </section>
 {% endif %}
 
 <section class="portal-section">
-    <div class="portal-section-heading"><div><span class="eyebrow">Chronologie</span><h2>Suivi de la commande</h2><p>Les changements d’état, paiements et mises à jour de la production.</p></div><span class="portal-count">{{ timeline_events|length }}</span></div>
+    <div class="portal-section-heading"><div><span class="eyebrow">{{ pc.timeline }}</span><h2>{{ pc.order_tracking }}</h2><p>{{ pc.timeline_help }}</p></div><span class="portal-count">{{ timeline_events|length }}</span></div>
     <div class="portal-timeline">
         {% for event in timeline_events %}
             <div class="portal-timeline-event timeline-{{ event.kind }} timeline-{{ event.tone }}">
@@ -135,7 +135,7 @@
                 <article><strong>{{ event.title }}</strong><p>{{ event.message }}</p><small>{{ event.occurred_at|date:"d/m/Y" }}{% if event.has_time %} · {{ event.occurred_at|date:"H:i" }}{% endif %}</small></article>
             </div>
         {% empty %}
-            <div class="portal-empty portal-timeline-empty"><strong>Aucune mise à jour pour le moment</strong><span>Les changements d’état et paiements apparaîtront ici.</span></div>
+            <div class="portal-empty portal-timeline-empty"><strong>{{ pc.no_update }}</strong><span>{{ pc.updates_appear }}</span></div>
         {% endfor %}
     </div>
 </section>

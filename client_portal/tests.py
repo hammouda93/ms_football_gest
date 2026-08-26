@@ -617,6 +617,66 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
             snapshot,
         )
 
+    def test_account_form_exposes_player_contacts_for_live_prefill(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("portal:account_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.player.email)
+        self.assertContains(response, self.player.whatsapp_number)
+        self.assertContains(response, "select2:select")
+        self.assertContains(response, "Langue de l’espace client et des rapports")
+
+    def test_admin_edits_portal_language_without_editing_linked_player(self):
+        from sportsbase_data.models import SportsBaseSubscription
+
+        subscription = SportsBaseSubscription.objects.create(
+            player=self.player,
+            season="2025/2026",
+            starts_on=timezone.localdate(),
+            report_language=SportsBaseSubscription.ReportLanguage.FRENCH,
+            created_by=self.admin,
+        )
+        profile = self.player_user.portal_profile
+        player_snapshot = (
+            self.player.name,
+            self.player.club,
+            self.player.email,
+            self.player.whatsapp_number,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("portal:account_edit", args=(profile.pk,)),
+            {
+                "display_name": "Alpha Client",
+                "email": "alpha-portal@example.com",
+                "whatsapp_number": "+21620999000",
+                "preferred_language": "en",
+            },
+        )
+        self.assertRedirects(response, reverse("portal:management"))
+        profile.refresh_from_db()
+        profile.user.refresh_from_db()
+        subscription.refresh_from_db()
+        self.player.refresh_from_db()
+        self.assertEqual(profile.preferred_language, "en")
+        self.assertEqual(profile.user.email, "alpha-portal@example.com")
+        self.assertEqual(subscription.report_language, "en")
+        self.assertEqual(
+            (
+                self.player.name,
+                self.player.club,
+                self.player.email,
+                self.player.whatsapp_number,
+            ),
+            player_snapshot,
+        )
+
+        self.client.force_login(self.player_user)
+        dashboard = self.client.get(reverse("portal:dashboard"))
+        self.assertContains(dashboard, "Your dashboard")
+        self.assertContains(dashboard, "Video tracking")
+        self.assertNotContains(dashboard, "Votre tableau de bord")
+
     def test_account_creation_uses_persistent_credentials_and_email(self):
         self.client.force_login(self.admin)
         response = self.client.post(
@@ -887,7 +947,7 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.assertContains(response, "Déjà payé")
         self.assertContains(response, "Solde")
         self.assertContains(response, "Joueurs suivis")
-        self.assertContains(response, "commande active")
+        self.assertContains(response, "commandes actives")
 
     def test_client_cannot_submit_media_for_hidden_video(self):
         self.client.force_login(self.portal_user)

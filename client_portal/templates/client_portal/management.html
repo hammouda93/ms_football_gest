@@ -78,12 +78,13 @@
                 <div class="panel-heading"><div><h2>Comptes portail</h2><small>Liens sécurisés réutilisables et révocables</small></div><span class="portal-count">{{ profiles|length }}</span></div>
                 {% for profile in profiles %}
                     <article class="account-access-card portal-filter-item {% if not profile.access_enabled %}inactive{% endif %}" data-filter-text="{{ profile.display_name }} {{ profile.get_account_type_display }} {{ profile.user.email }}">
-                        <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }}</small></div><span class="account-state {% if profile.access_enabled %}active{% else %}inactive{% endif %}">{% if profile.access_enabled %}Actif{% else %}Désactivé{% endif %}</span></div>
+                        <div class="account-access-heading"><span class="portal-account-avatar">{{ profile.display_name|first|upper }}</span><div><strong>{{ profile.display_name }}</strong><small>{{ profile.get_account_type_display }} · {{ profile.get_preferred_language_display }}</small></div><span class="account-state {% if profile.access_enabled %}active{% else %}inactive{% endif %}">{% if profile.access_enabled %}Actif{% else %}Désactivé{% endif %}</span></div>
                         <p>{{ profile.user.email|default:"Aucun e-mail renseigné" }}</p>
                         <div class="account-relations">
                             {% for access in profile.user.portal_player_accesses.all %}<span><i class="fas fa-user"></i> {{ access.player.name }}</span>{% endfor %}
                             {% for membership in profile.user.portal_memberships.all %}<span><i class="fas fa-building"></i> {{ membership.organization.name }}</span>{% endfor %}
                         </div>
+                        <a class="btn btn-sm btn-outline-secondary btn-block mb-2" href="{% url 'portal:account_edit' profile.pk %}"><i class="fas fa-pen-to-square"></i> Modifier le compte et la langue</a>
                         <form method="post" action="{% url 'portal:account_credentials' profile.pk %}">
                             {% csrf_token %}
                             <button class="btn btn-sm btn-outline-primary btn-block" type="submit" {% if not profile.access_enabled %}disabled title="Réactivez d’abord le compte"{% endif %}><i class="fas fa-link"></i> Renouveler et envoyer le lien</button>

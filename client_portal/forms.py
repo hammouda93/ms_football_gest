@@ -4,6 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from gestion_joueurs.models import Player, Video
 from prospects.services import validate_transfermarkt_profile_url
 
+from .portal_i18n import FORM_COPY, normalize_portal_language, translated_choice
 from .models import (
     AgentPlayerRequest,
     MediaSubmission,
@@ -71,8 +72,9 @@ class PortalAccountForm(forms.Form):
     email = forms.EmailField(label="E-mail")
     whatsapp_number = forms.CharField(label="WhatsApp", max_length=24, required=False)
     preferred_language = forms.ChoiceField(
-        label="Langue",
+        label="Langue de l’espace client et des rapports",
         choices=(("fr", "Français"), ("en", "English"), ("ar", "العربية")),
+        help_text="Cette langue sera appliquée à tout le portail du compte.",
     )
     player = forms.ModelChoiceField(
         label="Joueur existant",
@@ -115,6 +117,9 @@ class PortalAccountForm(forms.Form):
             is_active=True
         ).order_by("name")
         _style_fields(self)
+        self.fields["display_name"].widget.attrs["autocomplete"] = "name"
+        self.fields["email"].widget.attrs["autocomplete"] = "email"
+        self.fields["whatsapp_number"].widget.attrs["autocomplete"] = "tel"
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
@@ -155,6 +160,43 @@ class PortalAccountForm(forms.Form):
         }:
             cleaned_data["player"] = None
         return cleaned_data
+
+
+class PortalAccountEditForm(forms.Form):
+    """Edit portal identity without ever writing to the linked Player record."""
+
+    display_name = forms.CharField(label="Nom affiché", max_length=160)
+    email = forms.EmailField(label="E-mail de connexion")
+    whatsapp_number = forms.CharField(label="WhatsApp", max_length=24, required=False)
+    preferred_language = forms.ChoiceField(
+        label="Langue de l’espace client et des rapports",
+        choices=(("fr", "Français"), ("en", "English"), ("ar", "العربية")),
+        help_text="Le changement est visible dès la prochaine page chargée.",
+    )
+
+    def __init__(self, *args, profile, **kwargs):
+        self.profile = profile
+        is_bound = (bool(args) and args[0] is not None) or kwargs.get("data") is not None
+        if not is_bound and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "display_name": profile.display_name,
+                "email": profile.user.email,
+                "whatsapp_number": profile.whatsapp_number,
+                "preferred_language": profile.preferred_language,
+            }
+        super().__init__(*args, **kwargs)
+        _style_fields(self)
+        self.fields["display_name"].widget.attrs["autocomplete"] = "name"
+        self.fields["email"].widget.attrs["autocomplete"] = "email"
+        self.fields["whatsapp_number"].widget.attrs["autocomplete"] = "tel"
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if PortalProfile.objects.filter(user__email__iexact=email).exclude(
+            pk=self.profile.pk
+        ).exists():
+            raise forms.ValidationError("Un compte portail utilise déjà cet e-mail.")
+        return email
 
 
 class OrganizationPlayerForm(forms.Form):
@@ -259,6 +301,17 @@ class MediaSubmissionForm(StyledModelForm):
         fields = ("category", "title", "source_url", "notes")
         widgets = {"notes": forms.Textarea(attrs={"rows": 3})}
 
+    def __init__(self, *args, language="fr", **kwargs):
+        super().__init__(*args, **kwargs)
+        language = normalize_portal_language(language)
+        copy = FORM_COPY[language]["media"]
+        for name, label in copy.items():
+            self.fields[name].label = label
+        self.fields["category"].choices = [
+            (value, translated_choice("media", value, language))
+            for value, _label in MediaSubmission.Category.choices
+        ]
+
 
 class VideoVersionForm(StyledModelForm):
     class Meta:
@@ -279,9 +332,14 @@ class RevisionRequestForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 4}),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, language="fr", **kwargs):
+        self.language = normalize_portal_language(language)
         super().__init__(*args, **kwargs)
         _style_fields(self)
+        copy = FORM_COPY[self.language]["revision"]
+        self.fields["timecode"].label = copy["timecode"]
+        self.fields["timecode"].help_text = copy["timecode_help"]
+        self.fields["comment"].label = copy["comment"]
 
     def clean_timecode(self):
         value = self.cleaned_data.get("timecode", "").strip()
@@ -289,16 +347,22 @@ class RevisionRequestForm(forms.Form):
             return None
         parts = value.split(":")
         if len(parts) not in {2, 3} or any(not part.isdigit() for part in parts):
-            raise forms.ValidationError("Utilisez le format mm:ss ou hh:mm:ss.")
+            raise forms.ValidationError(
+                FORM_COPY[self.language]["revision"]["timecode_error"]
+            )
         numbers = [int(part) for part in parts]
         if any(number < 0 for number in numbers) or numbers[-1] >= 60:
-            raise forms.ValidationError("Le timecode n’est pas valide.")
+            raise forms.ValidationError(
+                FORM_COPY[self.language]["revision"]["timecode_invalid"]
+            )
         if len(numbers) == 2:
             minutes, seconds = numbers
             return minutes * 60 + seconds
         hours, minutes, seconds = numbers
         if minutes >= 60:
-            raise forms.ValidationError("Le timecode n’est pas valide.")
+            raise forms.ValidationError(
+                FORM_COPY[self.language]["revision"]["timecode_invalid"]
+            )
         return hours * 3600 + minutes * 60 + seconds
 
 
@@ -342,8 +406,11 @@ class AgentPlayerRequestForm(StyledModelForm):
         )
         widgets = {"notes": forms.Textarea(attrs={"rows": 3})}
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, language="fr", **kwargs):
         super().__init__(*args, **kwargs)
+        language = normalize_portal_language(language)
+        for name, label in FORM_COPY[language]["agent"].items():
+            self.fields[name].label = label
         organizations = Organization.objects.none()
         if user and user.is_authenticated:
             organizations = Organization.objects.filter(

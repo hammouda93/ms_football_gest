@@ -115,6 +115,11 @@ urlpatterns = [
         name="account_create",
     ),
     path(
+        "gestion/portail/compte/<int:profile_id>/modifier/",
+        views.portal_account_edit,
+        name="account_edit",
+    ),
+    path(
         "gestion/portail/compte/<int:profile_id>/lien/",
         views.portal_access_link_generate,
         name="access_link_generate",

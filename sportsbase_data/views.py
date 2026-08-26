@@ -15,6 +15,7 @@ from client_portal.decorators import (
     portal_required,
     production_required,
 )
+from client_portal.models import PlayerAccess, PortalProfile
 from client_portal.services import accessible_players_for
 
 from .forms import PerformanceReportForm, SportsBaseSubscriptionForm
@@ -135,6 +136,49 @@ def _build_match_analysis(stats):
     return pairs, other
 
 
+def _build_season_analysis(snapshot):
+    """Pair season action volumes with success rates and per-match rhythm."""
+    if snapshot is None:
+        return [], [], []
+
+    totals = _normalized_statistics(snapshot.season_statistics)
+    averages = _normalized_statistics(snapshot.average_statistics)
+    consumed = {"index", "matches played", "minutes played"}
+    pairs = []
+
+    for metric_name, rate_name, icon in MATCH_METRIC_PAIRS:
+        metric_key = metric_name.casefold()
+        rate_key = rate_name.casefold()
+        metric = totals.get(metric_key)
+        rate = totals.get(rate_key) or averages.get(rate_key)
+        average = averages.get(metric_key)
+        if metric is None and rate is None and average is None:
+            continue
+        consumed.update((metric_key, rate_key))
+        rate_value = rate.get("value") if rate else None
+        chart_percent = _percentage_for_chart(rate_value)
+        pairs.append(
+            {
+                "name": metric_name,
+                "value": metric.get("value") if metric else None,
+                "average_value": average.get("value") if average else None,
+                "rate_name": rate_name,
+                "rate_value": rate_value,
+                "chart_percent": chart_percent or 0,
+                "has_rate": chart_percent is not None,
+                "icon": icon,
+            }
+        )
+
+    season_other = [
+        item for key, item in totals.items() if key not in consumed
+    ]
+    average_other = [
+        item for key, item in averages.items() if key not in consumed
+    ]
+    return pairs, season_other, average_other
+
+
 def _portal_subscriptions_for(user):
     return active_subscriptions().filter(player__in=accessible_players_for(user))
 
@@ -144,6 +188,22 @@ def _portal_subscription_or_404(user, player_id):
         _portal_subscriptions_for(user).select_related("player"),
         player_id=player_id,
     )
+
+
+def _sync_direct_portal_language(subscription):
+    """Keep both internal language selectors coherent for direct player accounts."""
+    profile = (
+        PortalProfile.objects.filter(
+            user__portal_player_accesses__player=subscription.player,
+            user__portal_player_accesses__role=PlayerAccess.Role.PLAYER,
+            account_type=PortalProfile.AccountType.PLAYER,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if profile and profile.preferred_language != subscription.report_language:
+        profile.preferred_language = subscription.report_language
+        profile.save(update_fields=("preferred_language", "updated_at"))
 
 
 @portal_admin_required
@@ -203,6 +263,7 @@ def subscription_form(request, pk=None):
         if not item.pk:
             item.created_by = request.user
         item.save()
+        _sync_direct_portal_language(item)
         generate_reports_for_subscription(item)
         messages.success(
             request,
@@ -397,6 +458,9 @@ def portal_performance_detail(request, player_id):
         report_type=PerformanceReport.ReportType.CYCLE,
         status=PerformanceReport.Status.PUBLISHED,
     ).order_by("-cycle_number")
+    season_analysis_pairs, season_analysis_other, season_average_other = (
+        _build_season_analysis(snapshot)
+    )
     return render(
         request,
         "sportsbase_data/portal_performance_detail.html",
@@ -407,7 +471,10 @@ def portal_performance_detail(request, player_id):
             "matches": matches,
             "action_counts": action_counts,
             "cycle_reports": cycle_reports,
-            "portal_language": subscription.report_language,
+            "season_analysis_pairs": season_analysis_pairs,
+            "season_analysis_other": season_analysis_other,
+            "season_average_other": season_average_other,
+            "portal_language": request.portal_profile.preferred_language,
         },
     )
 
@@ -440,7 +507,7 @@ def portal_match_detail(request, player_id, match_id):
             "analysis_pairs": analysis_pairs,
             "analysis_other": analysis_other,
             "performance_report": performance_report,
-            "portal_language": subscription.report_language,
+            "portal_language": request.portal_profile.preferred_language,
         },
     )
 
