@@ -39,8 +39,16 @@ COPY = {
         ),
         "no_strength": "Les données disponibles seront consolidées lors des prochaines rencontres.",
         "no_improvement": "Maintenir la régularité et continuer à enrichir les prises de décision.",
-        "mail_subject": "Votre match a été analysé — MS Performance",
-        "mail_intro": "Votre dernière rencontre a été traitée par notre équipe.",
+        "mail_subject": "Votre rapport et vos All Actions sont prêts — MS Performance",
+        "mail_intro": (
+            "L’analyse de votre dernière rencontre est terminée. Votre rapport "
+            "et votre vidéo All Actions sont disponibles."
+        ),
+        "mail_subject_report_only": "Votre rapport de match est prêt — MS Performance",
+        "mail_intro_report_only": (
+            "L’analyse de votre dernière rencontre est terminée. Votre rapport "
+            "est disponible."
+        ),
         "watch": "Regarder All Actions",
         "report": "Télécharger le rapport de l’analyste",
     },
@@ -63,8 +71,15 @@ COPY = {
         ),
         "no_strength": "Available data will be consolidated over the next matches.",
         "no_improvement": "Maintain consistency and continue improving decision-making.",
-        "mail_subject": "Your match has been analysed — MS Performance",
-        "mail_intro": "Your latest match has been processed by our team.",
+        "mail_subject": "Your report and All Actions are ready — MS Performance",
+        "mail_intro": (
+            "The analysis of your latest match is complete. Your report and "
+            "All Actions video are available."
+        ),
+        "mail_subject_report_only": "Your match report is ready — MS Performance",
+        "mail_intro_report_only": (
+            "The analysis of your latest match is complete. Your report is available."
+        ),
         "watch": "Watch All Actions",
         "report": "Download the analyst report",
     },
@@ -81,8 +96,14 @@ COPY = {
         "cycle_summary": "يجمع هذا التقييم خمس مباريات متتالية لتحديد تطور الأداء وأولويات دورة العمل القادمة.",
         "no_strength": "سيتم تعزيز القراءة بالمزيد من البيانات خلال المباريات القادمة.",
         "no_improvement": "المحافظة على الاستمرارية ومواصلة تطوير جودة اتخاذ القرار.",
-        "mail_subject": "تم تحليل مباراتك — MS Performance",
-        "mail_intro": "تمت معالجة مباراتك الأخيرة من طرف فريقنا.",
+        "mail_subject": "تقريرك وفيديو جميع اللقطات جاهزان — MS Performance",
+        "mail_intro": (
+            "اكتمل تحليل مباراتك الأخيرة. التقرير وفيديو جميع اللقطات متاحان الآن."
+        ),
+        "mail_subject_report_only": "تقرير مباراتك جاهز — MS Performance",
+        "mail_intro_report_only": (
+            "اكتمل تحليل مباراتك الأخيرة. التقرير متاح الآن."
+        ),
         "watch": "مشاهدة جميع اللقطات",
         "report": "تحميل تقرير المحلل",
     },
@@ -570,22 +591,48 @@ def render_report_pdf(report):
     return buffer.getvalue()
 
 
-def send_ready_delivery_notification(upload):
-    upload = SportsBaseYouTubeUpload.objects.select_related(
-        "match__subscription__player", "match__performance_report"
-    ).get(pk=upload.pk)
-    if upload.notification_sent_at or upload.status != SportsBaseYouTubeUpload.Status.UPLOADED:
+def send_ready_delivery_notification(report):
+    report = PerformanceReport.objects.select_related(
+        "subscription__player", "match__youtube_upload"
+    ).get(pk=report.pk)
+    if (
+        report.notification_sent_at
+        or report.status != PerformanceReport.Status.PUBLISHED
+        or report.report_type != PerformanceReport.ReportType.MATCH
+        or not report.match_id
+    ):
         return False
-    try:
-        report = upload.match.performance_report
-    except PerformanceReport.DoesNotExist:
-        return False
-    if report.status != PerformanceReport.Status.PUBLISHED:
-        return False
-    recipient = (upload.match.subscription.player.email or "").strip()
+
+    subscription = report.subscription
+    upload = None
+    if subscription.youtube_delivery_enabled:
+        try:
+            upload = report.match.youtube_upload
+        except SportsBaseYouTubeUpload.DoesNotExist:
+            return False
+        if (
+            upload.status != SportsBaseYouTubeUpload.Status.UPLOADED
+            or not upload.youtube_url
+        ):
+            return False
+        # Les notifications envoyées avant cette migration étaient enregistrées
+        # sur l'upload YouTube. On recopie ce marqueur pour éviter un doublon.
+        if upload.notification_sent_at:
+            report.notification_sent_at = upload.notification_sent_at
+            report.notification_error = upload.notification_error
+            report.save(
+                update_fields=(
+                    "notification_sent_at",
+                    "notification_error",
+                    "updated_at",
+                )
+            )
+            return False
+
+    recipient = (subscription.player.email or "").strip()
     if not recipient:
-        upload.notification_error = "Aucune adresse e-mail n’est renseignée pour ce joueur."
-        upload.save(update_fields=("notification_error", "updated_at"))
+        report.notification_error = "Aucune adresse e-mail n’est renseignée pour ce joueur."
+        report.save(update_fields=("notification_error", "updated_at"))
         return False
 
     language = report.language if report.language in COPY else "fr"
@@ -596,30 +643,55 @@ def send_ready_delivery_notification(upload):
         "https://msfootball-1a882b44ed52.herokuapp.com",
     ).rstrip("/")
     report_url = base_url + reverse("performance:report_pdf", args=(report.pk,))
-    body = "\n\n".join(
-        (
+    if subscription.youtube_delivery_enabled:
+        subject = copy["mail_subject"]
+        body_parts = (
             copy["mail_intro"],
             f"{copy['watch']} : {upload.youtube_url}",
             f"{copy['report']} : {report_url}",
             "MS Performance",
         )
-    )
+    else:
+        subject = copy["mail_subject_report_only"]
+        body_parts = (
+            copy["mail_intro_report_only"],
+            f"{copy['report']} : {report_url}",
+            "MS Performance",
+        )
     message = EmailMessage(
-        subject=copy["mail_subject"],
-        body=body,
+        subject=subject,
+        body="\n\n".join(body_parts),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[recipient],
     )
     try:
         sent = bool(message.send(fail_silently=False))
     except Exception as exc:
-        upload.notification_error = str(exc)
-        upload.save(update_fields=("notification_error", "updated_at"))
+        report.notification_error = str(exc)
+        report.save(update_fields=("notification_error", "updated_at"))
+        if upload is not None:
+            upload.notification_error = str(exc)
+            upload.save(update_fields=("notification_error", "updated_at"))
         return False
     if sent:
-        upload.notification_sent_at = timezone.now()
-        upload.notification_error = ""
-        upload.save(
-            update_fields=("notification_sent_at", "notification_error", "updated_at")
+        sent_at = timezone.now()
+        report.notification_sent_at = sent_at
+        report.notification_error = ""
+        report.save(
+            update_fields=(
+                "notification_sent_at",
+                "notification_error",
+                "updated_at",
+            )
         )
+        if upload is not None:
+            upload.notification_sent_at = sent_at
+            upload.notification_error = ""
+            upload.save(
+                update_fields=(
+                    "notification_sent_at",
+                    "notification_error",
+                    "updated_at",
+                )
+            )
     return sent

@@ -419,10 +419,7 @@ def report_edit(request, pk):
         )
         report.save()
         if report.match_id:
-            try:
-                send_ready_delivery_notification(report.match.youtube_upload)
-            except SportsBaseYouTubeUpload.DoesNotExist:
-                pass
+            send_ready_delivery_notification(report)
         messages.success(
             request,
             "Le rapport est enregistré. Son PDF utilisera immédiatement cette version.",
@@ -637,13 +634,16 @@ def api_job_result(request, job_id):
     except ValueError as exc:
         fail_sync_job(job, exc)
         return JsonResponse({"success": False, "error": str(exc)}, status=400)
-    ready_uploads = SportsBaseYouTubeUpload.objects.filter(
-        match__subscription=finished_job.subscription,
-        status=SportsBaseYouTubeUpload.Status.UPLOADED,
+    imported_match_ids = finished_job.result_summary.get("match_ids", ())
+    ready_reports = PerformanceReport.objects.filter(
+        subscription=finished_job.subscription,
+        report_type=PerformanceReport.ReportType.MATCH,
+        status=PerformanceReport.Status.PUBLISHED,
+        match__sportsbase_match_id__in=imported_match_ids,
         notification_sent_at__isnull=True,
     )
-    for ready_upload in ready_uploads:
-        send_ready_delivery_notification(ready_upload)
+    for ready_report in ready_reports:
+        send_ready_delivery_notification(ready_report)
     return JsonResponse(
         {
             "success": True,
@@ -681,7 +681,12 @@ def api_youtube_job_result(request, job_id):
             )
         return JsonResponse({"success": False, "error": str(exc)}, status=400)
     if finished_upload.status == SportsBaseYouTubeUpload.Status.UPLOADED:
-        send_ready_delivery_notification(finished_upload)
+        try:
+            report = finished_upload.match.performance_report
+        except PerformanceReport.DoesNotExist:
+            pass
+        else:
+            send_ready_delivery_notification(report)
     return JsonResponse(
         {
             "success": True,

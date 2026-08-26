@@ -430,6 +430,8 @@ class PerformanceReport(models.Model):
     is_manually_edited = models.BooleanField(default=False)
     generated_at = models.DateTimeField(default=timezone.now)
     published_at = models.DateTimeField(null=True, blank=True)
+    notification_sent_at = models.DateTimeField(null=True, blank=True)
+    notification_error = models.TextField(blank=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
