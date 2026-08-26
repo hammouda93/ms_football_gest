@@ -83,6 +83,15 @@
 .performance-kpi-grid span, .performance-rank-grid span { color: var(--performance-muted); font-size: .68rem; font-weight: 700; }
 .performance-kpi-grid strong, .performance-rank-grid strong { color: var(--performance-text); font-size: 1.35rem; line-height: 1; }
 .performance-kpi-grid small, .performance-rank-grid small { overflow: hidden; color: #8995a6; font-size: .58rem; text-overflow: ellipsis; white-space: nowrap; }
+.performance-season-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.performance-season-kpis article { position: relative; overflow: hidden; border-top: 3px solid var(--kpi-color, var(--performance-blue)); }
+.performance-season-kpis article::after { content: ""; position: absolute; right: -24px; bottom: -30px; width: 78px; height: 78px; background: radial-gradient(circle, color-mix(in srgb, var(--kpi-color, var(--performance-blue)) 15%, transparent), transparent 68%); border-radius: 50%; pointer-events: none; }
+.performance-season-kpis article > i { color: var(--kpi-color, var(--performance-blue)); background: color-mix(in srgb, var(--kpi-color, var(--performance-blue)) 11%, white); }
+.performance-season-kpis .kpi-index { --kpi-color: #2563eb; }
+.performance-season-kpis .kpi-matches { --kpi-color: #0d9488; }
+.performance-season-kpis .kpi-goals { --kpi-color: #e09a12; }
+.performance-season-kpis .kpi-assists { --kpi-color: #7c3aed; }
+.performance-season-kpis .kpi-time { --kpi-color: #0891b2; }
 
 .performance-content-grid, .performance-map-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
 .performance-panel { min-width: 0; padding: 22px; background: #fff; border: 1px solid var(--performance-border); border-radius: 22px; box-shadow: 0 12px 30px rgba(15, 38, 64, .07); }
@@ -123,6 +132,8 @@
 .performance-analysis-card header > div { display: flex; min-width: 0; flex-direction: column; }
 .performance-analysis-card header small { overflow: hidden; color: var(--performance-muted); font-size: .62rem; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .performance-analysis-card header strong { margin-top: 1px; color: var(--performance-text); font-size: 1.35rem; line-height: 1; }
+.performance-analysis-primary { display: flex; align-items: baseline; gap: 6px; }
+.performance-analysis-primary em { color: var(--performance-muted); font-size: .58rem; font-style: normal; font-weight: 700; }
 .performance-analysis-visual { position: relative; z-index: 1; display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 13px; margin-top: 14px; }
 .performance-analysis-ring { display: grid; width: 64px; height: 64px; place-items: center; background: conic-gradient(var(--analysis-color) var(--analysis-progress), #e3ebef 0); border-radius: 50%; }
 .performance-analysis-ring::before { content: ""; grid-area: 1 / 1; width: 48px; height: 48px; background: #fff; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(126, 151, 168, .12); }
@@ -135,6 +146,8 @@
 .performance-analysis-average b { color: var(--performance-text); font-size: .72rem; }
 .performance-analysis-card.is-unrated { --analysis-progress: 0% !important; --analysis-color: #98a6b5; }
 .performance-analysis-card.is-unrated .performance-analysis-ring { background: repeating-conic-gradient(#dbe3e8 0 8deg, #edf2f5 8deg 16deg); }
+.performance-analysis-standalone { position: relative; z-index: 1; display: flex; min-height: 64px; align-items: center; gap: 9px; margin-top: 14px; padding: 12px 14px; color: var(--performance-muted); background: rgba(255, 255, 255, .72); border: 1px dashed #d4e0e7; border-radius: 13px; font-size: .64rem; font-weight: 720; }
+.performance-analysis-standalone i { color: var(--analysis-color); font-size: .8rem; }
 .performance-secondary-analysis { margin-top: 18px; padding-top: 15px; border-top: 1px solid #e5ebf1; }
 .performance-secondary-analysis h3 { margin: 0 0 10px; color: var(--performance-text); font-size: .82rem; }
 .performance-season-analysis { margin-top: 16px; border-top-color: var(--performance-teal); }
@@ -286,6 +299,7 @@
     .performance-row-actions { justify-content: flex-start; }
     .performance-stat-list.advanced { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .performance-stat-list.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .performance-season-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -296,6 +310,7 @@
     .performance-profile-photo { width: 70px; height: 82px; border-radius: 16px; }
     .performance-sync-copy { grid-column: 1 / -1; align-items: flex-start; text-align: left; }
     .performance-kpi-grid, .performance-rank-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .performance-season-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .performance-match-row { grid-template-columns: 45px minmax(0, 1fr) 48px 15px; gap: 7px; padding: 10px; }
     .performance-match-row .performance-actions-state { grid-column: 2 / 4; justify-self: start; }
     .performance-fixture > strong { font-size: .66rem; }

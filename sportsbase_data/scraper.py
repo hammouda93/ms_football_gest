@@ -25,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-efficiency-v8-20260826"
+SCRAPER_BUILD = "season-kpis-radar-v9-20260826"
 
 
 def _now_iso():
@@ -191,6 +191,14 @@ class SportsBaseSubscriptionScraper:
             r"""
             () => {
               const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
+              const cleanText = (node) => {
+                if (!node) return '';
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('[class*="Tooltip"], [role="tooltip"]').forEach(
+                  (item) => item.remove()
+                );
+                return text(clone);
+              };
               const headerText = (node) => {
                 if (!node) return '';
                 const tooltip = node.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
@@ -200,11 +208,12 @@ class SportsBaseSubscriptionScraper:
               };
               const passport = {};
               document.querySelectorAll('[class*="PassportItem"]').forEach((row) => {
-                const key = text(row.querySelector('[class*="ParamName"]'));
+                const key = cleanText(row.querySelector('[class*="ParamName"]'));
                 const values = [...row.querySelectorAll('[class*="ParamValueContainer"]')].map((node) => ({
-                  main: text(node.querySelector('[class*="ParamValueMain"]')),
-                  second: text(node.querySelector('[class*="ParamValueSecond"]')),
-                  full: text(node),
+                  main: cleanText(node.querySelector('[class*="ParamValueMain"]')),
+                  second: cleanText(node.querySelector('[class*="ParamValueSecond"]')),
+                  full: cleanText(node),
+                  tooltip: text(node.querySelector('[class*="Tooltip"]')),
                 }));
                 if (key) passport[key] = values;
               });
@@ -224,14 +233,27 @@ class SportsBaseSubscriptionScraper:
         passport = raw.get("passport", {})
 
         def first(label):
-            rows = passport.get(label, [])
+            normalized_label = _clean_label(label).casefold()
+            rows = next(
+                (
+                    values
+                    for key, values in passport.items()
+                    if _clean_label(key).casefold() == normalized_label
+                    or _clean_label(key).casefold().startswith(normalized_label)
+                ),
+                [],
+            )
             return rows[0].get("main", "") if rows else ""
 
         positions = []
         for item in passport.get("Position", []):
             percent = _safe_int(item.get("second"))
             positions.append(
-                {"code": item.get("main", ""), "name": item.get("main", ""), "percent": percent}
+                {
+                    "code": item.get("main", ""),
+                    "name": item.get("tooltip") or item.get("main", ""),
+                    "percent": percent,
+                }
             )
 
         player_id = PLAYER_ID_RE.search(page.url)
@@ -256,9 +278,12 @@ class SportsBaseSubscriptionScraper:
             "height_weight": first("Height, Weight"),
             "national_team": first("National team"),
             "strong_foot": first("Strong foot"),
-            "time_on_field_percent": _safe_int(first("Time on the field, %")),
+            "time_on_field_percent": _safe_int(
+                first("Time on the field, %") or first("Time on the field")
+            ),
             "positions": positions,
-            "radar_png_base64": _b64(radar),
+            "radar_metrics": radar.get("metrics", []),
+            "radar_png_base64": _b64(radar.get("png", b"")),
             "heatmap_png_base64": _b64(heatmap),
             "ball_touches_png_base64": _b64(touches),
             "source_metadata": {
@@ -274,20 +299,112 @@ class SportsBaseSubscriptionScraper:
         return self._capture_map_field(page, page, label)
 
     def _capture_radar(self, page):
+        """Capture the real performance radar SVG and retain normalized series data."""
         try:
-            page.get_by_text("Radar", exact=True).first.click()
-            page.wait_for_timeout(500)
+            radar_tab = page.get_by_text("Radar", exact=True).first
+            radar_tab.scroll_into_view_if_needed(timeout=10_000)
+            radar_tab.click(timeout=10_000)
+            page.wait_for_timeout(900)
             candidates = page.locator('svg[width][height]')
             best = None
-            area = 0
+            best_score = 0
             for index in range(candidates.count()):
                 candidate = candidates.nth(index)
                 box = candidate.bounding_box()
-                if box and box["width"] * box["height"] > area:
-                    best, area = candidate, box["width"] * box["height"]
-            return best.screenshot(type="png") if best and area > 50000 else b""
-        except Exception:
-            return b""
+                if not box or box["width"] < 300 or box["height"] < 300:
+                    continue
+                signature = candidate.evaluate(
+                    r"""
+                    (svg) => ({
+                      labels: [...svg.querySelectorAll('text')].filter((node) =>
+                        Number(node.getAttribute('font-size') || 0) >= 10
+                      ).length,
+                      points: svg.querySelectorAll('circle[cx][cy]').length,
+                      paths: svg.querySelectorAll('path[d]').length,
+                      text: (svg.textContent || '').replace(/\s+/g, ' ').trim(),
+                    })
+                    """
+                )
+                radar_words = (
+                    "chances",
+                    "shots",
+                    "dribbling",
+                    "defensive",
+                    "interceptions",
+                )
+                semantic_hits = sum(
+                    word in signature.get("text", "").casefold()
+                    for word in radar_words
+                )
+                score = (
+                    box["width"] * box["height"]
+                    + signature.get("labels", 0) * 12_000
+                    + signature.get("points", 0) * 2_000
+                    + semantic_hits * 100_000
+                )
+                if semantic_hits >= 2 and signature.get("paths", 0) >= 2 and score > best_score:
+                    best, best_score = candidate, score
+            if best is None:
+                print("[SPORTSBASE][WARN] SVG du radar de performance non détecté.")
+                return {"png": b"", "metrics": []}
+
+            best.scroll_into_view_if_needed(timeout=10_000)
+            page.wait_for_timeout(300)
+            metrics = best.evaluate(
+                r"""
+                (svg) => {
+                  const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                  const labels = [...svg.querySelectorAll('text')]
+                    .filter((node) => Number(node.getAttribute('font-size') || 0) >= 10)
+                    .map((node) => clean([...node.querySelectorAll('tspan')]
+                      .map((item) => item.textContent).join(' ') || node.textContent))
+                    .filter(Boolean);
+                  const circles = [...svg.querySelectorAll('circle[cx][cy]')];
+                  const byColour = (rgb) => circles.filter((node) => {
+                    const stroke = clean(
+                      node.getAttribute('stroke') || getComputedStyle(node).stroke
+                    ).replace(/\s+/g, '');
+                    return stroke.includes(rgb);
+                  });
+                  const player = byColour('11,69,110');
+                  const average = byColour('178,0,0');
+                  const viewBox = svg.viewBox && svg.viewBox.baseVal;
+                  const width = viewBox?.width || Number(svg.getAttribute('width')) || 540;
+                  const height = viewBox?.height || Number(svg.getAttribute('height')) || 540;
+                  const centreX = (viewBox?.x || 0) + width / 2;
+                  const centreY = (viewBox?.y || 0) + height / 2;
+                  const chartRadius = Math.min(width, height) * 0.444444;
+                  const normalizedRadius = (node) => {
+                    if (!node) return 0;
+                    const point = svg.createSVGPoint();
+                    point.x = Number(node.getAttribute('cx'));
+                    point.y = Number(node.getAttribute('cy'));
+                    const absolute = point.matrixTransform(node.getCTM());
+                    const dx = absolute.x - centreX;
+                    const dy = absolute.y - centreY;
+                    return Math.round(Math.max(0, Math.min(100,
+                      Math.hypot(dx, dy) / chartRadius * 100
+                    )) * 10) / 10;
+                  };
+                  const count = Math.min(labels.length, player.length, average.length);
+                  return labels.slice(0, count).map((label, index) => ({
+                    name: label,
+                    label,
+                    value: normalizedRadius(player[index]),
+                    player: normalizedRadius(player[index]),
+                    average: normalizedRadius(average[index]),
+                  }));
+                }
+                """
+            )
+            print(
+                "[SPORTSBASE] Radar exact détecté — "
+                f"{len(metrics)} axe(s) — capture SVG complète."
+            )
+            return {"png": best.screenshot(type="png"), "metrics": metrics}
+        except Exception as exc:
+            print(f"[SPORTSBASE][WARN] Capture radar impossible : {exc}")
+            return {"png": b"", "metrics": []}
 
     def _read_season_statistics(self, page):
         data = page.evaluate(

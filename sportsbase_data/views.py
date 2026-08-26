@@ -60,6 +60,33 @@ MATCH_METRIC_PAIRS = (
 )
 
 
+# Keep the same reading order as the season statistics supplied to the analyst.
+# Passes remain supported when the competition exposes them, without disturbing
+# the reference order used by the season panel.
+SEASON_METRIC_PAIRS = (
+    ("Key passes", None, "fa-key"),
+    ("Shots", "Shots on target, %", "fa-bullseye"),
+    ("Crosses", "Crosses accurate, %", "fa-arrows-left-right-to-line"),
+    ("Challenges", "Challenges won, %", "fa-people-arrows-left-right"),
+    (
+        "Aerial challenges",
+        "Aerial challenges won, %",
+        "fa-arrow-up-wide-short",
+    ),
+    ("Dribbles", "Dribbles successful, %", "fa-person-running"),
+    ("Tackles", "Tackles successful, %", "fa-shield-halved"),
+    ("Passes", "Passes accurate, %", "fa-share-nodes"),
+)
+
+SEASON_KPI_KEYS = {
+    "index",
+    "matches played",
+    "goals",
+    "assists",
+    "time on the field, %",
+}
+
+
 def _normalized_statistics(*collections):
     """Merge scraped dictionaries while keeping one value per statistic."""
     merged = {}
@@ -143,25 +170,37 @@ def _build_season_analysis(snapshot):
 
     totals = _normalized_statistics(snapshot.season_statistics)
     averages = _normalized_statistics(snapshot.average_statistics)
-    consumed = {"index", "matches played", "minutes played"}
+    consumed = set(SEASON_KPI_KEYS) | {"minutes played"}
     pairs = []
 
-    for metric_name, rate_name, icon in MATCH_METRIC_PAIRS:
+    for metric_name, rate_name, icon in SEASON_METRIC_PAIRS:
         metric_key = metric_name.casefold()
-        rate_key = rate_name.casefold()
+        rate_key = rate_name.casefold() if rate_name else None
         metric = totals.get(metric_key)
-        rate = totals.get(rate_key) or averages.get(rate_key)
         average = averages.get(metric_key)
+        rate = (totals.get(rate_key) or averages.get(rate_key)) if rate_key else None
         if metric is None and rate is None and average is None:
             continue
-        consumed.update((metric_key, rate_key))
+        consumed.add(metric_key)
+        if rate_key:
+            consumed.add(rate_key)
         rate_value = rate.get("value") if rate else None
         chart_percent = _percentage_for_chart(rate_value)
+        value_is_average = metric is None and average is not None
         pairs.append(
             {
                 "name": metric_name,
-                "value": metric.get("value") if metric else None,
-                "average_value": average.get("value") if average else None,
+                "value": (
+                    metric.get("value")
+                    if metric
+                    else average.get("value") if average else None
+                ),
+                "value_is_average": value_is_average,
+                "average_value": (
+                    average.get("value")
+                    if average and not value_is_average
+                    else None
+                ),
                 "rate_name": rate_name,
                 "rate_value": rate_value,
                 "chart_percent": chart_percent or 0,
@@ -177,6 +216,26 @@ def _build_season_analysis(snapshot):
         item for key, item in averages.items() if key not in consumed
     ]
     return pairs, season_other, average_other
+
+
+def _time_on_field_display(snapshot):
+    """Format the playing-time percentage without ever producing `—%`."""
+    if snapshot is None:
+        return "—"
+    value = snapshot.time_on_field_percent
+    if value is None:
+        item = _normalized_statistics(snapshot.season_statistics).get(
+            "time on the field, %"
+        )
+        value = item.get("value") if item else None
+    if value is None:
+        return "—"
+    text = str(value).strip()
+    if not text or text.casefold() in {"-", "–", "—", "none", "null", "nan"}:
+        return "—"
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text if text.endswith("%") else f"{text}%"
 
 
 def _portal_subscriptions_for(user):
@@ -474,6 +533,7 @@ def portal_performance_detail(request, player_id):
             "season_analysis_pairs": season_analysis_pairs,
             "season_analysis_other": season_analysis_other,
             "season_average_other": season_average_other,
+            "time_on_field_display": _time_on_field_display(snapshot),
             "portal_language": request.portal_profile.preferred_language,
         },
     )

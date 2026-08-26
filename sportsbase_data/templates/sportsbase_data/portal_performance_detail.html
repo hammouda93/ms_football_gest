@@ -15,11 +15,12 @@
 <nav class="player-service-tabs" aria-label="Services du joueur"><a href="{% url 'portal:player' player.pk %}"><i class="fas fa-clapperboard"></i> {{ copy.video_tracking }}</a><a class="active" href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> {{ copy.performance }}</a></nav>
 
 {% if snapshot %}
-<section class="performance-kpi-grid">
-    <article><i class="fas fa-person-running"></i><span>{{ copy.matches_played }}</span><strong>{{ snapshot.season_statistics|dict_get:"Matches played"|default:"—" }}</strong><small>{{ subscription.season }}</small></article>
-    <article><i class="fas fa-clock"></i><span>{{ copy.field_time }}</span><strong>{{ snapshot.time_on_field_percent|default:"—" }}%</strong><small>{{ copy.first_team }}</small></article>
-    <article><i class="fas fa-futbol"></i><span>{{ copy.matches_analysed }}</span><strong>{{ matches|length }}</strong><small>{{ subscription.season }}</small></article>
-    <article><i class="fas fa-film"></i><span>All Actions</span><strong>{{ action_counts.available }}</strong><small>{{ copy.videos_available }}</small></article>
+<section class="performance-kpi-grid performance-season-kpis">
+    <article class="kpi-index"><i class="fas fa-gauge-high"></i><span>{{ copy.index }}</span><strong>{{ snapshot.season_statistics|dict_get:"Index"|stat_value }}</strong><small>{{ copy.global_indicator }}</small></article>
+    <article class="kpi-matches"><i class="fas fa-calendar-check"></i><span>{{ copy.matches_played }}</span><strong>{{ snapshot.season_statistics|dict_get:"Matches played"|stat_value }}</strong><small>{{ subscription.season }}</small></article>
+    <article class="kpi-goals"><i class="fas fa-futbol"></i><span>{{ "Goals"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Goals"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
+    <article class="kpi-assists"><i class="fas fa-wand-magic-sparkles"></i><span>{{ "Assists"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Assists"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
+    <article class="kpi-time"><i class="fas fa-clock"></i><span>{{ copy.field_time }}</span><strong>{{ time_on_field_display }}</strong><small>{{ copy.first_team }}</small></article>
 </section>
 {% endif %}
 
@@ -91,8 +92,9 @@
         <article class="performance-analysis-card{% if not item.has_rate %} is-unrated{% endif %}" style="--analysis-progress: {{ item.chart_percent }}%;">
             <header>
                 <span class="performance-analysis-icon"><i class="fas {{ item.icon }}"></i></span>
-                <div><small>{{ item.name|stat_label_for:portal_language }}</small><strong>{{ item.value|stat_value }}</strong></div>
+                <div><small>{{ item.name|stat_label_for:portal_language }}</small><span class="performance-analysis-primary"><strong>{{ item.value|stat_value }}</strong>{% if item.value_is_average %}<em>{{ copy.per_match }}</em>{% endif %}</span></div>
             </header>
+            {% if item.rate_name %}
             <div class="performance-analysis-visual">
                 <div class="performance-analysis-ring" role="img" aria-label="{{ item.rate_name|stat_label_for:portal_language }} : {{ item.rate_value|stat_value }}"><span>{{ item.rate_value|stat_value }}</span></div>
                 <div class="performance-analysis-rate">
@@ -101,6 +103,9 @@
                     {% if item.average_value != None %}<em class="performance-analysis-average"><b>{{ item.average_value|stat_value }}</b> {{ copy.per_match }}</em>{% endif %}
                 </div>
             </div>
+            {% else %}
+            <div class="performance-analysis-standalone"><i class="fas fa-chart-line"></i><span>{{ copy.match_averages }}</span></div>
+            {% endif %}
         </article>
         {% endfor %}
     </div>

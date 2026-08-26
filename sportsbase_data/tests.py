@@ -245,13 +245,16 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
             season=self.subscription.season,
             sportsbase_player_name=self.player.name,
             heatmap_png=PNG,
+            time_on_field_percent=45,
             season_statistics={
+                "Index": "180",
                 "Matches played": "12",
                 "Passes": "540",
                 "Passes accurate, %": "86%",
                 "Challenges": "120",
                 "Challenges won, %": "61%",
                 "Goals": "4",
+                "Assists": "3",
             },
             average_statistics={
                 "Passes": "45",
@@ -379,7 +382,12 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(detail, "86%")
         self.assertContains(detail, "45")
         self.assertContains(detail, "performance-analysis-card")
+        self.assertContains(detail, "45%")
         self.assertContains(detail, "--analysis-progress: 86.0%")
+        html = detail.content.decode()
+        self.assertLess(html.index("Index"), html.index("Matchs joués"))
+        self.assertLess(html.index("Matchs joués"), html.index("Buts"))
+        self.assertLess(html.index("Buts"), html.index("Passes décisives"))
         season_pairs = detail.context["season_analysis_pairs"]
         season_passes = next(
             item for item in season_pairs if item["name"] == "Passes"
@@ -411,6 +419,55 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(match, "--analysis-progress: 89.0%")
         self.assertContains(match, "youtube-nocookie.com/embed/abcdefghijk")
         self.assertNotContains(match, "all-actions-open-link")
+
+    def test_average_only_season_metrics_keep_source_order_and_values(self):
+        self.snapshot.season_statistics = {
+            "Index": "180",
+            "Matches played": "16",
+            "Goals": "1",
+            "Assists": "2",
+        }
+        self.snapshot.average_statistics = {
+            "Key passes": "0.12",
+            "Shots": "0.38",
+            "Crosses": "1.25",
+            "Challenges": "6.75",
+            "Challenges won, %": "59%",
+            "Aerial challenges": "1.44",
+            "Aerial challenges won, %": "52%",
+            "Dribbles": "1.12",
+            "Dribbles successful, %": "67%",
+            "Tackles": "1.25",
+        }
+        self.snapshot.save(update_fields=("season_statistics", "average_statistics"))
+        user = self.portal_user("season-order-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        self.assertEqual(response.status_code, 200)
+        pairs = response.context["season_analysis_pairs"]
+        self.assertEqual(
+            [item["name"] for item in pairs],
+            [
+                "Key passes",
+                "Shots",
+                "Crosses",
+                "Challenges",
+                "Aerial challenges",
+                "Dribbles",
+                "Tackles",
+            ],
+        )
+        duels = next(item for item in pairs if item["name"] == "Challenges")
+        self.assertEqual(duels["value"], "6.75")
+        self.assertTrue(duels["value_is_average"])
+        self.assertEqual(duels["rate_value"], "59%")
+        self.assertContains(response, "6.75")
+        self.assertContains(response, "1.44")
+        self.assertContains(response, "1.12")
 
 
 class ScraperNormalizationTests(TestCase):

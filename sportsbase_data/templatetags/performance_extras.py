@@ -7,6 +7,7 @@ register = template.Library()
 STAT_LABELS = {
     "Index": "Index",
     "Matches played": "Matchs joués",
+    "Time on the field, %": "Temps sur le terrain",
     "Minutes played": "Minutes jouées",
     "Goals": "Buts",
     "Assists": "Passes décisives",
