@@ -25,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v9-20260826"
+SCRAPER_BUILD = "myvideos-ready-v10-20260826"
 
 
 def _now_iso():
@@ -1717,23 +1717,143 @@ class SportsBaseSubscriptionScraper:
         return indexes if len(indexes) >= expected else []
 
     def _wait_until_video_row_done(self, page, row_index, targets):
-        for attempt in range(60):
+        """Wait for one generated video while surviving My Videos auto-refreshes.
+
+        SportsBase can replace and reorder the React rows while a video is being
+        generated.  Keeping only ``row_index`` therefore makes the agent poll a
+        stale or different row forever.  Capture the stable title/date identity,
+        then resolve the corresponding locator again after every refresh.
+        """
+
+        def row_value(row, selector):
+            locator = row.locator(selector).first
+            return _clean_label(locator.inner_text()) if locator.count() else ""
+
+        rows = self._video_rows(page)
+        initial_row = rows.nth(row_index) if row_index < rows.count() else None
+        target_title = (
+            row_value(initial_row, "span.Name-sc-jbc8ns-2").casefold()
+            if initial_row is not None
+            else ""
+        )
+        target_date = (
+            row_value(initial_row, "div.DateCellContainer-sc-88jqaj-0")
+            if initial_row is not None
+            else ""
+        )
+
+        def current_row():
             indexes = self._candidate_video_indexes(page, targets)
-            if row_index not in indexes:
-                if attempt < 59:
-                    page.wait_for_timeout(5000)
-                    page.reload(wait_until="domcontentloaded", timeout=30000)
+            fallback = None
+            for current_index in indexes:
+                candidate = self._video_rows(page).nth(current_index)
+                if fallback is None and current_index == row_index:
+                    fallback = (current_index, candidate)
+                title = row_value(candidate, "span.Name-sc-jbc8ns-2").casefold()
+                date = row_value(candidate, "div.DateCellContainer-sc-88jqaj-0")
+                if target_title and title != target_title:
                     continue
+                if target_date and date != target_date:
+                    continue
+                return current_index, candidate
+            if fallback is not None:
+                return fallback
+            if indexes and not (target_title or target_date):
+                current_index = indexes[0]
+                return current_index, self._video_rows(page).nth(current_index)
+            return None, None
+
+        # A normal Playwright reload may otherwise reuse the response that still
+        # contains "Processing".  The command is Chromium-specific, hence the
+        # deliberately harmless fallback for another browser/channel.
+        if not getattr(self, "_myvideos_cache_disabled", False):
+            try:
+                cdp = page.context.new_cdp_session(page)
+                cdp.send("Network.enable")
+                cdp.send("Network.setCacheDisabled", {"cacheDisabled": True})
+                self._myvideos_cache_disabled = True
+            except Exception as exc:
+                print(f"[SPORTSBASE][WARN] Cache My Videos non désactivé : {exc}")
+
+        try:
+            timeout_seconds = int(
+                os.getenv("SPORTSBASE_VIDEO_READY_TIMEOUT_SECONDS", "1200")
+            )
+        except (TypeError, ValueError):
+            timeout_seconds = 1200
+        timeout_seconds = max(60, min(timeout_seconds, 3600))
+        deadline = time.monotonic() + timeout_seconds
+        attempt = 0
+        previous_status = None
+
+        while time.monotonic() < deadline:
+            attempt += 1
+            if page.is_closed():
+                print("[SPORTSBASE][WARN] Page My Videos fermée pendant l’attente.")
                 return None
-            row = self._video_rows(page).nth(row_index)
-            status = row.locator("div.StatusContainer-sc-1qv6hin-1 span").first
-            status_text = _clean_label(status.inner_text()).lower() if status.count() else ""
-            print(f"[SPORTSBASE] Ligne {row_index} — statut : {status_text or 'inconnu'}")
-            if status_text == "done":
-                return row
-            page.wait_for_timeout(5000)
-            if attempt % 3 == 2:
-                page.reload(wait_until="domcontentloaded", timeout=30000)
+
+            try:
+                current_index, row = current_row()
+                if row is not None:
+                    status = row.locator('[class*="StatusContainer"] span').first
+                    status_text = (
+                        _clean_label(status.inner_text()).casefold()
+                        if status.count()
+                        else ""
+                    )
+                    download_ready = row.locator(
+                        '[class*="TooltipDownloads"]'
+                    ).filter(
+                        has_text=re.compile(r"^\s*Download\s*$", re.IGNORECASE)
+                    ).count() > 0
+                    state = status_text or (
+                        "download disponible" if download_ready else "inconnu"
+                    )
+                    if state != previous_status or attempt % 6 == 0:
+                        print(
+                            f"[SPORTSBASE] Ligne {current_index} — statut : {state}"
+                        )
+                        previous_status = state
+
+                    status_ready = bool(
+                        re.search(
+                            r"\b(done|ready|completed|termin(?:é|e|ée))\b",
+                            status_text,
+                            re.IGNORECASE,
+                        )
+                    )
+                    if status_ready or download_ready:
+                        return row
+                elif attempt == 1 or attempt % 6 == 0:
+                    print(
+                        "[SPORTSBASE] Ligne My Videos temporairement absente; "
+                        "nouvelle recherche en cours…"
+                    )
+
+                page.wait_for_timeout(5000)
+                if attempt % 3 == 0:
+                    page.reload(wait_until="domcontentloaded", timeout=45000)
+                    page.locator('div[role="table"]').first.wait_for(
+                        state="visible", timeout=30000
+                    )
+            except Exception as exc:
+                if page.is_closed() or "closed" in str(exc).casefold():
+                    print(
+                        "[SPORTSBASE][WARN] Navigateur fermé pendant l’attente "
+                        "de la vidéo."
+                    )
+                    return None
+                print(f"[SPORTSBASE][WARN] Actualisation My Videos : {exc}")
+                try:
+                    page.wait_for_timeout(3000)
+                    page.reload(wait_until="domcontentloaded", timeout=45000)
+                except Exception:
+                    pass
+
+        print(
+            "[SPORTSBASE][WARN] La vidéo n’est pas devenue téléchargeable dans "
+            f"les {timeout_seconds} secondes; elle pourra être reprise plus tard."
+        )
         return None
 
     @staticmethod
