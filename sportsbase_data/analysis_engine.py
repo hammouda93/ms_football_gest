@@ -8,10 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-from collections import defaultdict
-
-
-ANALYSIS_VERSION = "role-missions-raw-evidence-v2-20260827"
+ANALYSIS_VERSION = "individual-role-impact-v3-20260827"
 
 METHODOLOGY_SOURCES = (
     {
@@ -86,12 +83,6 @@ TEXT = {
             "winger": "Ailier",
             "forward": "Avant-centre",
         },
-        "units": {
-            "defence": "Défense centrale",
-            "midfield": "Milieu",
-            "corridors": "Couloirs",
-            "attack": "Attaque",
-        },
         "confidence": {
             "very_low": "Très faible",
             "low": "Faible",
@@ -124,6 +115,15 @@ TEXT = {
             "difficult": "MATCH TRÈS DIFFICILE",
             "partial": "ÉVALUATION PARTIELLE",
         },
+        "entry_verdicts": {
+            "exceptional": "ENTRÉE DÉCISIVE",
+            "very_good": "TRÈS BONNE ENTRÉE",
+            "solid": "BONNE ENTRÉE",
+            "mixed": "ENTRÉE MOYENNE",
+            "insufficient": "ENTRÉE INSUFFISANTE",
+            "difficult": "ENTRÉE CATASTROPHIQUE",
+            "partial": "ENTRÉE À CONFIRMER",
+        },
         "grades": {
             "dominant": "DOMINANT",
             "strong": "FORT",
@@ -133,10 +133,7 @@ TEXT = {
             "critical": "À CORRIGER",
             "unseen": "À CONFIRMER",
         },
-        "units_edge": "Avantage {team} sur {won}/{total} indicateurs comparables.",
-        "units_even": "Aucun avantage net sur les indicateurs réellement comparables.",
-        "counterpart": "Homologue adverse",
-        "direct": "Adversaire direct dans la zone",
+        "counterpart": "Homologue adverse au même poste",
         "sample_caution": (
             "Les volumes affichés sont les totaux réels du match. Aucun événement n’est "
             "projeté sur 90 minutes. Les pourcentages sont toujours lus avec leur nombre "
@@ -147,10 +144,11 @@ TEXT = {
             "consignes, les déplacements sans ballon et les causes doivent être confirmés "
             "avec la vidéo All Actions."
         ),
-        "score_state_missing": (
-            "Le score final est connu, mais la chronologie du score pendant les minutes "
-            "jouées n’est pas encore disponible."
-        ),
+        "index_first_match": "1er Index SportsBase de la rencontre ({rank}/{total}) : signal majeur d’une prestation de très haut niveau statistique.",
+        "index_first_team": "1er Index SportsBase de son équipe ({rank}/{total}) : signal fort d’un très bon impact statistique.",
+        "index_top_three": "Classé {rank}e sur {total} à l’Index SportsBase dans son équipe : il figure parmi les performances statistiques les plus fortes de son équipe.",
+        "index_available": "Index SportsBase : rang {rank}/{total} dans son équipe.",
+        "index_unavailable": "Index SportsBase non disponible : il n’influence pas le verdict.",
     },
     "en": {
         "roles": {
@@ -163,12 +161,6 @@ TEXT = {
             "attacking_midfielder": "Attacking midfielder / No. 10",
             "winger": "Winger",
             "forward": "Centre-forward",
-        },
-        "units": {
-            "defence": "Central defence",
-            "midfield": "Midfield",
-            "corridors": "Wide channels",
-            "attack": "Attack",
         },
         "confidence": {
             "very_low": "Very low",
@@ -202,6 +194,15 @@ TEXT = {
             "difficult": "VERY DIFFICULT MATCH",
             "partial": "PARTIAL ASSESSMENT",
         },
+        "entry_verdicts": {
+            "exceptional": "DECISIVE IMPACT OFF THE BENCH",
+            "very_good": "VERY GOOD IMPACT OFF THE BENCH",
+            "solid": "GOOD IMPACT OFF THE BENCH",
+            "mixed": "AVERAGE IMPACT OFF THE BENCH",
+            "insufficient": "INSUFFICIENT IMPACT OFF THE BENCH",
+            "difficult": "VERY POOR IMPACT OFF THE BENCH",
+            "partial": "IMPACT TO CONFIRM",
+        },
         "grades": {
             "dominant": "DOMINANT",
             "strong": "STRONG",
@@ -211,10 +212,7 @@ TEXT = {
             "critical": "TO CORRECT",
             "unseen": "TO CONFIRM",
         },
-        "units_edge": "{team} leads on {won}/{total} comparable indicators.",
-        "units_even": "No clear edge across the genuinely comparable indicators.",
-        "counterpart": "Opposition role counterpart",
-        "direct": "Direct opponent in the zone",
+        "counterpart": "Opposition player in the exact same position",
         "sample_caution": (
             "Displayed volumes are the player's real match totals. No event is projected "
             "to 90 minutes. Every percentage is read with its attempt count."
@@ -223,10 +221,11 @@ TEXT = {
             "The data creates performance hypotheses. Intent, tactical instructions, "
             "off-ball movement and causes must be confirmed through All Actions video."
         ),
-        "score_state_missing": (
-            "The final score is known, but the score timeline during the player's minutes "
-            "is not yet available."
-        ),
+        "index_first_match": "1st SportsBase Index in the match ({rank}/{total}): a major signal of a very high-level statistical performance.",
+        "index_first_team": "1st SportsBase Index in his team ({rank}/{total}): a strong signal of very good statistical impact.",
+        "index_top_three": "Ranked {rank}/{total} on SportsBase Index in his team: among his team's strongest statistical performances.",
+        "index_available": "SportsBase Index: ranked {rank}/{total} in his team.",
+        "index_unavailable": "SportsBase Index is unavailable and does not affect the verdict.",
     },
     "ar": {
         "roles": {
@@ -239,12 +238,6 @@ TEXT = {
             "attacking_midfielder": "وسط هجومي / رقم 10",
             "winger": "جناح هجومي",
             "forward": "قلب هجوم",
-        },
-        "units": {
-            "defence": "قلب الدفاع",
-            "midfield": "خط الوسط",
-            "corridors": "الأطراف",
-            "attack": "الهجوم",
         },
         "confidence": {
             "very_low": "ضعيفة جدا",
@@ -278,6 +271,15 @@ TEXT = {
             "difficult": "مباراة صعبة جدا",
             "partial": "تقييم جزئي",
         },
+        "entry_verdicts": {
+            "exceptional": "دخول حاسم",
+            "very_good": "دخول ممتاز",
+            "solid": "دخول جيد",
+            "mixed": "دخول متوسط",
+            "insufficient": "دخول غير كاف",
+            "difficult": "دخول كارثي",
+            "partial": "دخول يحتاج إلى تأكيد",
+        },
         "grades": {
             "dominant": "مهيمن",
             "strong": "قوي",
@@ -287,10 +289,7 @@ TEXT = {
             "critical": "يحتاج إلى تصحيح",
             "unseen": "يحتاج إلى تأكيد",
         },
-        "units_edge": "أفضلية {team} في {won} من أصل {total} مؤشرات قابلة للمقارنة.",
-        "units_even": "لا توجد أفضلية واضحة في المؤشرات القابلة للمقارنة.",
-        "counterpart": "اللاعب المقابل في نفس الدور",
-        "direct": "المنافس المباشر في المنطقة",
+        "counterpart": "اللاعب المنافس في نفس المركز تماما",
         "sample_caution": (
             "الأحجام المعروضة هي الأرقام الحقيقية للمباراة ولا يتم تحويلها إلى 90 دقيقة. "
             "كل نسبة تقرأ مع عدد المحاولات."
@@ -299,7 +298,11 @@ TEXT = {
             "تقدم البيانات فرضيات للأداء، ويجب تأكيد النوايا والتعليمات والتحركات دون "
             "كرة والأسباب عبر فيديو جميع اللقطات."
         ),
-        "score_state_missing": "النتيجة النهائية معروفة لكن تسلسل النتيجة أثناء دقائق اللاعب غير متاح بعد.",
+        "index_first_match": "الأول في مؤشر سبورتس بايز في المباراة ({rank}/{total})، وهي إشارة قوية إلى أداء إحصائي رفيع المستوى.",
+        "index_first_team": "الأول في مؤشر سبورتس بايز داخل فريقه ({rank}/{total})، وهي إشارة قوية إلى تأثير إحصائي ممتاز.",
+        "index_top_three": "المرتبة {rank}/{total} في مؤشر سبورتس بايز داخل فريقه، ضمن أفضل أداءات فريقه إحصائيا.",
+        "index_available": "المرتبة {rank}/{total} في مؤشر سبورتس بايز داخل فريقه.",
+        "index_unavailable": "مؤشر سبورتس بايز غير متاح ولا يؤثر في الخلاصة.",
     },
 }
 
@@ -410,37 +413,89 @@ METRIC_LABELS = {
 
 METRIC_DEFINITIONS = {
     "fr": {
-        "Progressive passes": "Passe qui fait avancer nettement le ballon vers le but adverse.",
-        "Key passes": "Dernière passe d’un coéquipier avant un tir.",
-        "Passes for a shot": "Passe après laquelle un coéquipier déclenche un tir.",
-        "Final third entries": "Action qui fait entrer le ballon dans le dernier tiers du terrain.",
-        "Passes forward to the final third": "Passe vers l’avant qui atteint le dernier tiers.",
-        "Defensive challenges": "Duel disputé pour stopper ou ralentir une action adverse.",
-        "Attacking challenges": "Duel disputé pour conserver ou faire avancer l’attaque.",
-        "Aerial challenges": "Duel pour un ballon joué en l’air.",
-        "xG (expected goals)": "Qualité cumulée des tirs selon leur probabilité moyenne de devenir un but.",
-        "Ball recoveries in opponent's half": "Ballon récupéré haut, dans la moitié adverse.",
-        "Actions in opponent's box": "Interventions avec ballon enregistrées dans la surface adverse.",
-        "Shots in box share": "Part des tirs tentés depuis l’intérieur de la surface.",
-        "Index": "Indice synthétique SportsBase ; utilisé comme validation, jamais compté deux fois dans la note.",
+        "Goals": "But marqué par le joueur : c’est l’impact décisif le plus direct.",
+        "Assists": "Dernière passe donnée avant le but d’un partenaire. Exemple : le centre ou la passe qui conduit directement au but.",
+        "Passes": "Nombre total de passes tentées pendant les minutes réellement jouées.",
+        "Passes accurate, %": "Part des passes arrivées à un partenaire. Exemple : 18/22 signifie 18 passes réussies sur 22.",
+        "Progressive passes": "Passes qui font avancer nettement le ballon vers le but adverse et permettent de dépasser une zone ou une ligne.",
+        "Progressive passes accurate, %": "Part des passes progressives arrivées à un partenaire ; elle mesure la qualité de la progression, pas seulement son volume.",
+        "Key passes": "Dernière passe avant le tir d’un partenaire. Elle crée une possibilité de frappe, même si le tir ne devient pas un but.",
+        "Passes for a shot": "Passes après lesquelles un partenaire déclenche un tir ; elles montrent la création concrète d’une occasion de frappe.",
+        "Chances created": "Situations créées par le joueur qui donnent à un partenaire une véritable possibilité de conclure.",
+        "Final third entries": "Actions qui font entrer le ballon dans le dernier tiers, la zone la plus proche du but adverse.",
+        "Passes forward to the final third": "Passes vers l’avant qui atteignent le dernier tiers et rapprochent l’équipe de la zone de création.",
+        "Passes into the penalty box": "Passes qui trouvent ou recherchent un partenaire dans la surface de réparation adverse.",
+        "Crosses": "Ballons envoyés depuis un côté vers une zone de finition dans ou autour de la surface.",
+        "Crosses accurate, %": "Part des centres qui trouvent un partenaire. Exemple : 3/8 signifie 3 centres réussis sur 8.",
+        "Challenges": "Tous les duels disputés contre un adversaire, au sol ou dans une lutte directe pour le ballon.",
+        "Challenges won, %": "Part de tous les duels remportés. Toujours lire le pourcentage avec le volume : 1/1 n’a pas la même fiabilité que 8/10.",
+        "Defensive challenges": "Duels engagés pour stopper, ralentir ou déposséder un adversaire.",
+        "Defensive challenges won, %": "Part des duels défensifs remportés. Exemple : 6/8 indique une présence défensive solide sur huit situations.",
+        "Attacking challenges": "Duels joués pour conserver le ballon, éliminer un adversaire ou faire avancer l’attaque.",
+        "Attacking challenges won, %": "Part des duels offensifs remportés, avec le nombre de tentatives pour juger la fiabilité.",
+        "Aerial challenges": "Duels disputés sur un ballon aérien.",
+        "Aerial challenges won, %": "Part des duels aériens gagnés. Zéro duel signifie absence d’occasion observée, pas faiblesse.",
+        "Dribbles": "Tentatives d’éliminer directement un adversaire avec le ballon.",
+        "Dribbles successful, %": "Part des dribbles réussis ; elle mesure l’efficacité du un contre un.",
+        "Dribbling in the final third": "Dribbles tentés dans le dernier tiers, là où éliminer un joueur peut créer une occasion.",
+        "Interceptions": "Ballons coupés en anticipant une passe ou une trajectoire adverse.",
+        "Ball recoveries": "Ballons récupérés par le joueur après une perte ou une action adverse.",
+        "Ball recoveries in opponent's half": "Ballons récupérés haut, dans la moitié adverse, permettant souvent d’attaquer rapidement.",
+        "Shots": "Nombre de tirs tentés ; il mesure la capacité à se mettre en position de frapper, pas seulement la finition.",
+        "Shots on target, %": "Part des tirs cadrés. Un tir cadré oblige le gardien à intervenir ou entre dans le but.",
+        "Shots from the penalty area": "Tirs pris dans la surface, généralement depuis des positions plus favorables que les tirs lointains.",
+        "Shots in box share": "Part des tirs tentés dans la surface. Six tirs dans la surface sans but restent un signal positif de présence, avec une finition à améliorer.",
+        "xG (expected goals)": "Qualité cumulée des tirs selon leur probabilité moyenne de devenir un but ; ce n’est pas une prédiction certaine.",
+        "Actions in opponent's box": "Actions avec ballon réalisées dans la surface adverse ; elles mesurent la présence réelle dans la zone décisive.",
+        "Lost balls": "Ballons perdus par le joueur. Le lieu, la pression et le niveau de risque doivent être confirmés en vidéo.",
+        "Lost balls in own half": "Ballons perdus dans son propre camp, où une perte peut exposer plus directement l’équipe.",
+        "Index": "Indice synthétique SportsBase. Son rang dans l’équipe et le match sert de validation globale du verdict.",
     },
     "en": {
-        "Progressive passes": "A pass that moves the ball substantially closer to the opposition goal.",
-        "Key passes": "The final team-mate pass before a shot.",
-        "Passes for a shot": "A pass followed by a team-mate shot.",
-        "Final third entries": "An action that moves the ball into the attacking third.",
-        "Defensive challenges": "A duel used to stop or delay an opposition action.",
-        "xG (expected goals)": "The combined average scoring probability of the player's shots.",
-        "Actions in opponent's box": "Recorded on-ball actions inside the opposition penalty area.",
-        "Shots in box share": "The share of shots taken from inside the penalty area.",
+        "Goals": "A goal scored by the player: the most direct decisive contribution.",
+        "Assists": "The final pass before a team-mate scores.",
+        "Passes accurate, %": "The share of passes reaching a team-mate; 18/22 means 18 completed passes from 22 attempts.",
+        "Progressive passes": "Passes that move the ball substantially towards goal and bypass a zone or line.",
+        "Progressive passes accurate, %": "The completion rate of progressive passes, measuring quality as well as volume.",
+        "Key passes": "The final team-mate pass before a shot; it creates a shooting opportunity even when no goal follows.",
+        "Passes for a shot": "Passes followed by a team-mate shot, showing concrete chance creation.",
+        "Final third entries": "Actions moving the ball into the attacking third, closest to the opposition goal.",
+        "Passes into the penalty box": "Passes seeking or finding a team-mate inside the opposition box.",
+        "Challenges won, %": "The share of all duels won; always read it with the attempt count because 1/1 is less reliable than 8/10.",
+        "Defensive challenges": "Duels used to stop, delay or dispossess an opponent.",
+        "Defensive challenges won, %": "The share of defensive duels won, shown with successes and attempts.",
+        "Attacking challenges won, %": "The share of attacking duels won while protecting or advancing the ball.",
+        "Aerial challenges won, %": "The share of aerial duels won; no duel means no observed opportunity, not weakness.",
+        "Dribbles successful, %": "The success rate of attempts to beat an opponent directly on the ball.",
+        "Crosses accurate, %": "The share of crosses finding a team-mate; 3/8 means three completed crosses from eight.",
+        "Interceptions": "Passes or trajectories cut out through anticipation.",
+        "Ball recoveries": "Possessions recovered after a loss or opposition action.",
+        "xG (expected goals)": "The combined average scoring probability of the player's shots; it is not a certain prediction.",
+        "Shots": "Shot attempts show the ability to reach shooting positions, not only finishing quality.",
+        "Shots on target, %": "The share of shots forcing a save or entering the goal.",
+        "Actions in opponent's box": "Recorded on-ball actions in the opposition box, measuring presence in the decisive area.",
+        "Shots in box share": "The share of shots from inside the box; six box shots without a goal still show strong presence but weaker finishing.",
+        "Index": "SportsBase's composite index; its team and match rank validates the overall verdict.",
     },
     "ar": {
-        "Progressive passes": "تمريرة تنقل الكرة بوضوح نحو مرمى المنافس.",
-        "Key passes": "آخر تمريرة من زميل قبل التسديد.",
-        "Final third entries": "إجراء ينقل الكرة إلى الثلث الهجومي.",
-        "Defensive challenges": "ثنائي لإيقاف أو إبطاء هجمة المنافس.",
-        "xG (expected goals)": "مجموع احتمالات تحول تسديدات اللاعب إلى أهداف.",
-        "Actions in opponent's box": "إجراءات بالكرة داخل منطقة جزاء المنافس.",
+        "Goals": "هدف سجله اللاعب وهو أوضح مساهمة حاسمة.",
+        "Assists": "آخر تمريرة قبل تسجيل الزميل للهدف.",
+        "Passes accurate, %": "نسبة التمريرات التي وصلت إلى زميل مع عرض عدد المحاولات والتمريرات الناجحة.",
+        "Progressive passes": "تمريرات تدفع الكرة بوضوح نحو مرمى المنافس وتتجاوز منطقة أو خطا.",
+        "Key passes": "آخر تمريرة قبل تسديدة زميل حتى إن لم تتحول التسديدة إلى هدف.",
+        "Passes for a shot": "تمريرات تبعتها تسديدة من زميل وتوضح صناعة فرصة فعلية.",
+        "Final third entries": "إجراءات تنقل الكرة إلى الثلث الهجومي الأقرب إلى مرمى المنافس.",
+        "Passes into the penalty box": "تمريرات تبحث عن زميل أو تصل إليه داخل منطقة جزاء المنافس.",
+        "Challenges won, %": "نسبة الثنائيات الناجحة وتقرأ دائما مع عدد المحاولات لأن 1/1 أقل موثوقية من 8/10.",
+        "Defensive challenges": "ثنائيات لإيقاف المنافس أو إبطائه أو افتكاك الكرة منه.",
+        "Defensive challenges won, %": "نسبة الثنائيات الدفاعية الناجحة مع عدد النجاحات والمحاولات.",
+        "Aerial challenges won, %": "نسبة الثنائيات الهوائية الناجحة وغياب المحاولة لا يعني الضعف.",
+        "Dribbles successful, %": "نسبة نجاح محاولات تجاوز المنافس بالكرة.",
+        "Crosses accurate, %": "نسبة العرضيات التي وصلت إلى زميل.",
+        "xG (expected goals)": "مجموع متوسط احتمالات تحول تسديدات اللاعب إلى أهداف وليس توقعا مؤكدا.",
+        "Shots": "عدد التسديدات ويقيس الوصول إلى وضعية التسديد وليس الإنهاء فقط.",
+        "Actions in opponent's box": "إجراءات بالكرة داخل منطقة جزاء المنافس وتقيس الحضور في المنطقة الحاسمة.",
+        "Index": "مؤشر سبورتس بايز المركب ويستخدم ترتيبه داخل الفريق والمباراة لتأكيد الخلاصة.",
     },
 }
 
@@ -498,14 +553,6 @@ POSITION_GROUPS = {
     "RCF": "forward",
     "ST": "forward",
 }
-
-UNIT_POSITIONS = {
-    "defence": {"CB", "LCB", "RCB"},
-    "midfield": {"CDM", "DM", "LDM", "RDM", "CM", "LCM", "RCM", "CAM", "AM", "SS"},
-    "corridors": {"LB", "RB", "LWB", "RWB", "LM", "RM", "LW", "RW", "LAM", "RAM"},
-    "attack": {"CAM", "AM", "SS", "LAM", "RAM", "LM", "RM", "LW", "RW", "CF", "LCF", "RCF", "ST"},
-}
-
 
 DIMENSION_LABELS = {
     "fr": {
@@ -722,11 +769,22 @@ KEY_METRICS = {
     "forward": ("Actions in opponent's box", "Shots", "Shots in box share", "Shots on target, %", "xG (expected goals)", "Passes accurate, %", "Attacking challenges won, %"),
 }
 
-UNIT_METRICS = {
-    "defence": ("Passes accurate, %", "Progressive passes", "Defensive challenges won, %", "Aerial challenges won, %", "Lost balls in own half"),
-    "midfield": ("Passes accurate, %", "Progressive passes", "Final third entries", "Challenges won, %", "Ball recoveries in opponent's half"),
-    "corridors": ("Progressive passes", "Passes into the penalty box", "Crosses accurate, %", "Defensive challenges won, %", "Lost balls"),
-    "attack": ("Shots", "Shots from the penalty area", "xG (expected goals)", "Actions in opponent's box", "Key passes"),
+GLOBAL_BENCHMARK_METRICS = {
+    "goalkeeper": ("Index", "Passes accurate, %", "Long passes accurate, %", "Progressive passes", "Interceptions"),
+    "centre_back": ("Index", "__duels_won__", "Challenges won, %", "Defensive challenges won, %", "Aerial challenges won, %", "Interceptions"),
+    "full_back": ("Index", "__duels_won__", "Defensive challenges won, %", "Progressive passes", "Crosses accurate, %", "Final third entries"),
+    "wing_back": ("Index", "__duels_won__", "Defensive challenges won, %", "Progressive passes", "Crosses accurate, %", "Actions in opponent's box"),
+    "holding_midfielder": ("Index", "__duels_won__", "Challenges won, %", "Defensive challenges won, %", "Passes accurate, %", "Progressive passes"),
+    "box_to_box_midfielder": ("Index", "__duels_won__", "Challenges won, %", "Final third entries", "Progressive passes", "Passes for a shot"),
+    "attacking_midfielder": ("Index", "__duels_won__", "Dribbles successful, %", "Key passes", "Passes for a shot", "Actions in opponent's box"),
+    "winger": ("Index", "__duels_won__", "Dribbles successful, %", "Crosses accurate, %", "Shots on target, %", "Actions in opponent's box"),
+    "forward": ("Index", "__duels_won__", "Attacking challenges won, %", "Shots on target, %", "Shots from the penalty area", "Actions in opponent's box"),
+}
+
+BENCHMARK_LABELS = {
+    "fr": {"__duels_won__": "Nombre de duels remportés"},
+    "en": {"__duels_won__": "Duels won — total"},
+    "ar": {"__duels_won__": "عدد الثنائيات الناجحة"},
 }
 
 
@@ -863,7 +921,18 @@ def _definition(name, language):
     localized = METRIC_DEFINITIONS.get(language, {}).get(name)
     if localized:
         return localized
-    return METRIC_DEFINITIONS["fr"].get(name, "") if language == "fr" else ""
+    if name in RATE_WEIGHTS:
+        attempts = _label(RATE_WEIGHTS[name], language).lower()
+        return {
+            "fr": f"Pourcentage de {attempts} réussis, toujours présenté avec le nombre de tentatives.",
+            "en": f"Success rate for {attempts}, always shown with the number of attempts.",
+            "ar": f"نسبة نجاح {attempts} وتعرض دائما مع عدد المحاولات.",
+        }[language]
+    return {
+        "fr": "Volume réel enregistré pendant les minutes jouées ; il n’est pas extrapolé sur 90 minutes.",
+        "en": "The real total recorded during the minutes played; it is not projected to 90 minutes.",
+        "ar": "العدد الحقيقي المسجل خلال دقائق اللعب دون تحويله إلى 90 دقيقة.",
+    }[language]
 
 
 def _confidence(minutes, language):
@@ -980,6 +1049,15 @@ def _metric_raw(row, metric):
     return _number(row.get(metric), missing_zero=True)
 
 
+def _successful_actions(row, rate_metric):
+    attempts_metric = RATE_WEIGHTS.get(rate_metric)
+    attempts = _number(row.get(attempts_metric), missing_zero=True) if attempts_metric else 0
+    rate = _rate(row.get(rate_metric))
+    if attempts <= 0 or rate is None:
+        return None
+    return max(0, min(round(attempts), round(attempts * rate / 100)))
+
+
 def _format_number(value):
     if value is None:
         return "—"
@@ -1051,7 +1129,13 @@ def _metric_result(row, specification, language):
     elif kind == "mistake":
         score = 15 if value >= 1 else None
     elif kind == "negative":
-        score = _negative_score(value, specification.get("target", 1), minutes)
+        # A zero over a short appearance is not evidence that the player would
+        # have kept the ball safely over a full match.  It remains unobserved.
+        score = None if value <= 0 and minutes < 45 else _negative_score(
+            value,
+            specification.get("target", 1),
+            minutes,
+        )
     elif kind == "decimal_volume":
         if value <= 0 and minutes < max(45, specification.get("min_minutes", 0)):
             score = None
@@ -1140,23 +1224,106 @@ def _overall_score(dimensions):
     return round(sum(item["score"] * item.get("weight", 0) for item in observed) / weight)
 
 
-def _verdict(score, language):
-    copy = TEXT[language]["verdicts"]
-    if score is None:
+def _entry_impact_floor(target, group):
+    """Return a conservative floor for a short, eventful appearance.
+
+    It rewards concrete impact instead of treating low minutes as a bad match.
+    Zero events never create a positive floor.
+    """
+    if _minutes(target) >= 45:
+        return None
+    goals = _number(target.get("Goals"), missing_zero=True)
+    assists = _number(target.get("Assists"), missing_zero=True)
+    if goals + assists >= 2:
+        return 92
+    if goals >= 1:
+        return 86
+    if assists >= 1:
+        return 82
+
+    if group in {"forward", "winger", "attacking_midfielder"}:
+        impact = (
+            1.5 * _number(target.get("Shots from the penalty area"), missing_zero=True)
+            + 0.6 * _number(target.get("Actions in opponent's box"), missing_zero=True)
+            + 1.5 * _number(target.get("Key passes"), missing_zero=True)
+            + 1.5 * _number(target.get("Passes for a shot"), missing_zero=True)
+            + 1.0 * _number(target.get("Passes into the penalty box"), missing_zero=True)
+            + 1.0 * (_successful_actions(target, "Dribbles successful, %") or 0)
+        )
+    elif group in {"box_to_box_midfielder", "holding_midfielder"}:
+        impact = (
+            0.6 * _number(target.get("Progressive passes"), missing_zero=True)
+            + 0.8 * _number(target.get("Final third entries"), missing_zero=True)
+            + 1.5 * _number(target.get("Passes for a shot"), missing_zero=True)
+            + 1.0 * _number(target.get("Interceptions"), missing_zero=True)
+            + 1.0 * (_successful_actions(target, "Challenges won, %") or 0)
+        )
+    elif group in {"centre_back", "full_back", "wing_back"}:
+        impact = (
+            1.7 * (_successful_actions(target, "Defensive challenges won, %") or 0)
+            + 1.2 * (_successful_actions(target, "Aerial challenges won, %") or 0)
+            + 1.3 * _number(target.get("Interceptions"), missing_zero=True)
+            + 0.4 * _number(target.get("Progressive passes"), missing_zero=True)
+            + 0.8 * _number(target.get("Final third entries"), missing_zero=True)
+        )
+    else:
+        impact = (
+            0.3 * _number(target.get("Passes"), missing_zero=True)
+            + 1.5 * _number(target.get("Interceptions"), missing_zero=True)
+            + 0.5 * _number(target.get("Progressive passes"), missing_zero=True)
+        )
+    if impact >= 8:
+        return 82
+    if impact >= 5:
+        return 75
+    if impact >= 2.5:
+        return 65
+    return None
+
+
+def _verdict(score, language, *, target=None, rankings=None):
+    minutes = _minutes(target or {})
+    decision_score = score
+    reasons = []
+    entry_floor = _entry_impact_floor(target or {}, _group(target or {}))
+    if entry_floor is not None and (decision_score is None or decision_score < entry_floor):
+        decision_score = entry_floor
+        reasons.append("short_appearance_positive_impact")
+
+    rankings = rankings or {}
+    match_rank = rankings.get("index_match") or {}
+    team_rank = rankings.get("index_team") or {}
+    first_in_match = match_rank.get("rank") == 1 and (match_rank.get("total") or 0) >= 6
+    first_in_team = team_rank.get("rank") == 1 and (team_rank.get("total") or 0) >= 3
+    if first_in_match or first_in_team:
+        if decision_score is None or decision_score < 75:
+            decision_score = 75
+        reasons.append("index_rank_one")
+
+    copy = TEXT[language]["entry_verdicts" if minutes < 45 else "verdicts"]
+    if decision_score is None:
         code, tone = "partial", "neutral"
-    elif score >= 85:
+    elif decision_score >= 85:
         code, tone = "exceptional", "excellent"
-    elif score >= 75:
+    elif decision_score >= 75:
         code, tone = "very_good", "excellent"
-    elif score >= 65:
+    elif decision_score >= 65:
         code, tone = "solid", "positive"
-    elif score >= 50:
+    elif decision_score >= 50:
         code, tone = "mixed", "warning"
-    elif score >= 35:
+    elif decision_score >= 35:
         code, tone = "insufficient", "warning"
     else:
         code, tone = "difficult", "danger"
-    return {"code": code, "label": copy[code], "score": score, "tone": tone}
+    return {
+        "code": code,
+        "label": copy[code],
+        "score": decision_score,
+        "mission_score": score,
+        "tone": tone,
+        "appearance_type": "entry" if minutes < 45 else "match",
+        "reasons": reasons,
+    }
 
 
 def _percentile(target, values, direction=1):
@@ -1221,101 +1388,40 @@ def _key_metrics(target, population, group, language):
     return results
 
 
-def _aggregate_rows(rows, label=None):
-    rows = list(rows)
-    if not rows:
-        return {}
-    headers = {key for row in rows for key in row}
-    result = {
-        "Player": label or " + ".join(str(row.get("Player") or "") for row in rows),
-        "Team": str(rows[0].get("Team") or ""),
-        "Position": "/".join(dict.fromkeys(_position(row) for row in rows)),
-        "Minutes played": sum(_minutes(row) for row in rows),
-    }
-    for name in headers:
-        if name in {"Player", "Team", "Position", "Minutes played", "№"}:
-            continue
-        if name == "Index":
-            indexes = [_number(row.get(name)) for row in rows]
-            indexes = [value for value in indexes if value is not None]
-            result[name] = round(sum(indexes) / len(indexes), 1) if indexes else "-"
-            continue
-        if name in RATE_WEIGHTS:
-            denominator = RATE_WEIGHTS[name]
-            weighted = []
-            for row in rows:
-                attempts = _number(row.get(denominator), missing_zero=True)
-                rate = _rate(row.get(name))
-                if attempts > 0 and rate is not None:
-                    weighted.append((attempts, rate))
-            total_attempts = sum(attempts for attempts, _value in weighted)
-            result[name] = (
-                sum(attempts * value for attempts, value in weighted) / total_attempts / 100
-                if total_attempts
-                else "-"
-            )
-            continue
-        if name.endswith(", % of total"):
-            weighted = []
-            for row in rows:
-                attempts = _number(row.get("Final third entries"), missing_zero=True)
-                rate = _rate(row.get(name))
-                if attempts > 0 and rate is not None:
-                    weighted.append((attempts, rate))
-            total_attempts = sum(attempts for attempts, _value in weighted)
-            result[name] = (
-                sum(attempts * value for attempts, value in weighted) / total_attempts / 100
-                if total_attempts
-                else "-"
-            )
-            continue
-        if "%" not in name:
-            result[name] = sum(_number(row.get(name), missing_zero=True) for row in rows)
-    return result
-
-
-def _same_role_codes(position):
-    groups = {
-        "RB": {"RB", "RWB"}, "RWB": {"RB", "RWB"},
-        "LB": {"LB", "LWB"}, "LWB": {"LB", "LWB"},
-        "RCB": {"RCB", "CB"}, "LCB": {"LCB", "CB"}, "CB": {"CB", "LCB", "RCB"},
-        "RCM": {"RCM", "CM"}, "LCM": {"LCM", "CM"}, "CM": {"CM", "LCM", "RCM"},
-        "RDM": {"RDM", "DM", "CDM"}, "LDM": {"LDM", "DM", "CDM"},
-        "DM": {"DM", "CDM", "LDM", "RDM"}, "CDM": {"DM", "CDM", "LDM", "RDM"},
-        "RW": {"RW", "RM", "RAM"}, "RM": {"RW", "RM", "RAM"}, "RAM": {"RW", "RM", "RAM"},
-        "LW": {"LW", "LM", "LAM"}, "LM": {"LW", "LM", "LAM"}, "LAM": {"LW", "LM", "LAM"},
-        "RCF": {"RCF", "CF", "ST"}, "LCF": {"LCF", "CF", "ST"},
-        "CF": {"CF", "ST", "RCF", "LCF"}, "ST": {"CF", "ST", "RCF", "LCF"},
-    }
-    return groups.get(position, {position})
-
-
-def _direct_codes(position, group):
-    right = position.startswith("R")
-    left = position.startswith("L")
-    if group in {"full_back", "wing_back"}:
-        return {"LW", "LM", "LAM"} if right else {"RW", "RM", "RAM"} if left else {"LW", "RW", "LM", "RM"}
-    if group == "winger":
-        return {"LB", "LWB"} if right else {"RB", "RWB"} if left else {"LB", "RB", "LWB", "RWB"}
-    if group == "forward":
-        return {"CB", "LCB", "RCB"}
-    if group == "centre_back":
-        return {"CF", "LCF", "RCF", "ST"}
-    if group == "goalkeeper":
-        return {"GK"}
-    return UNIT_POSITIONS["midfield"]
-
-
 def _format_comparison_value(row, metric, group, language):
     result = _metric_result(row, _spec_for_metric(group, metric), language)
     return result["value"], result["display"], result["lower_is_better"]
 
 
-def _comparison_block(target, opponents, codes, title, language, key_metrics, group):
-    selected = [row for row in opponents if _position(row) in codes and _minutes(row) > 0]
+def _homologous_position_codes(position):
+    """Narrow position equivalence, never a whole line or playing unit."""
+    groups = {
+        "RB": ("RB", "RWB"), "RWB": ("RWB", "RB"),
+        "LB": ("LB", "LWB"), "LWB": ("LWB", "LB"),
+        "RCB": ("RCB", "CB"), "LCB": ("LCB", "CB"), "CB": ("CB", "RCB", "LCB"),
+        "RCM": ("RCM", "CM"), "LCM": ("LCM", "CM"), "CM": ("CM", "RCM", "LCM"),
+        "RDM": ("RDM", "DM", "CDM"), "LDM": ("LDM", "DM", "CDM"),
+        "DM": ("DM", "CDM", "RDM", "LDM"), "CDM": ("CDM", "DM", "RDM", "LDM"),
+        "RW": ("RW", "RM", "RAM"), "RM": ("RM", "RW", "RAM"), "RAM": ("RAM", "RW", "RM"),
+        "LW": ("LW", "LM", "LAM"), "LM": ("LM", "LW", "LAM"), "LAM": ("LAM", "LW", "LM"),
+        "RCF": ("RCF", "CF", "ST"), "LCF": ("LCF", "CF", "ST"),
+        "CF": ("CF", "ST", "RCF", "LCF"), "ST": ("ST", "CF", "RCF", "LCF"),
+    }
+    return groups.get(position, (position,))
+
+
+def _same_position_comparison(target, opponents, title, language, key_metrics, group):
+    """Compare only with the opposition player's exact or narrow equivalent position."""
+    position = _position(target)
+    selected = [row for row in opponents if _position(row) == position and _minutes(row) > 0]
+    match_type = "exact"
+    if not selected:
+        equivalents = set(_homologous_position_codes(position)) - {position}
+        selected = [row for row in opponents if _position(row) in equivalents and _minutes(row) > 0]
+        match_type = "equivalent"
     if not selected:
         return None
-    counterpart = _aggregate_rows(selected)
+    counterpart = max(selected, key=_minutes)
     target_minutes, opponent_minutes = _minutes(target), _minutes(counterpart)
     maximum = max(target_minutes, opponent_minutes)
     ratio = min(target_minutes, opponent_minutes) / maximum if maximum else 0
@@ -1338,83 +1444,92 @@ def _comparison_block(target, opponents, codes, title, language, key_metrics, gr
         )
     return {
         "title": title,
-        "players": [str(row.get("Player") or "") for row in selected],
-        "positions": [_position(row) for row in selected],
+        "player": str(counterpart.get("Player") or ""),
+        "team": str(counterpart.get("Team") or ""),
+        "position": _position(counterpart),
+        "position_match": match_type,
         "minutes": round(opponent_minutes),
         "comparable_minutes": comparable,
         "metrics": metrics,
     }
 
 
-def _unit_comparisons(rows, teams, language):
-    copy = TEXT[language]
-    comparisons = []
-    for unit, positions in UNIT_POSITIONS.items():
-        team_rows = {
-            team: [
-                row for row in rows
-                if str(row.get("Team") or "") == team
-                and _position(row) in positions
-                and _minutes(row) > 0
-            ]
-            for team in teams
-        }
-        aggregates = {team: _aggregate_rows(items, label=team) for team, items in team_rows.items()}
-        total_minutes = {team: _minutes(aggregates[team]) if aggregates[team] else 0 for team in teams}
-        comparable_minutes = False
-        if len(teams) == 2 and max(total_minutes.values() or [0]):
-            comparable_minutes = min(total_minutes.values()) / max(total_minutes.values()) >= 0.85
-        wins = defaultdict(int)
-        metrics = []
-        for metric in UNIT_METRICS[unit]:
-            values, display = {}, {}
-            lower = metric in {"Lost balls", "Lost balls in own half"}
-            is_rate = metric in RATE_WEIGHTS or "%" in metric
-            for team in teams:
-                aggregate = aggregates[team]
-                values[team] = _metric_raw(aggregate, metric) if aggregate else None
-                if aggregate:
-                    sample_group = _group(team_rows[team][0]) if team_rows[team] else "box_to_box_midfielder"
-                    display[team] = _metric_result(aggregate, _spec_for_metric(sample_group, metric), language)["display"]
-                else:
-                    display[team] = "—"
-            comparable = is_rate or comparable_minutes
-            present = [(team, value) for team, value in values.items() if value is not None]
-            if comparable and len(present) == 2 and present[0][1] != present[1][1]:
-                winner = min(present, key=lambda item: item[1])[0] if lower else max(present, key=lambda item: item[1])[0]
-                wins[winner] += 1
-            metrics.append(
-                {
-                    "metric": metric,
-                    "label": _label(metric, language),
-                    "values": values,
-                    "display": display,
-                    "lower_is_better": lower,
-                    "comparable": comparable,
-                }
-            )
-        if wins:
-            winner, won = max(wins.items(), key=lambda item: item[1])
-            verdict = copy["units_edge"].format(
-                team=winner,
-                won=won,
-                total=sum(1 for metric in metrics if metric["comparable"]),
-            )
-        else:
-            verdict = copy["units_even"]
-        comparisons.append(
+def _benchmark_value(row, metric):
+    if metric == "__duels_won__":
+        successful = _successful_actions(row, "Challenges won, %")
+        return float(successful) if successful is not None else None
+    if metric == "Index":
+        return _number(row.get("Index"))
+    return _metric_raw(row, metric)
+
+
+def _benchmark_display(row, metric, group, language):
+    if metric == "__duels_won__":
+        attempts = _number(row.get("Challenges"), missing_zero=True)
+        rate = _rate(row.get("Challenges won, %"))
+        successful = _successful_actions(row, "Challenges won, %")
+        if successful is None:
+            return "—"
+        return f"{successful}/{round(attempts)} · {_format_number(rate)}%"
+    if metric == "Index":
+        return _format_number(_number(row.get("Index")))
+    return _metric_result(row, _spec_for_metric(group, metric), language)["display"]
+
+
+def _global_benchmarks(target, rows, group, language):
+    """Individual leaders across both teams; never aggregate lines or units."""
+    results = []
+    match_rows = [row for row in rows if _minutes(row) > 0]
+    for metric in GLOBAL_BENCHMARK_METRICS[group]:
+        min_attempts = 3 if metric in RATE_WEIGHTS else 1
+        candidates = []
+        for row in match_rows:
+            value = _benchmark_value(row, metric)
+            if value is None:
+                continue
+            if metric in RATE_WEIGHTS:
+                attempts = _number(row.get(RATE_WEIGHTS[metric]), missing_zero=True)
+                if attempts < min_attempts:
+                    continue
+            candidates.append((row, value))
+        if not candidates:
+            continue
+        best_value = max(value for _row, value in candidates)
+        leaders = [row for row, value in candidates if abs(value - best_value) < 1e-9]
+        target_value = _benchmark_value(target, metric)
+        target_eligible = any(_plain(row.get("Player")) == _plain(target.get("Player")) for row, _value in candidates)
+        rank, total = _rank(target_value, [value for _row, value in candidates]) if target_eligible else (None, len(candidates))
+        label = BENCHMARK_LABELS.get(language, {}).get(metric) or _label(metric, language)
+        definition = (
             {
-                "key": unit,
-                "label": copy["units"][unit],
-                "teams": list(teams),
-                "player_counts": {team: len(team_rows[team]) for team in teams},
-                "minutes": total_minutes,
-                "comparable_minutes": comparable_minutes,
-                "metrics": metrics,
-                "verdict": verdict,
+                "fr": "Nombre de duels gagnés calculé à partir du volume de duels et du pourcentage de réussite.",
+                "en": "Number of duels won, derived from duel volume and success rate.",
+                "ar": "عدد الثنائيات الناجحة محسوب من حجم الثنائيات ونسبة النجاح.",
+            }[language]
+            if metric == "__duels_won__"
+            else _definition(metric, language)
+        )
+        results.append(
+            {
+                "metric": metric,
+                "label": label,
+                "definition": definition,
+                "target_display": _benchmark_display(target, metric, group, language),
+                "target_rank": {"rank": rank, "total": total, "available": rank is not None},
+                "minimum_attempts": min_attempts,
+                "leaders": [
+                    {
+                        "name": str(row.get("Player") or ""),
+                        "team": str(row.get("Team") or ""),
+                        "position": _position(row),
+                        "minutes": round(_minutes(row)),
+                        "display": _benchmark_display(row, metric, _group(row), language),
+                    }
+                    for row in leaders[:2]
+                ],
             }
         )
-    return comparisons
+    return results
 
 
 def _rank(value, values, higher=True):
@@ -1425,38 +1540,35 @@ def _rank(value, values, higher=True):
     return clean.index(value) + 1, len(clean)
 
 
-def _player_card(row, language):
-    group = _group(row)
-    dimensions = _role_dimensions(row, group, language)
-    return {
-        "name": str(row.get("Player") or ""),
-        "team": str(row.get("Team") or ""),
-        "position": _position(row),
-        "minutes": round(_minutes(row)),
-        "index": _number(row.get("Index")),
-        "profile_score": _overall_score(dimensions),
-        "confidence": _confidence(_minutes(row), language),
-    }
-
-
 def _rankings(target, rows, dimensions, language):
     team = str(target.get("Team") or "")
     team_rows = [row for row in rows if str(row.get("Team") or "") == team and _minutes(row) > 0]
     match_rows = [row for row in rows if _minutes(row) > 0]
+    homologous_codes = set(_homologous_position_codes(_position(target)))
+    position_rows = [row for row in match_rows if _position(row) in homologous_codes]
     index = _number(target.get("Index"))
     team_rank, team_total = _rank(index, [_number(row.get("Index")) for row in team_rows])
     match_rank, match_total = _rank(index, [_number(row.get("Index")) for row in match_rows])
-    group = _group(target)
-    peers = [row for row in team_rows if _group(row) == group]
-    cards = [_player_card(row, language) for row in peers]
-    target_score = _overall_score(dimensions)
-    mission_rank, mission_total = _rank(target_score, [card["profile_score"] for card in cards])
-    return {
+    position_rank, position_total = _rank(index, [_number(row.get("Index")) for row in position_rows])
+    result = {
         "index_team": {"rank": team_rank, "total": team_total, "available": team_rank is not None},
         "index_match": {"rank": match_rank, "total": match_total, "available": match_rank is not None},
-        "same_role_mission": {"rank": mission_rank, "total": mission_total, "available": mission_rank is not None},
-        "index_not_in_score": True,
+        "index_same_position": {"rank": position_rank, "total": position_total, "available": position_rank is not None},
+        "index_used_as_verdict_signal": True,
     }
+    copy = TEXT[language]
+    if match_rank == 1 and match_total >= 6:
+        summary = copy["index_first_match"].format(rank=match_rank, total=match_total)
+    elif team_rank == 1 and team_total >= 3:
+        summary = copy["index_first_team"].format(rank=team_rank, total=team_total)
+    elif team_rank is not None and team_rank <= 3 and team_total >= 6:
+        summary = copy["index_top_three"].format(rank=team_rank, total=team_total)
+    elif team_rank is not None:
+        summary = copy["index_available"].format(rank=team_rank, total=team_total)
+    else:
+        summary = copy["index_unavailable"]
+    result["summary"] = summary
+    return result
 
 
 def _territorial_profile(points, language):
@@ -1502,33 +1614,27 @@ def _territorial_profile(points, language):
 
 def _context_payload(target, context, language):
     context = dict(context or {})
-    final_score = str(context.get("score") or "")
     home_team = str(context.get("home_team") or "")
     away_team = str(context.get("away_team") or "")
-    team = str(target.get("Team") or "")
-    result = "unknown"
-    score_numbers = [int(value) for value in re.findall(r"\d+", final_score)[:2]]
-    if len(score_numbers) == 2 and team in {home_team, away_team}:
-        team_goals, opponent_goals = score_numbers if team == home_team else list(reversed(score_numbers))
-        result = "win" if team_goals > opponent_goals else "loss" if team_goals < opponent_goals else "draw"
     source_metadata = context.get("source_metadata") if isinstance(context.get("source_metadata"), dict) else {}
     points = source_metadata.get("ball_touches_points") or context.get("ball_touches_points") or []
     return {
         "home_team": home_team,
         "away_team": away_team,
-        "score": final_score,
-        "result": result,
+        # Kept only to identify the fixture on the cover.  No match-result or
+        # score-state conclusion is produced until the scraper supplies the
+        # required event timeline.
+        "score": str(context.get("score") or ""),
         "match_date": str(context.get("match_date") or ""),
-        "score_state_available": bool(context.get("score_state_available")),
-        "score_state_note": context.get("score_state_note") or TEXT[language]["score_state_missing"],
-        "team_rank_source": context.get("team_rank"),
-        "match_rank_source": context.get("match_rank"),
+        "performance_context_analysis": False,
         "territory": _territorial_profile(points, language),
     }
 
 
 def _evidence_sentence(metric):
-    return f"{metric.get('label')}: {metric.get('display')}"
+    sentence = f"{metric.get('label')}: {metric.get('display')}"
+    definition = str(metric.get("definition") or "").strip()
+    return f"{sentence} — {definition}" if definition else sentence
 
 
 def _role_specific_observations(target, group, language):
@@ -1654,7 +1760,7 @@ def _coaching(group, key, language):
     return "تأكيد السبب بالفيديو ثم تكرار الحالة الخاصة بالمركز بسرعة المباراة."
 
 
-def _narrative(target, dimensions, confidence, verdict, context, language):
+def _narrative(target, dimensions, confidence, verdict, rankings, language):
     name = str(target.get("Player") or "")
     position = _position(target)
     group = _group(target)
@@ -1662,20 +1768,29 @@ def _narrative(target, dimensions, confidence, verdict, context, language):
     observed = [dimension for dimension in dimensions if dimension.get("coverage")]
     best = max(observed, key=lambda item: item["score"]) if observed else None
     weak = min(observed, key=lambda item: item["score"]) if observed else None
+    is_entry = verdict.get("appearance_type") == "entry"
     if language == "fr":
+        evaluation = "Lecture de son entrée" if is_entry else "Verdict sur son match"
         summary = (
             f"{name} a joué {round(_minutes(target))} minutes au poste de {position} ({role}). "
-            f"Verdict sur cette apparition : {verdict['label'].lower()}, avec une fiabilité {confidence['label'].lower()}."
+            f"{evaluation} : {verdict['label'].lower()}. "
+            f"La fiabilité pour juger cette apparition est {confidence['label'].lower()}."
         )
+        if rankings.get("summary"):
+            summary += f" {rankings['summary']}"
         if best and best.get("headline_evidence"):
             summary += f" Sa mission la plus convaincante est {best['label'].lower()} ({_evidence_sentence(best['headline_evidence'][0])})."
         if weak and weak is not best and weak.get("headline_evidence"):
             summary += f" La priorité concerne {weak['label'].lower()} ({_evidence_sentence(weak['headline_evidence'][0])})."
     elif language == "en":
+        evaluation = "Impact off the bench" if is_entry else "Match verdict"
         summary = (
             f"{name} played {round(_minutes(target))} minutes as {position} ({role}). "
-            f"Appearance verdict: {verdict['label'].lower()}, with {confidence['label'].lower()} reliability."
+            f"{evaluation}: {verdict['label'].lower()}. "
+            f"Reliability for this appearance is {confidence['label'].lower()}."
         )
+        if rankings.get("summary"):
+            summary += f" {rankings['summary']}"
         if best and best.get("headline_evidence"):
             summary += f" The strongest mission was {best['label'].lower()} ({_evidence_sentence(best['headline_evidence'][0])})."
         if weak and weak is not best and weak.get("headline_evidence"):
@@ -1685,6 +1800,8 @@ def _narrative(target, dimensions, confidence, verdict, context, language):
             f"شارك {name} لمدة {round(_minutes(target))} دقيقة في مركز {position} ({role}). "
             f"التقييم: {verdict['label']} وموثوقية العينة {confidence['label']}."
         )
+        if rankings.get("summary"):
+            summary += f" {rankings['summary']}"
     strengths, risks = [], []
     for dimension in sorted(observed, key=lambda item: item["score"], reverse=True):
         evidence = dimension.get("positive_evidence") or []
@@ -1721,7 +1838,6 @@ def _narrative(target, dimensions, confidence, verdict, context, language):
         "development": list(dict.fromkeys(development))[:3],
         "sample_caution": TEXT[language]["sample_caution"],
         "video_limit": TEXT[language]["video_limit"],
-        "score_state_note": context["score_state_note"],
     }
 
 
@@ -1762,41 +1878,28 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         if team and team != target_team
     ]
     opponent_team = other_teams[0] if other_teams else ""
-    teams = [team for team in (target_team, opponent_team) if team]
     group = _group(target)
-    population = [row for row in rows if _group(row) == group and _minutes(row) > 0]
+    homologous_codes = set(_homologous_position_codes(_position(target)))
+    population = [row for row in rows if _position(row) in homologous_codes and _minutes(row) > 0]
     dimensions = _role_dimensions(target, group, language)
     profile_score = _overall_score(dimensions)
-    verdict = _verdict(profile_score, language)
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
     key_metrics = _key_metrics(target, population, group, language)
     rankings = _rankings(target, rows, dimensions, language)
-    team_peers = [
-        row for row in rows
-        if str(row.get("Team") or "") == target_team
-        and _group(row) == group
-        and _plain(row.get("Player")) != _plain(player_name)
-        and _minutes(row) > 0
-    ]
-    peer_cards = [_player_card(row, language) for row in team_peers]
-    peer_cards.sort(
-        key=lambda item: (item["profile_score"] is not None, item["profile_score"] or -1),
-        reverse=True,
-    )
+    verdict = _verdict(profile_score, language, target=target, rankings=rankings)
     opponents = [row for row in rows if str(row.get("Team") or "") == opponent_team]
     copy = TEXT[language]
-    matchups = [
-        _comparison_block(
-            target, opponents, _same_role_codes(_position(target)), copy["counterpart"],
-            language, KEY_METRICS[group], group,
-        ),
-        _comparison_block(
-            target, opponents, _direct_codes(_position(target), group), copy["direct"],
-            language, KEY_METRICS[group], group,
-        ),
-    ]
-    narrative = _narrative(target, dimensions, confidence, verdict, context_payload, language)
+    counterpart = _same_position_comparison(
+        target,
+        opponents,
+        copy["counterpart"],
+        language,
+        KEY_METRICS[group],
+        group,
+    )
+    global_benchmarks = _global_benchmarks(target, rows, group, language)
+    narrative = _narrative(target, dimensions, confidence, verdict, rankings, language)
     return {
         "version": ANALYSIS_VERSION,
         "available": True,
@@ -1818,9 +1921,8 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         "rankings": rankings,
         "dimensions": dimensions,
         "key_metrics": key_metrics,
-        "same_compartment": peer_cards[:6],
-        "matchups": [item for item in matchups if item],
-        "unit_comparisons": _unit_comparisons(rows, teams, language),
+        "same_position_comparison": counterpart,
+        "global_benchmarks": global_benchmarks,
         "narrative": narrative,
         "glossary": [
             {"metric": metric, "label": _label(metric, language), "definition": definition}
@@ -1830,20 +1932,22 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         ],
         "appendix_metrics": _appendix_metrics(target, language),
         "population": {
-            "role_group": group,
+            "position": _position(target),
             "players": len(population),
             "comparable_minutes": len(_same_minute_window(target, population)),
             "description": (
-                "Comparisons use real totals only. Count percentiles require players with "
-                "similar minutes; rate percentiles require at least three attempts."
+                "Only players listed in the same position or its strict formation equivalent are used for the direct comparison. "
+                "Global match leaders remain individual and rates require at least three attempts."
             ),
         },
         "methodology": {
             "volume_normalisation": "none_raw_match_totals",
             "duration_calibration": "six_coarse_playing_time_windows",
             "rate_aggregation": "weighted_by_attempts",
-            "comparison_priority": "secondary_after_individual_role_analysis",
-            "index_usage": "validation_only_not_scored",
+            "comparison_scope": "same_or_strictly_equivalent_position_and_individual_match_leaders_only",
+            "collective_unit_analysis": False,
+            "match_result_context_analysis": False,
+            "index_usage": "explicit_verdict_validation_signal",
             "no_opportunity_rule": "zero_attempts_is_not_a_weakness",
             "video_confirmation_required": True,
         },
@@ -1869,10 +1973,7 @@ def build_match_analysis(match, language=None):
         "away_team": getattr(match, "away_team", ""),
         "score": getattr(match, "score", ""),
         "match_date": match_date.isoformat() if hasattr(match_date, "isoformat") else str(match_date or ""),
-        "team_rank": getattr(stats, "team_rank", None),
-        "match_rank": getattr(stats, "match_rank", None),
         "source_metadata": getattr(stats, "source_metadata", None) or {},
-        "score_state_available": False,
     }
     return analyse_match_dataset(
         rows,

@@ -16,12 +16,11 @@ PDF_COPY = {
         "index": "INDEX SPORTSBASE",
         "mission_score": "SCORE DE MISSION",
         "verdict": "Verdict de l’analyste",
-        "context": "Contexte de la rencontre",
         "rankings": "Repères dans le match",
         "index_team": "Rang Index — équipe",
         "index_match": "Rang Index — match",
-        "role_rank": "Rang mission — même rôle",
-        "index_note": "L’Index confirme le contexte général. Il n’entre pas dans le calcul du score de mission afin d’éviter un double comptage.",
+        "index_position": "Rang Index — poste homologue",
+        "index_note": "L’Index SportsBase et son rang sont toujours lus avec les missions du poste. Une 1re place dans l’équipe ou le match constitue un signal fort dans le verdict final.",
         "role_missions": "Missions du poste",
         "mission_note": "Chaque score juge uniquement cette apparition. Il combine qualité, activité réelle et fiabilité des tentatives — ce n’est pas une note du niveau absolu du joueur.",
         "coverage": "données observées",
@@ -50,28 +49,28 @@ PDF_COPY = {
         "risks": "Points à améliorer",
         "development": "Plan d’action individuel",
         "video_check": "À confirmer avec la vidéo All Actions",
-        "comparisons": "Comparaisons — repère secondaire",
-        "comparison_note": "La comparaison vient après l’analyse individuelle. Les volumes bruts ne sont comparés que lorsque les temps de jeu sont proches.",
-        "same_role": "Joueurs du même compartiment",
+        "comparisons": "Repères individuels — comparaison secondaire",
+        "comparison_note": "Aucune analyse collective ou par compartiment n’est réalisée. La comparaison directe concerne uniquement l’homologue adverse au même poste ou à son équivalent strict dans une autre organisation.",
         "player": "JOUEUR",
         "position": "POSTE",
         "profile": "MISSION",
-        "matchups": "Homologue et adversaire direct",
+        "matchups": "Homologue adverse au poste équivalent",
+        "global_leaders": "Meilleures performances individuelles des deux équipes",
+        "global_note": "Pour les pourcentages de réussite, le classement exige au moins 3 tentatives. Le nombre de réussites et le dénominateur restent visibles.",
+        "match_leader": "MEILLEUR DES DEUX ÉQUIPES",
+        "target_rank": "RANG DU JOUEUR",
         "target": "JOUEUR",
         "opponent": "ADVERSAIRE",
         "not_comparable": "* volume non comparable : temps de jeu trop différents",
-        "units": "Comparaison des compartiments",
-        "unit_note": "Les taux sont pondérés par les tentatives. Les volumes sont signalés comme non comparables lorsque les minutes cumulées diffèrent trop.",
         "appendix": "Fiche statistique complète",
         "method": "Méthodologie et limites",
-        "method_text": "Le moteur sépare les missions de chaque poste, conserve les totaux réels, utilise six niveaux de fiabilité selon les minutes, réduit le poids des taux calculés sur peu de tentatives et considère qu’une absence d’occasion n’est pas une faiblesse. Les comparaisons restent secondaires.",
+        "method_text": "Le moteur analyse uniquement le joueur et les missions de son poste. Il conserve les totaux réels, adapte la lecture aux entrées courtes, réduit le poids des faibles échantillons et considère qu’une absence d’occasion n’est pas une faiblesse. Il ne produit aucune analyse collective ni conclusion liée au résultat du match.",
         "source": "Références méthodologiques",
         "prepared": "Préparé par l’équipe d’analyse MS Performance",
         "page": "Page",
         "unavailable": "Les données complètes du fichier Players XLSX ne sont pas disponibles pour ce match.",
         "no_data": "Aucune donnée exploitable.",
         "no_comparison": "Aucun joueur comparable n’est disponible sur cette rencontre.",
-        "score_unknown": "Chronologie du score non disponible",
     },
     "en": {
         "brand": "PERFORMANCE ANALYSIS",
@@ -81,12 +80,11 @@ PDF_COPY = {
         "index": "SPORTSBASE INDEX",
         "mission_score": "MISSION SCORE",
         "verdict": "Analyst verdict",
-        "context": "Match context",
         "rankings": "Match reference points",
         "index_team": "Index rank — team",
         "index_match": "Index rank — match",
-        "role_rank": "Mission rank — same role",
-        "index_note": "The Index validates the broad context. It is not included in the mission score, preventing double counting.",
+        "index_position": "Index rank — counterpart position",
+        "index_note": "SportsBase Index and rank are always read alongside position missions. Ranking first in the team or match is a strong signal in the final verdict.",
         "role_missions": "Position missions",
         "mission_note": "Each score assesses this appearance only. It combines execution, real activity and attempt reliability; it is not an absolute ability rating.",
         "coverage": "observed data",
@@ -115,28 +113,28 @@ PDF_COPY = {
         "risks": "Points to improve",
         "development": "Individual action plan",
         "video_check": "To confirm through All Actions video",
-        "comparisons": "Comparisons — secondary reference",
-        "comparison_note": "Comparison follows the individual assessment. Raw volumes are compared only when playing times are similar.",
-        "same_role": "Players in the same unit",
+        "comparisons": "Individual reference points — secondary comparison",
+        "comparison_note": "No collective or unit analysis is produced. The direct comparison uses only the opposition player in the same position or its strict equivalent in another shape.",
         "player": "PLAYER",
         "position": "POSITION",
         "profile": "MISSION",
-        "matchups": "Counterpart and direct opponent",
+        "matchups": "Opposition counterpart in the equivalent position",
+        "global_leaders": "Best individual performances across both teams",
+        "global_note": "Success-rate rankings require at least 3 attempts. Successes and denominators remain visible.",
+        "match_leader": "BEST ACROSS BOTH TEAMS",
+        "target_rank": "PLAYER RANK",
         "target": "PLAYER",
         "opponent": "OPPONENT",
         "not_comparable": "* non-comparable volume: playing times differ too much",
-        "units": "Unit comparison",
-        "unit_note": "Rates are weighted by attempts. Volumes are flagged as non-comparable when cumulative minutes differ too much.",
         "appendix": "Complete statistical sheet",
         "method": "Methodology and limitations",
-        "method_text": "The engine separates each position's missions, keeps real totals, uses six minute-based reliability levels, reduces the weight of rates from few attempts and treats no opportunity as no weakness. Comparisons remain secondary.",
+        "method_text": "The engine analyses only the player and the missions of the position. It keeps real totals, adapts the reading to short appearances, reduces the weight of small samples and treats no opportunity as no weakness. It produces no collective analysis or match-result conclusion.",
         "source": "Methodology references",
         "prepared": "Prepared by the MS Performance analysis team",
         "page": "Page",
         "unavailable": "The full Players XLSX dataset is unavailable for this match.",
         "no_data": "No usable data.",
         "no_comparison": "No comparable player is available in this match.",
-        "score_unknown": "Score timeline unavailable",
     },
     "ar": {
         "brand": "تحليل الأداء",
@@ -146,12 +144,11 @@ PDF_COPY = {
         "index": "مؤشر سبورتس بايز",
         "mission_score": "درجة المهمة",
         "verdict": "خلاصة المحلل",
-        "context": "سياق المباراة",
         "rankings": "الترتيب داخل المباراة",
         "index_team": "ترتيب المؤشر داخل الفريق",
         "index_match": "ترتيب المؤشر داخل المباراة",
-        "role_rank": "ترتيب المهمة لنفس الدور",
-        "index_note": "يستخدم المؤشر لتأكيد السياق فقط ولا يدخل في حساب درجة المهمة لتجنب الحساب المزدوج.",
+        "index_position": "ترتيب المؤشر في نفس المركز",
+        "index_note": "يقرأ مؤشر سبورتس بايز وترتيبه دائما مع مهام المركز، وتعد المرتبة الأولى داخل الفريق أو المباراة إشارة قوية في الخلاصة النهائية.",
         "role_missions": "مهام المركز",
         "mission_note": "كل درجة تخص هذه المشاركة فقط وتجمع بين التنفيذ والنشاط الحقيقي وموثوقية المحاولات، وليست تقييما مطلقا للاعب.",
         "coverage": "بيانات ملاحظة",
@@ -180,28 +177,28 @@ PDF_COPY = {
         "risks": "نقاط التحسين",
         "development": "خطة العمل الفردية",
         "video_check": "يجب تأكيده بفيديو جميع اللقطات",
-        "comparisons": "المقارنات — مرجع ثانوي",
-        "comparison_note": "تأتي المقارنة بعد التحليل الفردي ولا تقارن الأحجام إلا عند تقارب دقائق اللعب.",
-        "same_role": "لاعبو نفس الخط",
+        "comparisons": "مراجع فردية — مقارنة ثانوية",
+        "comparison_note": "لا يوجد تحليل جماعي أو حسب الخطوط، والمقارنة المباشرة تخص لاعب الخصم في نفس المركز أو ما يعادله مباشرة في تنظيم مختلف.",
         "player": "اللاعب",
         "position": "المركز",
         "profile": "المهمة",
-        "matchups": "اللاعب المقابل والمنافس المباشر",
+        "matchups": "لاعب الخصم في المركز المعادل",
+        "global_leaders": "أفضل الأداءات الفردية في الفريقين",
+        "global_note": "يتطلب ترتيب نسب النجاح ثلاث محاولات على الأقل مع إظهار عدد النجاحات والمحاولات.",
+        "match_leader": "الأفضل في الفريقين",
+        "target_rank": "ترتيب اللاعب",
         "target": "اللاعب",
         "opponent": "المنافس",
         "not_comparable": "* حجم غير قابل للمقارنة بسبب اختلاف دقائق اللعب",
-        "units": "مقارنة الخطوط",
-        "unit_note": "ترجح النسب بعدد المحاولات وتوضع علامة على الأحجام غير القابلة للمقارنة.",
         "appendix": "الورقة الإحصائية الكاملة",
         "method": "المنهجية والحدود",
-        "method_text": "يفصل المحرك مهام كل مركز ويحافظ على الأرقام الحقيقية ويستخدم ست درجات لموثوقية الدقائق ويخفض وزن النسب ذات المحاولات القليلة ولا يعتبر غياب الفرصة نقطة ضعف. المقارنات ثانوية.",
+        "method_text": "يحلل المحرك اللاعب ومهام مركزه فقط، ويحافظ على الأرقام الحقيقية ويتكيف مع المشاركات القصيرة ويخفض وزن العينات الصغيرة ولا يعتبر غياب الفرصة نقطة ضعف. لا ينتج تحليلا جماعيا ولا استنتاجا مرتبطا بنتيجة المباراة.",
         "source": "المراجع المنهجية",
         "prepared": "إعداد فريق تحليل MS Performance",
         "page": "صفحة",
         "unavailable": "بيانات ملف Players XLSX الكاملة غير متاحة لهذه المباراة.",
         "no_data": "لا توجد بيانات قابلة للاستعمال.",
         "no_comparison": "لا يوجد لاعب قابل للمقارنة في هذه المباراة.",
-        "score_unknown": "تسلسل النتيجة غير متاح",
     },
 }
 
@@ -745,19 +742,12 @@ def render_performance_pdf(report):
                 ),
             ),
             Spacer(1, 5 * mm),
-            p(copy["context"], h2),
-            note_box(
-                f"{fixture or (context.get('home_team', '') + ' ' + context.get('score', '') + ' ' + context.get('away_team', '')).strip()}\n"
-                f"{narrative.get('score_state_note') or copy['score_unknown']}",
-                "neutral",
-            ),
-            Spacer(1, 5 * mm),
             p(copy["rankings"], h2),
             Table(
                 [[
                     info_card(copy["index_team"], rank_text(rankings.get("index_team")), "neutral", 54 * mm),
                     info_card(copy["index_match"], rank_text(rankings.get("index_match")), "neutral", 54 * mm),
-                    info_card(copy["role_rank"], rank_text(rankings.get("same_role_mission")), "neutral", 54 * mm),
+                    info_card(copy["index_position"], rank_text(rankings.get("index_same_position")), "neutral", 54 * mm),
                 ]],
                 colWidths=[56.3 * mm] * 3,
                 style=TableStyle(
@@ -828,7 +818,7 @@ def render_performance_pdf(report):
             reading += f" · P{percentile}" if reading != "—" else f"P{percentile}"
         metric_rows.append(
             [
-                p(item.get("label"), body),
+                [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
                 p(item.get("display"), body_bold),
                 p(sample_text, tiny),
                 p(reading, body),
@@ -927,34 +917,15 @@ def render_performance_pdf(report):
     story.extend(bullet_list(narrative.get("development") or [], "excellent"))
     story.extend([Spacer(1, 3 * mm), note_box(f"{copy['video_check']}\n{narrative.get('video_limit') or ''}", "neutral")])
 
-    story.extend([PageBreak(), section_title(copy["comparisons"], 9), p(copy["comparison_note"], small), Spacer(1, 4 * mm), p(copy["same_role"], h2)])
-    peer_rows = [[p(copy["player"], table_head), p(copy["position"], table_head), p(copy["minutes"], table_head), p(copy["profile"], table_head), p(copy["index"], table_head)]]
-    peer_rows.append(
-        [
-            p(player_name, body_bold),
-            p(player.get("position"), body),
-            p(player.get("minutes"), body),
-            p("—" if player.get("profile_score") is None else f"{player.get('profile_score')}/100", body_bold),
-            p(player.get("index") if player.get("index") is not None else "—", body),
-        ]
-    )
-    for peer in analysis.get("same_compartment") or []:
-        peer_rows.append(
-            [
-                p(peer.get("name"), body),
-                p(peer.get("position"), body),
-                p(peer.get("minutes"), body),
-                p("—" if peer.get("profile_score") is None else f"{peer.get('profile_score')}/100", body),
-                p(peer.get("index") if peer.get("index") is not None else "—", body),
-            ]
-        )
-    story.append(standard_table(peer_rows, [70 * mm, 26 * mm, 22 * mm, 29 * mm, 22 * mm]))
-    story.extend([Spacer(1, 6 * mm), p(copy["matchups"], h2)])
-    matchups = analysis.get("matchups") or []
-    if not matchups:
+    story.extend([PageBreak(), section_title(copy["comparisons"], 9), p(copy["comparison_note"], small), Spacer(1, 5 * mm), p(copy["matchups"], h2)])
+    matchup = analysis.get("same_position_comparison")
+    if not matchup:
         story.append(note_box(copy["no_comparison"], "neutral"))
-    for matchup in matchups:
-        title = f"{matchup.get('title')} — {' · '.join(matchup.get('players') or [])} ({matchup.get('minutes', 0)} min)"
+    else:
+        title = (
+            f"{matchup.get('title')} — {matchup.get('player')} · {matchup.get('team')} · "
+            f"{matchup.get('position')} ({matchup.get('minutes', 0)} min)"
+        )
         rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["opponent"], table_head)]]
         has_non_comparable = False
         for item in matchup.get("metrics") or []:
@@ -973,34 +944,30 @@ def render_performance_pdf(report):
             block.append(p(copy["not_comparable"], tiny))
         story.extend([KeepTogether(block), Spacer(1, 5 * mm)])
 
-    story.extend([PageBreak(), section_title(copy["units"], 10), p(copy["unit_note"], small), Spacer(1, 3 * mm)])
-    units = analysis.get("unit_comparisons") or []
-    for unit_index, unit in enumerate(units):
-        teams = unit.get("teams") or []
-        if len(teams) < 2:
-            continue
-        rows = [[p(unit.get("label"), table_head), p(teams[0], table_head), p(teams[1], table_head)]]
-        has_non_comparable = False
-        for item in unit.get("metrics") or []:
-            comparable = item.get("comparable", True)
-            has_non_comparable = has_non_comparable or not comparable
-            marker = "*" if not comparable else ""
-            values = item.get("display") or {}
-            rows.append(
-                [
-                    p(item.get("label"), body),
-                    p(f"{values.get(teams[0], '—')}{marker}", body),
-                    p(f"{values.get(teams[1], '—')}{marker}", body),
-                ]
-            )
-        block = [p(unit.get("verdict"), h2), standard_table(rows, [91 * mm, 39 * mm, 39 * mm])]
-        if has_non_comparable:
-            block.append(p(copy["not_comparable"], tiny))
-        story.extend([KeepTogether(block), Spacer(1, 5 * mm)])
-        if unit_index == 1 and len(units) > 2:
-            story.append(PageBreak())
+    story.extend([Spacer(1, 4 * mm), p(copy["global_leaders"], h2), p(copy["global_note"], tiny), Spacer(1, 3 * mm)])
+    leader_rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["target_rank"], table_head), p(copy["match_leader"], table_head)]]
+    for item in analysis.get("global_benchmarks") or []:
+        rank = item.get("target_rank") or {}
+        rank_value = rank_text(rank)
+        leaders = item.get("leaders") or []
+        leader_text = "\n".join(
+            f"{leader.get('name')} · {leader.get('team')} · {leader.get('position')} · "
+            f"{leader.get('display')} ({leader.get('minutes')} min)"
+            for leader in leaders
+        ) or "—"
+        leader_rows.append(
+            [
+                [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
+                p(item.get("target_display") or "—", body_bold),
+                p(rank_value, body),
+                p(leader_text, small),
+            ]
+        )
+    if len(leader_rows) == 1:
+        leader_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body)])
+    story.append(standard_table(leader_rows, [55 * mm, 30 * mm, 23 * mm, 61 * mm]))
 
-    story.extend([PageBreak(), section_title(copy["appendix"], 11)])
+    story.extend([PageBreak(), section_title(copy["appendix"], 10)])
     metrics = analysis.get("appendix_metrics") or []
     appendix_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["indicator"], table_head), p(copy["real_value"], table_head)]]
     for index in range(0, len(metrics), 2):
@@ -1018,7 +985,7 @@ def render_performance_pdf(report):
         appendix_rows.append([p(copy["no_data"], body), p("—", body), p("", body), p("", body)])
     story.append(standard_table(appendix_rows, [57 * mm, 27.5 * mm, 57 * mm, 27.5 * mm]))
 
-    story.extend([PageBreak(), section_title(copy["method"], 12), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
+    story.extend([PageBreak(), section_title(copy["method"], 11), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
     if confidence.get("explanation"):
         story.extend([note_box(confidence.get("explanation"), "warning", True), Spacer(1, 4 * mm)])
     story.extend([p(narrative.get("sample_caution") or "", body), Spacer(1, 3 * mm), p(narrative.get("video_limit") or "", body), Spacer(1, 6 * mm), p(copy["source"], h2)])

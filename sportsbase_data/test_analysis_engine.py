@@ -104,13 +104,15 @@ class PositionAnalysisTests(unittest.TestCase):
                 },
             ),
             _row("Team Peer", "Team A", "RWB", 77),
-            _row("Opponent Right", "Team B", "RB", 60),
+            _row("Opponent Right", "Team B", "RWB", 60),
             _row("Opponent Left", "Team B", "LW", 90),
         ]
         analysis = analyse_match_dataset(rows, "Wing Back", "en")
         self.assertEqual(analysis["confidence"]["code"], "very_low")
         self.assertIn("immediate-impact", analysis["confidence"]["explanation"])
-        self.assertGreaterEqual(len(analysis["matchups"]), 2)
+        self.assertEqual(analysis["verdict"]["appearance_type"], "entry")
+        self.assertEqual(analysis["same_position_comparison"]["player"], "Opponent Right")
+        self.assertEqual(analysis["same_position_comparison"]["position"], "RWB")
         self.assertIn("No event is projected", analysis["narrative"]["sample_caution"])
 
     def test_playing_time_reliability_uses_six_agreed_bands(self):
@@ -197,14 +199,24 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertGreaterEqual(final_third["score"], 65)
         self.assertTrue(any("Projection offensive" in line for line in analysis["narrative"]["strengths"]))
 
-    def test_sportsbase_index_validates_but_does_not_change_mission_score(self):
-        base = _row("Player", "A", "RB", 90, **{"Index": 100, "Defensive challenges": 6, "Defensive challenges won, %": 0.7})
-        rows = [base, _row("Opponent", "B", "RB", 90)]
+    def test_sportsbase_index_rank_validates_verdict_without_changing_mission_score(self):
+        base = _row("Player", "A", "RB", 90, **{"Index": 50, "Defensive challenges": 6, "Defensive challenges won, %": 0.7})
+        rows = [
+            base,
+            _row("Team Mate 1", "A", "CB", 90, **{"Index": 90}),
+            _row("Team Mate 2", "A", "CM", 90, **{"Index": 80}),
+            _row("Opponent", "B", "RB", 90, **{"Index": 70}),
+            _row("Opponent 2", "B", "CB", 90, **{"Index": 60}),
+            _row("Opponent 3", "B", "CM", 90, **{"Index": 55}),
+        ]
         first = analyse_match_dataset(rows, "Player", "en")
         rows[0]["Index"] = 250
         second = analyse_match_dataset(rows, "Player", "en")
         self.assertEqual(first["player"]["profile_score"], second["player"]["profile_score"])
-        self.assertTrue(second["rankings"]["index_not_in_score"])
+        self.assertTrue(second["rankings"]["index_used_as_verdict_signal"])
+        self.assertEqual(second["rankings"]["index_match"]["rank"], 1)
+        self.assertGreaterEqual(second["verdict"]["score"], 75)
+        self.assertIn("index_rank_one", second["verdict"]["reasons"])
 
     def test_no_aerial_opportunity_is_not_scored_as_a_weakness(self):
         rows = [
@@ -216,19 +228,114 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(aerial["coverage"], 0)
         self.assertEqual(aerial["grade_code"], "unseen")
 
-    def test_rate_aggregation_uses_attempts_not_simple_average(self):
+    def test_global_success_rate_leader_requires_attempts_and_keeps_denominator(self):
         rows = [
-            _row("Target", "Team A", "RWB", 90),
-            _row("A1", "Team A", "LCB", 90, **{"Passes": 100, "Passes accurate, %": 0.9}),
-            _row("A2", "Team A", "RCB", 90, **{"Passes": 10, "Passes accurate, %": 0.5}),
-            _row("B1", "Team B", "LCB", 90, **{"Passes": 50, "Passes accurate, %": 0.7}),
-            _row("B2", "Team B", "RCB", 90, **{"Passes": 50, "Passes accurate, %": 0.7}),
+            _row("Target", "Team A", "CB", 13, **{"Challenges": 1, "Challenges won, %": 1.0}),
+            _row("A1", "Team A", "CM", 90, **{"Challenges": 10, "Challenges won, %": 0.8}),
+            _row("B1", "Team B", "CB", 90, **{"Challenges": 10, "Challenges won, %": 0.7}),
         ]
         analysis = analyse_match_dataset(rows, "Target", "en")
-        defence = next(item for item in analysis["unit_comparisons"] if item["key"] == "defence")
-        passing = next(item for item in defence["metrics"] if item["metric"] == "Passes accurate, %")
-        self.assertEqual(passing["display"]["Team A"], "95/110 · 86.36%")
-        self.assertEqual(passing["display"]["Team B"], "70/100 · 70%")
+        rate = next(item for item in analysis["global_benchmarks"] if item["metric"] == "Challenges won, %")
+        self.assertEqual(rate["leaders"][0]["name"], "A1")
+        self.assertEqual(rate["leaders"][0]["display"], "8/10 · 80%")
+        self.assertFalse(rate["target_rank"]["available"])
+        won = next(item for item in analysis["global_benchmarks"] if item["metric"] == "__duels_won__")
+        self.assertEqual(won["leaders"][0]["name"], "A1")
+
+    def test_only_exact_opposition_position_is_compared(self):
+        rows = [
+            _row("Target", "A", "RWB", 70),
+            _row("Exact", "B", "RWB", 65),
+            _row("Full Back", "B", "RB", 90),
+            _row("Zone Opponent", "B", "LW", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Target", "en")
+        comparison = analysis["same_position_comparison"]
+        self.assertEqual(comparison["player"], "Exact")
+        self.assertEqual(comparison["position"], "RWB")
+        self.assertEqual(comparison["position_match"], "exact")
+        self.assertNotIn("same_compartment", analysis)
+        self.assertNotIn("unit_comparisons", analysis)
+        self.assertNotIn("matchups", analysis)
+
+    def test_strict_position_equivalent_is_used_when_shapes_differ(self):
+        rows = [
+            _row("Target", "A", "RWB", 70),
+            _row("Equivalent", "B", "RB", 90),
+            _row("Zone Opponent", "B", "LW", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Target", "en")
+        comparison = analysis["same_position_comparison"]
+        self.assertEqual(comparison["player"], "Equivalent")
+        self.assertEqual(comparison["position_match"], "equivalent")
+
+    def test_match_score_is_identification_only_not_analysis(self):
+        rows = [_row("Target", "A", "CM", 90), _row("Opponent", "B", "CM", 90)]
+        analysis = analyse_match_dataset(
+            rows,
+            "Target",
+            "en",
+            context={"home_team": "A", "away_team": "B", "score": "4–0"},
+        )
+        self.assertFalse(analysis["context"]["performance_context_analysis"])
+        self.assertNotIn("result", analysis["context"])
+        self.assertNotIn("score_state_note", analysis["narrative"])
+
+    def test_short_attacking_appearance_is_judged_as_an_entry(self):
+        rows = [
+            _row(
+                "Sub Striker",
+                "A",
+                "ST",
+                18,
+                **{
+                    "Goals": 1,
+                    "Shots": 2,
+                    "Shots from the penalty area": 2,
+                    "Actions in opponent's box": 4,
+                },
+            ),
+            _row("Opponent", "B", "ST", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Sub Striker", "fr")
+        self.assertEqual(analysis["verdict"]["appearance_type"], "entry")
+        self.assertEqual(analysis["verdict"]["label"], "ENTRÉE DÉCISIVE")
+        self.assertGreaterEqual(analysis["verdict"]["score"], 85)
+
+    def test_creative_short_attacking_appearance_can_be_very_good_without_goal(self):
+        rows = [
+            _row(
+                "Creative Sub",
+                "A",
+                "RW",
+                24,
+                **{
+                    "Key passes": 2,
+                    "Passes for a shot": 1,
+                    "Passes into the penalty box": 2,
+                    "Dribbles": 2,
+                    "Dribbles successful, %": 1.0,
+                    "Actions in opponent's box": 2,
+                },
+            ),
+            _row("Opponent", "B", "RW", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Creative Sub", "fr")
+        self.assertIn(analysis["verdict"]["label"], {"TRÈS BONNE ENTRÉE", "ENTRÉE DÉCISIVE"})
+        self.assertGreaterEqual(analysis["verdict"]["score"], 75)
+
+    def test_short_zero_losses_are_not_scored_as_positive_evidence(self):
+        rows = [_row("Sub", "A", "ST", 13, **{"Lost balls": 0}), _row("Opponent", "B", "ST", 90)]
+        analysis = analyse_match_dataset(rows, "Sub", "en")
+        defensive = next(item for item in analysis["dimensions"] if item["key"] == "defensive_work")
+        losses = next(item for item in defensive["evidence"] if item["metric"] == "Lost balls")
+        self.assertIsNone(losses["score"])
+
+    def test_player_facing_kpi_definition_explains_progressive_passes(self):
+        rows = [_row("Target", "A", "CM", 90, **{"Progressive passes": 8}), _row("Opponent", "B", "CM", 90)]
+        analysis = analyse_match_dataset(rows, "Target", "fr")
+        metric = next(item for item in analysis["key_metrics"] if item["metric"] == "Progressive passes")
+        self.assertIn("vers le but adverse", metric["definition"])
 
 
 class PerformancePdfTests(unittest.TestCase):
