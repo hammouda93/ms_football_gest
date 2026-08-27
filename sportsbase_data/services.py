@@ -111,7 +111,13 @@ def _job_payload(job):
     subscription = job.subscription
     player = subscription.player
     known_matches = []
-    for match in subscription.matches.order_by("-match_date", "-sportsbase_match_id"):
+    for match in subscription.matches.select_related("player_stats").order_by(
+        "-match_date", "-sportsbase_match_id"
+    ):
+        try:
+            stats_metadata = match.player_stats.source_metadata or {}
+        except SportsBaseMatchStats.DoesNotExist:
+            stats_metadata = {}
         known_matches.append(
             {
                 "sportsbase_match_id": match.sportsbase_match_id,
@@ -120,7 +126,20 @@ def _job_payload(job):
                 "complete": match.is_complete,
                 "local_folder_key": match.local_folder_key,
                 "all_actions_filename": match.all_actions_filename,
+                "all_actions_downloaded_at": (
+                    match.all_actions_downloaded_at.isoformat()
+                    if match.all_actions_downloaded_at
+                    else None
+                ),
+                "all_actions_emailed_at": (
+                    match.all_actions_emailed_at.isoformat()
+                    if match.all_actions_emailed_at
+                    else None
+                ),
                 "delivery_error": match.delivery_error,
+                "players_statistics_xlsx": stats_metadata.get(
+                    "players_statistics_xlsx", ""
+                ),
             }
         )
     return {

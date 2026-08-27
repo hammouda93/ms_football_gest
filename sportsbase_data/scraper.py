@@ -22,7 +22,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v9-single-email-20260827"
+SCRAPER_BUILD = "season-kpis-radar-v10-match-players-xlsx-20260827"
 
 
 def _now_iso():
@@ -521,13 +521,39 @@ class SportsBaseSubscriptionScraper:
 
         for match_data in discovered:
             previous = known.get(match_data["sportsbase_match_id"], {})
-            if previous.get("complete"):
+            previous_xlsx = str(
+                previous.get("players_statistics_xlsx") or ""
+            ).strip()
+            previous_folder_key = str(
+                previous.get("local_folder_key") or ""
+            ).strip()
+            if previous_folder_key:
+                previous_xlsx_path = (
+                    self.storage_root / previous_folder_key / previous_xlsx
+                )
+            else:
+                previous_xlsx_path = self._match_folder(
+                    player_root=player_root,
+                    season=job.get("season", ""),
+                    match_data=match_data,
+                ) / previous_xlsx
+            xlsx_is_local = bool(
+                previous_xlsx and self._valid_xlsx(previous_xlsx_path)
+            )
+            if previous.get("complete") and (
+                job["job_type"] == "all_actions" or xlsx_is_local
+            ):
                 continue
             match_item = self._match_item(page, match_data["sportsbase_match_id"])
             if job["job_type"] != "all_actions":
                 try:
                     match_data["stats"] = self._read_match_details(
-                        page, context, match_item, match_data, job
+                        page,
+                        context,
+                        match_item,
+                        match_data,
+                        job,
+                        player_root=player_root,
                     )
                     match_data["sync_state"] = "synced"
                 except Exception as exc:
@@ -549,6 +575,15 @@ class SportsBaseSubscriptionScraper:
                 # rapport (et, si activé, YouTube) est prêt. L’agent local conserve
                 # uniquement le fichier vidéo et ne l’envoie plus en pièce jointe.
                 match_data["actions_state"] = previous["actions_state"]
+                for field in (
+                    "local_folder_key",
+                    "all_actions_filename",
+                    "all_actions_downloaded_at",
+                    "all_actions_emailed_at",
+                    "delivery_error",
+                ):
+                    if previous.get(field) not in (None, ""):
+                        match_data[field] = previous[field]
             elif previous.get("actions_state") == "generating":
                 # Une génération a déjà été demandée lors d'un passage précédent.
                 # On reprend uniquement My Videos, sans créer de doublon SportsBase.
@@ -663,7 +698,9 @@ class SportsBaseSubscriptionScraper:
         item.wait_for(state="visible", timeout=10000)
         return item
 
-    def _read_match_details(self, page, context, match_item, match_data, job):
+    def _read_match_details(
+        self, page, context, match_item, match_data, job, *, player_root
+    ):
         details_scope = self._open_match_details_scope(
             page,
             match_item,
@@ -692,6 +729,11 @@ class SportsBaseSubscriptionScraper:
             match_data["match_url"],
             job["player"],
             match_data,
+            statistics_dir=self._match_folder(
+                player_root=player_root,
+                season=job.get("season", ""),
+                match_data=match_data,
+            ),
         )
         for field in ("match_date", "home_score", "away_score", "referee"):
             value = profile.get(field)
@@ -720,6 +762,18 @@ class SportsBaseSubscriptionScraper:
                 "match_profile_url": match_data["match_url"],
                 "stadium": profile.get("stadium", ""),
                 "referee": profile.get("referee", ""),
+                "players_statistics_url": profile.get(
+                    "players_statistics_url", ""
+                ),
+                "players_statistics_xlsx": profile.get(
+                    "players_statistics_xlsx", ""
+                ),
+                "players_statistics_downloaded_at": profile.get(
+                    "players_statistics_downloaded_at", ""
+                ),
+                "players_statistics_error": profile.get(
+                    "players_statistics_error", ""
+                ),
                 "ball_touches_scope": "match",
                 "ball_touches_count": len(ball_touches_points),
                 "ball_touches_points": ball_touches_points,
@@ -1187,7 +1241,15 @@ class SportsBaseSubscriptionScraper:
     def _capture_map_in_container(self, page, container, label):
         return self._capture_map_field(page, container, label)
 
-    def _read_match_profile(self, context, match_url, player, match_data=None):
+    def _read_match_profile(
+        self,
+        context,
+        match_url,
+        player,
+        match_data=None,
+        *,
+        statistics_dir=None,
+    ):
         page = context.new_page()
         try:
             page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
@@ -1254,9 +1316,129 @@ class SportsBaseSubscriptionScraper:
                 all_rows=all_rows,
             )
             result.update(metadata)
+            if statistics_dir is not None:
+                result.update(
+                    self._download_match_players_statistics(
+                        page=page,
+                        match_data=match_data or {},
+                        destination_dir=statistics_dir,
+                    )
+                )
             return result
         finally:
             page.close()
+
+    def _download_match_players_statistics(
+        self, *, page, match_data, destination_dir
+    ):
+        """Download the full Players XLSX once the team ranking has been read."""
+        match_id = str(match_data.get("sportsbase_match_id") or "").strip()
+        if not match_id:
+            match = MATCH_ID_RE.search(page.url)
+            match_id = match.group(1) if match else ""
+        if not match_id:
+            return {
+                "players_statistics_error": (
+                    "Identifiant du match introuvable pour le téléchargement XLSX."
+                )
+            }
+
+        destination_dir = Path(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / (
+            f"match_{self._file_component(match_id)}__players_statistics.xlsx"
+        )
+        if self._valid_xlsx(destination):
+            print(
+                "[SPORTSBASE] Statistiques Players XLSX déjà présentes : "
+                f"{destination}"
+            )
+            return {
+                "players_statistics_url": urljoin(
+                    SPORTSBASE_ROOT, f"/matches/{match_id}/players"
+                ),
+                "players_statistics_xlsx": destination.name,
+            }
+
+        players_path = f"/matches/{match_id}/players"
+        players_url = urljoin(SPORTSBASE_ROOT, players_path)
+        try:
+            players_tab = page.locator(f'a[href="{players_path}"]').first
+            if players_tab.count():
+                players_tab.scroll_into_view_if_needed(timeout=10_000)
+                players_tab.click(timeout=10_000)
+                page.wait_for_url(f"**{players_path}*", timeout=30_000)
+            else:
+                page.goto(
+                    players_url,
+                    wait_until="domcontentloaded",
+                    timeout=30_000,
+                )
+            page.locator('[role="table"]').first.wait_for(
+                state="visible", timeout=30_000
+            )
+
+            tooltip = page.get_by_text(
+                "Download statistics (XLSX)", exact=True
+            ).first
+            tooltip.wait_for(state="attached", timeout=15_000)
+            download_button = tooltip.locator(
+                'xpath=ancestor::*[contains(@class,"ActionIconWrapper")][1]'
+            )
+            if not download_button.count():
+                download_button = page.locator(
+                    '[class*="DownloadButtonContainer"] '
+                    '[class*="ActionIconWrapper"]'
+                ).first
+            download_button.wait_for(state="visible", timeout=15_000)
+            download_button.scroll_into_view_if_needed(timeout=10_000)
+
+            print(
+                "[SPORTSBASE] Téléchargement des statistiques Players XLSX — "
+                f"match {match_id}"
+            )
+            with page.expect_download(timeout=30_000) as download_info:
+                download_button.click(timeout=10_000)
+            download = download_info.value
+            if destination.exists():
+                destination = self._unique_path(destination)
+            download.save_as(str(destination))
+            failure = download.failure()
+            if failure:
+                raise RuntimeError(failure)
+            if not self._valid_xlsx(destination):
+                raise RuntimeError(
+                    "Le fichier reçu n’est pas un classeur XLSX valide."
+                )
+
+            print(f"[SPORTSBASE] Statistiques Players XLSX enregistrées : {destination}")
+            return {
+                "players_statistics_url": players_url,
+                "players_statistics_xlsx": destination.name,
+                "players_statistics_downloaded_at": _now_iso(),
+                "players_statistics_error": "",
+            }
+        except Exception as exc:
+            print(
+                "[SPORTSBASE][WARN] Téléchargement Players XLSX impossible — "
+                f"match {match_id} : {exc}"
+            )
+            return {
+                "players_statistics_url": players_url,
+                "players_statistics_xlsx": "",
+                "players_statistics_error": str(exc),
+            }
+
+    @staticmethod
+    def _valid_xlsx(path):
+        path = Path(path)
+        try:
+            if not path.is_file() or path.stat().st_size <= 0:
+                return False
+            with path.open("rb") as workbook:
+                return workbook.read(2) == b"PK"
+        except OSError:
+            return False
 
     @staticmethod
     def _read_match_header_metadata(page, match_data):

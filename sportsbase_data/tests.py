@@ -140,6 +140,31 @@ class SyncServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(claimed.payload["season"], "2025/2026")
         self.assertNotIn("password", claimed.payload)
 
+    def test_job_payload_exposes_downloaded_players_statistics_workbook(self):
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772538",
+            season=self.subscription.season,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=match,
+            source_metadata={
+                "players_statistics_xlsx": (
+                    "match_772538__players_statistics.xlsx"
+                )
+            },
+        )
+        queue_sync(self.subscription, requested_by=self.admin)
+
+        claimed = claim_next_job()
+
+        self.assertEqual(
+            claimed.payload["known_matches"][0]["players_statistics_xlsx"],
+            "match_772538__players_statistics.xlsx",
+        )
+
     def test_result_upserts_profile_match_stats_and_maps(self):
         job, _created = queue_sync(self.subscription, requested_by=self.admin)
         claimed = claim_next_job()
@@ -494,6 +519,21 @@ class ScraperNormalizationTests(TestCase):
         self.assertEqual(result["team_rank"], 2)
         self.assertEqual(result["match_rank"], 2)
         self.assertTrue(result["team_table"][1]["is_current_player"])
+
+    def test_xlsx_validation_checks_non_empty_zip_signature(self):
+        with TemporaryDirectory() as directory:
+            valid = Path(directory) / "statistics.xlsx"
+            invalid = Path(directory) / "statistics.html"
+            valid.write_bytes(b"PK\x03\x04workbook")
+            invalid.write_bytes(b"<html>login</html>")
+
+            self.assertTrue(SportsBaseSubscriptionScraper._valid_xlsx(valid))
+            self.assertFalse(SportsBaseSubscriptionScraper._valid_xlsx(invalid))
+            self.assertFalse(
+                SportsBaseSubscriptionScraper._valid_xlsx(
+                    Path(directory) / "missing.xlsx"
+                )
+            )
 
 
 class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
