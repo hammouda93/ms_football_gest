@@ -40,6 +40,7 @@ from .services import (
     claim_next_job,
     claim_next_youtube_upload,
     fail_sync_job,
+    pending_jobs_overview,
     queue_sync,
     retry_youtube_upload,
 )
@@ -610,6 +611,12 @@ def portal_match_map(request, player_id, match_id, map_kind):
     if map_kind == "touches":
         return _png_response(stats.ball_touches_png)
     return HttpResponse(status=404)
+
+
+@production_required
+@require_GET
+def api_pending_jobs(request):
+    return JsonResponse(pending_jobs_overview())
 
 
 @production_required

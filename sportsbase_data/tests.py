@@ -134,6 +134,34 @@ class SubscriptionModelTests(SportsBaseFixtureMixin, TestCase):
 
 
 class SyncServiceTests(SportsBaseFixtureMixin, TestCase):
+    def test_pending_jobs_api_previews_every_player_without_claiming_jobs(self):
+        sync_job, _created = queue_sync(self.subscription, requested_by=self.admin)
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772538",
+            season=self.subscription.season,
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            home_score=1,
+            away_score=1,
+        )
+        youtube_job = SportsBaseYouTubeUpload.objects.create(match=match)
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("performance:api_pending_jobs"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        player_names = {
+            item["player"]["name"] for item in payload["sportsbase_jobs"]
+        }
+        self.assertEqual(player_names, {"Performance Player", "Private Player"})
+        self.assertEqual(payload["youtube_jobs"][0]["player"]["name"], "Performance Player")
+        sync_job.refresh_from_db()
+        youtube_job.refresh_from_db()
+        self.assertEqual(sync_job.status, SportsBaseSyncJob.Status.PENDING)
+        self.assertEqual(youtube_job.status, SportsBaseYouTubeUpload.Status.PENDING)
+
     def test_job_payload_contains_only_operational_player_data(self):
         job, created = queue_sync(self.subscription, requested_by=self.admin)
         self.assertTrue(created)

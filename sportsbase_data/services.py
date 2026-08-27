@@ -87,6 +87,57 @@ def ensure_due_jobs():
     return created
 
 
+def pending_jobs_overview():
+    """Return the current agent queue without claiming or mutating a job."""
+    ensure_due_jobs()
+    subscriptions = active_subscriptions()
+    sportsbase_jobs = (
+        SportsBaseSyncJob.objects.select_related("subscription__player")
+        .filter(
+            status=SportsBaseSyncJob.Status.PENDING,
+            subscription__in=subscriptions,
+        )
+        .order_by("created_at", "pk")
+    )
+    youtube_jobs = (
+        SportsBaseYouTubeUpload.objects.select_related(
+            "match__subscription__player"
+        )
+        .filter(
+            status=SportsBaseYouTubeUpload.Status.PENDING,
+            match__subscription__in=subscriptions,
+        )
+        .order_by("created_at", "pk")
+    )
+    return {
+        "sportsbase_jobs": [
+            {
+                "job_id": job.pk,
+                "job_type": job.job_type,
+                "created_at": job.created_at.isoformat(),
+                "player": {
+                    "id": job.subscription.player_id,
+                    "name": job.subscription.player.name,
+                },
+            }
+            for job in sportsbase_jobs
+        ],
+        "youtube_jobs": [
+            {
+                "job_id": upload.pk,
+                "match_id": upload.match.sportsbase_match_id,
+                "fixture": str(upload.match),
+                "created_at": upload.created_at.isoformat(),
+                "player": {
+                    "id": upload.match.subscription.player_id,
+                    "name": upload.match.subscription.player.name,
+                },
+            }
+            for upload in youtube_jobs
+        ],
+    }
+
+
 @transaction.atomic
 def fail_sync_job(job, error_message):
     job = SportsBaseSyncJob.objects.select_for_update().select_related(

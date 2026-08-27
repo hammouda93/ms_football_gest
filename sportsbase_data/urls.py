@@ -72,6 +72,11 @@ urlpatterns = [
         name="portal_match_map",
     ),
     path(
+        "sportsbase/automation/jobs/pending/",
+        views.api_pending_jobs,
+        name="api_pending_jobs",
+    ),
+    path(
         "sportsbase/automation/jobs/next/",
         views.api_next_job,
         name="api_next_job",

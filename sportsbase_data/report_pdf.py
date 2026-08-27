@@ -2,6 +2,7 @@
 
 import io
 import math
+import re
 from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
@@ -11,6 +12,9 @@ PDF_COPY = {
     "fr": {
         "brand": "ANALYSE DE PERFORMANCE",
         "role": "PROFIL DE POSTE",
+        "position_map": "POSITION(S) JOUÉE(S)",
+        "primary_position": "Poste principal",
+        "secondary_position": "Poste secondaire",
         "minutes": "MINUTES",
         "reliability": "FIABILITÉ",
         "index": "INDEX SPORTSBASE",
@@ -89,6 +93,9 @@ PDF_COPY = {
     "en": {
         "brand": "PERFORMANCE ANALYSIS",
         "role": "POSITION PROFILE",
+        "position_map": "PLAYED POSITION(S)",
+        "primary_position": "Primary position",
+        "secondary_position": "Secondary position",
         "minutes": "MINUTES",
         "reliability": "RELIABILITY",
         "index": "SPORTSBASE INDEX",
@@ -167,6 +174,9 @@ PDF_COPY = {
     "ar": {
         "brand": "تحليل الأداء",
         "role": "ملف المركز",
+        "position_map": "المراكز التي لعب فيها",
+        "primary_position": "المركز الأساسي",
+        "secondary_position": "المركز الثاني",
         "minutes": "الدقائق",
         "reliability": "الموثوقية",
         "index": "مؤشر سبورتس بايز",
@@ -260,6 +270,26 @@ LIGHT_RED = "#FFF0F1"
 LIGHT_AMBER = "#FFF7E6"
 LIGHT_GREEN = "#ECF8F2"
 LIGHT_GREY = "#F4F7F9"
+GOLD = "#F2B84B"
+SOFT_BLUE = "#EAF3FA"
+
+
+PITCH_POSITION_COORDS = {
+    "GK": (0.50, 0.08),
+    "LB": (0.15, 0.23), "LCB": (0.35, 0.23), "CB": (0.50, 0.23),
+    "RCB": (0.65, 0.23), "RB": (0.85, 0.23),
+    "LWB": (0.10, 0.39), "RWB": (0.90, 0.39),
+    "LDM": (0.35, 0.40), "CDM": (0.50, 0.40), "DM": (0.50, 0.40),
+    "RDM": (0.65, 0.40),
+    "LM": (0.12, 0.56), "LCM": (0.35, 0.52), "CM": (0.50, 0.52),
+    "RCM": (0.65, 0.52), "RM": (0.88, 0.56),
+    "LAM": (0.28, 0.67), "CAM": (0.50, 0.67), "AM": (0.50, 0.67),
+    "RAM": (0.72, 0.67),
+    "LW": (0.13, 0.80), "RW": (0.87, 0.80), "SS": (0.50, 0.78),
+    "LCF": (0.35, 0.88), "CF": (0.50, 0.88), "ST": (0.50, 0.90),
+    "RCF": (0.65, 0.88),
+    "DF": (0.50, 0.23), "MF": (0.50, 0.52), "FW": (0.50, 0.88),
+}
 
 
 def _font_path():
@@ -415,6 +445,11 @@ def render_performance_pdf(report):
         leading=8,
         alignment=TA_CENTER,
     )
+    card_label_left = ParagraphStyle(
+        "MSPCardLabelLeft",
+        parent=card_label,
+        alignment=align,
+    )
     card_value = ParagraphStyle(
         "MSPCardValue",
         parent=body_bold,
@@ -491,6 +526,181 @@ def render_performance_pdf(report):
                 canvas.circle(point[0], point[1], 1.5, stroke=0, fill=1)
             canvas.restoreState()
 
+    class PositionPitch(Flowable):
+        """Compact vector pitch with one or several match positions."""
+
+        def __init__(self, positions, width=54 * mm, height=72 * mm, dark=False):
+            super().__init__()
+            self.positions = [str(code).upper() for code in positions if code][:3]
+            self.width = width
+            self.height = height
+            self.dark = dark
+
+        def draw(self):
+            canvas = self.canv
+            canvas.saveState()
+            legend_height = 10 * mm
+            x0, y0 = 2 * mm, legend_height
+            pitch_width = self.width - 4 * mm
+            pitch_height = self.height - legend_height - 2 * mm
+            background = "#0B2A39" if self.dark else "#F2FAF8"
+            line_color = colors.Color(1, 1, 1, alpha=0.52) if self.dark else colors.HexColor("#9FC8C1")
+            canvas.setFillColor(colors.HexColor(background))
+            canvas.roundRect(x0, y0, pitch_width, pitch_height, 4 * mm, stroke=0, fill=1)
+            canvas.setStrokeColor(line_color)
+            canvas.setLineWidth(0.65)
+            inset = 3 * mm
+            left, bottom = x0 + inset, y0 + inset
+            usable_width = pitch_width - 2 * inset
+            usable_height = pitch_height - 2 * inset
+            canvas.rect(left, bottom, usable_width, usable_height, stroke=1, fill=0)
+            canvas.line(left, bottom + usable_height / 2, left + usable_width, bottom + usable_height / 2)
+            canvas.circle(left + usable_width / 2, bottom + usable_height / 2, 5 * mm, stroke=1, fill=0)
+            canvas.circle(left + usable_width / 2, bottom + usable_height / 2, 0.7 * mm, stroke=0, fill=1)
+            box_width, box_height = usable_width * 0.46, usable_height * 0.16
+            box_left = left + (usable_width - box_width) / 2
+            canvas.rect(box_left, bottom, box_width, box_height, stroke=1, fill=0)
+            canvas.rect(box_left, bottom + usable_height - box_height, box_width, box_height, stroke=1, fill=0)
+            small_width, small_height = usable_width * 0.23, usable_height * 0.07
+            small_left = left + (usable_width - small_width) / 2
+            canvas.rect(small_left, bottom, small_width, small_height, stroke=1, fill=0)
+            canvas.rect(small_left, bottom + usable_height - small_height, small_width, small_height, stroke=1, fill=0)
+
+            spots = []
+            fallback_x = (0.50, 0.40)
+            for index, code in enumerate(self.positions):
+                nx, ny = PITCH_POSITION_COORDS.get(code, fallback_x)
+                spots.append((left + nx * usable_width, bottom + ny * usable_height, code))
+            if len(spots) > 1:
+                canvas.setStrokeColor(colors.Color(0.95, 0.72, 0.29, alpha=0.75))
+                canvas.setLineWidth(1.0)
+                canvas.setDash(3, 2)
+                path = canvas.beginPath()
+                path.moveTo(spots[0][0], spots[0][1])
+                for point in spots[1:]:
+                    path.lineTo(point[0], point[1])
+                canvas.drawPath(path, stroke=1, fill=0)
+                canvas.setDash()
+            for index, (x, y, code) in enumerate(spots):
+                color = CYAN if index == 0 else GOLD
+                canvas.setFillColor(colors.Color(0.25, 0.85, 0.78, alpha=0.18) if index == 0 else colors.Color(0.95, 0.72, 0.29, alpha=0.18))
+                canvas.circle(x, y, 4.2 * mm, stroke=0, fill=1)
+                canvas.setFillColor(colors.HexColor(color))
+                canvas.circle(x, y, 2.8 * mm, stroke=0, fill=1)
+                canvas.setFillColor(colors.HexColor(NAVY))
+                canvas.setFont(font_name, 6.8)
+                canvas.drawCentredString(x, y - 2.2, str(index + 1))
+
+            canvas.setFont(font_name, 6.2)
+            for index, code in enumerate(self.positions):
+                canvas.setFillColor(colors.HexColor(CYAN if index == 0 else GOLD))
+                prefix = copy["primary_position"] if index == 0 else copy["secondary_position"]
+                label = display(f"{index + 1}  {prefix}: {code}")
+                canvas.drawString(2 * mm, (6.5 - index * 3.5) * mm, label)
+            canvas.restoreState()
+
+    class ScoreRing(Flowable):
+        def __init__(self, score, width=39 * mm, height=39 * mm, tone="neutral"):
+            super().__init__()
+            self.score = score
+            self.width = width
+            self.height = height
+            self.tone = tone
+
+        def draw(self):
+            canvas = self.canv
+            accent, _background = tone_colors(self.tone)
+            score = None if self.score is None else max(0, min(100, float(self.score)))
+            cx, cy = self.width / 2, self.height / 2
+            radius = min(self.width, self.height) * 0.36
+            canvas.saveState()
+            canvas.setStrokeColor(colors.HexColor(LINE))
+            canvas.setLineWidth(5.5)
+            canvas.circle(cx, cy, radius, stroke=1, fill=0)
+            if score is not None:
+                canvas.setStrokeColor(colors.HexColor(accent))
+                canvas.setLineWidth(5.5)
+                canvas.setLineCap(1)
+                canvas.arc(cx - radius, cy - radius, cx + radius, cy + radius, 90, -3.6 * score)
+            canvas.setFillColor(colors.HexColor(NAVY))
+            canvas.setFont(font_name, 15)
+            canvas.drawCentredString(cx, cy + 1.5 * mm, "—" if score is None else str(round(score)))
+            canvas.setFillColor(colors.HexColor(MUTED))
+            canvas.setFont(font_name, 6.2)
+            canvas.drawCentredString(cx, cy - 3.2 * mm, "/ 100")
+            canvas.restoreState()
+
+    class IconBadge(Flowable):
+        def __init__(self, kind, color=TEAL_DARK, size=7 * mm):
+            super().__init__()
+            self.kind = kind
+            self.color = color
+            self.width = size
+            self.height = size
+
+        def draw(self):
+            canvas = self.canv
+            size = min(self.width, self.height)
+            cx, cy = size / 2, size / 2
+            canvas.saveState()
+            canvas.setFillColor(colors.Color(0.05, 0.58, 0.53, alpha=0.12))
+            canvas.circle(cx, cy, size * 0.46, stroke=0, fill=1)
+            canvas.setStrokeColor(colors.HexColor(self.color))
+            canvas.setFillColor(colors.HexColor(self.color))
+            canvas.setLineWidth(1.1)
+            if self.kind == "clock":
+                canvas.circle(cx, cy, size * 0.28, stroke=1, fill=0)
+                canvas.line(cx, cy, cx, cy + size * 0.15)
+                canvas.line(cx, cy, cx + size * 0.12, cy - size * 0.08)
+            elif self.kind == "shield":
+                path = canvas.beginPath()
+                path.moveTo(cx, cy + size * 0.30)
+                path.lineTo(cx + size * 0.24, cy + size * 0.18)
+                path.lineTo(cx + size * 0.18, cy - size * 0.18)
+                path.lineTo(cx, cy - size * 0.31)
+                path.lineTo(cx - size * 0.18, cy - size * 0.18)
+                path.lineTo(cx - size * 0.24, cy + size * 0.18)
+                path.close()
+                canvas.drawPath(path, stroke=1, fill=0)
+                canvas.line(cx - size * 0.10, cy, cx - size * 0.02, cy - size * 0.08)
+                canvas.line(cx - size * 0.02, cy - size * 0.08, cx + size * 0.13, cy + size * 0.10)
+            elif self.kind == "index":
+                for offset, height in ((-0.19, 0.18), (0, 0.28), (0.19, 0.36)):
+                    canvas.roundRect(cx + offset * size - size * 0.055, cy - size * 0.20, size * 0.11, height * size, 1, stroke=0, fill=1)
+            else:
+                canvas.circle(cx, cy, size * 0.28, stroke=1, fill=0)
+                canvas.circle(cx, cy, size * 0.14, stroke=1, fill=0)
+                canvas.circle(cx, cy, size * 0.035, stroke=0, fill=1)
+            canvas.restoreState()
+
+    class ScoreGauge(Flowable):
+        def __init__(self, score, width=25 * mm, height=3.2 * mm):
+            super().__init__()
+            self.score = score
+            self.width = width
+            self.height = height
+
+        def draw(self):
+            if self.score is None:
+                return
+            score = max(0, min(100, float(self.score)))
+            if score >= 75:
+                color = TEAL_DARK
+            elif score >= 55:
+                color = GREEN
+            elif score >= 40:
+                color = AMBER
+            else:
+                color = RED
+            canvas = self.canv
+            canvas.saveState()
+            canvas.setFillColor(colors.HexColor(LIGHT_GREY))
+            canvas.roundRect(0, 0, self.width, self.height, self.height / 2, stroke=0, fill=1)
+            fill_width = max(self.height, self.width * score / 100)
+            canvas.setFillColor(colors.HexColor(color))
+            canvas.roundRect(0, 0, fill_width, self.height, self.height / 2, stroke=0, fill=1)
+            canvas.restoreState()
+
     def p(value, style=body):
         return Paragraph(markup(value), style)
 
@@ -507,11 +717,12 @@ def render_performance_pdf(report):
             "neutral": (MUTED, LIGHT_GREY),
         }.get(tone, (MUTED, LIGHT_GREY))
 
-    def note_box(text, tone="neutral", bold=False):
+    def note_box(text, tone="neutral", bold=False, width=169 * mm):
         accent, background = tone_colors(tone)
         return Table(
             [[p(text, body_bold if bold else body)]],
-            colWidths=[169 * mm],
+            colWidths=[width],
+            cornerRadii=[4 * mm] * 4,
             style=TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
@@ -524,12 +735,26 @@ def render_performance_pdf(report):
             ),
         )
 
-    def info_card(label, value, tone="neutral", width=40.5 * mm):
+    def info_card(label, value, tone="neutral", width=40.5 * mm, icon=None):
         accent, background = tone_colors(tone)
+        if icon:
+            rows = [
+                [IconBadge(icon, accent), p(label, card_label_left)],
+                [p(value, card_value), ""],
+            ]
+            widths = [9 * mm, width - 9 * mm]
+            heights = [9 * mm, 12 * mm]
+            extra_commands = [("SPAN", (0, 1), (1, 1))]
+        else:
+            rows = [[p(label, card_label)], [p(value, card_value)]]
+            widths = [width]
+            heights = [7 * mm, 12 * mm]
+            extra_commands = []
         return Table(
-            [[p(label, card_label)], [p(value, card_value)]],
-            colWidths=[width],
-            rowHeights=[7 * mm, 12 * mm],
+            rows,
+            colWidths=widths,
+            rowHeights=heights,
+            cornerRadii=[3.5 * mm] * 4,
             style=TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
@@ -541,18 +766,19 @@ def render_performance_pdf(report):
                     ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                     ("TOPPADDING", (0, 0), (-1, -1), 3),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ]
+                ] + extra_commands
             ),
         )
 
-    def verdict_badge(verdict):
+    def verdict_badge(verdict, width=169 * mm):
         accent, background = tone_colors(verdict.get("tone"))
         score = verdict.get("score")
         score_text = "—" if score is None else f"{score}/100"
         return Table(
             [[p(verdict.get("label") or "—", body_bold), p(score_text, card_value)]],
-            colWidths=[128 * mm, 41 * mm],
+            colWidths=[width * 0.74, width * 0.26],
             rowHeights=[18 * mm],
+            cornerRadii=[4 * mm] * 4,
             style=TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
@@ -573,8 +799,19 @@ def render_performance_pdf(report):
         ) or copy["no_data"]
         coverage = f"{item.get('coverage', 0)} % {copy['coverage']}"
         return Table(
-            [[p(item.get("stamp") or item.get("label"), stamp_label)], [p(evidence_text, small)], [p(coverage, tiny)]],
+            [
+                [p(item.get("stamp") or item.get("label"), stamp_label)],
+                [p(evidence_text, small)],
+                [
+                    ScoreGauge(
+                        item.get("score") if item.get("coverage") else None,
+                        width=width - 12 * mm,
+                    )
+                ],
+                [p(coverage, tiny)],
+            ],
             colWidths=[width],
+            cornerRadii=[3.5 * mm] * 4,
             style=TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
@@ -647,6 +884,14 @@ def render_performance_pdf(report):
     subscription = getattr(report, "subscription", None)
     player_obj = getattr(subscription, "player", None)
     player_name = player.get("name") or getattr(player_obj, "name", "")
+    raw_positions = player.get("positions") or player.get("position") or []
+    if isinstance(raw_positions, str):
+        raw_positions = re.split(r"\s*[/,;|+]\s*", raw_positions)
+    positions = list(
+        dict.fromkeys(
+            str(code).strip().upper() for code in raw_positions if str(code).strip()
+        )
+    )
     fixture = ""
     if match:
         fixture = (
@@ -724,16 +969,26 @@ def render_performance_pdf(report):
                 ),
             )
         )
-    story.append(Spacer(1, 22 * mm))
+    story.append(Spacer(1, 12 * mm))
     cover_rows = [
-        [p(copy["role"], cover_kicker), p(player.get("role_label") or player.get("position") or "—", cover_meta)],
+        [
+            p(copy["role"], cover_kicker),
+            p(
+                " · ".join(
+                    value for value in (
+                        player.get("role_label") or player.get("position") or "—",
+                        " / ".join(positions),
+                    ) if value
+                ),
+                cover_meta,
+            ),
+        ],
         [p(copy["minutes"], cover_kicker), p(player.get("minutes", "—"), cover_meta)],
         [p(copy["reliability"], cover_kicker), p(confidence.get("label") or "—", cover_meta)],
     ]
-    story.append(
-        Table(
+    cover_profile = Table(
             cover_rows,
-            colWidths=[55 * mm, 114 * mm],
+            colWidths=[35 * mm, 65 * mm],
             style=TableStyle(
                 [
                     ("LINEBELOW", (0, 0), (-1, -1), 0.35, colors.Color(1, 1, 1, alpha=0.2)),
@@ -742,6 +997,35 @@ def render_performance_pdf(report):
                     ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                     ("TOPPADDING", (0, 0), (-1, -1), 7),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            ),
+        )
+    pitch_block = Table(
+        [[p(copy["position_map"], cover_kicker)], [PositionPitch(positions, width=57 * mm, height=73 * mm, dark=True)]],
+        colWidths=[61 * mm],
+        cornerRadii=[4 * mm] * 4,
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.Color(1, 1, 1, alpha=0.04)),
+                ("BOX", (0, 0), (-1, -1), 0.4, colors.Color(1, 1, 1, alpha=0.16)),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        ),
+    )
+    story.append(
+        Table(
+            [[cover_profile, pitch_block]],
+            colWidths=[104 * mm, 65 * mm],
+            style=TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ]
             ),
         )
@@ -760,12 +1044,43 @@ def render_performance_pdf(report):
         document.build(story, onFirstPage=first_page, onLaterPages=later_pages)
         return buffer.getvalue()
 
+    story.append(section_title(copy["verdict"], 1))
+    verdict_summary = Table(
+        [
+            [verdict_badge(verdict, width=124 * mm)],
+            [Spacer(1, 2 * mm)],
+            [
+                note_box(
+                    narrative.get("executive_summary") or getattr(report, "executive_summary", ""),
+                    verdict.get("tone", "neutral"),
+                    True,
+                    width=124 * mm,
+                )
+            ],
+        ],
+        colWidths=[124 * mm],
+        style=TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        ),
+    )
     story.extend(
         [
-            section_title(copy["verdict"], 1),
-            verdict_badge(verdict),
-            Spacer(1, 4 * mm),
-            note_box(narrative.get("executive_summary") or getattr(report, "executive_summary", ""), verdict.get("tone", "neutral"), True),
+            Table(
+                [[ScoreRing(verdict.get("score"), tone=verdict.get("tone", "neutral")), verdict_summary]],
+                colWidths=[42 * mm, 127 * mm],
+                style=TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                ),
+            ),
             Spacer(1, 5 * mm),
         ]
     )
@@ -787,10 +1102,10 @@ def render_performance_pdf(report):
         [
             Table(
                 [[
-                    info_card(copy["minutes"], player.get("minutes", "—"), "neutral"),
-                    info_card(copy["reliability"], confidence.get("label") or "—", "warning" if confidence.get("score", 0) < 60 else "positive"),
-                    info_card(copy["index"], player.get("index") if player.get("index") is not None else "—", "neutral"),
-                    info_card(copy["mission_score"], "—" if player.get("profile_score") is None else f"{player.get('profile_score')}/100", verdict.get("tone", "neutral")),
+                    info_card(copy["minutes"], player.get("minutes", "—"), "neutral", icon="clock"),
+                    info_card(copy["reliability"], confidence.get("label") or "—", "warning" if confidence.get("score", 0) < 60 else "positive", icon="shield"),
+                    info_card(copy["index"], player.get("index") if player.get("index") is not None else "—", "neutral", icon="index"),
+                    info_card(copy["mission_score"], "—" if player.get("profile_score") is None else f"{player.get('profile_score')}/100", verdict.get("tone", "neutral"), icon="target"),
                 ]],
                 colWidths=[42.25 * mm] * 4,
                 style=TableStyle(
@@ -958,7 +1273,7 @@ def render_performance_pdf(report):
                 [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
                 p(item.get("display"), body_bold),
                 p(sample_text, tiny),
-                p(reading, body),
+                [p(reading, body_bold), ScoreGauge(score, width=22 * mm)],
             ]
         )
     story.append(standard_table(metric_rows, [67 * mm, 34 * mm, 39 * mm, 29 * mm]))

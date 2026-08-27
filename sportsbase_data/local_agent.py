@@ -105,6 +105,54 @@ class SportsBaseAgentClient:
         response.raise_for_status()
         return response
 
+    def pending_jobs(self):
+        """Return a read-only snapshot before any job is claimed."""
+        return self._get("/sportsbase/automation/jobs/pending/").json()
+
+    def print_initial_queue(self):
+        """Print every player the agent currently expects to process."""
+        try:
+            overview = self.pending_jobs()
+        except Exception as exc:
+            print(f"[SPORTSBASE][WARN] Plan initial indisponible : {exc}")
+            return
+
+        sportsbase_jobs = overview.get("sportsbase_jobs") or []
+        player_names = list(
+            dict.fromkeys(
+                str((job.get("player") or {}).get("name") or "Joueur inconnu")
+                for job in sportsbase_jobs
+            )
+        )
+        if sportsbase_jobs:
+            print(
+                f"[SPORTSBASE] Plan initial — {len(player_names)} joueur(s), "
+                f"{len(sportsbase_jobs)} tâche(s)"
+            )
+            for position, job in enumerate(sportsbase_jobs, start=1):
+                player = job.get("player") or {}
+                print(
+                    f"[SPORTSBASE]   {position}. {player.get('name') or 'Joueur inconnu'} "
+                    f"— tâche {job.get('job_id')} — {job.get('job_type') or 'full'}"
+                )
+        else:
+            print("[SPORTSBASE] Plan initial — aucun joueur en attente.")
+
+        youtube_jobs = overview.get("youtube_jobs") or []
+        if not self.youtube_enabled:
+            print("[YOUTUBE] File initiale ignorée — upload automatique désactivé.")
+        elif youtube_jobs:
+            print(f"[YOUTUBE] File initiale — {len(youtube_jobs)} vidéo(s)")
+            for position, job in enumerate(youtube_jobs, start=1):
+                player = job.get("player") or {}
+                fixture = job.get("fixture") or f"match {job.get('match_id') or '—'}"
+                print(
+                    f"[YOUTUBE]   {position}. {player.get('name') or 'Joueur inconnu'} "
+                    f"— {fixture}"
+                )
+        else:
+            print("[YOUTUBE] File initiale — aucune vidéo en attente.")
+
     def next_job(self):
         return self._get("/sportsbase/automation/jobs/next/").json().get("job")
 
@@ -183,6 +231,7 @@ class SportsBaseAgentClient:
             "[YOUTUBE] Upload automatique : "
             f"{'actif' if self.youtube_enabled else 'désactivé'}"
         )
+        self.print_initial_queue()
         while True:
             try:
                 if not self.process_once():
@@ -214,6 +263,7 @@ def main():
         return
     if args.once:
         client.login()
+        client.print_initial_queue()
         if not client.process_once():
             print("[SPORTSBASE] Aucune tâche en attente.")
         return

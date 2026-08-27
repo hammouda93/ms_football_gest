@@ -88,6 +88,16 @@ class PositionAnalysisTests(unittest.TestCase):
             analysis = analyse_match_dataset(rows, f"Target {position}", "en")
             self.assertEqual(analysis["player"]["role_group"], group)
 
+    def test_multiple_match_positions_are_preserved_for_pitch_visualisation(self):
+        rows = [
+            _row("Versatile Full Back", "Team A", "RB / RWB", 75),
+            _row("Opponent", "Team B", "RB", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Versatile Full Back", "fr")
+        self.assertEqual(analysis["player"]["position"], "RB")
+        self.assertEqual(analysis["player"]["positions"], ["RB", "RWB"])
+        self.assertEqual(analysis["player"]["role_group"], "full_back")
+
     def test_short_substitute_is_explicitly_low_confidence(self):
         rows = [
             _row(

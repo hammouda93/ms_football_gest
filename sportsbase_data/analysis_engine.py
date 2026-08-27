@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "transparent-mission-score-full-xlsx-v4-20260827"
+ANALYSIS_VERSION = "visual-report-position-pitch-v5-20260827"
 
 METHODOLOGY_SOURCES = (
     {
@@ -1036,8 +1036,28 @@ def _minutes(row):
     return max(0.0, _number(row.get("Minutes played"), missing_zero=True))
 
 
+def _position_codes(row):
+    """Return every match position while preserving the first as primary."""
+    raw = row.get("Position")
+    values = raw if isinstance(raw, (list, tuple, set)) else (raw,)
+    positions = []
+    for value in values:
+        text = str(value or "").strip().upper()
+        if not text:
+            continue
+        tokens = re.split(r"\s*[/,;|+]\s*", text)
+        if len(tokens) == 1:
+            tokens = re.split(r"\s+(?:AND|ET)\s+", text)
+        for token in tokens:
+            code = re.sub(r"[^A-Z0-9]", "", token)
+            if code and code not in positions:
+                positions.append(code)
+    return tuple(positions)
+
+
 def _position(row):
-    return str(row.get("Position") or "").strip().upper()
+    positions = _position_codes(row)
+    return positions[0] if positions else ""
 
 
 def _group(row):
@@ -2288,6 +2308,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "team": target_team,
             "opponent": opponent_team,
             "position": _position(target),
+            "positions": list(_position_codes(target)),
             "role_group": group,
             "role_label": copy["roles"][group],
             "minutes": round(_minutes(target)),
