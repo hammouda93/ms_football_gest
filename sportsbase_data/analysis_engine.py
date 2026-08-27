@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "visual-report-position-pitch-v5-20260827"
+ANALYSIS_VERSION = "position-impact-benchmark-radar-v6-20260827"
 
 METHODOLOGY_SOURCES = (
     {
@@ -717,6 +717,7 @@ DIMENSION_LABELS = {
         "link_play": "Jeu de liaison",
         "direct_play": "Jeu direct et duels",
         "defensive_work": "Travail sans ballon",
+        "impact": "Impact décisif et création",
     },
     "en": {
         "distribution": "Distribution",
@@ -746,6 +747,7 @@ DIMENSION_LABELS = {
         "link_play": "Link play",
         "direct_play": "Direct play and duels",
         "defensive_work": "Out-of-possession work",
+        "impact": "Decisive impact and creation",
     },
     "ar": {
         "distribution": "التوزيع",
@@ -775,6 +777,7 @@ DIMENSION_LABELS = {
         "link_play": "الربط الهجومي",
         "direct_play": "اللعب المباشر والثنائيات",
         "defensive_work": "العمل دون كرة",
+        "impact": "التأثير الحاسم وصناعة اللعب",
     },
 }
 
@@ -800,7 +803,7 @@ def _s(
 
 ROLE_CONFIGS = {
     "goalkeeper": {
-        "weights": {"distribution": 30, "progression": 25, "space_control": 20, "risk_control": 25},
+        "weights": {"risk_control": 30, "distribution": 25, "progression": 20, "space_control": 20, "impact": 5},
         "dimensions": (
             ("distribution", _s("Passes", target=30), _s("Passes accurate, %", "pass_cb", weight=1.5), _s("Long passes accurate, %", "long_pass")),
             ("progression", _s("Progressive passes", target=6), _s("Passes forward to the final third", target=6), _s("Super long passes", target=5)),
@@ -809,7 +812,7 @@ ROLE_CONFIGS = {
         ),
     },
     "centre_back": {
-        "weights": {"defending": 30, "aerial_control": 20, "build_up": 20, "progression": 20, "risk_control": 10},
+        "weights": {"defending": 30, "aerial_control": 20, "build_up": 20, "progression": 15, "risk_control": 10, "impact": 5},
         "dimensions": (
             ("defending", _s("Defensive challenges", target=5), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Interceptions", target=5), _s("Tackles successful, %", "def_duel")),
             ("aerial_control", _s("Aerial challenges", target=4, zero_is_no_opportunity=True), _s("Aerial challenges won, %", "aerial", weight=2)),
@@ -819,27 +822,27 @@ ROLE_CONFIGS = {
         ),
     },
     "full_back": {
-        "weights": {"defending": 30, "progression": 25, "delivery": 15, "ball_security": 20, "attacking_support": 10},
+        "weights": {"defending": 25, "progression": 20, "delivery": 15, "ball_security": 15, "attacking_support": 10, "impact": 15},
         "dimensions": (
             ("defending", _s("Defensive challenges", target=6), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Interceptions", target=4), _s("Tackles successful, %", "def_duel")),
             ("progression", _s("Progressive passes", target=6), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=5)),
             ("delivery", _s("Crosses", target=4), _s("Crosses accurate, %", "cross", weight=2), _s("Passes into the penalty box", target=3)),
             ("ball_security", _s("Passes", target=40), _s("Passes accurate, %", "pass_general", weight=2), _s("Lost balls in own half", "negative", target=2)),
-            ("attacking_support", _s("Actions in opponent's box", target=3), _s("Dribbles", target=2), _s("Key passes", target=1)),
+            ("attacking_support", _s("Actions in opponent's box", target=3), _s("Final third entries", target=5), _s("Passes for a shot", target=1)),
         ),
     },
     "wing_back": {
-        "weights": {"progression": 25, "delivery": 25, "attacking_support": 20, "defending": 20, "ball_security": 10},
+        "weights": {"progression": 20, "delivery": 20, "attacking_support": 15, "defending": 15, "ball_security": 10, "impact": 20},
         "dimensions": (
             ("progression", _s("Progressive passes", target=6), _s("Final third entries", target=6), _s("Passes into the penalty box", target=3)),
             ("delivery", _s("Crosses", target=5), _s("Crosses accurate, %", "cross", weight=2), _s("Passes for a shot", target=2)),
-            ("attacking_support", _s("Actions in opponent's box", target=4), _s("Dribbling in the final third", target=2), _s("Dribbles successful, %", "dribble")),
+            ("attacking_support", _s("Actions in opponent's box", target=4), _s("Dribbling in the final third", target=2), _s("Passes into the penalty box", target=3)),
             ("defending", _s("Defensive challenges", target=5), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Interceptions", target=3)),
             ("ball_security", _s("Passes accurate, %", "pass_general", weight=2), _s("Actions successful, %", "action_rate"), _s("Lost balls in own half", "negative", target=2)),
         ),
     },
     "holding_midfielder": {
-        "weights": {"protection": 30, "circulation": 20, "progression": 20, "switching": 15, "risk_control": 15},
+        "weights": {"protection": 25, "circulation": 20, "progression": 20, "switching": 15, "risk_control": 10, "impact": 10},
         "dimensions": (
             ("protection", _s("Defensive challenges", target=7), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Interceptions", target=5), _s("Ball recoveries", target=8)),
             ("circulation", _s("Passes", target=50), _s("Passes accurate, %", "pass_safe", weight=2)),
@@ -849,46 +852,141 @@ ROLE_CONFIGS = {
         ),
     },
     "box_to_box_midfielder": {
-        "weights": {"circulation": 20, "progression": 20, "final_third_presence": 25, "creation": 15, "duel_balance": 20},
+        "weights": {"impact": 25, "progression": 20, "final_third_presence": 20, "circulation": 15, "duel_balance": 10, "creation": 10},
         "dimensions": (
             ("circulation", _s("Passes", target=45), _s("Passes accurate, %", "pass_general", weight=2), _s("Lost balls", "negative", target=8)),
             ("progression", _s("Progressive passes", target=8), _s("Final third entries", target=6), _s("Progressive passes accurate, %", "progressive_rate")),
             ("final_third_presence", _s("Actions in opponent's box", target=3), _s("Passes into the penalty box", target=3), _s("Shots", target=2)),
-            ("creation", _s("Key passes", target=2), _s("Passes for a shot", target=2), _s("Chances created", target=1), _s("Assists", "decisive")),
+            ("creation", _s("Passes for a shot", target=2), _s("Passes into the penalty box", target=3), _s("Passes into the penalty box accurate, %", "action_rate")),
             ("duel_balance", _s("Challenges", target=9), _s("Challenges won, %", "duel"), _s("Defensive challenges won, %", "def_duel"), _s("Ball recoveries", target=7), _s("Ball recoveries in opponent's half", target=2)),
         ),
     },
     "attacking_midfielder": {
-        "weights": {"between_lines": 20, "creation": 30, "goal_threat": 20, "ball_security": 15, "counterpress": 15},
+        "weights": {"impact": 30, "creation": 25, "between_lines": 15, "goal_threat": 15, "ball_security": 10, "counterpress": 5},
         "dimensions": (
             ("between_lines", _s("Progressive passes", target=7), _s("Final third entries", target=6), _s("Passes into the penalty box", target=4)),
-            ("creation", _s("Key passes", target=3), _s("Passes for a shot", target=3), _s("Chances created", target=2), _s("Assists", "decisive")),
-            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Actions in opponent's box", target=5), _s("Goals", "decisive")),
-            ("ball_security", _s("Passes accurate, %", "pass_general"), _s("Dribbles successful, %", "dribble"), _s("Lost balls", "negative", target=9)),
+            ("creation", _s("Passes for a shot", target=3), _s("Passes into the penalty box", target=4), _s("Passes into the penalty box accurate, %", "action_rate")),
+            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Actions in opponent's box", target=5)),
+            ("ball_security", _s("Passes accurate, %", "pass_general"), _s("Actions successful, %", "action_rate"), _s("Lost balls", "negative", target=9)),
             ("counterpress", _s("Ball recoveries in opponent's half", target=3), _s("Defensive challenges", target=4), _s("Defensive challenges won, %", "def_duel")),
         ),
     },
     "winger": {
-        "weights": {"one_v_one": 25, "creation": 25, "goal_threat": 25, "progression": 15, "defensive_work": 10},
+        "weights": {"impact": 30, "one_v_one": 25, "creation": 20, "goal_threat": 10, "progression": 10, "defensive_work": 5},
         "dimensions": (
             ("one_v_one", _s("Dribbles", target=5), _s("Dribbles successful, %", "dribble", weight=2), _s("Dribbling in the final third", target=3), _s("Fouls suffered", target=2)),
-            ("creation", _s("Key passes", target=2), _s("Passes for a shot", target=2), _s("Crosses", target=4), _s("Crosses accurate, %", "cross"), _s("Assists", "decisive")),
-            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Shots in box share", "shot_location"), _s("Actions in opponent's box", target=5), _s("Goals", "decisive")),
+            ("creation", _s("Passes for a shot", target=2), _s("Crosses", target=4), _s("Crosses accurate, %", "cross"), _s("Passes into the penalty box", target=3)),
+            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Shots in box share", "shot_location"), _s("Actions in opponent's box", target=5)),
             ("progression", _s("Progressive passes", target=5), _s("Final third entries", target=6), _s("Passes into the penalty box", target=3)),
             ("defensive_work", _s("Ball recoveries in opponent's half", target=2), _s("Defensive challenges", target=3), _s("Lost balls", "negative", target=9)),
         ),
     },
     "forward": {
-        "weights": {"box_presence": 25, "finishing": 25, "link_play": 20, "direct_play": 15, "defensive_work": 15},
+        "weights": {"impact": 35, "box_presence": 25, "finishing": 20, "link_play": 10, "direct_play": 5, "defensive_work": 5},
         "dimensions": (
             ("box_presence", _s("Actions in opponent's box", target=6, weight=2), _s("Shots", target=3), _s("Shots from the penalty area", target=3, weight=2), _s("Shots in box share", "shot_location")),
-            ("finishing", _s("Goals", "decisive", weight=2), _s("Shots on target, %", "shot_target", weight=2), _s("xG (expected goals)", "decimal_volume", target=0.35), _s("Chances successful, %", "finishing_rate")),
-            ("link_play", _s("Passes", target=22), _s("Passes accurate, %", "pass_forward"), _s("Key passes", target=1), _s("Passes for a shot", target=1), _s("Assists", "decisive")),
+            ("finishing", _s("Shots on target, %", "shot_target", weight=2), _s("xG (expected goals)", "decimal_volume", target=0.35), _s("Shots from the penalty area", target=3)),
+            ("link_play", _s("Passes", target=22), _s("Passes accurate, %", "pass_forward"), _s("Passes for a shot", target=1)),
             ("direct_play", _s("Attacking challenges", target=6), _s("Attacking challenges won, %", "att_duel", weight=2), _s("Aerial challenges", target=4, zero_is_no_opportunity=True), _s("Aerial challenges won, %", "aerial"), _s("Fouls suffered", target=2)),
             ("defensive_work", _s("Defensive challenges", target=4), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Ball recoveries in opponent's half", target=2), _s("Lost balls", "negative", target=8)),
         ),
     },
 }
+
+
+IMPACT_SPECS = {
+    # A decisive action is assessed only when it happened.  A zero therefore
+    # never creates an artificial weakness, while a goal, assist or creative
+    # action contributes visibly to the mission score for every position.
+    "goalkeeper": (
+        _s("Goals", "positive_decisive", weight=3),
+        _s("Assists", "positive_decisive", weight=3),
+        _s("Key passes", "positive_volume", target=1, weight=2),
+        _s("Chances created", "positive_volume", target=1, weight=2),
+    ),
+    "centre_back": (
+        _s("Goals", "positive_decisive", weight=3),
+        _s("Assists", "positive_decisive", weight=3),
+        _s("Key passes", "positive_volume", target=1, weight=1.5),
+        _s("Chances created", "positive_volume", target=1),
+        _s("Dribbles", "positive_volume", target=2),
+        _s("Dribbles successful, %", "dribble"),
+    ),
+    "full_back": (
+        _s("Goals", "positive_decisive", weight=3),
+        _s("Assists", "positive_decisive", weight=3),
+        _s("Key passes", "positive_volume", target=2, weight=2),
+        _s("Chances created", "positive_volume", target=1, weight=1.5),
+        _s("Dribbles", "positive_volume", target=3),
+        _s("Dribbles successful, %", "dribble"),
+        _s("Chances", "positive_volume", target=1),
+        _s("Chances successful, %", "finishing_rate"),
+    ),
+    "wing_back": (
+        _s("Goals", "positive_decisive", weight=3),
+        _s("Assists", "positive_decisive", weight=3),
+        _s("Key passes", "positive_volume", target=2, weight=2),
+        _s("Chances created", "positive_volume", target=2, weight=2),
+        _s("Dribbles", "positive_volume", target=4, weight=1.5),
+        _s("Dribbles successful, %", "dribble", weight=1.5),
+        _s("Chances", "positive_volume", target=2),
+        _s("Chances successful, %", "finishing_rate"),
+    ),
+    "holding_midfielder": (
+        _s("Goals", "positive_decisive", weight=3),
+        _s("Assists", "positive_decisive", weight=3),
+        _s("Key passes", "positive_volume", target=1, weight=2),
+        _s("Chances created", "positive_volume", target=1, weight=1.5),
+        _s("Dribbles", "positive_volume", target=2),
+        _s("Dribbles successful, %", "dribble"),
+        _s("Chances", "positive_volume", target=1),
+    ),
+    "box_to_box_midfielder": (
+        _s("Goals", "positive_decisive", weight=4),
+        _s("Assists", "positive_decisive", weight=3.5),
+        _s("Key passes", "positive_volume", target=2, weight=2.5),
+        _s("Chances created", "positive_volume", target=2, weight=2),
+        _s("Dribbles", "positive_volume", target=3, weight=1.5),
+        _s("Dribbles successful, %", "dribble", weight=1.5),
+        _s("Chances", "positive_volume", target=2, weight=1.5),
+        _s("Chances successful, %", "finishing_rate"),
+    ),
+    "attacking_midfielder": (
+        _s("Goals", "positive_decisive", weight=4),
+        _s("Assists", "positive_decisive", weight=4),
+        _s("Key passes", "positive_volume", target=3, weight=3),
+        _s("Chances created", "positive_volume", target=2, weight=2.5),
+        _s("Dribbles", "positive_volume", target=4, weight=2),
+        _s("Dribbles successful, %", "dribble", weight=2),
+        _s("Chances", "positive_volume", target=2, weight=2),
+        _s("Chances successful, %", "finishing_rate", weight=1.5),
+    ),
+    "winger": (
+        _s("Goals", "positive_decisive", weight=4),
+        _s("Assists", "positive_decisive", weight=4),
+        _s("Key passes", "positive_volume", target=2, weight=3),
+        _s("Chances created", "positive_volume", target=2, weight=2.5),
+        _s("Chances", "positive_volume", target=2, weight=2),
+        _s("Chances successful, %", "finishing_rate", weight=1.5),
+    ),
+    "forward": (
+        _s("Goals", "positive_decisive", weight=5),
+        _s("Assists", "positive_decisive", weight=4),
+        _s("Key passes", "positive_volume", target=2, weight=2.5),
+        _s("Chances created", "positive_volume", target=1, weight=2),
+        _s("Dribbles", "positive_volume", target=3, weight=1.5),
+        _s("Dribbles successful, %", "dribble", weight=1.5),
+        _s("Chances", "positive_volume", target=3, weight=2.5),
+        _s("Chances successful, %", "finishing_rate", weight=2),
+    ),
+}
+
+
+def _dimension_specs(group):
+    yield from ROLE_CONFIGS[group]["dimensions"]
+    impact_specs = IMPACT_SPECS.get(group) or ()
+    if impact_specs:
+        yield ("impact", *impact_specs)
 
 
 KEY_METRICS = {
@@ -1269,7 +1367,20 @@ def _metric_result(row, specification, language):
     result["display"] = _format_number(value)
     if value is None:
         return result
-    if kind == "decisive":
+    if kind == "positive_decisive":
+        if value >= 2:
+            score = 100
+        elif value >= 1:
+            score = 96
+        else:
+            score = None
+    elif kind == "positive_volume":
+        score = (
+            _volume_score(value, specification.get("target", 1), minutes)
+            if value > 0
+            else None
+        )
+    elif kind == "decisive":
         if value >= 2:
             score = 100
         elif value >= 1:
@@ -1304,7 +1415,7 @@ def _metric_result(row, specification, language):
         else:
             score = _volume_score(value, specification.get("target", 1), minutes)
     reliability_factor = min(1.0, 0.35 + _confidence(minutes, language)["score"] / 140)
-    if score is not None and kind not in {"decisive", "mistake", "mistake_goal"}:
+    if score is not None and kind not in {"decisive", "positive_decisive", "mistake", "mistake_goal"}:
         score = round(55 + (score - 55) * reliability_factor)
     result["raw_score"] = score
     result["score"] = score
@@ -1333,7 +1444,7 @@ def _grade(score, coverage, language):
 def _role_dimensions(target, group, language):
     config = ROLE_CONFIGS[group]
     dimensions = []
-    for item in config["dimensions"]:
+    for item in _dimension_specs(group):
         key, specifications = item[0], item[1:]
         evidence = [_metric_result(target, spec, language) for spec in specifications]
         observed = [metric for metric in evidence if metric["score"] is not None]
@@ -1367,7 +1478,10 @@ def _role_dimensions(target, group, language):
                 "weight": config["weights"].get(key, 0),
             }
         )
-    return dimensions
+    # The first mission a player sees must be the mission that matters most for
+    # that exact position.  Stable sorting preserves the designed order when
+    # two missions have the same coefficient.
+    return sorted(dimensions, key=lambda item: item.get("weight", 0), reverse=True)
 
 
 def _overall_score(dimensions):
@@ -1436,6 +1550,7 @@ def _score_breakdown(dimensions, language):
                     "metric": metric.get("metric"),
                     "label": metric.get("label"),
                     "definition": metric.get("definition"),
+                    "value": metric.get("value"),
                     "display": metric.get("display"),
                     "score": metric.get("score"),
                     "criterion_weight": round(share, 1),
@@ -1461,20 +1576,23 @@ def _score_breakdown(dimensions, language):
     formula = {
         "fr": (
             "Score de mission = somme des notes de critères pondérées dans chaque mission, puis pondérées "
-            "par l’importance de la mission pour le poste. Un critère sans occasion observable est affiché "
-            "mais n’est pas noté. Le total est arrondi à l’entier le plus proche. L’Index SportsBase influence "
-            "le verdict final, pas ce calcul technique."
+            "par l’importance de la mission pour le poste. La mission « impact décisif et création » intègre "
+            "explicitement buts, passes décisives, passes clés, occasions et dribbles lorsqu’ils sont observés. "
+            "Un critère sans occasion observable est affiché mais n’est pas noté. Le total est arrondi à "
+            "l’entier le plus proche. L’Index SportsBase influence le verdict final, pas ce calcul technique."
         ),
         "en": (
             "Mission score = the sum of criterion scores weighted inside each mission, then weighted by the "
-            "mission's importance for the position. A criterion with no observable opportunity is displayed "
-            "but not scored. The total is rounded to the nearest whole number. SportsBase Index affects the "
-            "final verdict, not this technical calculation."
+            "mission's importance for the position. The 'decisive impact and creation' mission explicitly "
+            "includes goals, assists, key passes, chances and dribbles when observed. A criterion with no "
+            "observable opportunity is displayed but not scored. The total is rounded to the nearest whole "
+            "number. SportsBase Index affects the final verdict, not this technical calculation."
         ),
         "ar": (
             "درجة المهمة هي مجموع درجات المعايير بعد ترجيحها داخل كل مهمة ثم حسب أهمية المهمة للمركز. "
-            "يعرض المعيار الذي لم تسجل له فرصة لكنه لا يدخل في الحساب. يقرب المجموع إلى أقرب عدد صحيح. "
-            "يؤثر مؤشر سبورتس بايز في الخلاصة النهائية لا في هذا الحساب الفني."
+            "وتشمل مهمة التأثير الحاسم وصناعة اللعب الأهداف والتمريرات الحاسمة والمفتاحية والفرص والمراوغات "
+            "عند تسجيلها. يعرض المعيار الذي لم تسجل له فرصة لكنه لا يدخل في الحساب. يقرب المجموع إلى أقرب "
+            "عدد صحيح ويؤثر مؤشر سبورتس بايز في الخلاصة النهائية لا في هذا الحساب الفني."
         ),
     }[language]
     raw_total = (
@@ -1483,11 +1601,71 @@ def _score_breakdown(dimensions, language):
         if total_dimension_weight
         else 0
     )
+    impact_dimension = next((item for item in result if item.get("key") == "impact"), None)
+    impact_drivers = []
+    if impact_dimension:
+        for criterion in impact_dimension.get("criteria") or []:
+            if not criterion.get("used"):
+                continue
+            metric = criterion.get("metric")
+            value = _number(criterion.get("value"), missing_zero=True)
+            display_value = criterion.get("display") or _format_number(value)
+            count = round(value)
+            points = criterion.get("final_contribution", 0)
+            if language == "fr":
+                explanations = {
+                    "Goals": f"{count} {'but' if count == 1 else 'buts'} : impact direct sur la rencontre",
+                    "Assists": f"{count} {'passe décisive' if count == 1 else 'passes décisives'} : création directement transformée en but",
+                    "Key passes": f"{count} {'passe clé' if count == 1 else 'passes clés'} : {'ballon ayant' if count == 1 else 'ballons ayant'} préparé une tentative",
+                    "Chances created": f"{count} {'occasion créée' if count == 1 else 'occasions créées'} pour un partenaire",
+                    "Dribbles": f"{count} {'dribble tenté' if count == 1 else 'dribbles tentés'} pour éliminer un adversaire",
+                    "Dribbles successful, %": f"Réussite des dribbles : {display_value}",
+                    "Chances": f"{count} {'occasion de marquer obtenue' if count == 1 else 'occasions de marquer obtenues'}",
+                    "Chances successful, %": f"Conversion des occasions : {display_value}",
+                }
+            elif language == "en":
+                explanations = {
+                    "Goals": f"{count} {'goal' if count == 1 else 'goals'}: direct match impact",
+                    "Assists": f"{count} {'assist' if count == 1 else 'assists'}: creation converted directly into a goal",
+                    "Key passes": f"{count} {'key pass' if count == 1 else 'key passes'}: {'pass that sets' if count == 1 else 'passes that set'} up a shot",
+                    "Chances created": f"{count} {'chance' if count == 1 else 'chances'} created for a team-mate",
+                    "Dribbles": f"{count} {'dribble' if count == 1 else 'dribbles'} attempted to beat an opponent",
+                    "Dribbles successful, %": f"Dribble success: {display_value}",
+                    "Chances": f"{count} scoring {'chance' if count == 1 else 'chances'} reached",
+                    "Chances successful, %": f"Chance conversion: {display_value}",
+                }
+            else:
+                explanations = {
+                    "Goals": f"{display_value} هدف: تأثير مباشر في المباراة",
+                    "Assists": f"{display_value} تمريرة حاسمة أدت مباشرة إلى هدف",
+                    "Key passes": f"{display_value} تمريرة مفتاحية صنعت تسديدة",
+                    "Chances created": f"{display_value} فرصة مصنوعة لزميل",
+                    "Dribbles": f"{display_value} محاولة مراوغة لتجاوز منافس",
+                    "Dribbles successful, %": f"نجاح المراوغات: {display_value}",
+                    "Chances": f"{display_value} فرصة تهديفية",
+                    "Chances successful, %": f"تحويل الفرص: {display_value}",
+                }
+            impact_drivers.append(
+                {
+                    **criterion,
+                    "explanation": explanations.get(metric, f"{criterion.get('label')}: {display_value}"),
+                    "score_sentence": {
+                        "fr": f"Critère {criterion.get('score')}/100 · {points} point(s) dans la note finale.",
+                        "en": f"Criterion {criterion.get('score')}/100 · {points} point(s) in the final score.",
+                        "ar": f"درجة المعيار {criterion.get('score')}/100 · {points} نقطة في الدرجة النهائية.",
+                    }[language],
+                }
+            )
     return {
         "formula": formula,
         "dimensions": result,
         "contribution_total": round(raw_total, 2),
         "rounded_score": math.floor(raw_total + 0.5 + 1e-9),
+        "impact_drivers": sorted(
+            impact_drivers,
+            key=lambda item: item.get("final_contribution", 0),
+            reverse=True,
+        ),
     }
 
 
@@ -1681,13 +1859,118 @@ def _same_minute_window(target, rows):
 
 
 def _spec_for_metric(group, metric):
-    for item in ROLE_CONFIGS[group]["dimensions"]:
+    for item in _dimension_specs(group):
         for specification in item[1:]:
             if specification["metric"] == metric:
                 return specification
     if metric in RATE_WEIGHTS or "%" in metric:
         return _s(metric, "action_rate")
     return _s(metric, target=1)
+
+
+def _canonical_radar_metric(name):
+    """Expand the two labels truncated by the SportsBase SVG tooltip."""
+    normalized = _plain(str(name or "").replace("…", "..."))
+    if normalized.startswith("passes into the penalty box accurate"):
+        return "Passes into the penalty box accurate, %"
+    if normalized.startswith("dribbling in the final third successf"):
+        return "Dribbling in the final third successful, %"
+    aliases = {
+        _plain(metric): metric
+        for metric in (
+            "Chances",
+            "Chances created",
+            "Involvement in scoring attacks",
+            "Shots",
+            "Passes into the penalty box",
+            "Passes for a shot",
+            "Defensive challenges",
+            "Defensive challenges won, %",
+            "Dribbling in the final third",
+            "Interceptions",
+        )
+    }
+    return aliases.get(normalized, str(name or "").strip())
+
+
+def _position_benchmark(target, context, group, language):
+    """Compare the match's role scores with SportsBase's position benchmark.
+
+    SportsBase's red reference is already normalised from 0 to 100.  Match raw
+    totals cannot be overlaid on that scale, so each observed match indicator is
+    converted with the same transparent role criterion used in the mission
+    score.  Raw match values remain attached to every axis for auditability.
+    """
+    context = context if isinstance(context, dict) else {}
+    source = context.get("position_benchmark")
+    if not isinstance(source, dict):
+        source = {}
+    positions = [item for item in source.get("positions") or [] if isinstance(item, dict)]
+    primary = max(
+        positions,
+        key=lambda item: _number(item.get("percent"), missing_zero=True),
+        default={},
+    )
+    metrics = []
+    for source_metric in source.get("radar_metrics") or []:
+        if not isinstance(source_metric, dict):
+            continue
+        metric = _canonical_radar_metric(source_metric.get("name") or source_metric.get("label"))
+        average = _number(source_metric.get("average"))
+        season_player = _number(source_metric.get("player"))
+        if season_player is None:
+            season_player = _number(source_metric.get("value"))
+        if metric not in target:
+            match_result = None
+        else:
+            match_result = _metric_result(target, _spec_for_metric(group, metric), language)
+        match_score = match_result.get("score") if match_result else None
+        comparable = match_score is not None and average is not None
+        metrics.append(
+            {
+                "metric": metric,
+                "label": _label(metric, language),
+                "definition": _definition(metric, language),
+                "match_display": match_result.get("display") if match_result else "—",
+                "match_score": match_score,
+                "position_average": round(average, 1) if average is not None else None,
+                "season_player": round(season_player, 1) if season_player is not None else None,
+                "difference": round(match_score - average, 1) if comparable else None,
+                "comparable": comparable,
+            }
+        )
+    comparable_metrics = [item for item in metrics if item.get("comparable")]
+    note = {
+        "fr": (
+            "La moyenne du poste provient du radar saisonnier SportsBase, normalisé de 0 à 100. "
+            "La valeur du match est la note analytique MS Performance du même critère, également sur 100, "
+            "calculée à partir du total réel et de la fiabilité de l’échantillon. Les volumes bruts ne sont "
+            "jamais comparés directement à l’indice saisonnier."
+        ),
+        "en": (
+            "The position average comes from SportsBase's season radar, normalised from 0 to 100. The match "
+            "value is the MS Performance analytical score for the same criterion, also on a 0–100 scale, "
+            "using the real match total and sample reliability. Raw volumes are never compared directly with "
+            "the season index."
+        ),
+        "ar": (
+            "متوسط المركز مأخوذ من رادار سبورتس بايز الموسمي من 0 إلى 100. قيمة المباراة هي درجة تحليلية "
+            "من MS Performance للمعيار نفسه على 100 اعتمادا على الرقم الحقيقي وموثوقية العينة، ولا تتم مقارنة "
+            "الأحجام الخام مباشرة بالمؤشر الموسمي."
+        ),
+    }[language]
+    return {
+        "available": len(comparable_metrics) >= 3,
+        "season": str(source.get("season") or ""),
+        "position_code": str(primary.get("code") or ""),
+        "position_name": str(primary.get("name") or primary.get("code") or ""),
+        "position_percent": round(_number(primary.get("percent"), missing_zero=True)),
+        "selection_rule": "highest_position_percentage",
+        "scale": "normalized_0_100",
+        "metrics": metrics,
+        "comparable_metrics": comparable_metrics,
+        "note": note,
+    }
 
 
 def _key_metrics(target, population, group, language):
@@ -2077,6 +2360,12 @@ def _role_specific_observations(target, group, language):
 
 
 def _coaching(group, key, language):
+    if key == "impact":
+        return {
+            "fr": "Revoir les actions décisives et les situations de création pour reproduire les bons choix et améliorer la dernière exécution.",
+            "en": "Review decisive actions and creation situations to repeat the right choices and improve the final execution.",
+            "ar": "مراجعة اللقطات الحاسمة وحالات صناعة اللعب لتكرار القرار الجيد وتحسين التنفيذ الأخير.",
+        }[language]
     if language == "fr":
         return ROLE_COACHING_FR.get(group, {}).get(
             key,
@@ -2171,7 +2460,7 @@ def _narrative(target, dimensions, confidence, verdict, rankings, language):
 def _appendix_metrics(target, language):
     group = _group(target)
     role_metrics = set(KEY_METRICS[group])
-    for dimension in ROLE_CONFIGS[group]["dimensions"]:
+    for dimension in _dimension_specs(group):
         role_metrics.update(specification["metric"] for specification in dimension[1:])
     decisive_metrics = {
         "Goals", "Assists", "Mistakes leading to goals", "Mistakes leading to chances",
@@ -2283,6 +2572,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     score_breakdown = _score_breakdown(dimensions, language)
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
+    position_benchmark = _position_benchmark(target, context, group, language)
     key_metrics = _key_metrics(target, population, group, language)
     rankings = _rankings(target, rows, dimensions, language)
     verdict = _verdict(profile_score, language, target=target, rankings=rankings)
@@ -2322,6 +2612,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         "rankings": rankings,
         "dimensions": dimensions,
         "score_breakdown": score_breakdown,
+        "position_benchmark": position_benchmark,
         "key_metrics": key_metrics,
         "same_position_comparison": counterpart,
         "global_benchmarks": global_benchmarks,
@@ -2352,6 +2643,9 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "collective_unit_analysis": False,
             "match_result_context_analysis": False,
             "index_usage": "explicit_verdict_validation_signal",
+            "position_benchmark_selection": "highest_stored_position_percentage",
+            "position_benchmark_scale": "match_role_criterion_0_100_vs_sportsbase_season_position_average_0_100",
+            "raw_volume_vs_season_index_comparison": False,
             "no_opportunity_rule": "zero_attempts_is_not_a_weakness",
             "video_confirmation_required": True,
         },
@@ -2379,9 +2673,23 @@ def build_match_analysis(match, language=None):
         "match_date": match_date.isoformat() if hasattr(match_date, "isoformat") else str(match_date or ""),
         "source_metadata": getattr(stats, "source_metadata", None) or {},
     }
+    subscription = getattr(match, "subscription", None)
+    snapshots = getattr(subscription, "season_snapshots", None)
+    if snapshots is not None and hasattr(snapshots, "filter"):
+        snapshot = (
+            snapshots.filter(season=getattr(match, "season", ""))
+            .order_by("-synced_at")
+            .first()
+        )
+        if snapshot is not None:
+            context["position_benchmark"] = {
+                "season": getattr(snapshot, "season", ""),
+                "positions": getattr(snapshot, "positions", None) or [],
+                "radar_metrics": getattr(snapshot, "radar_metrics", None) or [],
+            }
     return analyse_match_dataset(
         rows,
-        getattr(match.subscription.player, "name", ""),
+        getattr(subscription.player, "name", ""),
         language=language,
         context=context,
     )

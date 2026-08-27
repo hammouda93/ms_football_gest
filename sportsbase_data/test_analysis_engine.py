@@ -420,6 +420,122 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertIn("pas le niveau de finition sur une saison complète", highlight["explanation"])
         self.assertGreaterEqual(analysis["verdict"]["score"], 75)
 
+    def test_decisive_creation_actions_raise_the_mission_score_for_every_role(self):
+        positions = ("GK", "CB", "RB", "RWB", "CDM", "LCM", "CAM", "RW", "ST")
+        for position in positions:
+            base_target = _row(f"Target {position}", "A", position, 90)
+            opponent = _row(f"Opponent {position}", "B", position, 90)
+            baseline = analyse_match_dataset([base_target, opponent], f"Target {position}", "fr")
+            impact_target = dict(base_target)
+            impact_target.update(
+                {
+                    "Goals": 1,
+                    "Assists": 1,
+                    "Key passes": 3,
+                    "Chances created": 2,
+                    "Chances": 2,
+                    "Chances successful, %": 0.5,
+                    "Dribbles": 3,
+                    "Dribbles successful, %": 2 / 3,
+                }
+            )
+            impacted = analyse_match_dataset([impact_target, opponent], f"Target {position}", "fr")
+            self.assertGreater(
+                impacted["player"]["profile_score"],
+                baseline["player"]["profile_score"],
+                position,
+            )
+            impact_mission = next(item for item in impacted["dimensions"] if item["key"] == "impact")
+            self.assertGreater(impact_mission["coverage"], 0, position)
+            exposed = {item["metric"] for item in impact_mission["evidence"]}
+            self.assertTrue({"Goals", "Assists", "Key passes"}.issubset(exposed), position)
+
+    def test_missions_are_always_ordered_by_position_importance(self):
+        for position in ("GK", "CB", "RB", "RWB", "CDM", "LCM", "CAM", "RW", "ST"):
+            rows = [
+                _row(f"Target {position}", "A", position, 90, **{"Goals": 1}),
+                _row(f"Opponent {position}", "B", position, 90),
+            ]
+            analysis = analyse_match_dataset(rows, f"Target {position}", "en")
+            weights = [item["weight"] for item in analysis["dimensions"]]
+            self.assertEqual(weights, sorted(weights, reverse=True), position)
+
+    def test_goal_key_passes_and_dribbles_are_named_in_score_drivers(self):
+        rows = [
+            _row(
+                "Relayeur",
+                "A",
+                "LCM",
+                90,
+                **{
+                    "Goals": 1,
+                    "Key passes": 3,
+                    "Dribbles": 3,
+                    "Dribbles successful, %": 2 / 3,
+                    "Chances": 2,
+                    "Chances successful, %": 0.5,
+                },
+            ),
+            _row("Opponent", "B", "LCM", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Relayeur", "fr")
+        drivers = analysis["score_breakdown"]["impact_drivers"]
+        driver_metrics = {item["metric"] for item in drivers}
+        self.assertTrue({"Goals", "Key passes", "Dribbles", "Chances"}.issubset(driver_metrics))
+        goal = next(item for item in drivers if item["metric"] == "Goals")
+        self.assertIn("impact direct", goal["explanation"])
+        self.assertIn("note finale", goal["score_sentence"])
+
+    def test_match_radar_uses_highest_percentage_position_and_stored_average(self):
+        rows = [
+            _row(
+                "Mohamed Trabelsi",
+                "A",
+                "LCM",
+                90,
+                **{
+                    "Chances": 1,
+                    "Chances successful, %": 1,
+                    "Passes into the penalty box": 2,
+                    "Passes into the penalty box accurate, %": 0.5,
+                    "Defensive challenges": 8,
+                    "Defensive challenges won, %": 0.75,
+                    "Dribbling in the final third": 2,
+                    "Dribbling in the final third successful, %": 0.5,
+                    "Interceptions": 3,
+                },
+            ),
+            _row("Opponent", "B", "LCM", 90),
+        ]
+        context = {
+            "position_benchmark": {
+                "season": "2026/2027",
+                "positions": [
+                    {"code": "LCM", "name": "Left central midfielder", "percent": 53},
+                    {"code": "LCDM", "name": "Left central defensive midfielder", "percent": 31},
+                    {"code": "RCM", "name": "Right central midfielder", "percent": 16},
+                ],
+                "radar_metrics": [
+                    {"name": "Chances", "player": 22.5, "average": 44.5},
+                    {"name": "Passes into the penalty box accurate...", "player": 93.1, "average": 70.7},
+                    {"name": "Defensive challenges", "player": 90.9, "average": 72.5},
+                    {"name": "Dribbling in the final third successf...", "player": 46.3, "average": 58.8},
+                    {"name": "Interceptions", "player": 59.5, "average": 59.3},
+                ],
+            }
+        }
+        analysis = analyse_match_dataset(rows, "Mohamed Trabelsi", "fr", context=context)
+        benchmark = analysis["position_benchmark"]
+        self.assertTrue(benchmark["available"])
+        self.assertEqual(benchmark["position_code"], "LCM")
+        self.assertEqual(benchmark["position_percent"], 53)
+        self.assertEqual(benchmark["scale"], "normalized_0_100")
+        metrics = {item["metric"]: item for item in benchmark["metrics"]}
+        self.assertIn("Passes into the penalty box accurate, %", metrics)
+        self.assertIn("Dribbling in the final third successful, %", metrics)
+        self.assertEqual(metrics["Defensive challenges"]["position_average"], 72.5)
+        self.assertIn("volumes bruts", benchmark["note"])
+
 
 class PerformancePdfTests(unittest.TestCase):
     def test_professional_report_is_a_multipage_pdf(self):

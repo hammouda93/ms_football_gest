@@ -36,6 +36,14 @@ PDF_COPY = {
         "contribution": "POINTS DANS LE SCORE",
         "weighted_total": "TOTAL PONDÉRÉ",
         "score_total_note": "Total pondéré avant arrondi : {raw} points. Score de mission final : {score}/100.",
+        "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
+        "impact_note": "Chaque ligne ci-dessous appartient au calcul : elle n’est pas ajoutée après le verdict.",
+        "position_benchmark": "Radar du match face à la moyenne du poste",
+        "benchmark_position": "Référence retenue : {position} ({percent} % du profil SportsBase) · saison {season}",
+        "benchmark_match": "Match — note analytique",
+        "benchmark_average": "Moyenne SportsBase du poste",
+        "benchmark_raw": "Total réel du match",
+        "benchmark_difference": "ÉCART",
         "not_assessed": "Non évalué",
         "coverage": "données observées",
         "key_metrics": "Indicateurs clés du poste",
@@ -117,6 +125,14 @@ PDF_COPY = {
         "contribution": "POINTS IN FINAL SCORE",
         "weighted_total": "WEIGHTED TOTAL",
         "score_total_note": "Weighted total before rounding: {raw} points. Final mission score: {score}/100.",
+        "impact_drivers": "Why decisive actions count in the score",
+        "impact_note": "Every line below belongs to the calculation; it is not added after the verdict.",
+        "position_benchmark": "Match radar against the position average",
+        "benchmark_position": "Selected reference: {position} ({percent}% of the SportsBase profile) · season {season}",
+        "benchmark_match": "Match — analytical score",
+        "benchmark_average": "SportsBase position average",
+        "benchmark_raw": "Real match total",
+        "benchmark_difference": "GAP",
         "not_assessed": "Not assessed",
         "coverage": "observed data",
         "key_metrics": "Position-specific key indicators",
@@ -198,6 +214,14 @@ PDF_COPY = {
         "contribution": "النقاط في الدرجة النهائية",
         "weighted_total": "المجموع الموزون",
         "score_total_note": "المجموع الموزون قبل التقريب: {raw} نقطة. درجة المهمة النهائية: {score}/100.",
+        "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
+        "impact_note": "كل سطر أدناه جزء من الحساب ولا يضاف بعد الخلاصة.",
+        "position_benchmark": "رادار المباراة مقارنة بمتوسط المركز",
+        "benchmark_position": "المرجع المختار: {position} ({percent}% من ملف سبورتس بايز) · موسم {season}",
+        "benchmark_match": "المباراة — الدرجة التحليلية",
+        "benchmark_average": "متوسط المركز في سبورتس بايز",
+        "benchmark_raw": "الرقم الحقيقي للمباراة",
+        "benchmark_difference": "الفارق",
         "not_assessed": "غير مقيم",
         "coverage": "بيانات ملاحظة",
         "key_metrics": "المؤشرات الرئيسية للمركز",
@@ -524,6 +548,116 @@ def render_performance_pdf(report):
             for point in values:
                 canvas.setFillColor(colors.HexColor(TEAL_DARK))
                 canvas.circle(point[0], point[1], 1.5, stroke=0, fill=1)
+            canvas.restoreState()
+
+    class BenchmarkRadar(Flowable):
+        """Two-series vector radar: this match versus the position benchmark."""
+
+        def __init__(self, metrics, width=164 * mm, height=102 * mm):
+            super().__init__()
+            self.metrics = [item for item in metrics if item.get("comparable")][:12]
+            self.width = width
+            self.height = height
+
+        @staticmethod
+        def _lines(value, limit=22):
+            words = str(value or "").split()
+            lines = []
+            current = ""
+            for word in words:
+                candidate = f"{current} {word}".strip()
+                if current and len(candidate) > limit:
+                    lines.append(current)
+                    current = word
+                else:
+                    current = candidate
+            if current:
+                lines.append(current)
+            if len(lines) > 2:
+                lines = [lines[0], f"{lines[1][: max(1, limit - 1)]}…"]
+            return lines or ["—"]
+
+        def draw(self):
+            if len(self.metrics) < 3:
+                return
+            canvas = self.canv
+            count = len(self.metrics)
+            cx, cy = self.width / 2, self.height / 2 + 7 * mm
+            radius = min(self.width * 0.23, self.height * 0.31)
+            canvas.saveState()
+            for ring, label in ((0.25, "25"), (0.5, "50"), (0.75, "75"), (1.0, "100")):
+                points = []
+                for index in range(count):
+                    angle = math.pi / 2 - 2 * math.pi * index / count
+                    points.append((cx + radius * ring * math.cos(angle), cy + radius * ring * math.sin(angle)))
+                path = canvas.beginPath()
+                path.moveTo(*points[0])
+                for point in points[1:]:
+                    path.lineTo(*point)
+                path.close()
+                canvas.setStrokeColor(colors.HexColor(LINE))
+                canvas.setLineWidth(0.45)
+                canvas.drawPath(path, stroke=1, fill=0)
+                canvas.setFillColor(colors.HexColor(MUTED))
+                canvas.setFont(font_name, 4.6)
+                canvas.drawString(cx + 1.2 * mm, cy + radius * ring, label)
+
+            series = []
+            for index, item in enumerate(self.metrics):
+                angle = math.pi / 2 - 2 * math.pi * index / count
+                canvas.setStrokeColor(colors.HexColor(LINE))
+                canvas.line(cx, cy, cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+                average = max(0, min(100, float(item.get("position_average") or 0))) / 100
+                match = max(0, min(100, float(item.get("match_score") or 0))) / 100
+                series.append(
+                    (
+                        (cx + radius * average * math.cos(angle), cy + radius * average * math.sin(angle)),
+                        (cx + radius * match * math.cos(angle), cy + radius * match * math.sin(angle)),
+                    )
+                )
+                label_radius = radius + 13 * mm
+                lx = cx + label_radius * math.cos(angle)
+                ly = cy + label_radius * math.sin(angle)
+                lines = self._lines(display(item.get("label") or item.get("metric")))
+                canvas.setFillColor(colors.HexColor(INK))
+                canvas.setFont(font_name, 4.8)
+                for line_index, line in enumerate(lines):
+                    line_y = ly - line_index * 5.5
+                    if math.cos(angle) > 0.25:
+                        canvas.drawString(lx, line_y, line)
+                    elif math.cos(angle) < -0.25:
+                        canvas.drawRightString(lx, line_y, line)
+                    else:
+                        canvas.drawCentredString(lx, line_y, line)
+
+            def polygon(point_index, stroke, fill):
+                points = [pair[point_index] for pair in series]
+                path = canvas.beginPath()
+                path.moveTo(*points[0])
+                for point in points[1:]:
+                    path.lineTo(*point)
+                path.close()
+                canvas.setStrokeColor(colors.HexColor(stroke))
+                canvas.setFillColor(fill)
+                canvas.setLineWidth(1.4)
+                canvas.drawPath(path, stroke=1, fill=1)
+                for point in points:
+                    canvas.setFillColor(colors.HexColor(stroke))
+                    canvas.circle(point[0], point[1], 1.3, stroke=0, fill=1)
+
+            polygon(0, RED, colors.Color(0.85, 0.36, 0.40, alpha=0.13))
+            polygon(1, TEAL_DARK, colors.Color(0.075, 0.72, 0.65, alpha=0.22))
+
+            legend_y = 3 * mm
+            canvas.setLineWidth(2)
+            canvas.setStrokeColor(colors.HexColor(TEAL_DARK))
+            canvas.line(cx - 55 * mm, legend_y, cx - 45 * mm, legend_y)
+            canvas.setFillColor(colors.HexColor(INK))
+            canvas.setFont(font_name, 6.2)
+            canvas.drawString(cx - 42 * mm, legend_y - 2, display(copy["benchmark_match"]))
+            canvas.setStrokeColor(colors.HexColor(RED))
+            canvas.line(cx + 5 * mm, legend_y, cx + 15 * mm, legend_y)
+            canvas.drawString(cx + 18 * mm, legend_y - 2, display(copy["benchmark_average"]))
             canvas.restoreState()
 
     class PositionPitch(Flowable):
@@ -1141,9 +1275,12 @@ def render_performance_pdf(report):
     )
     dimensions = analysis.get("dimensions") or []
     stamp_rows = []
-    for index in range(0, len(dimensions), 2):
-        row = [stamp_card(dimensions[index])]
-        row.append(stamp_card(dimensions[index + 1]) if index + 1 < len(dimensions) else "")
+    # The verdict page keeps the four highest-weight missions.  The full list
+    # and every criterion follow immediately in the calculation pages.
+    summary_dimensions = dimensions[:4]
+    for index in range(0, len(summary_dimensions), 2):
+        row = [stamp_card(summary_dimensions[index])]
+        row.append(stamp_card(summary_dimensions[index + 1]) if index + 1 < len(summary_dimensions) else "")
         stamp_rows.append(row)
     story.append(
         Table(
@@ -1201,7 +1338,44 @@ def render_performance_pdf(report):
             style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
         )
     )
-    story.extend([Spacer(1, 4 * mm), note_box(score_breakdown.get("formula") or "", "neutral"), PageBreak(), p(copy["score_explained"], h1), Spacer(1, 2 * mm)])
+    story.extend([Spacer(1, 4 * mm), note_box(score_breakdown.get("formula") or "", "neutral")])
+    story.extend([PageBreak(), p(copy["score_explained"], h1), Spacer(1, 2 * mm)])
+    impact_drivers = score_breakdown.get("impact_drivers") or []
+    if impact_drivers:
+        story.extend([p(copy["impact_drivers"], h2), p(copy["impact_note"], tiny), Spacer(1, 2 * mm)])
+        impact_rows = []
+        for index in range(0, min(len(impact_drivers), 6), 2):
+            cells = []
+            for driver in impact_drivers[index:index + 2]:
+                effect = (driver.get("effect") or {}).get("code")
+                tone = "positive" if effect in {"positive", "very_positive"} else "warning" if effect in {"negative", "very_negative"} else "neutral"
+                cells.append(
+                    note_box(
+                        f"{driver.get('explanation') or ''}\n{driver.get('score_sentence') or ''}",
+                        tone,
+                    )
+                )
+            if len(cells) == 1:
+                cells.append("")
+            impact_rows.append(cells)
+        story.extend(
+            [
+                Table(
+                    impact_rows,
+                    colWidths=[84.5 * mm, 84.5 * mm],
+                    style=TableStyle(
+                        [
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                            ("TOPPADDING", (0, 0), (-1, -1), 1),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                        ]
+                    ),
+                ),
+                Spacer(1, 3 * mm),
+            ]
+        )
     criteria_rows = [[
         p(copy["role_missions"], table_head),
         p(copy["criterion"], table_head),
@@ -1256,7 +1430,51 @@ def render_performance_pdf(report):
             ),
         ]
     )
-    story.extend([PageBreak(), section_title(copy["key_metrics"], 3), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
+    benchmark = analysis.get("position_benchmark") or {}
+    section_number = 3
+    if benchmark.get("available"):
+        benchmark_metrics = benchmark.get("comparable_metrics") or []
+        story.extend(
+            [
+                PageBreak(),
+                section_title(copy["position_benchmark"], section_number),
+                p(
+                    copy["benchmark_position"].format(
+                        position=benchmark.get("position_name") or benchmark.get("position_code") or "—",
+                        percent=benchmark.get("position_percent", 0),
+                        season=benchmark.get("season") or "—",
+                    ),
+                    body_bold,
+                ),
+                Spacer(1, 1 * mm),
+                p(benchmark.get("note") or "", small),
+                Spacer(1, 2 * mm),
+                BenchmarkRadar(benchmark_metrics),
+                Spacer(1, 1 * mm),
+            ]
+        )
+        benchmark_rows = [[
+            p(copy["indicator"], table_head),
+            p(copy["benchmark_match"], table_head),
+            p(copy["benchmark_average"], table_head),
+            p(copy["benchmark_raw"], table_head),
+            p(copy["benchmark_difference"], table_head),
+        ]]
+        for item in benchmark_metrics:
+            difference = item.get("difference")
+            benchmark_rows.append(
+                [
+                    p(item.get("label") or item.get("metric"), small),
+                    p(f"{item.get('match_score')}/100", body_bold),
+                    p(f"{item.get('position_average')}/100", body),
+                    p(item.get("match_display") or "—", body),
+                    p("—" if difference is None else f"{difference:+.1f}", body_bold),
+                ]
+            )
+        story.append(standard_table(benchmark_rows, [51 * mm, 30 * mm, 32 * mm, 31 * mm, 25 * mm]))
+        section_number += 1
+    story.extend([PageBreak(), section_title(copy["key_metrics"], section_number), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
+    section_number += 1
     metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["sample"], table_head), p(copy["reading"], table_head)]]
     for item in analysis.get("key_metrics") or []:
         sample = item.get("sample") or {}
@@ -1279,7 +1497,8 @@ def render_performance_pdf(report):
     story.append(standard_table(metric_rows, [67 * mm, 34 * mm, 39 * mm, 29 * mm]))
     story.append(PageBreak())
 
-    story.extend([section_title(copy["glossary"], 4)])
+    story.extend([section_title(copy["glossary"], section_number)])
+    section_number += 1
     glossary_rows = [[p(copy["indicator"], table_head), p(copy["meaning"], table_head)]]
     for item in analysis.get("glossary") or []:
         glossary_rows.append([p(item.get("label"), body_bold), p(item.get("definition"), body)])
@@ -1298,7 +1517,8 @@ def render_performance_pdf(report):
             image = Image(io.BytesIO(raw), width=80 * mm, height=53 * mm)
             images.append((label, image, note))
     if images:
-        story.extend([PageBreak(), section_title(copy["maps"], 5)])
+        story.extend([PageBreak(), section_title(copy["maps"], section_number)])
+        section_number += 1
         cells = []
         for label, image, note in images:
             cells.append(
@@ -1361,15 +1581,19 @@ def render_performance_pdf(report):
             )
             story.extend([Spacer(1, 3 * mm), p(territory.get("note"), tiny)])
 
-    story.extend([PageBreak(), section_title(copy["strengths"], 6)])
+    story.extend([PageBreak(), section_title(copy["strengths"], section_number)])
+    section_number += 1
     story.extend(bullet_list(narrative.get("strengths") or [], "positive"))
-    story.extend([Spacer(1, 3 * mm), section_title(copy["risks"], 7)])
+    story.extend([Spacer(1, 3 * mm), section_title(copy["risks"], section_number)])
+    section_number += 1
     story.extend(bullet_list(narrative.get("risks") or [], "warning"))
-    story.extend([Spacer(1, 3 * mm), section_title(copy["development"], 8)])
+    story.extend([Spacer(1, 3 * mm), section_title(copy["development"], section_number)])
+    section_number += 1
     story.extend(bullet_list(narrative.get("development") or [], "excellent"))
     story.extend([Spacer(1, 3 * mm), note_box(f"{copy['video_check']}\n{narrative.get('video_limit') or ''}", "neutral")])
 
-    story.extend([PageBreak(), section_title(copy["comparisons"], 9), p(copy["comparison_note"], small), Spacer(1, 5 * mm), p(copy["matchups"], h2)])
+    story.extend([PageBreak(), section_title(copy["comparisons"], section_number), p(copy["comparison_note"], small), Spacer(1, 5 * mm), p(copy["matchups"], h2)])
+    section_number += 1
     matchup = analysis.get("same_position_comparison")
     if not matchup:
         story.append(note_box(copy["no_comparison"], "neutral"))
@@ -1419,7 +1643,8 @@ def render_performance_pdf(report):
         leader_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body)])
     story.append(standard_table(leader_rows, [55 * mm, 30 * mm, 23 * mm, 61 * mm]))
 
-    story.extend([PageBreak(), section_title(copy["method"], 10), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
+    story.extend([PageBreak(), section_title(copy["method"], section_number), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
+    section_number += 1
     if confidence.get("explanation"):
         story.extend([note_box(confidence.get("explanation"), "warning", True), Spacer(1, 4 * mm)])
     story.extend([p(narrative.get("sample_caution") or "", body), Spacer(1, 3 * mm), p(narrative.get("video_limit") or "", body), Spacer(1, 6 * mm), p(copy["source"], h2)])
@@ -1432,7 +1657,7 @@ def render_performance_pdf(report):
     story.extend(
         [
             PageBreak(),
-            section_title(copy["appendix"], 11),
+            section_title(copy["appendix"], section_number),
             note_box(copy["full_data_note"], "neutral"),
             Spacer(1, 2 * mm),
             p(copy["columns_presented"].format(count=analysis.get("appendix_total_columns", 0)), small),
