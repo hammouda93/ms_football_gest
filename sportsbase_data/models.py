@@ -254,8 +254,6 @@ class SportsBaseMatch(models.Model):
                 self.ActionsState.DOWNLOADED,
                 self.ActionsState.EMAILED,
             }
-        if self.subscription.email_delivery_enabled:
-            return stats_complete and self.actions_state == self.ActionsState.EMAILED
         return stats_complete and self.actions_state in {
             self.ActionsState.DOWNLOADED,
             self.ActionsState.EMAILED,

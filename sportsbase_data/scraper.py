@@ -15,9 +15,6 @@ from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
 
-from .delivery import send_all_actions_email
-
-
 SPORTSBASE_ROOT = "https://football.sportsbase.world"
 MATCH_ID_RE = re.compile(r"/matches/(\d+)")
 PLAYER_ID_RE = re.compile(r"/players/(\d+)")
@@ -25,7 +22,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v9-ready-arrow-20260827"
+SCRAPER_BUILD = "season-kpis-radar-v9-single-email-20260827"
 
 
 def _now_iso():
@@ -547,15 +544,11 @@ class SportsBaseSubscriptionScraper:
 
             if not job.get("all_actions_enabled"):
                 match_data["actions_state"] = "not_requested"
-            elif previous.get("actions_state") == "emailed":
+            elif previous.get("actions_state") in {"downloaded", "emailed"}:
+                # L’e-mail final est envoyé une seule fois par Django, lorsque le
+                # rapport (et, si activé, YouTube) est prêt. L’agent local conserve
+                # uniquement le fichier vidéo et ne l’envoie plus en pièce jointe.
                 match_data["actions_state"] = previous["actions_state"]
-            elif previous.get("actions_state") == "downloaded" and job.get(
-                "email_delivery_enabled"
-            ):
-                if self._retry_existing_delivery(match_data, previous, job):
-                    generation_queue.append((match_data, match_item, True))
-            elif previous.get("actions_state") == "downloaded":
-                match_data["actions_state"] = "downloaded"
             elif previous.get("actions_state") == "generating":
                 # Une génération a déjà été demandée lors d'un passage précédent.
                 # On reprend uniquement My Videos, sans créer de doublon SportsBase.
@@ -592,31 +585,6 @@ class SportsBaseSubscriptionScraper:
                 match_data=match_data,
             )
         return output
-
-    def _retry_existing_delivery(self, match_data, previous, job):
-        folder_key = previous.get("local_folder_key", "")
-        filename = previous.get("all_actions_filename", "")
-        path = self.storage_root / folder_key / filename if folder_key and filename else None
-        if not path or not path.is_file():
-            match_data["actions_state"] = "queued"
-            match_data["delivery_error"] = "Fichier local introuvable ; une nouvelle génération est nécessaire."
-            return True
-        sent, error = send_all_actions_email(
-            recipient=job["player"].get("email"),
-            player_name=job["player"]["name"],
-            match_label=f"{match_data['home_team']} - {match_data['away_team']}",
-            video_path=path,
-        )
-        match_data.update(
-            {
-                "actions_state": "emailed" if sent else "downloaded",
-                "local_folder_key": folder_key,
-                "all_actions_filename": filename,
-                "all_actions_emailed_at": _now_iso() if sent else None,
-                "delivery_error": "" if sent else error,
-            }
-        )
-        return False
 
     def _discover_matches(self, page):
         rows = []
@@ -1535,18 +1503,6 @@ class SportsBaseSubscriptionScraper:
                     "delivery_error": "",
                 }
             )
-            if job.get("email_delivery_enabled"):
-                sent, error = send_all_actions_email(
-                    recipient=job["player"].get("email"),
-                    player_name=job["player"]["name"],
-                    match_label=f"{match_data['home_team']} - {match_data['away_team']}",
-                    video_path=destination,
-                )
-                if sent:
-                    match_data["actions_state"] = "emailed"
-                    match_data["all_actions_emailed_at"] = _now_iso()
-                else:
-                    match_data["delivery_error"] = error
             downloaded_ids.add(match_data["sportsbase_match_id"])
 
         if downloaded_ids:

@@ -49,7 +49,9 @@ COPY = {
             "L’analyse de votre dernière rencontre est terminée. Votre rapport "
             "est disponible."
         ),
+        "match": "Match",
         "watch": "Regarder All Actions",
+        "portal_match": "Voir le match et All Actions dans votre portail",
         "report": "Télécharger le rapport de l’analyste",
     },
     "en": {
@@ -80,7 +82,9 @@ COPY = {
         "mail_intro_report_only": (
             "The analysis of your latest match is complete. Your report is available."
         ),
+        "match": "Match",
         "watch": "Watch All Actions",
+        "portal_match": "View the match and All Actions in your portal",
         "report": "Download the analyst report",
     },
     "ar": {
@@ -104,7 +108,9 @@ COPY = {
         "mail_intro_report_only": (
             "اكتمل تحليل مباراتك الأخيرة. التقرير متاح الآن."
         ),
+        "match": "المباراة",
         "watch": "مشاهدة جميع اللقطات",
+        "portal_match": "مشاهدة المباراة وجميع اللقطات في بوابتك",
         "report": "تحميل تقرير المحلل",
     },
 }
@@ -643,18 +649,28 @@ def send_ready_delivery_notification(report):
         "https://msfootball-1a882b44ed52.herokuapp.com",
     ).rstrip("/")
     report_url = base_url + reverse("performance:report_pdf", args=(report.pk,))
+    fixture = (
+        f"{report.match.home_team} {report.match.score} "
+        f"{report.match.away_team}"
+    ).strip()
     if subscription.youtube_delivery_enabled:
-        subject = copy["mail_subject"]
+        subject = f"{copy['mail_subject']} — {fixture}"
+        portal_match_url = base_url + reverse(
+            "performance:portal_match",
+            args=(subscription.player_id, report.match.sportsbase_match_id),
+        )
         body_parts = (
             copy["mail_intro"],
-            f"{copy['watch']} : {upload.youtube_url}",
+            f"{copy['match']} : {fixture}",
+            f"{copy['portal_match']} : {portal_match_url}",
             f"{copy['report']} : {report_url}",
             "MS Performance",
         )
     else:
-        subject = copy["mail_subject_report_only"]
+        subject = f"{copy['mail_subject_report_only']} — {fixture}"
         body_parts = (
             copy["mail_intro_report_only"],
+            f"{copy['match']} : {fixture}",
             f"{copy['report']} : {report_url}",
             "MS Performance",
         )
