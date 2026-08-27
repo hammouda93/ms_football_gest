@@ -35,6 +35,7 @@ PDF_COPY = {
         "criterion_score": "NOTE CRITÈRE",
         "contribution": "POINTS DANS LE SCORE",
         "weighted_total": "TOTAL PONDÉRÉ",
+        "score_reasons": "CRITÈRES QUI EXPLIQUENT LA NOTE",
         "score_total_note": "Total pondéré avant arrondi : {raw} points. Score de mission final : {score}/100.",
         "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
         "impact_note": "Chaque ligne ci-dessous appartient au calcul : elle n’est pas ajoutée après le verdict.",
@@ -47,6 +48,8 @@ PDF_COPY = {
         "not_assessed": "Non évalué",
         "coverage": "données observées",
         "key_metrics": "Indicateurs clés du poste",
+        "performance_reading": "Lecture du match par phase",
+        "performance_note": "Une seule lecture, sans doublon : implication globale, contribution offensive puis contribution défensive. Les définitions sont placées directement sous les KPI utiles.",
         "raw_note": "Totaux réels du match, sans projection sur 90 minutes. Un taux est toujours présenté avec son dénominateur.",
         "indicator": "INDICATEUR",
         "real_value": "VALEUR RÉELLE",
@@ -124,6 +127,7 @@ PDF_COPY = {
         "criterion_score": "CRITERION SCORE",
         "contribution": "POINTS IN FINAL SCORE",
         "weighted_total": "WEIGHTED TOTAL",
+        "score_reasons": "CRITERIA BEHIND THE SCORE",
         "score_total_note": "Weighted total before rounding: {raw} points. Final mission score: {score}/100.",
         "impact_drivers": "Why decisive actions count in the score",
         "impact_note": "Every line below belongs to the calculation; it is not added after the verdict.",
@@ -136,6 +140,8 @@ PDF_COPY = {
         "not_assessed": "Not assessed",
         "coverage": "observed data",
         "key_metrics": "Position-specific key indicators",
+        "performance_reading": "Match reading by phase",
+        "performance_note": "One non-redundant reading: overall involvement, attacking contribution, then defensive contribution. Definitions sit directly below the useful KPIs.",
         "raw_note": "Real match totals, with no 90-minute projection. Every rate is shown with its denominator.",
         "indicator": "INDICATOR",
         "real_value": "REAL VALUE",
@@ -213,6 +219,7 @@ PDF_COPY = {
         "criterion_score": "درجة المعيار",
         "contribution": "النقاط في الدرجة النهائية",
         "weighted_total": "المجموع الموزون",
+        "score_reasons": "المعايير التي تفسر الدرجة",
         "score_total_note": "المجموع الموزون قبل التقريب: {raw} نقطة. درجة المهمة النهائية: {score}/100.",
         "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
         "impact_note": "كل سطر أدناه جزء من الحساب ولا يضاف بعد الخلاصة.",
@@ -225,6 +232,8 @@ PDF_COPY = {
         "not_assessed": "غير مقيم",
         "coverage": "بيانات ملاحظة",
         "key_metrics": "المؤشرات الرئيسية للمركز",
+        "performance_reading": "قراءة المباراة حسب مراحل اللعب",
+        "performance_note": "قراءة واحدة دون تكرار: المشاركة العامة ثم المساهمة الهجومية فالدفاعية، مع شرح المؤشرات مباشرة.",
         "raw_note": "الأرقام الحقيقية للمباراة دون تحويل إلى 90 دقيقة، وكل نسبة تعرض مع عدد المحاولات.",
         "indicator": "المؤشر",
         "real_value": "القيمة الحقيقية",
@@ -1302,15 +1311,25 @@ def render_performance_pdf(report):
     score_breakdown = analysis.get("score_breakdown") or {}
     breakdown_dimensions = score_breakdown.get("dimensions") or []
     story.extend([section_title(copy["role_missions"], 2), p(copy["mission_note"], small), Spacer(1, 4 * mm)])
-    dimension_rows = [[p(copy["role_missions"], table_head), p(copy["effective_weight"], table_head), p(copy["reading"], table_head), p(copy["contribution"], table_head)]]
+    dimension_rows = [[p(copy["role_missions"], table_head), p(copy["effective_weight"], table_head), p(copy["reading"], table_head), p(copy["contribution"], table_head), p(copy["score_reasons"], table_head)]]
     for item in breakdown_dimensions:
         score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
+        used_criteria = sorted(
+            [criterion for criterion in item.get("criteria") or [] if criterion.get("used")],
+            key=lambda criterion: criterion.get("final_contribution", 0),
+            reverse=True,
+        )
+        reason_lines = [
+            f"{criterion.get('label')}: {criterion.get('display')}"
+            for criterion in used_criteria[:4]
+        ]
         dimension_rows.append(
             [
                 p(item.get("label"), body_bold),
                 p(f"{item.get('effective_weight', 0)} %", body),
                 p(score_value, body),
                 p(f"{item.get('contribution', 0)} pts", body_bold),
+                p(" · ".join(reason_lines) if reason_lines else copy["not_assessed"], tiny),
             ]
         )
     dimension_rows.append(
@@ -1319,27 +1338,20 @@ def render_performance_pdf(report):
             p("100 %", body_bold),
             p(f"{score_breakdown.get('rounded_score', '—')}/100", body_bold),
             p(f"{score_breakdown.get('contribution_total', 0)} pts", body_bold),
+            p(score_breakdown.get("formula") or "", tiny),
         ]
     )
     story.append(
-        Table(
-            [[
-                RadarProfile(dimensions, width=70 * mm),
-                standard_table(
-                    dimension_rows,
-                    [37 * mm, 20 * mm, 20 * mm, 23 * mm],
-                    extra_style=[
-                        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(PALE)),
-                        ("LINEABOVE", (0, -1), (-1, -1), 1.2, colors.HexColor(TEAL_DARK)),
-                    ],
-                ),
-            ]],
-            colWidths=[66 * mm, 103 * mm],
-            style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
+        standard_table(
+            dimension_rows,
+            [33 * mm, 20 * mm, 20 * mm, 22 * mm, 74 * mm],
+            extra_style=[
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(PALE)),
+                ("LINEABOVE", (0, -1), (-1, -1), 1.2, colors.HexColor(TEAL_DARK)),
+            ],
         )
     )
-    story.extend([Spacer(1, 4 * mm), note_box(score_breakdown.get("formula") or "", "neutral")])
-    story.extend([PageBreak(), p(copy["score_explained"], h1), Spacer(1, 2 * mm)])
+    story.extend([Spacer(1, 4 * mm)])
     impact_drivers = score_breakdown.get("impact_drivers") or []
     if impact_drivers:
         story.extend([p(copy["impact_drivers"], h2), p(copy["impact_note"], tiny), Spacer(1, 2 * mm)])
@@ -1353,6 +1365,7 @@ def render_performance_pdf(report):
                     note_box(
                         f"{driver.get('explanation') or ''}\n{driver.get('score_sentence') or ''}",
                         tone,
+                        width=82 * mm,
                     )
                 )
             if len(cells) == 1:
@@ -1376,47 +1389,6 @@ def render_performance_pdf(report):
                 Spacer(1, 3 * mm),
             ]
         )
-    criteria_rows = [[
-        p(copy["role_missions"], table_head),
-        p(copy["criterion"], table_head),
-        p(copy["real_value"], table_head),
-        p(copy["criterion_score"], table_head),
-        p(copy["contribution"], table_head),
-    ]]
-    criteria_style = []
-    row_index = 1
-    effect_backgrounds = {
-        "very_positive": LIGHT_GREEN,
-        "positive": PALE,
-        "negative": LIGHT_AMBER,
-        "very_negative": LIGHT_RED,
-        "unobserved": LIGHT_GREY,
-    }
-    for dimension in breakdown_dimensions:
-        mission_text = (
-            f"{dimension.get('label')}\n"
-            f"{copy['configured_weight']}: {dimension.get('configured_weight', 0)} % · "
-            f"{copy['effective_weight']}: {dimension.get('effective_weight', 0)} %"
-        )
-        for criterion_index, criterion in enumerate(dimension.get("criteria") or []):
-            effect = criterion.get("effect") or {}
-            score_value = copy["not_assessed"] if criterion.get("score") is None else f"{criterion.get('score')}/100"
-            criteria_rows.append(
-                [
-                    p(mission_text if criterion_index == 0 else "", small if criterion_index else body_bold),
-                    [p(criterion.get("label"), body_bold), p(criterion.get("definition") or "", tiny), p(f"{copy['effective_weight']}: {criterion.get('criterion_weight', 0)} %", tiny)],
-                    p(criterion.get("display") or "0", body_bold),
-                    [p(score_value, body_bold), p(effect.get("label") or "", tiny)],
-                    p(f"{criterion.get('final_contribution', 0)} pts", body),
-                ]
-            )
-            background = effect_backgrounds.get(effect.get("code"))
-            if background:
-                criteria_style.append(("BACKGROUND", (3, row_index), (4, row_index), colors.HexColor(background)))
-            row_index += 1
-    if len(criteria_rows) == 1:
-        criteria_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body), p("—", body)])
-    story.append(standard_table(criteria_rows, [34 * mm, 65 * mm, 24 * mm, 24 * mm, 22 * mm], extra_style=criteria_style))
     story.extend(
         [
             Spacer(1, 3 * mm),
@@ -1473,38 +1445,69 @@ def render_performance_pdf(report):
             )
         story.append(standard_table(benchmark_rows, [51 * mm, 30 * mm, 32 * mm, 31 * mm, 25 * mm]))
         section_number += 1
-    story.extend([PageBreak(), section_title(copy["key_metrics"], section_number), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
+    story.extend([PageBreak(), section_title(copy["performance_reading"], section_number), p(copy["performance_note"], small), Spacer(1, 3 * mm)])
     section_number += 1
-    metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["sample"], table_head), p(copy["reading"], table_head)]]
-    for item in analysis.get("key_metrics") or []:
-        sample = item.get("sample") or {}
-        sample_text = sample.get("label") or (copy["no_data"] if item.get("display") == "—" else "—")
-        percentile = item.get("percentile")
-        score = item.get("score")
-        reading = "—"
-        if score is not None:
-            reading = f"{score}/100"
-        if percentile is not None:
-            reading += f" · P{percentile}" if reading != "—" else f"P{percentile}"
-        metric_rows.append(
+    phase_priority = {
+        "global": ("Actions", "Actions successful, %", "Passes", "Passes accurate, %", "Index"),
+        "offensive": (
+            "Goals", "Assists", "xG (expected goals)", "Key passes", "Chances created",
+            "Involvement in scoring attacks", "Actions in opponent's box",
+            "Actions in opponent's box successful, %", "Final third entries",
+            "Final third entries through pass", "Final third entries through carry",
+            "Progressive passes", "Dribbles", "Shots",
+        ),
+        "defensive": (
+            "Defensive challenges", "Defensive challenges won, %", "Tackles",
+            "Tackles successful, %", "Interceptions", "Aerial challenges",
+            "Aerial challenges won, %", "Ball recoveries", "Lost balls in own half",
+        ),
+    }
+    for lens in analysis.get("performance_lenses") or []:
+        score = lens.get("score")
+        story.extend(
             [
-                [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
-                p(item.get("display"), body_bold),
-                p(sample_text, tiny),
-                [p(reading, body_bold), ScoreGauge(score, width=22 * mm)],
+                Spacer(1, 3 * mm),
+                Table(
+                    [[p(lens.get("label"), h2), p(copy["not_assessed"] if score is None else f"{score}/100 · {lens.get('grade_label')}", body_bold)]],
+                    colWidths=[124 * mm, 45 * mm],
+                    style=TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(PALE)),
+                            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor(TEAL_DARK)),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                            ("TOPPADDING", (0, 0), (-1, -1), 6),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                        ]
+                    ),
+                ),
             ]
         )
-    story.append(standard_table(metric_rows, [67 * mm, 34 * mm, 39 * mm, 29 * mm]))
-    story.append(PageBreak())
-
-    story.extend([section_title(copy["glossary"], section_number)])
-    section_number += 1
-    glossary_rows = [[p(copy["indicator"], table_head), p(copy["meaning"], table_head)]]
-    for item in analysis.get("glossary") or []:
-        glossary_rows.append([p(item.get("label"), body_bold), p(item.get("definition"), body)])
-    if len(glossary_rows) == 1:
-        glossary_rows.append([p(copy["no_data"], body), p("—", body)])
-    story.append(standard_table(glossary_rows, [55 * mm, 114 * mm]))
+        for sentence in lens.get("interpretation") or []:
+            story.extend([Spacer(1, 1.5 * mm), note_box(sentence, lens.get("tone") or "neutral")])
+        metrics_by_name = {item.get("metric"): item for item in lens.get("metrics") or []}
+        visible_metrics = [metrics_by_name[name] for name in phase_priority.get(lens.get("key"), ()) if name in metrics_by_name]
+        for item in lens.get("metrics") or []:
+            if item in visible_metrics or item.get("score") is None:
+                continue
+            visible_metrics.append(item)
+            if len(visible_metrics) >= 12:
+                break
+        metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["reading"], table_head), p(copy["profile"], table_head)]]
+        for item in visible_metrics:
+            sample = item.get("sample") or {}
+            score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
+            metric_rows.append(
+                [
+                    [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
+                    [p(item.get("display") or "0", body_bold), p(sample.get("label") or "", tiny)],
+                    [p(score_value, body_bold), ScoreGauge(item.get("score"), width=23 * mm)],
+                    p(item.get("mission") or "—", small),
+                ]
+            )
+        if len(metric_rows) > 1:
+            story.extend([Spacer(1, 2 * mm), standard_table(metric_rows, [69 * mm, 35 * mm, 28 * mm, 37 * mm])])
 
     stats = getattr(match, "player_stats", None) if match else None
     images = []

@@ -536,6 +536,113 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(metrics["Defensive challenges"]["position_average"], 72.5)
         self.assertIn("volumes bruts", benchmark["note"])
 
+    def test_trabelsi_style_involvement_and_box_actions_are_read_exactly(self):
+        rows = [
+            _row(
+                "Mohamed Trabelsi",
+                "CS Sfaxien",
+                "LCM",
+                85,
+                **{
+                    "Actions": 62,
+                    "Actions successful, %": 0.66,
+                    "Actions in opponent's box": 4,
+                    "Actions in opponent's box successful, %": 1.0,
+                    "Final third entries": 2,
+                    "Final third entries through pass": 2,
+                    "Final third entries through carry": 0,
+                    "xG (expected goals)": 0.09,
+                },
+            ),
+            _row("Opponent", "Stade Tunisien", "LCM", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Mohamed Trabelsi", "fr")
+        lenses = {item["key"]: item for item in analysis["performance_lenses"]}
+        global_text = " ".join(lenses["global"]["interpretation"])
+        attacking_text = " ".join(lenses["offensive"]["interpretation"])
+        self.assertIn("62 actions", global_text)
+        self.assertIn("41/62 · 66%", global_text)
+        self.assertIn("4/4 · 100%", attacking_text)
+        self.assertIn("2 par la passe", attacking_text)
+        self.assertIn("0.09 xG", attacking_text)
+
+    def test_same_four_box_actions_are_role_calibrated(self):
+        common = {
+            "Actions in opponent's box": 4,
+            "Actions in opponent's box successful, %": 1.0,
+        }
+        midfielder = analyse_match_dataset(
+            [_row("Midfielder", "A", "LCM", 85, **common), _row("Opponent", "B", "LCM", 85)],
+            "Midfielder",
+            "en",
+        )
+        forward = analyse_match_dataset(
+            [_row("Forward", "A", "ST", 85, **common), _row("Opponent", "B", "ST", 85)],
+            "Forward",
+            "en",
+        )
+        midfielder_dimension = next(item for item in midfielder["dimensions"] if item["key"] == "final_third_presence")
+        forward_dimension = next(item for item in forward["dimensions"] if item["key"] == "box_presence")
+        midfielder_score = next(item["score"] for item in midfielder_dimension["evidence"] if item["metric"] == "Actions in opponent's box")
+        forward_score = next(item["score"] for item in forward_dimension["evidence"] if item["metric"] == "Actions in opponent's box")
+        self.assertGreater(midfielder_score, forward_score)
+        self.assertIn("strong presence for this role", " ".join(midfielder["performance_lenses"][1]["interpretation"]))
+        self.assertIn("below the role reference", " ".join(forward["performance_lenses"][1]["interpretation"]))
+
+    def test_xg_is_a_scored_offensive_signal_for_attacking_roles(self):
+        for position in ("LCM", "CAM", "RW", "ST"):
+            baseline = _row(f"Target {position}", "A", position, 90, **{"Shots": 2, "xG (expected goals)": 0})
+            with_xg = dict(baseline)
+            with_xg["xG (expected goals)"] = 0.55
+            opponent = _row(f"Opponent {position}", "B", position, 90)
+            first = analyse_match_dataset([baseline, opponent], f"Target {position}", "en")
+            second = analyse_match_dataset([with_xg, opponent], f"Target {position}", "en")
+            self.assertGreater(second["player"]["profile_score"], first["player"]["profile_score"], position)
+            drivers = {item["metric"] for item in second["score_breakdown"]["impact_drivers"]}
+            self.assertIn("xG (expected goals)", drivers, position)
+
+    def test_defender_profile_scores_intervention_and_distribution_quality(self):
+        rows = [
+            _row(
+                "Centre Back",
+                "A",
+                "CB",
+                90,
+                **{
+                    "Defensive challenges": 6,
+                    "Defensive challenges won, %": 0.75,
+                    "Tackles": 5,
+                    "Tackles successful, %": 0.8,
+                    "Interceptions": 4,
+                    "Progressive passes": 8,
+                    "Progressive passes accurate, %": 0.75,
+                    "Long passes": 7,
+                    "Long passes accurate, %": 0.57,
+                    "Super long passes": 3,
+                    "Super long passes accurate, %": 2 / 3,
+                },
+            ),
+            _row("Opponent", "B", "CB", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Centre Back", "en")
+        configured = {
+            item["metric"]
+            for dimension in analysis["dimensions"]
+            for item in dimension["evidence"]
+        }
+        expected = {
+            "Tackles", "Tackles successful, %", "Interceptions", "Progressive passes",
+            "Progressive passes accurate, %", "Long passes", "Long passes accurate, %",
+            "Super long passes", "Super long passes accurate, %",
+        }
+        self.assertTrue(expected.issubset(configured))
+        phase_metrics = [
+            item["metric"]
+            for lens in analysis["performance_lenses"]
+            for item in lens["metrics"]
+        ]
+        self.assertEqual(len(phase_metrics), len(set(phase_metrics)))
+
 
 class PerformancePdfTests(unittest.TestCase):
     def test_professional_report_is_a_multipage_pdf(self):
