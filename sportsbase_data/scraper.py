@@ -25,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v12-season-stats-position-radar-20260827"
+SCRAPER_BUILD = "season-kpis-radar-v13-pitch-maps-20260827"
 
 
 def _now_iso():
@@ -1269,6 +1269,12 @@ class SportsBaseSubscriptionScraper:
                     page, field.locator("canvas").first
                 )
                 if content:
+                    composed = self._compose_map_on_pitch(content)
+                    if composed:
+                        print(
+                            "[SPORTSBASE] Fond de terrain ajouté à la Heatmap"
+                        )
+                        return composed
                     return content
 
             if label == "Ball touches map":
@@ -1352,7 +1358,9 @@ class SportsBaseSubscriptionScraper:
             return b""
         width = max(200, min(_safe_int(touch_data.get("width")) or 389, 2000))
         height = max(120, min(_safe_int(touch_data.get("height")) or 252, 1400))
-        image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        image = SportsBaseSubscriptionScraper._render_pitch_background(
+            width, height
+        )
         draw = ImageDraw.Draw(image, "RGBA")
         for point in points:
             left = max(0.0, min(float(point.get("left_pct") or 0), 100.0))
@@ -1371,13 +1379,263 @@ class SportsBaseSubscriptionScraper:
             color = SportsBaseSubscriptionScraper._parse_css_color(
                 point.get("color")
             )
+            outline = max(1.0, min(width, height) * 0.004)
+            draw.ellipse(
+                (
+                    x - radius - outline,
+                    y - radius - outline,
+                    x + radius + outline,
+                    y + radius + outline,
+                ),
+                fill=(248, 252, 251, 225),
+            )
             draw.ellipse(
                 (x - radius, y - radius, x + radius, y + radius),
                 fill=color,
             )
         output = BytesIO()
-        image.save(output, format="PNG")
+        image.convert("RGB").save(output, format="PNG", optimize=True)
         return output.getvalue()
+
+    @staticmethod
+    def _render_pitch_background(width, height):
+        """Draw a proportional football pitch behind transparent SportsBase maps."""
+        width = max(200, min(int(width), 2000))
+        height = max(120, min(int(height), 1400))
+        scale = 4
+        canvas_width, canvas_height = width * scale, height * scale
+
+        image = Image.new(
+            "RGBA",
+            (canvas_width, canvas_height),
+            (8, 47, 42, 255),
+        )
+        draw = ImageDraw.Draw(image, "RGBA")
+
+        left = round(canvas_width * 0.025)
+        right = round(canvas_width * 0.975)
+        top = round(canvas_height * 0.035)
+        bottom = round(canvas_height * 0.965)
+        pitch_width = right - left
+        pitch_height = bottom - top
+
+        stripe_count = 10
+        for index in range(stripe_count):
+            stripe_left = left + round(pitch_width * index / stripe_count)
+            stripe_right = left + round(
+                pitch_width * (index + 1) / stripe_count
+            )
+            shade = (
+                (21, 105, 84, 255)
+                if index % 2 == 0
+                else (18, 94, 77, 255)
+            )
+            draw.rectangle(
+                (stripe_left, top, stripe_right, bottom),
+                fill=shade,
+            )
+
+        line_color = (242, 249, 247, 238)
+        shadow_color = (1, 39, 34, 105)
+        line_width = max(5, round(min(canvas_width, canvas_height) * 0.007))
+        shadow_width = line_width + max(2, scale)
+
+        def outlined_line(points):
+            draw.line(points, fill=shadow_color, width=shadow_width)
+            draw.line(points, fill=line_color, width=line_width)
+
+        draw.rectangle(
+            (left, top, right, bottom),
+            outline=shadow_color,
+            width=shadow_width,
+        )
+        draw.rectangle(
+            (left, top, right, bottom),
+            outline=line_color,
+            width=line_width,
+        )
+
+        centre_x = (left + right) / 2
+        centre_y = (top + bottom) / 2
+        outlined_line((centre_x, top, centre_x, bottom))
+
+        metre = pitch_height / 68.0
+        centre_radius = 9.15 * metre
+        draw.ellipse(
+            (
+                centre_x - centre_radius,
+                centre_y - centre_radius,
+                centre_x + centre_radius,
+                centre_y + centre_radius,
+            ),
+            outline=shadow_color,
+            width=shadow_width,
+        )
+        draw.ellipse(
+            (
+                centre_x - centre_radius,
+                centre_y - centre_radius,
+                centre_x + centre_radius,
+                centre_y + centre_radius,
+            ),
+            outline=line_color,
+            width=line_width,
+        )
+        spot_radius = max(5, round(line_width * 0.72))
+        draw.ellipse(
+            (
+                centre_x - spot_radius,
+                centre_y - spot_radius,
+                centre_x + spot_radius,
+                centre_y + spot_radius,
+            ),
+            fill=line_color,
+        )
+
+        penalty_depth = pitch_width * 16.5 / 105.0
+        penalty_half_height = pitch_height * 40.32 / 68.0 / 2
+        goal_area_depth = pitch_width * 5.5 / 105.0
+        goal_area_half_height = pitch_height * 18.32 / 68.0 / 2
+        penalty_spot_offset = pitch_width * 11.0 / 105.0
+        penalty_arc_radius = 9.15 * metre
+
+        for side in ("left", "right"):
+            goal_line = left if side == "left" else right
+            penalty_inner = (
+                goal_line + penalty_depth
+                if side == "left"
+                else goal_line - penalty_depth
+            )
+            goal_area_inner = (
+                goal_line + goal_area_depth
+                if side == "left"
+                else goal_line - goal_area_depth
+            )
+            penalty_box = (
+                min(goal_line, penalty_inner),
+                centre_y - penalty_half_height,
+                max(goal_line, penalty_inner),
+                centre_y + penalty_half_height,
+            )
+            goal_area = (
+                min(goal_line, goal_area_inner),
+                centre_y - goal_area_half_height,
+                max(goal_line, goal_area_inner),
+                centre_y + goal_area_half_height,
+            )
+            for rectangle in (penalty_box, goal_area):
+                draw.rectangle(
+                    rectangle,
+                    outline=shadow_color,
+                    width=shadow_width,
+                )
+                draw.rectangle(
+                    rectangle,
+                    outline=line_color,
+                    width=line_width,
+                )
+
+            penalty_x = (
+                goal_line + penalty_spot_offset
+                if side == "left"
+                else goal_line - penalty_spot_offset
+            )
+            draw.ellipse(
+                (
+                    penalty_x - spot_radius,
+                    centre_y - spot_radius,
+                    penalty_x + spot_radius,
+                    centre_y + spot_radius,
+                ),
+                fill=line_color,
+            )
+            arc_box = (
+                penalty_x - penalty_arc_radius,
+                centre_y - penalty_arc_radius,
+                penalty_x + penalty_arc_radius,
+                centre_y + penalty_arc_radius,
+            )
+            arc_angles = (-53, 53) if side == "left" else (127, 233)
+            draw.arc(
+                arc_box,
+                start=arc_angles[0],
+                end=arc_angles[1],
+                fill=shadow_color,
+                width=shadow_width,
+            )
+            draw.arc(
+                arc_box,
+                start=arc_angles[0],
+                end=arc_angles[1],
+                fill=line_color,
+                width=line_width,
+            )
+
+            goal_depth = max(6 * scale, round(pitch_width * 2.0 / 105.0))
+            goal_half_height = pitch_height * 7.32 / 68.0 / 2
+            goal_outer = (
+                goal_line - goal_depth
+                if side == "left"
+                else goal_line + goal_depth
+            )
+            goal_box = (
+                min(goal_line, goal_outer),
+                centre_y - goal_half_height,
+                max(goal_line, goal_outer),
+                centre_y + goal_half_height,
+            )
+            draw.rectangle(
+                goal_box,
+                outline=(231, 242, 239, 210),
+                width=max(3, line_width - 2),
+            )
+
+        corner_radius = max(6 * scale, metre)
+        corner_specs = (
+            ((left, top), 0, 90),
+            ((right, top), 90, 180),
+            ((right, bottom), 180, 270),
+            ((left, bottom), 270, 360),
+        )
+        for (corner_x, corner_y), start, end in corner_specs:
+            draw.arc(
+                (
+                    corner_x - corner_radius,
+                    corner_y - corner_radius,
+                    corner_x + corner_radius,
+                    corner_y + corner_radius,
+                ),
+                start=start,
+                end=end,
+                fill=line_color,
+                width=line_width,
+            )
+
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        return image.resize((width, height), resampling).convert("RGB").convert(
+            "RGBA"
+        )
+
+    @staticmethod
+    def _compose_map_on_pitch(content):
+        if not content:
+            return b""
+        try:
+            with Image.open(BytesIO(content)) as source:
+                overlay = source.convert("RGBA")
+            pitch = SportsBaseSubscriptionScraper._render_pitch_background(
+                overlay.width, overlay.height
+            )
+            pitch.alpha_composite(overlay)
+            output = BytesIO()
+            pitch.convert("RGB").save(
+                output,
+                format="PNG",
+                optimize=True,
+            )
+            return output.getvalue()
+        except Exception:
+            return b""
 
     @staticmethod
     def _parse_css_color(value):

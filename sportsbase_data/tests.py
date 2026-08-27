@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from django.core import mail
 from django.contrib.auth.models import User
@@ -499,6 +499,64 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_pitch_background_is_opaque_and_contains_pitch_lines(self):
+        pitch = SportsBaseSubscriptionScraper._render_pitch_background(
+            545, 360
+        )
+
+        self.assertEqual(pitch.size, (545, 360))
+        self.assertEqual(pitch.mode, "RGBA")
+        self.assertEqual(pitch.getchannel("A").getextrema(), (255, 255))
+        centre_line = pitch.getpixel((272, 18))
+        grass = pitch.getpixel((250, 80))
+        self.assertGreater(sum(centre_line[:3]), sum(grass[:3]) + 150)
+
+    def test_ball_touches_keep_coordinates_on_pitch(self):
+        png = SportsBaseSubscriptionScraper._render_ball_touches_overlay(
+            {
+                "width": 545,
+                "height": 360,
+                "points": [
+                    {
+                        "left_pct": 50,
+                        "top_pct": 50,
+                        "width_px": 8,
+                        "height_px": 8,
+                        "color": "rgb(220, 35, 55)",
+                    }
+                ],
+            }
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (545, 360))
+            self.assertEqual(image.mode, "RGB")
+            red, green, blue = image.getpixel((272, 180))
+            self.assertGreater(red, green * 3)
+            self.assertGreater(red, blue * 2)
+
+    def test_heatmap_overlay_is_composited_on_pitch(self):
+        overlay = Image.new("RGBA", (405, 268), (0, 0, 0, 0))
+        ImageDraw.Draw(overlay, "RGBA").ellipse(
+            (172, 104, 232, 164),
+            fill=(245, 55, 35, 180),
+        )
+        source = BytesIO()
+        overlay.save(source, format="PNG")
+
+        png = SportsBaseSubscriptionScraper._compose_map_on_pitch(
+            source.getvalue()
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (405, 268))
+            self.assertEqual(image.mode, "RGB")
+            red, green, blue = image.getpixel((202, 134))
+            self.assertGreater(red, green)
+            self.assertGreater(red, blue)
+
     def test_season_and_average_sections_remain_separate(self):
         class FakePage:
             def __init__(self):
