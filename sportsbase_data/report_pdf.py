@@ -12,103 +12,196 @@ PDF_COPY = {
         "brand": "ANALYSE DE PERFORMANCE",
         "role": "PROFIL DE POSTE",
         "minutes": "MINUTES",
-        "confidence": "FIABILITÉ",
+        "reliability": "FIABILITÉ",
         "index": "INDEX SPORTSBASE",
-        "executive": "Verdict de l’analyste",
-        "role_profile": "Profil relatif au poste",
-        "role_note": "Scores relatifs à ce match et au groupe de comparaison — pas une note de niveau absolu.",
-        "key_metrics": "Indicateurs clés",
-        "per90_note": "Les volumes /90 servent uniquement à comparer des temps de jeu différents. Ils ne constituent pas une projection.",
-        "compartment": "Comparaison dans le même compartiment",
-        "player": "Joueur",
-        "position": "Poste",
-        "profile": "Profil relatif",
-        "matchups": "Comparaisons adverses",
-        "target": "Joueur",
-        "opponent": "Adversaire",
-        "units": "Lecture collective par compartiment",
-        "unit_explanation": "Les taux sont pondérés par le nombre de tentatives. Les remplaçants d’un même rôle sont agrégés.",
-        "strengths": "Points forts observés",
-        "risks": "Risques et limites",
-        "development": "Axes de progression",
+        "mission_score": "SCORE DE MISSION",
+        "verdict": "Verdict de l’analyste",
+        "context": "Contexte de la rencontre",
+        "rankings": "Repères dans le match",
+        "index_team": "Rang Index — équipe",
+        "index_match": "Rang Index — match",
+        "role_rank": "Rang mission — même rôle",
+        "index_note": "L’Index confirme le contexte général. Il n’entre pas dans le calcul du score de mission afin d’éviter un double comptage.",
+        "role_missions": "Missions du poste",
+        "mission_note": "Chaque score juge uniquement cette apparition. Il combine qualité, activité réelle et fiabilité des tentatives — ce n’est pas une note du niveau absolu du joueur.",
+        "coverage": "données observées",
+        "key_metrics": "Indicateurs clés du poste",
+        "raw_note": "Totaux réels du match, sans projection sur 90 minutes. Un taux est toujours présenté avec son dénominateur.",
+        "indicator": "INDICATEUR",
+        "real_value": "VALEUR RÉELLE",
+        "sample": "ÉCHANTILLON",
+        "reading": "LECTURE",
+        "glossary": "Comprendre les KPI",
+        "meaning": "CE QUE CELA SIGNIFIE",
         "maps": "Empreinte terrain",
         "heatmap": "Carte de chaleur",
-        "touches": "Carte des contacts",
+        "touches": "Carte des contacts ballon",
+        "heat_note": "La heatmap décrit les zones d’activité enregistrées. Elle ne remplace pas un suivi GPS complet des courses sans ballon.",
+        "touch_note": "La carte des contacts montre où le joueur a réellement touché le ballon. La présence territoriale doit être associée à la qualité des actions.",
+        "thirds": "Répartition sur les tiers affichés",
+        "lanes": "Répartition par couloir",
+        "left": "Gauche affichée",
+        "middle": "Milieu",
+        "right": "Droite affichée",
+        "wide": "Largeur",
+        "half_space": "Demi-espaces",
+        "central": "Axe",
+        "strengths": "Ce qui a été bien fait",
+        "risks": "Points à améliorer",
+        "development": "Plan d’action individuel",
+        "video_check": "À confirmer avec la vidéo All Actions",
+        "comparisons": "Comparaisons — repère secondaire",
+        "comparison_note": "La comparaison vient après l’analyse individuelle. Les volumes bruts ne sont comparés que lorsque les temps de jeu sont proches.",
+        "same_role": "Joueurs du même compartiment",
+        "player": "JOUEUR",
+        "position": "POSTE",
+        "profile": "MISSION",
+        "matchups": "Homologue et adversaire direct",
+        "target": "JOUEUR",
+        "opponent": "ADVERSAIRE",
+        "not_comparable": "* volume non comparable : temps de jeu trop différents",
+        "units": "Comparaison des compartiments",
+        "unit_note": "Les taux sont pondérés par les tentatives. Les volumes sont signalés comme non comparables lorsque les minutes cumulées diffèrent trop.",
+        "appendix": "Fiche statistique complète",
         "method": "Méthodologie et limites",
-        "method_text": "Lecture positionnelle à trois échelles : joueur, compartiment et équipe. Les volumes sont normalisés par 90 minutes, les pourcentages sont pondérés par les tentatives et les conclusions sont calibrées selon le temps de jeu.",
-        "video_limit": "Les déplacements sans ballon, les consignes tactiques, la qualité du pressing et l’intention de jeu doivent être confirmés par la vidéo.",
-        "prepared": "Préparé par l’équipe d’analyse MS Performance",
+        "method_text": "Le moteur sépare les missions de chaque poste, conserve les totaux réels, utilise six niveaux de fiabilité selon les minutes, réduit le poids des taux calculés sur peu de tentatives et considère qu’une absence d’occasion n’est pas une faiblesse. Les comparaisons restent secondaires.",
         "source": "Références méthodologiques",
+        "prepared": "Préparé par l’équipe d’analyse MS Performance",
         "page": "Page",
-        "unavailable": "Les données complètes du fichier Players XLSX ne sont pas encore disponibles pour ce match.",
+        "unavailable": "Les données complètes du fichier Players XLSX ne sont pas disponibles pour ce match.",
+        "no_data": "Aucune donnée exploitable.",
+        "no_comparison": "Aucun joueur comparable n’est disponible sur cette rencontre.",
+        "score_unknown": "Chronologie du score non disponible",
     },
     "en": {
         "brand": "PERFORMANCE ANALYSIS",
         "role": "POSITION PROFILE",
         "minutes": "MINUTES",
-        "confidence": "RELIABILITY",
+        "reliability": "RELIABILITY",
         "index": "SPORTSBASE INDEX",
-        "executive": "Analyst verdict",
-        "role_profile": "Position-relative profile",
-        "role_note": "Match-relative scores within the comparison group — not an absolute ability rating.",
-        "key_metrics": "Key indicators",
-        "per90_note": "Per-90 volumes are used only to compare different playing times. They are not a projection.",
-        "compartment": "Same-unit comparison",
-        "player": "Player",
-        "position": "Position",
-        "profile": "Relative profile",
-        "matchups": "Opponent comparisons",
-        "target": "Player",
-        "opponent": "Opponent",
-        "units": "Collective unit analysis",
-        "unit_explanation": "Rates are weighted by attempts. Substitutes in the same role are aggregated.",
-        "strengths": "Observed strengths",
-        "risks": "Risks and limitations",
-        "development": "Development priorities",
+        "mission_score": "MISSION SCORE",
+        "verdict": "Analyst verdict",
+        "context": "Match context",
+        "rankings": "Match reference points",
+        "index_team": "Index rank — team",
+        "index_match": "Index rank — match",
+        "role_rank": "Mission rank — same role",
+        "index_note": "The Index validates the broad context. It is not included in the mission score, preventing double counting.",
+        "role_missions": "Position missions",
+        "mission_note": "Each score assesses this appearance only. It combines execution, real activity and attempt reliability; it is not an absolute ability rating.",
+        "coverage": "observed data",
+        "key_metrics": "Position-specific key indicators",
+        "raw_note": "Real match totals, with no 90-minute projection. Every rate is shown with its denominator.",
+        "indicator": "INDICATOR",
+        "real_value": "REAL VALUE",
+        "sample": "SAMPLE",
+        "reading": "READING",
+        "glossary": "Understanding the KPIs",
+        "meaning": "WHAT IT MEANS",
         "maps": "Pitch footprint",
         "heatmap": "Heatmap",
         "touches": "Ball-touch map",
+        "heat_note": "The heatmap describes recorded activity zones; it is not a complete GPS record of off-ball running.",
+        "touch_note": "The touch map shows where the player actually contacted the ball. Territorial presence must be paired with action quality.",
+        "thirds": "Distribution across displayed thirds",
+        "lanes": "Distribution by lane",
+        "left": "Displayed left",
+        "middle": "Middle",
+        "right": "Displayed right",
+        "wide": "Wide lanes",
+        "half_space": "Half-spaces",
+        "central": "Central lane",
+        "strengths": "What was done well",
+        "risks": "Points to improve",
+        "development": "Individual action plan",
+        "video_check": "To confirm through All Actions video",
+        "comparisons": "Comparisons — secondary reference",
+        "comparison_note": "Comparison follows the individual assessment. Raw volumes are compared only when playing times are similar.",
+        "same_role": "Players in the same unit",
+        "player": "PLAYER",
+        "position": "POSITION",
+        "profile": "MISSION",
+        "matchups": "Counterpart and direct opponent",
+        "target": "PLAYER",
+        "opponent": "OPPONENT",
+        "not_comparable": "* non-comparable volume: playing times differ too much",
+        "units": "Unit comparison",
+        "unit_note": "Rates are weighted by attempts. Volumes are flagged as non-comparable when cumulative minutes differ too much.",
+        "appendix": "Complete statistical sheet",
         "method": "Methodology and limitations",
-        "method_text": "Position-specific analysis at three scales: player, unit and team. Volumes are normalised per 90, percentages are weighted by attempts and conclusions are calibrated to playing time.",
-        "video_limit": "Off-ball movement, tactical instructions, pressing quality and playing intention require video confirmation.",
-        "prepared": "Prepared by the MS Performance analysis team",
+        "method_text": "The engine separates each position's missions, keeps real totals, uses six minute-based reliability levels, reduces the weight of rates from few attempts and treats no opportunity as no weakness. Comparisons remain secondary.",
         "source": "Methodology references",
+        "prepared": "Prepared by the MS Performance analysis team",
         "page": "Page",
-        "unavailable": "The full Players XLSX dataset is not yet available for this match.",
+        "unavailable": "The full Players XLSX dataset is unavailable for this match.",
+        "no_data": "No usable data.",
+        "no_comparison": "No comparable player is available in this match.",
+        "score_unknown": "Score timeline unavailable",
     },
     "ar": {
         "brand": "تحليل الأداء",
         "role": "ملف المركز",
         "minutes": "الدقائق",
-        "confidence": "الموثوقية",
+        "reliability": "الموثوقية",
         "index": "مؤشر سبورتس بايز",
-        "executive": "خلاصة المحلل",
-        "role_profile": "الملف النسبي حسب المركز",
-        "role_note": "درجات نسبية خاصة بهذه المباراة ومجموعة المقارنة وليست تقييما مطلقا لمستوى اللاعب.",
-        "key_metrics": "المؤشرات الرئيسية",
-        "per90_note": "تستخدم أحجام كل 90 دقيقة فقط لمقارنة أوقات اللعب المختلفة وليست توقعا للمستقبل.",
-        "compartment": "المقارنة داخل نفس الخط",
-        "player": "اللاعب",
-        "position": "المركز",
-        "profile": "الملف النسبي",
-        "matchups": "المقارنات مع المنافس",
-        "target": "اللاعب",
-        "opponent": "المنافس",
-        "units": "التحليل الجماعي حسب الخطوط",
-        "unit_explanation": "يتم ترجيح النسب بعدد المحاولات وتجميع البدلاء في نفس الدور.",
-        "strengths": "نقاط القوة الملاحظة",
-        "risks": "المخاطر والحدود",
-        "development": "محاور التطوير",
+        "mission_score": "درجة المهمة",
+        "verdict": "خلاصة المحلل",
+        "context": "سياق المباراة",
+        "rankings": "الترتيب داخل المباراة",
+        "index_team": "ترتيب المؤشر داخل الفريق",
+        "index_match": "ترتيب المؤشر داخل المباراة",
+        "role_rank": "ترتيب المهمة لنفس الدور",
+        "index_note": "يستخدم المؤشر لتأكيد السياق فقط ولا يدخل في حساب درجة المهمة لتجنب الحساب المزدوج.",
+        "role_missions": "مهام المركز",
+        "mission_note": "كل درجة تخص هذه المشاركة فقط وتجمع بين التنفيذ والنشاط الحقيقي وموثوقية المحاولات، وليست تقييما مطلقا للاعب.",
+        "coverage": "بيانات ملاحظة",
+        "key_metrics": "المؤشرات الرئيسية للمركز",
+        "raw_note": "الأرقام الحقيقية للمباراة دون تحويل إلى 90 دقيقة، وكل نسبة تعرض مع عدد المحاولات.",
+        "indicator": "المؤشر",
+        "real_value": "القيمة الحقيقية",
+        "sample": "العينة",
+        "reading": "القراءة",
+        "glossary": "فهم المؤشرات",
+        "meaning": "المعنى",
         "maps": "البصمة داخل الملعب",
         "heatmap": "الخريطة الحرارية",
         "touches": "خريطة لمس الكرة",
+        "heat_note": "تصف الخريطة الحرارية مناطق النشاط المسجلة ولا تعوض تتبع GPS الكامل.",
+        "touch_note": "توضح خريطة اللمسات أين لمس اللاعب الكرة فعليا ويجب ربط الحضور بجودة الإجراء.",
+        "thirds": "التوزيع على الأثلاث المعروضة",
+        "lanes": "التوزيع حسب الرواق",
+        "left": "اليسار المعروض",
+        "middle": "الوسط",
+        "right": "اليمين المعروض",
+        "wide": "الأطراف",
+        "half_space": "أنصاف المساحات",
+        "central": "العمق",
+        "strengths": "ما تم إنجازه جيدا",
+        "risks": "نقاط التحسين",
+        "development": "خطة العمل الفردية",
+        "video_check": "يجب تأكيده بفيديو جميع اللقطات",
+        "comparisons": "المقارنات — مرجع ثانوي",
+        "comparison_note": "تأتي المقارنة بعد التحليل الفردي ولا تقارن الأحجام إلا عند تقارب دقائق اللعب.",
+        "same_role": "لاعبو نفس الخط",
+        "player": "اللاعب",
+        "position": "المركز",
+        "profile": "المهمة",
+        "matchups": "اللاعب المقابل والمنافس المباشر",
+        "target": "اللاعب",
+        "opponent": "المنافس",
+        "not_comparable": "* حجم غير قابل للمقارنة بسبب اختلاف دقائق اللعب",
+        "units": "مقارنة الخطوط",
+        "unit_note": "ترجح النسب بعدد المحاولات وتوضع علامة على الأحجام غير القابلة للمقارنة.",
+        "appendix": "الورقة الإحصائية الكاملة",
         "method": "المنهجية والحدود",
-        "method_text": "تحليل حسب المركز على ثلاثة مستويات: اللاعب والخط والفريق. يتم توحيد الأحجام لكل 90 دقيقة وترجيح النسب بالمحاولات وربط قوة الاستنتاج بوقت اللعب.",
-        "video_limit": "تحتاج التحركات دون كرة والتعليمات التكتيكية وجودة الضغط ونية اللعب إلى تأكيد بالفيديو.",
-        "prepared": "إعداد فريق تحليل MS Performance",
+        "method_text": "يفصل المحرك مهام كل مركز ويحافظ على الأرقام الحقيقية ويستخدم ست درجات لموثوقية الدقائق ويخفض وزن النسب ذات المحاولات القليلة ولا يعتبر غياب الفرصة نقطة ضعف. المقارنات ثانوية.",
         "source": "المراجع المنهجية",
+        "prepared": "إعداد فريق تحليل MS Performance",
         "page": "صفحة",
-        "unavailable": "بيانات ملف Players XLSX الكاملة غير متاحة بعد لهذه المباراة.",
+        "unavailable": "بيانات ملف Players XLSX الكاملة غير متاحة لهذه المباراة.",
+        "no_data": "لا توجد بيانات قابلة للاستعمال.",
+        "no_comparison": "لا يوجد لاعب قابل للمقارنة في هذه المباراة.",
+        "score_unknown": "تسلسل النتيجة غير متاح",
     },
 }
 
@@ -123,6 +216,11 @@ PALE = "#EDF7F6"
 LINE = "#D8E3EA"
 RED = "#D95D66"
 AMBER = "#D6A63C"
+GREEN = "#2EA66F"
+LIGHT_RED = "#FFF0F1"
+LIGHT_AMBER = "#FFF7E6"
+LIGHT_GREEN = "#ECF8F2"
+LIGHT_GREY = "#F4F7F9"
 
 
 def _font_path():
@@ -142,10 +240,6 @@ def _rtl(value):
         return get_display(arabic_reshaper.reshape(str(value)))
     except ImportError:
         return str(value)
-
-
-def _report_type(report):
-    return str(getattr(report, "report_type", "") or "")
 
 
 def render_performance_pdf(report):
@@ -185,9 +279,7 @@ def render_performance_pdf(report):
         return _rtl(value) if rtl else value
 
     def markup(value):
-        return "<br/>".join(
-            escape(display(line)) for line in str(value or "").splitlines()
-        )
+        return "<br/>".join(escape(display(line)) for line in str(value or "").splitlines())
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -210,78 +302,97 @@ def render_performance_pdf(report):
         textColor=colors.HexColor(CYAN),
         alignment=align,
     )
+    cover_meta = ParagraphStyle(
+        "MSPCoverMeta",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=10,
+        leading=15,
+        textColor=colors.white,
+        alignment=align,
+    )
     h1 = ParagraphStyle(
         "MSPH1",
         parent=styles["Heading1"],
         fontName=font_name,
-        fontSize=16,
-        leading=21,
+        fontSize=15,
+        leading=19,
         textColor=colors.HexColor(NAVY),
         alignment=align,
-        spaceBefore=2 * mm,
+        spaceBefore=1 * mm,
         spaceAfter=4 * mm,
     )
     h2 = ParagraphStyle(
         "MSPH2",
         parent=styles["Heading2"],
         fontName=font_name,
-        fontSize=10,
-        leading=13,
+        fontSize=9.5,
+        leading=12,
         textColor=colors.HexColor(TEAL_DARK),
         alignment=align,
-        spaceBefore=2 * mm,
         spaceAfter=2 * mm,
     )
     body = ParagraphStyle(
         "MSPBody",
         parent=styles["BodyText"],
         fontName=font_name,
-        fontSize=8.4,
-        leading=13,
+        fontSize=8.2,
+        leading=12.2,
         textColor=colors.HexColor(INK),
         alignment=align,
     )
     body_bold = ParagraphStyle(
         "MSPBodyBold",
         parent=body,
-        fontSize=9.2,
-        leading=13.5,
+        fontSize=9,
+        leading=13,
         textColor=colors.HexColor(NAVY),
     )
     small = ParagraphStyle(
         "MSPSmall",
         parent=body,
-        fontSize=7.2,
-        leading=10,
+        fontSize=7,
+        leading=9.5,
         textColor=colors.HexColor(MUTED),
+    )
+    tiny = ParagraphStyle(
+        "MSPTiny",
+        parent=small,
+        fontSize=6.2,
+        leading=8,
     )
     table_head = ParagraphStyle(
         "MSPTableHead",
         parent=small,
-        fontSize=7,
-        leading=9,
+        fontSize=6.5,
+        leading=8,
         textColor=colors.white,
         alignment=align,
     )
-    metric_value = ParagraphStyle(
-        "MSPMetric",
-        parent=body,
-        fontSize=12,
-        leading=14,
-        textColor=colors.HexColor(NAVY),
+    card_label = ParagraphStyle(
+        "MSPCardLabel",
+        parent=small,
+        fontSize=6.2,
+        leading=8,
         alignment=TA_CENTER,
     )
-    cover_meta = ParagraphStyle(
-        "MSPCoverMeta",
-        parent=body,
-        fontSize=10,
-        leading=15,
-        textColor=colors.white,
+    card_value = ParagraphStyle(
+        "MSPCardValue",
+        parent=body_bold,
+        fontSize=11.5,
+        leading=14,
+        alignment=TA_CENTER,
+    )
+    stamp_label = ParagraphStyle(
+        "MSPStampLabel",
+        parent=body_bold,
+        fontSize=8,
+        leading=10,
         alignment=align,
     )
 
     class RadarProfile(Flowable):
-        def __init__(self, dimensions, width=79 * mm, height=72 * mm):
+        def __init__(self, dimensions, width=78 * mm, height=72 * mm):
             super().__init__()
             self.dimensions = dimensions[:6]
             self.width = width
@@ -293,22 +404,20 @@ def render_performance_pdf(report):
             canvas = self.canv
             count = len(self.dimensions)
             cx, cy = self.width / 2, self.height / 2 + 2 * mm
-            radius = min(self.width, self.height) * 0.31
+            radius = min(self.width, self.height) * 0.30
             canvas.saveState()
             for ring in (0.25, 0.5, 0.75, 1.0):
                 points = []
                 for index in range(count):
                     angle = math.pi / 2 - 2 * math.pi * index / count
-                    points.extend(
-                        (cx + radius * ring * math.cos(angle), cy + radius * ring * math.sin(angle))
-                    )
+                    points.append((cx + radius * ring * math.cos(angle), cy + radius * ring * math.sin(angle)))
+                path = canvas.beginPath()
+                path.moveTo(*points[0])
+                for point in points[1:]:
+                    path.lineTo(*point)
+                path.close()
                 canvas.setStrokeColor(colors.HexColor(LINE))
                 canvas.setLineWidth(0.45)
-                path = canvas.beginPath()
-                path.moveTo(points[0], points[1])
-                for index in range(2, len(points), 2):
-                    path.lineTo(points[index], points[index + 1])
-                path.close()
                 canvas.drawPath(path, stroke=1, fill=0)
             values = []
             for index, item in enumerate(self.dimensions):
@@ -321,7 +430,7 @@ def render_performance_pdf(report):
                 lx = cx + label_radius * math.cos(angle)
                 ly = cy + label_radius * math.sin(angle)
                 canvas.setFillColor(colors.HexColor(INK))
-                canvas.setFont(font_name, 5.8)
+                canvas.setFont(font_name, 5.5)
                 label = display(item.get("label") or "")
                 if math.cos(angle) > 0.25:
                     canvas.drawString(lx, ly, label)
@@ -329,19 +438,12 @@ def render_performance_pdf(report):
                     canvas.drawRightString(lx, ly, label)
                 else:
                     canvas.drawCentredString(lx, ly, label)
-                canvas.setFillColor(colors.HexColor(TEAL_DARK))
-                canvas.setFont(font_name, 6.5)
-                canvas.drawCentredString(
-                    cx + (radius + 3 * mm) * math.cos(angle),
-                    cy + (radius + 3 * mm) * math.sin(angle),
-                    str(round(float(item.get("score") or 0))),
-                )
             path = canvas.beginPath()
             path.moveTo(*values[0])
             for point in values[1:]:
                 path.lineTo(*point)
             path.close()
-            canvas.setFillColor(colors.Color(0.075, 0.72, 0.65, alpha=0.26))
+            canvas.setFillColor(colors.Color(0.075, 0.72, 0.65, alpha=0.25))
             canvas.setStrokeColor(colors.HexColor(TEAL_DARK))
             canvas.setLineWidth(1.4)
             canvas.drawPath(path, stroke=1, fill=1)
@@ -357,7 +459,115 @@ def render_performance_pdf(report):
         prefix = f"{number:02d}  " if number is not None else ""
         return Paragraph(markup(prefix + label), h1)
 
-    def bullet_list(items, accent=TEAL_DARK):
+    def tone_colors(tone):
+        return {
+            "excellent": (TEAL_DARK, PALE),
+            "positive": (GREEN, LIGHT_GREEN),
+            "warning": (AMBER, LIGHT_AMBER),
+            "danger": (RED, LIGHT_RED),
+            "neutral": (MUTED, LIGHT_GREY),
+        }.get(tone, (MUTED, LIGHT_GREY))
+
+    def note_box(text, tone="neutral", bold=False):
+        accent, background = tone_colors(tone)
+        return Table(
+            [[p(text, body_bold if bold else body)]],
+            colWidths=[169 * mm],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
+                    ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor(accent)),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            ),
+        )
+
+    def info_card(label, value, tone="neutral", width=40.5 * mm):
+        accent, background = tone_colors(tone)
+        return Table(
+            [[p(label, card_label)], [p(value, card_value)]],
+            colWidths=[width],
+            rowHeights=[7 * mm, 12 * mm],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
+                    ("LINEABOVE", (0, 0), (-1, 0), 2.2, colors.HexColor(accent)),
+                    ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(LINE)),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            ),
+        )
+
+    def verdict_badge(verdict):
+        accent, background = tone_colors(verdict.get("tone"))
+        score = verdict.get("score")
+        score_text = "—" if score is None else f"{score}/100"
+        return Table(
+            [[p(verdict.get("label") or "—", body_bold), p(score_text, card_value)]],
+            colWidths=[128 * mm, 41 * mm],
+            rowHeights=[18 * mm],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
+                    ("LINEBEFORE", (0, 0), (0, -1), 5, colors.HexColor(accent)),
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor(accent)),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ]
+            ),
+        )
+
+    def stamp_card(item, width=82 * mm):
+        accent, background = tone_colors(item.get("tone"))
+        evidence = item.get("headline_evidence") or []
+        evidence_text = " · ".join(
+            f"{metric.get('label')}: {metric.get('display')}" for metric in evidence
+        ) or copy["no_data"]
+        coverage = f"{item.get('coverage', 0)} % {copy['coverage']}"
+        return Table(
+            [[p(item.get("stamp") or item.get("label"), stamp_label)], [p(evidence_text, small)], [p(coverage, tiny)]],
+            colWidths=[width],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(background)),
+                    ("LINEABOVE", (0, 0), (-1, 0), 2.2, colors.HexColor(accent)),
+                    ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(LINE)),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            ),
+        )
+
+    def standard_table(rows, widths, header=True, repeat=True):
+        style = TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(NAVY if header else "#FFFFFF")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white if header else colors.HexColor(INK)),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(LINE)),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F8FA")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+            ]
+        )
+        return Table(rows, colWidths=widths, repeatRows=1 if header and repeat else 0, style=style)
+
+    def bullet_list(items, tone):
+        accent, background = tone_colors(tone)
         flows = []
         for item in items:
             flows.append(
@@ -367,66 +577,44 @@ def render_performance_pdf(report):
                     style=TableStyle(
                         [
                             ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(accent)),
+                            ("BACKGROUND", (1, 0), (1, 0), colors.HexColor(background)),
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
                             ("LEFTPADDING", (0, 0), (0, 0), 0),
                             ("RIGHTPADDING", (0, 0), (0, 0), 0),
-                            ("TOPPADDING", (0, 0), (-1, -1), 3),
+                            ("LEFTPADDING", (1, 0), (1, 0), 7),
+                            ("RIGHTPADDING", (1, 0), (1, 0), 7),
+                            ("TOPPADDING", (0, 0), (-1, -1), 5),
                             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                         ]
                     ),
                 )
             )
+            flows.append(Spacer(1, 1.5 * mm))
         return flows
 
-    def info_card(label, value, color=TEAL_DARK):
-        return Table(
-            [[p(label, small)], [p(value, metric_value)]],
-            colWidths=[53 * mm],
-            rowHeights=[8 * mm, 13 * mm],
-            style=TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4F8FA")),
-                    ("LINEABOVE", (0, 0), (-1, 0), 2.2, colors.HexColor(color)),
-                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(LINE)),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ]
-            ),
-        )
-
-    def standard_table(rows, widths, header=True, font_size=7.2):
-        style = TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(NAVY)),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(LINE)),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F8FA")]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
-        if not header:
-            style.add("BACKGROUND", (0, 0), (-1, 0), colors.white)
-        return Table(rows, colWidths=widths, repeatRows=1 if header else 0, style=style)
+    def rank_text(item):
+        if not item or not item.get("available"):
+            return "—"
+        return f"{item.get('rank')}/{item.get('total')}"
 
     analysis = getattr(report, "analysis_payload", None) or {}
     narrative = analysis.get("narrative") or {}
     player = analysis.get("player") or {}
     confidence = analysis.get("confidence") or {}
+    verdict = analysis.get("verdict") or {}
+    rankings = analysis.get("rankings") or {}
+    context = analysis.get("context") or {}
     match = getattr(report, "match", None)
     subscription = getattr(report, "subscription", None)
     player_obj = getattr(subscription, "player", None)
     player_name = player.get("name") or getattr(player_obj, "name", "")
     fixture = ""
     if match:
-        fixture = f"{getattr(match, 'home_team', '')} {getattr(match, 'score', '–')} {getattr(match, 'away_team', '')}".strip()
+        fixture = (
+            f"{getattr(match, 'home_team', '')} "
+            f"{getattr(match, 'score', '–')} "
+            f"{getattr(match, 'away_team', '')}"
+        ).strip()
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -497,11 +685,11 @@ def render_performance_pdf(report):
                 ),
             )
         )
-    story.extend((Spacer(1, 22 * mm),))
+    story.append(Spacer(1, 22 * mm))
     cover_rows = [
         [p(copy["role"], cover_kicker), p(player.get("role_label") or player.get("position") or "—", cover_meta)],
         [p(copy["minutes"], cover_kicker), p(player.get("minutes", "—"), cover_meta)],
-        [p(copy["confidence"], cover_kicker), p(confidence.get("label") or "—", cover_meta)],
+        [p(copy["reliability"], cover_kicker), p(confidence.get("label") or "—", cover_meta)],
     ]
     story.append(
         Table(
@@ -524,150 +712,321 @@ def render_performance_pdf(report):
     if not analysis.get("available"):
         story.extend(
             (
-                section_title(copy["executive"], 1),
-                p(getattr(report, "executive_summary", "") or copy["unavailable"], body_bold),
+                section_title(copy["verdict"], 1),
+                note_box(getattr(report, "executive_summary", "") or copy["unavailable"], "warning", True),
                 Spacer(1, 5 * mm),
                 p(copy["unavailable"], body),
             )
         )
-    else:
-        story.extend(
-            (
-                section_title(copy["executive"], 1),
-                Table(
-                    [[p(narrative.get("executive_summary") or getattr(report, "executive_summary", ""), body_bold)]],
-                    colWidths=[169 * mm],
-                    style=TableStyle(
-                        [
-                            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(PALE)),
-                            ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor(TEAL_DARK)),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 9),
-                            ("RIGHTPADDING", (0, 0), (-1, -1), 9),
-                            ("TOPPADDING", (0, 0), (-1, -1), 9),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
-                        ]
-                    ),
+        document.build(story, onFirstPage=first_page, onLaterPages=later_pages)
+        return buffer.getvalue()
+
+    story.extend(
+        [
+            section_title(copy["verdict"], 1),
+            verdict_badge(verdict),
+            Spacer(1, 4 * mm),
+            note_box(narrative.get("executive_summary") or getattr(report, "executive_summary", ""), verdict.get("tone", "neutral"), True),
+            Spacer(1, 5 * mm),
+            Table(
+                [[
+                    info_card(copy["minutes"], player.get("minutes", "—"), "neutral"),
+                    info_card(copy["reliability"], confidence.get("label") or "—", "warning" if confidence.get("score", 0) < 60 else "positive"),
+                    info_card(copy["index"], player.get("index") if player.get("index") is not None else "—", "neutral"),
+                    info_card(copy["mission_score"], "—" if player.get("profile_score") is None else f"{player.get('profile_score')}/100", verdict.get("tone", "neutral")),
+                ]],
+                colWidths=[42.25 * mm] * 4,
+                style=TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                    ]
                 ),
-                Spacer(1, 5 * mm),
-                Table(
-                    [[
-                        info_card(copy["minutes"], player.get("minutes", "—")),
-                        info_card(copy["confidence"], confidence.get("label") or "—", AMBER if confidence.get("score", 0) < 70 else TEAL_DARK),
-                        info_card(copy["index"], player.get("index") if player.get("index") is not None else "—"),
-                    ]],
-                    colWidths=[56 * mm, 56 * mm, 56 * mm],
-                    style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 1), ("RIGHTPADDING", (0, 0), (-1, -1), 1)]),
+            ),
+            Spacer(1, 5 * mm),
+            p(copy["context"], h2),
+            note_box(
+                f"{fixture or (context.get('home_team', '') + ' ' + context.get('score', '') + ' ' + context.get('away_team', '')).strip()}\n"
+                f"{narrative.get('score_state_note') or copy['score_unknown']}",
+                "neutral",
+            ),
+            Spacer(1, 5 * mm),
+            p(copy["rankings"], h2),
+            Table(
+                [[
+                    info_card(copy["index_team"], rank_text(rankings.get("index_team")), "neutral", 54 * mm),
+                    info_card(copy["index_match"], rank_text(rankings.get("index_match")), "neutral", 54 * mm),
+                    info_card(copy["role_rank"], rank_text(rankings.get("same_role_mission")), "neutral", 54 * mm),
+                ]],
+                colWidths=[56.3 * mm] * 3,
+                style=TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                    ]
                 ),
-                Spacer(1, 6 * mm),
-                section_title(copy["role_profile"], 2),
-            )
-        )
-        dimensions = analysis.get("dimensions") or []
-        role_rows = [[RadarProfile(dimensions), None]]
-        dimension_table = [[p(item.get("label"), small), p(f"{item.get('score', 0)}/100", body_bold)] for item in dimensions]
-        role_rows[0][1] = Table(
-            dimension_table,
-            colWidths=[52 * mm, 22 * mm],
+            ),
+            Spacer(1, 2 * mm),
+            p(copy["index_note"], tiny),
+            Spacer(1, 5 * mm),
+            p(copy["role_missions"], h2),
+        ]
+    )
+    dimensions = analysis.get("dimensions") or []
+    stamp_rows = []
+    for index in range(0, len(dimensions), 2):
+        row = [stamp_card(dimensions[index])]
+        row.append(stamp_card(dimensions[index + 1]) if index + 1 < len(dimensions) else "")
+        stamp_rows.append(row)
+    story.append(
+        Table(
+            stamp_rows,
+            colWidths=[84.5 * mm, 84.5 * mm],
             style=TableStyle(
                 [
-                    ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#F5F8FA"), colors.white]),
-                    ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor(LINE)),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
                 ]
             ),
         )
-        story.append(Table(role_rows, colWidths=[88 * mm, 81 * mm], style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")])) )
-        story.append(p(copy["role_note"], small))
-        story.append(PageBreak())
+    )
+    story.append(PageBreak())
 
-        story.extend((section_title(copy["key_metrics"], 3), p(copy["per90_note"], small), Spacer(1, 3 * mm)))
-        metric_rows = [[p(item.get("label"), table_head), p("VALEUR", table_head), p("PERCENTILE", table_head)] for item in []]
-        metric_rows = [[p(copy["key_metrics"], table_head), p(copy["target"], table_head), p(copy["profile"], table_head)]]
-        for item in analysis.get("key_metrics") or []:
-            percentile = item.get("percentile")
-            metric_rows.append([
-                p(item.get("label"), small),
+    story.extend([section_title(copy["role_missions"], 2), p(copy["mission_note"], small), Spacer(1, 4 * mm)])
+    dimension_rows = [[p(copy["role_missions"], table_head), p(copy["reading"], table_head), p(copy["coverage"].upper(), table_head)]]
+    for item in dimensions:
+        dimension_rows.append(
+            [
+                p(item.get("label"), body_bold),
+                p(f"{item.get('grade_label')} · {item.get('score')}/100", body),
+                p(f"{item.get('coverage', 0)} %", body),
+            ]
+        )
+    story.append(
+        Table(
+            [[RadarProfile(dimensions), standard_table(dimension_rows, [45 * mm, 42 * mm, 22 * mm])]],
+            colWidths=[76 * mm, 93 * mm],
+            style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
+        )
+    )
+    story.extend([Spacer(1, 5 * mm), section_title(copy["key_metrics"], 3), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
+    metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["sample"], table_head), p(copy["reading"], table_head)]]
+    for item in analysis.get("key_metrics") or []:
+        sample = item.get("sample") or {}
+        sample_text = sample.get("label") or (copy["no_data"] if item.get("display") == "—" else "—")
+        percentile = item.get("percentile")
+        score = item.get("score")
+        reading = "—"
+        if score is not None:
+            reading = f"{score}/100"
+        if percentile is not None:
+            reading += f" · P{percentile}" if reading != "—" else f"P{percentile}"
+        metric_rows.append(
+            [
+                p(item.get("label"), body),
                 p(item.get("display"), body_bold),
-                p("—" if percentile is None else f"P{percentile}", body),
-            ])
-        story.append(standard_table(metric_rows, [97 * mm, 35 * mm, 37 * mm]))
-        story.extend((Spacer(1, 6 * mm), section_title(copy["compartment"], 4)))
-        peer_rows = [[p(copy["player"], table_head), p(copy["position"], table_head), p(copy["minutes"], table_head), p(copy["profile"], table_head)]]
-        player_profile = player.get("profile_score")
-        peer_rows.append([
-            p(player_name, body_bold),
-            p(player.get("position"), body),
-            p(player.get("minutes"), body),
-            p("—" if player_profile is None else f"{player_profile}/100", body_bold),
-        ])
-        for peer in analysis.get("same_compartment") or []:
-            peer_rows.append([
-                p(peer.get("name"), body), p(peer.get("position"), body), p(peer.get("minutes"), body),
-                p("—" if peer.get("profile_score") is None else f"{peer.get('profile_score')}/100", body),
-            ])
-        story.append(standard_table(peer_rows, [83 * mm, 30 * mm, 25 * mm, 31 * mm]))
-        story.append(PageBreak())
+                p(sample_text, tiny),
+                p(reading, body),
+            ]
+        )
+    story.append(standard_table(metric_rows, [67 * mm, 34 * mm, 39 * mm, 29 * mm]))
+    story.append(PageBreak())
 
-        story.append(section_title(copy["matchups"], 5))
-        for matchup in analysis.get("matchups") or []:
-            story.extend((p(matchup.get("title"), h2), p(" · ".join(matchup.get("players") or []), small)))
-            rows = [[p(copy["key_metrics"], table_head), p(copy["target"], table_head), p(copy["opponent"], table_head)]]
-            for item in matchup.get("metrics") or []:
-                rows.append([p(item.get("label"), small), p(item.get("target_display"), body_bold), p(item.get("opponent_display"), body)])
-            story.extend((standard_table(rows, [97 * mm, 36 * mm, 36 * mm]), Spacer(1, 5 * mm)))
-        story.append(PageBreak())
-
-        story.extend((section_title(copy["units"], 6), p(copy["unit_explanation"], small), Spacer(1, 3 * mm)))
-        for unit in analysis.get("unit_comparisons") or []:
-            teams = unit.get("teams") or []
-            if len(teams) < 2:
-                continue
-            rows = [[p(unit.get("label"), table_head), p(teams[0], table_head), p(teams[1], table_head)]]
-            for item in unit.get("metrics") or []:
-                display_values = item.get("display") or {}
-                rows.append([p(item.get("label"), small), p(display_values.get(teams[0], "—"), body), p(display_values.get(teams[1], "—"), body)])
-            block = [p(unit.get("verdict"), h2), standard_table(rows, [93 * mm, 38 * mm, 38 * mm])]
-            story.extend((KeepTogether(block), Spacer(1, 4 * mm)))
-        story.append(PageBreak())
-
-        story.append(section_title(copy["strengths"], 7))
-        story.extend(bullet_list(narrative.get("strengths") or [], TEAL_DARK))
-        story.extend((Spacer(1, 3 * mm), section_title(copy["risks"], 8)))
-        story.extend(bullet_list(narrative.get("risks") or [], RED))
-        story.extend((Spacer(1, 3 * mm), section_title(copy["development"], 9)))
-        story.extend(bullet_list(narrative.get("development") or [], AMBER))
+    story.extend([section_title(copy["glossary"], 4)])
+    glossary_rows = [[p(copy["indicator"], table_head), p(copy["meaning"], table_head)]]
+    for item in analysis.get("glossary") or []:
+        glossary_rows.append([p(item.get("label"), body_bold), p(item.get("definition"), body)])
+    if len(glossary_rows) == 1:
+        glossary_rows.append([p(copy["no_data"], body), p("—", body)])
+    story.append(standard_table(glossary_rows, [55 * mm, 114 * mm]))
 
     stats = getattr(match, "player_stats", None) if match else None
     images = []
-    for label, binary in (
-        (copy["heatmap"], getattr(stats, "heatmap_png", None) if stats else None),
-        (copy["touches"], getattr(stats, "ball_touches_png", None) if stats else None),
+    for label, binary, note in (
+        (copy["heatmap"], getattr(stats, "heatmap_png", None) if stats else None, copy["heat_note"]),
+        (copy["touches"], getattr(stats, "ball_touches_png", None) if stats else None, copy["touch_note"]),
     ):
         if binary:
             raw = bytes(binary)
-            image = Image(io.BytesIO(raw), width=81 * mm, height=54 * mm, kind="proportional")
-            images.append((label, image))
+            image = Image(io.BytesIO(raw), width=80 * mm, height=53 * mm)
+            images.append((label, image, note))
     if images:
-        story.extend((PageBreak(), section_title(copy["maps"], 10)))
+        story.extend([PageBreak(), section_title(copy["maps"], 5)])
         cells = []
-        for label, image in images:
-            cells.append(Table([[p(label, h2)], [image]], colWidths=[82 * mm], style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")])) )
-        story.append(Table([cells], colWidths=[84 * mm for _ in cells], style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")])) )
+        for label, image, note in images:
+            cells.append(
+                Table(
+                    [[p(label, h2)], [image], [p(note, tiny)]],
+                    colWidths=[82 * mm],
+                    style=TableStyle(
+                        [
+                            ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(LINE)),
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PALE)),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                            ("TOPPADDING", (0, 0), (-1, -1), 4),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ]
+                    ),
+                )
+            )
+        story.append(
+            Table(
+                [cells],
+                colWidths=[84.5 * mm] * len(cells),
+                style=TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+                    ]
+                ),
+            )
+        )
+        territory = context.get("territory") or {}
+        if territory.get("available"):
+            thirds = territory.get("displayed_thirds") or {}
+            lanes = territory.get("lanes") or {}
+            story.extend([Spacer(1, 6 * mm), p(copy["thirds"], h2)])
+            story.append(
+                Table(
+                    [[
+                        info_card(copy["left"], f"{thirds.get('displayed_left', 0)} %", "neutral", 54 * mm),
+                        info_card(copy["middle"], f"{thirds.get('displayed_middle', 0)} %", "neutral", 54 * mm),
+                        info_card(copy["right"], f"{thirds.get('displayed_right', 0)} %", "neutral", 54 * mm),
+                    ]],
+                    colWidths=[56.3 * mm] * 3,
+                    style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]),
+                )
+            )
+            story.extend([Spacer(1, 4 * mm), p(copy["lanes"], h2)])
+            story.append(
+                Table(
+                    [[
+                        info_card(copy["wide"], f"{lanes.get('wide', 0)} %", "neutral", 54 * mm),
+                        info_card(copy["half_space"], f"{lanes.get('half_space', 0)} %", "neutral", 54 * mm),
+                        info_card(copy["central"], f"{lanes.get('central', 0)} %", "neutral", 54 * mm),
+                    ]],
+                    colWidths=[56.3 * mm] * 3,
+                    style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]),
+                )
+            )
+            story.extend([Spacer(1, 3 * mm), p(territory.get("note"), tiny)])
 
-    story.extend((PageBreak(), section_title(copy["method"], 11), p(copy["method_text"], body), Spacer(1, 3 * mm)))
+    story.extend([PageBreak(), section_title(copy["strengths"], 6)])
+    story.extend(bullet_list(narrative.get("strengths") or [], "positive"))
+    story.extend([Spacer(1, 3 * mm), section_title(copy["risks"], 7)])
+    story.extend(bullet_list(narrative.get("risks") or [], "warning"))
+    story.extend([Spacer(1, 3 * mm), section_title(copy["development"], 8)])
+    story.extend(bullet_list(narrative.get("development") or [], "excellent"))
+    story.extend([Spacer(1, 3 * mm), note_box(f"{copy['video_check']}\n{narrative.get('video_limit') or ''}", "neutral")])
+
+    story.extend([PageBreak(), section_title(copy["comparisons"], 9), p(copy["comparison_note"], small), Spacer(1, 4 * mm), p(copy["same_role"], h2)])
+    peer_rows = [[p(copy["player"], table_head), p(copy["position"], table_head), p(copy["minutes"], table_head), p(copy["profile"], table_head), p(copy["index"], table_head)]]
+    peer_rows.append(
+        [
+            p(player_name, body_bold),
+            p(player.get("position"), body),
+            p(player.get("minutes"), body),
+            p("—" if player.get("profile_score") is None else f"{player.get('profile_score')}/100", body_bold),
+            p(player.get("index") if player.get("index") is not None else "—", body),
+        ]
+    )
+    for peer in analysis.get("same_compartment") or []:
+        peer_rows.append(
+            [
+                p(peer.get("name"), body),
+                p(peer.get("position"), body),
+                p(peer.get("minutes"), body),
+                p("—" if peer.get("profile_score") is None else f"{peer.get('profile_score')}/100", body),
+                p(peer.get("index") if peer.get("index") is not None else "—", body),
+            ]
+        )
+    story.append(standard_table(peer_rows, [70 * mm, 26 * mm, 22 * mm, 29 * mm, 22 * mm]))
+    story.extend([Spacer(1, 6 * mm), p(copy["matchups"], h2)])
+    matchups = analysis.get("matchups") or []
+    if not matchups:
+        story.append(note_box(copy["no_comparison"], "neutral"))
+    for matchup in matchups:
+        title = f"{matchup.get('title')} — {' · '.join(matchup.get('players') or [])} ({matchup.get('minutes', 0)} min)"
+        rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["opponent"], table_head)]]
+        has_non_comparable = False
+        for item in matchup.get("metrics") or []:
+            comparable = item.get("volume_comparable", True)
+            has_non_comparable = has_non_comparable or not comparable
+            marker = "*" if not comparable else ""
+            rows.append(
+                [
+                    p(item.get("label"), body),
+                    p(f"{item.get('target_display')}{marker}", body_bold),
+                    p(f"{item.get('opponent_display')}{marker}", body),
+                ]
+            )
+        block = [p(title, h2), standard_table(rows, [91 * mm, 39 * mm, 39 * mm])]
+        if has_non_comparable:
+            block.append(p(copy["not_comparable"], tiny))
+        story.extend([KeepTogether(block), Spacer(1, 5 * mm)])
+
+    story.extend([PageBreak(), section_title(copy["units"], 10), p(copy["unit_note"], small), Spacer(1, 3 * mm)])
+    units = analysis.get("unit_comparisons") or []
+    for unit_index, unit in enumerate(units):
+        teams = unit.get("teams") or []
+        if len(teams) < 2:
+            continue
+        rows = [[p(unit.get("label"), table_head), p(teams[0], table_head), p(teams[1], table_head)]]
+        has_non_comparable = False
+        for item in unit.get("metrics") or []:
+            comparable = item.get("comparable", True)
+            has_non_comparable = has_non_comparable or not comparable
+            marker = "*" if not comparable else ""
+            values = item.get("display") or {}
+            rows.append(
+                [
+                    p(item.get("label"), body),
+                    p(f"{values.get(teams[0], '—')}{marker}", body),
+                    p(f"{values.get(teams[1], '—')}{marker}", body),
+                ]
+            )
+        block = [p(unit.get("verdict"), h2), standard_table(rows, [91 * mm, 39 * mm, 39 * mm])]
+        if has_non_comparable:
+            block.append(p(copy["not_comparable"], tiny))
+        story.extend([KeepTogether(block), Spacer(1, 5 * mm)])
+        if unit_index == 1 and len(units) > 2:
+            story.append(PageBreak())
+
+    story.extend([PageBreak(), section_title(copy["appendix"], 11)])
+    metrics = analysis.get("appendix_metrics") or []
+    appendix_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["indicator"], table_head), p(copy["real_value"], table_head)]]
+    for index in range(0, len(metrics), 2):
+        left = metrics[index]
+        right = metrics[index + 1] if index + 1 < len(metrics) else {}
+        appendix_rows.append(
+            [
+                p(left.get("label"), small),
+                p(left.get("display"), body_bold),
+                p(right.get("label"), small),
+                p(right.get("display"), body_bold),
+            ]
+        )
+    if len(appendix_rows) == 1:
+        appendix_rows.append([p(copy["no_data"], body), p("—", body), p("", body), p("", body)])
+    story.append(standard_table(appendix_rows, [57 * mm, 27.5 * mm, 57 * mm, 27.5 * mm]))
+
+    story.extend([PageBreak(), section_title(copy["method"], 12), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
     if confidence.get("explanation"):
-        story.append(Table([[p(confidence.get("explanation"), body_bold)]], colWidths=[169 * mm], style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF7E6")), ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor(AMBER)), ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)])))
-        story.append(Spacer(1, 4 * mm))
-    story.extend((p(copy["video_limit"], body), Spacer(1, 6 * mm), p(copy["source"], h2)))
+        story.extend([note_box(confidence.get("explanation"), "warning", True), Spacer(1, 4 * mm)])
+    story.extend([p(narrative.get("sample_caution") or "", body), Spacer(1, 3 * mm), p(narrative.get("video_limit") or "", body), Spacer(1, 6 * mm), p(copy["source"], h2)])
     for source in analysis.get("methodology_sources") or []:
         hostname = urlparse(str(source.get("url") or "")).netloc
         story.append(p(f"{source.get('name')} — {hostname}", small))
         story.append(Spacer(1, 1 * mm))
-    story.extend((Spacer(1, 12 * mm), p(copy["prepared"], body_bold)))
+    story.extend([Spacer(1, 10 * mm), p(copy["prepared"], body_bold)])
 
     document.build(story, onFirstPage=first_page, onLaterPages=later_pages)
     return buffer.getvalue()
