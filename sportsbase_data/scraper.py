@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
+from sportsbase_data.xlsx_statistics import read_players_statistics_xlsx
 
 SPORTSBASE_ROOT = "https://football.sportsbase.world"
 MATCH_ID_RE = re.compile(r"/matches/(\d+)")
@@ -22,7 +23,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v10-match-players-xlsx-20260827"
+SCRAPER_BUILD = "season-kpis-radar-v11-analysis-data-20260827"
 
 
 def _now_iso():
@@ -756,6 +757,10 @@ class SportsBaseSubscriptionScraper:
             "success_rates": success,
             "detailed_statistics": pairs,
             "team_table": profile.get("team_table", []),
+            "players_statistics_headers": profile.get(
+                "players_statistics_headers", []
+            ),
+            "players_statistics_rows": profile.get("players_statistics_rows", []),
             "heatmap_png_base64": _b64(heatmap),
             "ball_touches_png_base64": _b64(touches),
             "source_metadata": {
@@ -1358,6 +1363,7 @@ class SportsBaseSubscriptionScraper:
                     SPORTSBASE_ROOT, f"/matches/{match_id}/players"
                 ),
                 "players_statistics_xlsx": destination.name,
+                **self._parse_players_statistics(destination),
             }
 
         players_path = f"/matches/{match_id}/players"
@@ -1417,6 +1423,7 @@ class SportsBaseSubscriptionScraper:
                 "players_statistics_xlsx": destination.name,
                 "players_statistics_downloaded_at": _now_iso(),
                 "players_statistics_error": "",
+                **self._parse_players_statistics(destination),
             }
         except Exception as exc:
             print(
@@ -1426,6 +1433,31 @@ class SportsBaseSubscriptionScraper:
             return {
                 "players_statistics_url": players_url,
                 "players_statistics_xlsx": "",
+                "players_statistics_error": str(exc),
+            }
+
+    @staticmethod
+    def _parse_players_statistics(path):
+        try:
+            workbook = read_players_statistics_xlsx(path)
+            rows = workbook.get("rows") or []
+            print(
+                "[SPORTSBASE] Statistiques Players lues — "
+                f"{len(rows)} joueur(s), "
+                f"{len(workbook.get('headers') or [])} indicateur(s)"
+            )
+            return {
+                "players_statistics_headers": workbook.get("headers") or [],
+                "players_statistics_rows": rows,
+            }
+        except Exception as exc:
+            print(
+                "[SPORTSBASE][WARN] Lecture du fichier Players XLSX impossible : "
+                f"{exc}"
+            )
+            return {
+                "players_statistics_headers": [],
+                "players_statistics_rows": [],
                 "players_statistics_error": str(exc),
             }
 

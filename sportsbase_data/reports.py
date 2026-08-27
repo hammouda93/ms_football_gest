@@ -1,22 +1,21 @@
 """Editable performance reports and dynamic PDF rendering."""
 
-import io
 import re
 from collections import defaultdict
-from html import escape
-from pathlib import Path
 
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.urls import reverse
 from django.utils import timezone
 
+from .analysis_engine import build_match_analysis
 from .models import (
     PerformanceReport,
     SportsBaseMatch,
     SportsBaseSubscription,
     SportsBaseYouTubeUpload,
 )
+from .report_pdf import render_performance_pdf
 
 
 COPY = {
@@ -265,7 +264,19 @@ def generate_match_report(match):
     copy = COPY[language]
     fixture = f"{match.home_team} {match.score} {match.away_team}".strip()
     metrics = _match_metrics(match)
-    strengths, improvements = _match_observations(metrics, language)
+    analysis = build_match_analysis(match, language=language)
+    if analysis.get("available"):
+        narrative = analysis.get("narrative") or {}
+        executive_summary = narrative.get("executive_summary") or copy[
+            "match_summary"
+        ]
+        strengths = narrative.get("strengths") or []
+        risks = narrative.get("risks") or []
+        development = narrative.get("development") or []
+        improvements = risks + development
+    else:
+        executive_summary = copy["match_summary"]
+        strengths, improvements = _match_observations(metrics, language)
     defaults = {
         "subscription": match.subscription,
         "report_type": PerformanceReport.ReportType.MATCH,
@@ -273,10 +284,11 @@ def generate_match_report(match):
         "language": language,
         "status": PerformanceReport.Status.PUBLISHED,
         "title": copy["match_title"].format(fixture=fixture),
-        "executive_summary": copy["match_summary"],
+        "executive_summary": executive_summary,
         "strengths": _bullets(strengths or [copy["no_strength"]]),
         "improvement_areas": _bullets(improvements or [copy["no_improvement"]]),
         "metrics": metrics,
+        "analysis_payload": analysis,
         "match_ids": [match.sportsbase_match_id],
         "generated_at": timezone.now(),
         "published_at": timezone.now(),
@@ -288,9 +300,17 @@ def generate_match_report(match):
     if not created:
         report.language = language
         report.metrics = metrics
+        report.analysis_payload = analysis
         report.match_ids = [match.sportsbase_match_id]
         report.generated_at = timezone.now()
-        fields = ["language", "metrics", "match_ids", "generated_at", "updated_at"]
+        fields = [
+            "language",
+            "metrics",
+            "analysis_payload",
+            "match_ids",
+            "generated_at",
+            "updated_at",
+        ]
         if not report.is_manually_edited:
             for field, value in defaults.items():
                 if field not in {"subscription", "report_type", "cycle_number"}:
@@ -401,200 +421,8 @@ def generate_reports_for_subscription(subscription):
     return reports
 
 
-def _font_path():
-    candidates = (
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
-        Path(r"C:\Windows\Fonts\arial.ttf"),
-    )
-    return next((path for path in candidates if path.is_file()), None)
-
-
-def _rtl(value):
-    try:
-        import arabic_reshaper
-        from bidi.algorithm import get_display
-
-        return get_display(arabic_reshaper.reshape(str(value)))
-    except ImportError:
-        return str(value)
-
-
 def render_report_pdf(report):
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_LEFT, TA_RIGHT
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.platypus import (
-        KeepTogether,
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
-    )
-
-    language = report.language if report.language in COPY else "fr"
-    copy = COPY[language]
-    rtl = language == "ar"
-    font_name = "Helvetica"
-    font_path = _font_path()
-    if font_path:
-        font_name = "MSPerformanceUnicode"
-        if font_name not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
-
-    def display(value):
-        value = str(value or "")
-        return _rtl(value) if rtl else value
-
-    def paragraph_text(value):
-        lines = [escape(display(line)) for line in str(value or "").splitlines()]
-        return "<br/>".join(lines)
-
-    buffer = io.BytesIO()
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title=report.title,
-        author="MS Performance",
-    )
-    styles = getSampleStyleSheet()
-    alignment = TA_RIGHT if rtl else TA_LEFT
-    title_style = ParagraphStyle(
-        "ReportTitle",
-        parent=styles["Title"],
-        fontName=font_name,
-        fontSize=20,
-        leading=25,
-        textColor=colors.HexColor("#071827"),
-        alignment=alignment,
-        spaceAfter=10,
-    )
-    heading_style = ParagraphStyle(
-        "ReportHeading",
-        parent=styles["Heading2"],
-        fontName=font_name,
-        fontSize=11,
-        leading=14,
-        textColor=colors.HexColor("#0D9488"),
-        alignment=alignment,
-        spaceBefore=10,
-        spaceAfter=6,
-    )
-    body_style = ParagraphStyle(
-        "ReportBody",
-        parent=styles["BodyText"],
-        fontName=font_name,
-        fontSize=9.5,
-        leading=15,
-        textColor=colors.HexColor("#25364D"),
-        alignment=alignment,
-    )
-    small_style = ParagraphStyle(
-        "ReportSmall",
-        parent=body_style,
-        fontSize=8,
-        textColor=colors.HexColor("#68768B"),
-    )
-
-    story = [
-        Paragraph("MS PERFORMANCE", heading_style),
-        Paragraph(paragraph_text(report.title), title_style),
-        Paragraph(
-            paragraph_text(report.subscription.player.name),
-            ParagraphStyle("Player", parent=body_style, fontSize=12, leading=16),
-        ),
-        Spacer(1, 5 * mm),
-    ]
-    if report.report_type == PerformanceReport.ReportType.MATCH and report.match:
-        match = report.match
-        match_line = f"{match.home_team} {match.score} {match.away_team}"
-        if match.match_date:
-            match_line += f" · {match.match_date.strftime('%d/%m/%Y')}"
-        story.append(
-            Table(
-                [[Paragraph(paragraph_text(match_line), body_style)]],
-                colWidths=[174 * mm],
-                style=TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EEF7F7")),
-                        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#B7DDDA")),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                        ("TOPPADDING", (0, 0), (-1, -1), 9),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
-                    ]
-                ),
-            )
-        )
-
-    sections = (
-        (copy["summary"], report.executive_summary),
-        (copy["strengths"], report.strengths),
-        (copy["improvements"], report.improvement_areas),
-        (copy["notes"], report.analyst_notes),
-    )
-    for heading, content in sections:
-        if not content:
-            continue
-        story.extend(
-            (
-                Paragraph(display(heading), heading_style),
-                Paragraph(paragraph_text(content), body_style),
-            )
-        )
-
-    if report.metrics:
-        metric_rows = []
-        for name, value in list(report.metrics.items())[:24]:
-            metric_rows.append(
-                [
-                    Paragraph(paragraph_text(_metric_label(name, language)), small_style),
-                    Paragraph(paragraph_text(value), body_style),
-                ]
-            )
-        story.append(Paragraph(display(copy["metrics"]), heading_style))
-        story.append(
-            Table(
-                metric_rows,
-                colWidths=[128 * mm, 46 * mm],
-                repeatRows=0,
-                style=TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F8FB")),
-                        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#DCE4ED")),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                        ("TOPPADDING", (0, 0), (-1, -1), 6),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ]
-                ),
-            )
-        )
-
-    story.append(Spacer(1, 8 * mm))
-    story.append(
-        KeepTogether(
-            [
-                Paragraph(display(copy["prepared"]), small_style),
-                Paragraph(
-                    display(report.updated_at.strftime("%d/%m/%Y · %H:%M")),
-                    small_style,
-                ),
-            ]
-        )
-    )
-    document.build(story)
-    return buffer.getvalue()
+    return render_performance_pdf(report)
 
 
 def send_ready_delivery_notification(report):

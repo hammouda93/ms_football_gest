@@ -356,6 +356,10 @@ def _upsert_match(subscription, item):
             "success_rates": stats.get("success_rates") or {},
             "detailed_statistics": stats.get("detailed_statistics") or {},
             "team_table": stats.get("team_table") or [],
+            "players_statistics_headers": (
+                stats.get("players_statistics_headers") or []
+            ),
+            "players_statistics_rows": stats.get("players_statistics_rows") or [],
             "source_metadata": stats.get("source_metadata") or {},
             "synced_at": timezone.now(),
         }
