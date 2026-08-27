@@ -16,13 +16,23 @@ PDF_COPY = {
         "index": "INDEX SPORTSBASE",
         "mission_score": "SCORE DE MISSION",
         "verdict": "Verdict de l’analyste",
+        "decisive_facts": "Faits décisifs de la rencontre",
         "rankings": "Repères dans le match",
         "index_team": "Rang Index — équipe",
         "index_match": "Rang Index — match",
         "index_position": "Rang Index — poste homologue",
         "index_note": "L’Index SportsBase et son rang sont toujours lus avec les missions du poste. Une 1re place dans l’équipe ou le match constitue un signal fort dans le verdict final.",
         "role_missions": "Missions du poste",
-        "mission_note": "Chaque score juge uniquement cette apparition. Il combine qualité, activité réelle et fiabilité des tentatives — ce n’est pas une note du niveau absolu du joueur.",
+        "mission_note": "Chaque score juge uniquement cette apparition. Les missions et critères sont classés selon leur importance pour le poste.",
+        "score_explained": "Comment le score de mission est calculé",
+        "configured_weight": "POIDS POSTE",
+        "effective_weight": "POIDS EFFECTIF",
+        "criterion": "CRITÈRE",
+        "criterion_score": "NOTE CRITÈRE",
+        "contribution": "POINTS DANS LE SCORE",
+        "weighted_total": "TOTAL PONDÉRÉ",
+        "score_total_note": "Total pondéré avant arrondi : {raw} points. Score de mission final : {score}/100.",
+        "not_assessed": "Non évalué",
         "coverage": "données observées",
         "key_metrics": "Indicateurs clés du poste",
         "raw_note": "Totaux réels du match, sans projection sur 90 minutes. Un taux est toujours présenté avec son dénominateur.",
@@ -62,7 +72,11 @@ PDF_COPY = {
         "target": "JOUEUR",
         "opponent": "ADVERSAIRE",
         "not_comparable": "* volume non comparable : temps de jeu trop différents",
-        "appendix": "Fiche statistique complète",
+        "appendix": "Toutes les données SportsBase",
+        "full_data_note": "Toutes les colonnes du fichier Players XLSX sont présentées. Une action absente apparaît à 0 ; un pourcentage sans tentative reste non évalué afin de ne pas inventer un taux de réussite.",
+        "role_kpi": "KPI PRIORITAIRE DU POSTE",
+        "decisive_kpi": "DONNÉE DÉCISIVE",
+        "columns_presented": "{count} colonnes SportsBase présentées",
         "method": "Méthodologie et limites",
         "method_text": "Le moteur analyse uniquement le joueur et les missions de son poste. Il conserve les totaux réels, adapte la lecture aux entrées courtes, réduit le poids des faibles échantillons et considère qu’une absence d’occasion n’est pas une faiblesse. Il ne produit aucune analyse collective ni conclusion liée au résultat du match.",
         "source": "Références méthodologiques",
@@ -80,13 +94,23 @@ PDF_COPY = {
         "index": "SPORTSBASE INDEX",
         "mission_score": "MISSION SCORE",
         "verdict": "Analyst verdict",
+        "decisive_facts": "Decisive match facts",
         "rankings": "Match reference points",
         "index_team": "Index rank — team",
         "index_match": "Index rank — match",
         "index_position": "Index rank — counterpart position",
         "index_note": "SportsBase Index and rank are always read alongside position missions. Ranking first in the team or match is a strong signal in the final verdict.",
         "role_missions": "Position missions",
-        "mission_note": "Each score assesses this appearance only. It combines execution, real activity and attempt reliability; it is not an absolute ability rating.",
+        "mission_note": "Each score assesses this appearance only. Missions and criteria are ordered by importance for the position.",
+        "score_explained": "How the mission score is calculated",
+        "configured_weight": "POSITION WEIGHT",
+        "effective_weight": "EFFECTIVE WEIGHT",
+        "criterion": "CRITERION",
+        "criterion_score": "CRITERION SCORE",
+        "contribution": "POINTS IN FINAL SCORE",
+        "weighted_total": "WEIGHTED TOTAL",
+        "score_total_note": "Weighted total before rounding: {raw} points. Final mission score: {score}/100.",
+        "not_assessed": "Not assessed",
         "coverage": "observed data",
         "key_metrics": "Position-specific key indicators",
         "raw_note": "Real match totals, with no 90-minute projection. Every rate is shown with its denominator.",
@@ -126,7 +150,11 @@ PDF_COPY = {
         "target": "PLAYER",
         "opponent": "OPPONENT",
         "not_comparable": "* non-comparable volume: playing times differ too much",
-        "appendix": "Complete statistical sheet",
+        "appendix": "All SportsBase data",
+        "full_data_note": "Every column in the Players XLSX is presented. An absent event appears as 0; a percentage with no attempt remains not assessed so no success rate is invented.",
+        "role_kpi": "POSITION-PRIORITY KPI",
+        "decisive_kpi": "DECISIVE DATA",
+        "columns_presented": "{count} SportsBase columns presented",
         "method": "Methodology and limitations",
         "method_text": "The engine analyses only the player and the missions of the position. It keeps real totals, adapts the reading to short appearances, reduces the weight of small samples and treats no opportunity as no weakness. It produces no collective analysis or match-result conclusion.",
         "source": "Methodology references",
@@ -144,13 +172,23 @@ PDF_COPY = {
         "index": "مؤشر سبورتس بايز",
         "mission_score": "درجة المهمة",
         "verdict": "خلاصة المحلل",
+        "decisive_facts": "الوقائع الحاسمة في المباراة",
         "rankings": "الترتيب داخل المباراة",
         "index_team": "ترتيب المؤشر داخل الفريق",
         "index_match": "ترتيب المؤشر داخل المباراة",
         "index_position": "ترتيب المؤشر في نفس المركز",
         "index_note": "يقرأ مؤشر سبورتس بايز وترتيبه دائما مع مهام المركز، وتعد المرتبة الأولى داخل الفريق أو المباراة إشارة قوية في الخلاصة النهائية.",
         "role_missions": "مهام المركز",
-        "mission_note": "كل درجة تخص هذه المشاركة فقط وتجمع بين التنفيذ والنشاط الحقيقي وموثوقية المحاولات، وليست تقييما مطلقا للاعب.",
+        "mission_note": "تخص كل درجة هذه المشاركة فقط وترتب المهام والمعايير حسب أهميتها للمركز.",
+        "score_explained": "كيفية حساب درجة المهمة",
+        "configured_weight": "وزن المهمة",
+        "effective_weight": "الوزن الفعلي",
+        "criterion": "المعيار",
+        "criterion_score": "درجة المعيار",
+        "contribution": "النقاط في الدرجة النهائية",
+        "weighted_total": "المجموع الموزون",
+        "score_total_note": "المجموع الموزون قبل التقريب: {raw} نقطة. درجة المهمة النهائية: {score}/100.",
+        "not_assessed": "غير مقيم",
         "coverage": "بيانات ملاحظة",
         "key_metrics": "المؤشرات الرئيسية للمركز",
         "raw_note": "الأرقام الحقيقية للمباراة دون تحويل إلى 90 دقيقة، وكل نسبة تعرض مع عدد المحاولات.",
@@ -190,7 +228,11 @@ PDF_COPY = {
         "target": "اللاعب",
         "opponent": "المنافس",
         "not_comparable": "* حجم غير قابل للمقارنة بسبب اختلاف دقائق اللعب",
-        "appendix": "الورقة الإحصائية الكاملة",
+        "appendix": "جميع بيانات سبورتس بايز",
+        "full_data_note": "تعرض جميع أعمدة ملف Players XLSX. يظهر الحدث غير المسجل بقيمة صفر، بينما تبقى النسبة دون محاولة غير مقيمة حتى لا يتم اختراع نسبة نجاح.",
+        "role_kpi": "مؤشر أساسي للمركز",
+        "decisive_kpi": "بيان حاسم",
+        "columns_presented": "تم عرض {count} عمودا من سبورتس بايز",
         "method": "المنهجية والحدود",
         "method_text": "يحلل المحرك اللاعب ومهام مركزه فقط، ويحافظ على الأرقام الحقيقية ويتكيف مع المشاركات القصيرة ويخفض وزن العينات الصغيرة ولا يعتبر غياب الفرصة نقطة ضعف. لا ينتج تحليلا جماعيا ولا استنتاجا مرتبطا بنتيجة المباراة.",
         "source": "المراجع المنهجية",
@@ -547,20 +589,20 @@ def render_performance_pdf(report):
             ),
         )
 
-    def standard_table(rows, widths, header=True, repeat=True):
-        style = TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(NAVY if header else "#FFFFFF")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white if header else colors.HexColor(INK)),
-                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(LINE)),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F8FA")]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 4.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
-            ]
-        )
+    def standard_table(rows, widths, header=True, repeat=True, extra_style=None):
+        commands = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(NAVY if header else "#FFFFFF")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white if header else colors.HexColor(INK)),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(LINE)),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F8FA")]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+        ]
+        commands.extend(extra_style or [])
+        style = TableStyle(commands)
         return Table(rows, colWidths=widths, repeatRows=1 if header and repeat else 0, style=style)
 
     def bullet_list(items, tone):
@@ -725,6 +767,24 @@ def render_performance_pdf(report):
             Spacer(1, 4 * mm),
             note_box(narrative.get("executive_summary") or getattr(report, "executive_summary", ""), verdict.get("tone", "neutral"), True),
             Spacer(1, 5 * mm),
+        ]
+    )
+    decisive_highlights = analysis.get("decisive_highlights") or []
+    if decisive_highlights:
+        story.extend([p(copy["decisive_facts"], h2)])
+        for highlight in decisive_highlights:
+            story.extend(
+                [
+                    note_box(
+                        f"{highlight.get('label')}\n{highlight.get('explanation')}",
+                        highlight.get("tone", "excellent"),
+                        True,
+                    ),
+                    Spacer(1, 2 * mm),
+                ]
+            )
+    story.extend(
+        [
             Table(
                 [[
                     info_card(copy["minutes"], player.get("minutes", "—"), "neutral"),
@@ -787,24 +847,101 @@ def render_performance_pdf(report):
     )
     story.append(PageBreak())
 
+    score_breakdown = analysis.get("score_breakdown") or {}
+    breakdown_dimensions = score_breakdown.get("dimensions") or []
     story.extend([section_title(copy["role_missions"], 2), p(copy["mission_note"], small), Spacer(1, 4 * mm)])
-    dimension_rows = [[p(copy["role_missions"], table_head), p(copy["reading"], table_head), p(copy["coverage"].upper(), table_head)]]
-    for item in dimensions:
+    dimension_rows = [[p(copy["role_missions"], table_head), p(copy["effective_weight"], table_head), p(copy["reading"], table_head), p(copy["contribution"], table_head)]]
+    for item in breakdown_dimensions:
+        score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
         dimension_rows.append(
             [
                 p(item.get("label"), body_bold),
-                p(f"{item.get('grade_label')} · {item.get('score')}/100", body),
-                p(f"{item.get('coverage', 0)} %", body),
+                p(f"{item.get('effective_weight', 0)} %", body),
+                p(score_value, body),
+                p(f"{item.get('contribution', 0)} pts", body_bold),
             ]
         )
+    dimension_rows.append(
+        [
+            p(copy["weighted_total"], body_bold),
+            p("100 %", body_bold),
+            p(f"{score_breakdown.get('rounded_score', '—')}/100", body_bold),
+            p(f"{score_breakdown.get('contribution_total', 0)} pts", body_bold),
+        ]
+    )
     story.append(
         Table(
-            [[RadarProfile(dimensions), standard_table(dimension_rows, [45 * mm, 42 * mm, 22 * mm])]],
-            colWidths=[76 * mm, 93 * mm],
+            [[
+                RadarProfile(dimensions, width=70 * mm),
+                standard_table(
+                    dimension_rows,
+                    [37 * mm, 20 * mm, 20 * mm, 23 * mm],
+                    extra_style=[
+                        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(PALE)),
+                        ("LINEABOVE", (0, -1), (-1, -1), 1.2, colors.HexColor(TEAL_DARK)),
+                    ],
+                ),
+            ]],
+            colWidths=[66 * mm, 103 * mm],
             style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
         )
     )
-    story.extend([Spacer(1, 5 * mm), section_title(copy["key_metrics"], 3), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
+    story.extend([Spacer(1, 4 * mm), note_box(score_breakdown.get("formula") or "", "neutral"), PageBreak(), p(copy["score_explained"], h1), Spacer(1, 2 * mm)])
+    criteria_rows = [[
+        p(copy["role_missions"], table_head),
+        p(copy["criterion"], table_head),
+        p(copy["real_value"], table_head),
+        p(copy["criterion_score"], table_head),
+        p(copy["contribution"], table_head),
+    ]]
+    criteria_style = []
+    row_index = 1
+    effect_backgrounds = {
+        "very_positive": LIGHT_GREEN,
+        "positive": PALE,
+        "negative": LIGHT_AMBER,
+        "very_negative": LIGHT_RED,
+        "unobserved": LIGHT_GREY,
+    }
+    for dimension in breakdown_dimensions:
+        mission_text = (
+            f"{dimension.get('label')}\n"
+            f"{copy['configured_weight']}: {dimension.get('configured_weight', 0)} % · "
+            f"{copy['effective_weight']}: {dimension.get('effective_weight', 0)} %"
+        )
+        for criterion_index, criterion in enumerate(dimension.get("criteria") or []):
+            effect = criterion.get("effect") or {}
+            score_value = copy["not_assessed"] if criterion.get("score") is None else f"{criterion.get('score')}/100"
+            criteria_rows.append(
+                [
+                    p(mission_text if criterion_index == 0 else "", small if criterion_index else body_bold),
+                    [p(criterion.get("label"), body_bold), p(criterion.get("definition") or "", tiny), p(f"{copy['effective_weight']}: {criterion.get('criterion_weight', 0)} %", tiny)],
+                    p(criterion.get("display") or "0", body_bold),
+                    [p(score_value, body_bold), p(effect.get("label") or "", tiny)],
+                    p(f"{criterion.get('final_contribution', 0)} pts", body),
+                ]
+            )
+            background = effect_backgrounds.get(effect.get("code"))
+            if background:
+                criteria_style.append(("BACKGROUND", (3, row_index), (4, row_index), colors.HexColor(background)))
+            row_index += 1
+    if len(criteria_rows) == 1:
+        criteria_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body), p("—", body)])
+    story.append(standard_table(criteria_rows, [34 * mm, 65 * mm, 24 * mm, 24 * mm, 22 * mm], extra_style=criteria_style))
+    story.extend(
+        [
+            Spacer(1, 3 * mm),
+            note_box(
+                copy["score_total_note"].format(
+                    raw=score_breakdown.get("contribution_total", 0),
+                    score=score_breakdown.get("rounded_score", "—"),
+                ),
+                "neutral",
+                True,
+            ),
+        ]
+    )
+    story.extend([PageBreak(), section_title(copy["key_metrics"], 3), p(copy["raw_note"], small), Spacer(1, 3 * mm)])
     metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["sample"], table_head), p(copy["reading"], table_head)]]
     for item in analysis.get("key_metrics") or []:
         sample = item.get("sample") or {}
@@ -967,25 +1104,7 @@ def render_performance_pdf(report):
         leader_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body)])
     story.append(standard_table(leader_rows, [55 * mm, 30 * mm, 23 * mm, 61 * mm]))
 
-    story.extend([PageBreak(), section_title(copy["appendix"], 10)])
-    metrics = analysis.get("appendix_metrics") or []
-    appendix_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["indicator"], table_head), p(copy["real_value"], table_head)]]
-    for index in range(0, len(metrics), 2):
-        left = metrics[index]
-        right = metrics[index + 1] if index + 1 < len(metrics) else {}
-        appendix_rows.append(
-            [
-                p(left.get("label"), small),
-                p(left.get("display"), body_bold),
-                p(right.get("label"), small),
-                p(right.get("display"), body_bold),
-            ]
-        )
-    if len(appendix_rows) == 1:
-        appendix_rows.append([p(copy["no_data"], body), p("—", body), p("", body), p("", body)])
-    story.append(standard_table(appendix_rows, [57 * mm, 27.5 * mm, 57 * mm, 27.5 * mm]))
-
-    story.extend([PageBreak(), section_title(copy["method"], 11), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
+    story.extend([PageBreak(), section_title(copy["method"], 10), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
     if confidence.get("explanation"):
         story.extend([note_box(confidence.get("explanation"), "warning", True), Spacer(1, 4 * mm)])
     story.extend([p(narrative.get("sample_caution") or "", body), Spacer(1, 3 * mm), p(narrative.get("video_limit") or "", body), Spacer(1, 6 * mm), p(copy["source"], h2)])
@@ -994,6 +1113,56 @@ def render_performance_pdf(report):
         story.append(p(f"{source.get('name')} — {hostname}", small))
         story.append(Spacer(1, 1 * mm))
     story.extend([Spacer(1, 10 * mm), p(copy["prepared"], body_bold)])
+
+    story.extend(
+        [
+            PageBreak(),
+            section_title(copy["appendix"], 11),
+            note_box(copy["full_data_note"], "neutral"),
+            Spacer(1, 2 * mm),
+            p(copy["columns_presented"].format(count=analysis.get("appendix_total_columns", 0)), small),
+            Spacer(1, 4 * mm),
+        ]
+    )
+    appendix_groups = analysis.get("appendix_groups") or []
+    if not appendix_groups:
+        story.append(note_box(copy["no_data"], "neutral"))
+    for group in appendix_groups:
+        story.extend([p(group.get("label"), h2), Spacer(1, 1 * mm)])
+        metrics = group.get("items") or []
+        rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["indicator"], table_head), p(copy["real_value"], table_head)]]
+        extra_style = []
+        for index in range(0, len(metrics), 2):
+            pair = [metrics[index], metrics[index + 1] if index + 1 < len(metrics) else {}]
+            cells = []
+            row_number = len(rows)
+            for side, item in enumerate(pair):
+                if not item:
+                    cells.extend([p("", small), p("", body)])
+                    continue
+                marker = copy["decisive_kpi"] if item.get("decisive") else copy["role_kpi"] if item.get("role_specific") else ""
+                label_cell = [p(item.get("label"), body_bold if marker else small)]
+                if marker:
+                    label_cell.append(p(marker, tiny))
+                cells.extend([label_cell, p(item.get("display") or "0", body_bold)])
+                start_column = 0 if side == 0 else 2
+                if item.get("decisive"):
+                    extra_style.extend(
+                        [
+                            ("BACKGROUND", (start_column, row_number), (start_column + 1, row_number), colors.HexColor(LIGHT_GREEN)),
+                            ("LINEBEFORE", (start_column, row_number), (start_column, row_number), 2, colors.HexColor(GREEN)),
+                        ]
+                    )
+                elif item.get("role_specific"):
+                    extra_style.extend(
+                        [
+                            ("BACKGROUND", (start_column, row_number), (start_column + 1, row_number), colors.HexColor(PALE)),
+                            ("LINEBEFORE", (start_column, row_number), (start_column, row_number), 2, colors.HexColor(TEAL_DARK)),
+                        ]
+                    )
+            rows.append(cells)
+        story.append(standard_table(rows, [54 * mm, 30.5 * mm, 54 * mm, 30.5 * mm], extra_style=extra_style))
+        story.append(Spacer(1, 4 * mm))
 
     document.build(story, onFirstPage=first_page, onLaterPages=later_pages)
     return buffer.getvalue()

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZipFile
 
-from .analysis_engine import analyse_match_dataset
+from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS, analyse_match_dataset
 from .report_pdf import render_performance_pdf
 from .xlsx_statistics import read_players_statistics_xlsx
 
@@ -336,6 +336,79 @@ class PositionAnalysisTests(unittest.TestCase):
         analysis = analyse_match_dataset(rows, "Target", "fr")
         metric = next(item for item in analysis["key_metrics"] if item["metric"] == "Progressive passes")
         self.assertIn("vers le but adverse", metric["definition"])
+
+    def test_mission_score_exposes_every_used_criterion_and_its_contribution(self):
+        rows = [
+            _row(
+                "Target",
+                "A",
+                "RB",
+                90,
+                **{
+                    "Defensive challenges": 8,
+                    "Defensive challenges won, %": 0.75,
+                    "Crosses": 6,
+                    "Crosses accurate, %": 0.5,
+                    "Progressive passes": 9,
+                    "Progressive passes accurate, %": 0.78,
+                },
+            ),
+            _row("Opponent", "B", "RB", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Target", "fr")
+        breakdown = analysis["score_breakdown"]
+        exposed = {
+            criterion["metric"]
+            for mission in breakdown["dimensions"]
+            for criterion in mission["criteria"]
+        }
+        configured = {
+            evidence["metric"]
+            for mission in analysis["dimensions"]
+            for evidence in mission["evidence"]
+        }
+        self.assertEqual(exposed, configured)
+        self.assertEqual(breakdown["rounded_score"], analysis["player"]["profile_score"])
+        self.assertLess(abs(breakdown["contribution_total"] - breakdown["rounded_score"]), 0.51)
+        self.assertTrue(all("effect" in criterion for mission in breakdown["dimensions"] for criterion in mission["criteria"]))
+
+    def test_full_xlsx_appendix_preserves_all_columns_and_explicit_zero_events(self):
+        target = {column: "-" for column in SPORTSBASE_PLAYER_COLUMNS}
+        target.update(
+            {
+                "№": 7,
+                "Player": "Target",
+                "Team": "A",
+                "Index": 141,
+                "Minutes played": 70,
+                "Position": "RB",
+                "Passes": 30,
+                "Passes accurate, %": 0.8,
+                "Actions": 40,
+                "Actions successful, %": 0.75,
+            }
+        )
+        analysis = analyse_match_dataset([target, _row("Opponent", "B", "RB", 70)], "Target", "fr")
+        appendix = {item["metric"]: item for item in analysis["appendix_metrics"]}
+        self.assertEqual(analysis["appendix_total_columns"], 72)
+        self.assertEqual(set(appendix), set(SPORTSBASE_PLAYER_COLUMNS))
+        self.assertEqual(appendix["Shots"]["display"], "0")
+        self.assertEqual(appendix["Goals"]["display"], "0")
+        self.assertEqual(appendix["Shots on target, %"]["display"], "0 tentative · non évalué")
+        self.assertTrue(appendix["Goals"]["decisive"])
+        self.assertTrue(appendix["Crosses"]["role_specific"])
+
+    def test_goal_is_prominent_but_claim_is_limited_to_this_match(self):
+        rows = [
+            _row("Scorer", "A", "ST", 90, **{"Goals": 1, "Shots": 2, "Shots on target": 1}),
+            _row("Opponent", "B", "ST", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Scorer", "fr")
+        highlight = next(item for item in analysis["decisive_highlights"] if item["type"] == "goals")
+        self.assertEqual(highlight["label"], "BUTTEUR DÉCISIF — 1 BUT")
+        self.assertIn("ce match", highlight["explanation"])
+        self.assertIn("pas le niveau de finition sur une saison complète", highlight["explanation"])
+        self.assertGreaterEqual(analysis["verdict"]["score"], 75)
 
 
 class PerformancePdfTests(unittest.TestCase):

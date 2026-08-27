@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "individual-role-impact-v3-20260827"
+ANALYSIS_VERSION = "transparent-mission-score-full-xlsx-v4-20260827"
 
 METHODOLOGY_SOURCES = (
     {
@@ -309,15 +309,23 @@ TEXT = {
 
 METRIC_LABELS = {
     "fr": {
+        "№": "N°",
+        "Player": "Joueur",
+        "Team": "Équipe",
+        "Index": "Index SportsBase",
+        "Minutes played": "Minutes jouées",
+        "Position": "Poste",
         "Goals": "Buts",
         "Assists": "Passes décisives",
         "Mistakes leading to goals": "Erreurs menant à un but",
         "Mistakes leading to chances": "Erreurs menant à une occasion",
         "Chances": "Occasions",
+        "Chances successful": "Occasions réussies",
         "Chances successful, %": "Occasions converties",
         "Chances created": "Occasions créées",
         "Involvement in scoring attacks": "Implication dans les attaques décisives",
         "Shots": "Tirs",
+        "Shots on target": "Tirs cadrés",
         "Shots on target, %": "Tirs cadrés",
         "Shots from the penalty area": "Tirs dans la surface",
         "Shots from outside the penalty area": "Tirs hors surface",
@@ -370,12 +378,30 @@ METRIC_LABELS = {
         "Actions in opponent's box successful, %": "Actions réussies dans la surface",
         "Fouls": "Fautes commises",
         "Fouls suffered": "Fautes subies",
+        "Yellow cards": "Cartons jaunes",
+        "Red cards": "Cartons rouges",
+        "Final third entries through pass, % of total": "Part des entrées par la passe",
+        "Final third entries through carry, % of total": "Part des entrées par la conduite",
     },
-    "en": {},
+    "en": {
+        "№": "No.",
+        "Player": "Player",
+        "Team": "Team",
+        "Index": "SportsBase Index",
+        "Minutes played": "Minutes played",
+        "Position": "Position",
+    },
     "ar": {
+        "№": "الرقم",
+        "Player": "اللاعب",
+        "Team": "الفريق",
+        "Index": "مؤشر سبورتس بايز",
+        "Minutes played": "دقائق اللعب",
+        "Position": "المركز",
         "Goals": "الأهداف",
         "Assists": "التمريرات الحاسمة",
         "Shots": "التسديدات",
+        "Shots on target": "التسديدات المؤطرة",
         "Shots on target, %": "التسديدات المؤطرة",
         "Shots from the penalty area": "التسديدات من داخل المنطقة",
         "Shots in box share": "نسبة التسديدات من داخل المنطقة",
@@ -407,6 +433,11 @@ METRIC_LABELS = {
         "Ball recoveries": "استرجاع الكرة",
         "Ball recoveries in opponent's half": "استرجاع الكرة عاليا",
         "Actions in opponent's box": "الإجراءات داخل منطقة المنافس",
+        "Chances successful": "الفرص الناجحة",
+        "Yellow cards": "البطاقات الصفراء",
+        "Red cards": "البطاقات الحمراء",
+        "Final third entries through pass, % of total": "نسبة الدخول بالتمرير",
+        "Final third entries through carry, % of total": "نسبة الدخول بحمل الكرة",
     },
 }
 
@@ -520,6 +551,109 @@ RATE_WEIGHTS = {
     "Shots on target, %": "Shots",
     "Actions successful, %": "Actions",
     "Actions in opponent's box successful, %": "Actions in opponent's box",
+}
+
+
+# Stable order from the SportsBase "Players" XLSX export.  Any future columns
+# present in a row are appended automatically, so the report never loses data.
+SPORTSBASE_PLAYER_COLUMNS = (
+    "№", "Player", "Team", "Index", "Minutes played", "Position",
+    "Goals", "Assists", "Mistakes leading to goals", "Mistakes leading to chances",
+    "Chances", "Chances successful", "Chances successful, %", "Chances created",
+    "Involvement in scoring attacks", "Shots", "Shots on target", "Yellow cards",
+    "Red cards", "Fouls", "Fouls suffered", "Passes", "Passes accurate, %",
+    "Key passes", "Key passes accurate, %", "Crosses", "Crosses accurate, %",
+    "Progressive passes", "Progressive passes accurate, %", "Progressive open passes",
+    "Long passes", "Long passes accurate, %", "Super long passes",
+    "Super long passes accurate, %", "Passes forward to the final third",
+    "Passes forward to the final third accurate, %", "Passes into the penalty box",
+    "Passes into the penalty box accurate, %", "Passes for a shot", "Challenges",
+    "Challenges won, %", "Defensive challenges", "Defensive challenges won, %",
+    "Attacking challenges", "Attacking challenges won, %", "Aerial challenges",
+    "Aerial challenges won, %", "Dribbles", "Dribbles successful, %",
+    "Dribbling in the final third", "Dribbling in the final third successful, %",
+    "Tackles", "Tackles successful, %", "Interceptions", "Loose ball recoveries",
+    "xG (expected goals)", "Final third entries", "Final third entries through pass",
+    "Final third entries through pass, % of total", "Final third entries through carry",
+    "Final third entries through carry, % of total", "Shots on target, %",
+    "Shots from the penalty area", "Shots from outside the penalty area", "Lost balls",
+    "Lost balls in own half", "Ball recoveries", "Ball recoveries in opponent's half",
+    "Actions", "Actions successful, %", "Actions in opponent's box",
+    "Actions in opponent's box successful, %",
+)
+
+PERCENT_DENOMINATORS = {
+    **RATE_WEIGHTS,
+    "Final third entries through pass, % of total": "Final third entries",
+    "Final third entries through carry, % of total": "Final third entries",
+}
+
+APPENDIX_CATEGORY_LABELS = {
+    "fr": {
+        "identity": "Profil et repères",
+        "decisive": "Impact décisif et occasions",
+        "finishing": "Tirs et présence dans la surface",
+        "creation": "Création, passes et progression",
+        "duels": "Duels, défense et un contre un",
+        "possession": "Possession, récupérations et discipline",
+        "other": "Autres données SportsBase",
+    },
+    "en": {
+        "identity": "Profile and reference points",
+        "decisive": "Decisive impact and chances",
+        "finishing": "Shooting and box presence",
+        "creation": "Creation, passing and progression",
+        "duels": "Duels, defending and one-v-one",
+        "possession": "Possession, recoveries and discipline",
+        "other": "Other SportsBase data",
+    },
+    "ar": {
+        "identity": "الملف والمؤشرات العامة",
+        "decisive": "التأثير الحاسم والفرص",
+        "finishing": "التسديد والحضور داخل المنطقة",
+        "creation": "الصناعة والتمرير والتقدم",
+        "duels": "الثنائيات والدفاع والمواجهة الفردية",
+        "possession": "الاستحواذ والاسترجاع والانضباط",
+        "other": "بيانات سبورتس بايز الأخرى",
+    },
+}
+
+APPENDIX_CATEGORIES = {
+    "identity": {"№", "Player", "Team", "Index", "Minutes played", "Position"},
+    "decisive": {
+        "Goals", "Assists", "Mistakes leading to goals", "Mistakes leading to chances",
+        "Chances", "Chances successful", "Chances successful, %", "Chances created",
+        "Involvement in scoring attacks",
+    },
+    "finishing": {
+        "Shots", "Shots on target", "Shots on target, %", "Shots from the penalty area",
+        "Shots from outside the penalty area", "xG (expected goals)",
+        "Actions in opponent's box", "Actions in opponent's box successful, %",
+    },
+    "creation": {
+        "Passes", "Passes accurate, %", "Key passes", "Key passes accurate, %",
+        "Crosses", "Crosses accurate, %", "Progressive passes",
+        "Progressive passes accurate, %", "Progressive open passes", "Long passes",
+        "Long passes accurate, %", "Super long passes", "Super long passes accurate, %",
+        "Passes forward to the final third", "Passes forward to the final third accurate, %",
+        "Passes into the penalty box", "Passes into the penalty box accurate, %",
+        "Passes for a shot", "Final third entries", "Final third entries through pass",
+        "Final third entries through pass, % of total", "Final third entries through carry",
+        "Final third entries through carry, % of total",
+    },
+    "duels": {
+        "Challenges", "Challenges won, %", "Defensive challenges",
+        "Defensive challenges won, %", "Attacking challenges",
+        "Attacking challenges won, %", "Aerial challenges", "Aerial challenges won, %",
+        "Dribbles", "Dribbles successful, %", "Dribbling in the final third",
+        "Dribbling in the final third successful, %", "Tackles", "Tackles successful, %",
+        "Interceptions", "Loose ball recoveries",
+    },
+    "possession": {
+        "Lost balls", "Lost balls in own half", "Ball recoveries",
+        "Ball recoveries in opponent's half", "Actions", "Actions successful, %",
+        "Fouls", "Fouls suffered", "Yellow cards", "Red cards",
+    },
 }
 
 
@@ -1221,7 +1355,120 @@ def _overall_score(dimensions):
     weight = sum(item.get("weight", 0) for item in observed)
     if not weight:
         return None
-    return round(sum(item["score"] * item.get("weight", 0) for item in observed) / weight)
+    raw_score = sum(item["score"] * item.get("weight", 0) for item in observed) / weight
+    # Football-facing scores use conventional half-up rounding, which is easier
+    # to audit than Python's banker rounding (58.5 must be presented as 59).
+    return math.floor(raw_score + 0.5 + 1e-9)
+
+
+def _score_breakdown(dimensions, language):
+    """Expose every coefficient used by the mission-score formula."""
+    observed_dimensions = [item for item in dimensions if item.get("coverage")]
+    total_dimension_weight = sum(item.get("weight", 0) for item in observed_dimensions)
+    effect_labels = {
+        "fr": {
+            "very_positive": "Très positif", "positive": "Positif", "neutral": "Neutre",
+            "negative": "À améliorer", "very_negative": "Très pénalisant", "unobserved": "Non évalué",
+        },
+        "en": {
+            "very_positive": "Very positive", "positive": "Positive", "neutral": "Neutral",
+            "negative": "To improve", "very_negative": "Strong negative", "unobserved": "Not assessed",
+        },
+        "ar": {
+            "very_positive": "إيجابي جدا", "positive": "إيجابي", "neutral": "محايد",
+            "negative": "يحتاج إلى تحسين", "very_negative": "سلبي جدا", "unobserved": "غير مقيم",
+        },
+    }[language]
+
+    def effect(score):
+        if score is None:
+            code = "unobserved"
+        elif score >= 80:
+            code = "very_positive"
+        elif score >= 65:
+            code = "positive"
+        elif score >= 50:
+            code = "neutral"
+        elif score >= 35:
+            code = "negative"
+        else:
+            code = "very_negative"
+        return {"code": code, "label": effect_labels[code]}
+
+    result = []
+    for dimension in sorted(dimensions, key=lambda item: item.get("weight", 0), reverse=True):
+        used = bool(dimension.get("coverage")) and total_dimension_weight > 0
+        effective_weight = dimension.get("weight", 0) / total_dimension_weight * 100 if used else 0
+        contribution = dimension.get("score", 0) * effective_weight / 100 if used else 0
+        observed_criteria = [metric for metric in dimension.get("evidence") or [] if metric.get("score") is not None]
+        criteria_weight = sum(metric.get("weight", 1) for metric in observed_criteria)
+        criteria = []
+        for metric in dimension.get("evidence") or []:
+            metric_used = metric.get("score") is not None and criteria_weight > 0 and used
+            share = metric.get("weight", 1) / criteria_weight * 100 if metric_used else 0
+            final_points = (
+                metric.get("score", 0) * (share / 100) * (effective_weight / 100)
+                if metric_used
+                else 0
+            )
+            criteria.append(
+                {
+                    "metric": metric.get("metric"),
+                    "label": metric.get("label"),
+                    "definition": metric.get("definition"),
+                    "display": metric.get("display"),
+                    "score": metric.get("score"),
+                    "criterion_weight": round(share, 1),
+                    "final_contribution": round(final_points, 2),
+                    "used": metric_used,
+                    "effect": effect(metric.get("score")),
+                    "sample": metric.get("sample"),
+                }
+            )
+        result.append(
+            {
+                "key": dimension.get("key"),
+                "label": dimension.get("label"),
+                "configured_weight": dimension.get("weight", 0),
+                "effective_weight": round(effective_weight, 1),
+                "score": dimension.get("score") if used else None,
+                "contribution": round(contribution, 2),
+                "coverage": dimension.get("coverage", 0),
+                "used": used,
+                "criteria": criteria,
+            }
+        )
+    formula = {
+        "fr": (
+            "Score de mission = somme des notes de critères pondérées dans chaque mission, puis pondérées "
+            "par l’importance de la mission pour le poste. Un critère sans occasion observable est affiché "
+            "mais n’est pas noté. Le total est arrondi à l’entier le plus proche. L’Index SportsBase influence "
+            "le verdict final, pas ce calcul technique."
+        ),
+        "en": (
+            "Mission score = the sum of criterion scores weighted inside each mission, then weighted by the "
+            "mission's importance for the position. A criterion with no observable opportunity is displayed "
+            "but not scored. The total is rounded to the nearest whole number. SportsBase Index affects the "
+            "final verdict, not this technical calculation."
+        ),
+        "ar": (
+            "درجة المهمة هي مجموع درجات المعايير بعد ترجيحها داخل كل مهمة ثم حسب أهمية المهمة للمركز. "
+            "يعرض المعيار الذي لم تسجل له فرصة لكنه لا يدخل في الحساب. يقرب المجموع إلى أقرب عدد صحيح. "
+            "يؤثر مؤشر سبورتس بايز في الخلاصة النهائية لا في هذا الحساب الفني."
+        ),
+    }[language]
+    raw_total = (
+        sum(item.get("score", 0) * item.get("weight", 0) for item in observed_dimensions)
+        / total_dimension_weight
+        if total_dimension_weight
+        else 0
+    )
+    return {
+        "formula": formula,
+        "dimensions": result,
+        "contribution_total": round(raw_total, 2),
+        "rounded_score": math.floor(raw_total + 0.5 + 1e-9),
+    }
 
 
 def _entry_impact_floor(target, group):
@@ -1290,6 +1537,19 @@ def _verdict(score, language, *, target=None, rankings=None):
         decision_score = entry_floor
         reasons.append("short_appearance_positive_impact")
 
+    goals = _number((target or {}).get("Goals"), missing_zero=True)
+    assists = _number((target or {}).get("Assists"), missing_zero=True)
+    decisive_floor = None
+    if goals >= 2 or (goals >= 1 and assists >= 1):
+        decisive_floor = 85
+    elif goals >= 1:
+        decisive_floor = 75
+    elif assists >= 1:
+        decisive_floor = 68
+    if decisive_floor is not None and (decision_score is None or decision_score < decisive_floor):
+        decision_score = decisive_floor
+        reasons.append("decisive_goal_or_assist")
+
     rankings = rankings or {}
     match_rank = rankings.get("index_match") or {}
     team_rank = rankings.get("index_team") or {}
@@ -1324,6 +1584,53 @@ def _verdict(score, language, *, target=None, rankings=None):
         "appearance_type": "entry" if minutes < 45 else "match",
         "reasons": reasons,
     }
+
+
+def _decisive_highlights(target, language):
+    goals = round(_number(target.get("Goals"), missing_zero=True))
+    assists = round(_number(target.get("Assists"), missing_zero=True))
+    mistakes_goals = round(_number(target.get("Mistakes leading to goals"), missing_zero=True))
+    highlights = []
+    if goals:
+        if language == "fr":
+            label = f"PERFORMANCE DE BUTEUR EXCEPTIONNELLE — {goals} BUTS" if goals >= 2 else "BUTTEUR DÉCISIF — 1 BUT"
+            explanation = (
+                f"{goals} buts sur cette rencontre : contribution directe et prioritaire dans le verdict. "
+                "Cette appréciation concerne ce match, pas le niveau de finition sur une saison complète."
+            )
+        elif language == "en":
+            label = f"EXCEPTIONAL GOALSCORING PERFORMANCE — {goals} GOALS" if goals >= 2 else "DECISIVE GOALSCORER — 1 GOAL"
+            explanation = (
+                f"{goals} goals in this match: a direct, high-priority contribution to the verdict. "
+                "This statement assesses this match, not season-long finishing ability."
+            )
+        else:
+            label = f"أداء تهديفي استثنائي — {goals} أهداف" if goals >= 2 else "هداف حاسم — هدف واحد"
+            explanation = f"سجل اللاعب {goals} أهداف في هذه المباراة، وهي مساهمة مباشرة وأساسية في الخلاصة دون تعميمها على الموسم."
+        highlights.append({"type": "goals", "label": label, "value": goals, "tone": "excellent", "explanation": explanation})
+    if assists:
+        if language == "fr":
+            label = f"CRÉATEUR DÉCISIF — {assists} PASSES DÉCISIVES" if assists >= 2 else "PASSEUR DÉCISIF — 1 PASSE DÉCISIVE"
+            explanation = f"{assists} passe(s) directement liée(s) à un but : impact majeur dans le résultat offensif individuel."
+        elif language == "en":
+            label = f"DECISIVE CREATOR — {assists} ASSISTS" if assists >= 2 else "DECISIVE PROVIDER — 1 ASSIST"
+            explanation = f"{assists} pass(es) directly leading to a goal: major individual attacking impact."
+        else:
+            label = f"صانع حاسم — {assists} تمريرات حاسمة" if assists >= 2 else "صانع هدف — تمريرة حاسمة واحدة"
+            explanation = f"قدم اللاعب {assists} تمريرات أدت مباشرة إلى هدف، وهو تأثير هجومي فردي مهم."
+        highlights.append({"type": "assists", "label": label, "value": assists, "tone": "excellent", "explanation": explanation})
+    if mistakes_goals:
+        if language == "fr":
+            label = f"ERREUR DÉCISIVE À CORRIGER — {mistakes_goals}"
+            explanation = "Une erreur a directement conduit à un but adverse ; la cause doit être vérifiée dans la vidéo avant conclusion technique."
+        elif language == "en":
+            label = f"DECISIVE ERROR TO CORRECT — {mistakes_goals}"
+            explanation = "An error directly led to an opposition goal; its cause must be verified on video before a technical conclusion."
+        else:
+            label = f"خطأ حاسم يحتاج إلى تصحيح — {mistakes_goals}"
+            explanation = "أدى خطأ مباشرة إلى هدف للمنافس ويجب تأكيد سببه بالفيديو قبل الخلاصة الفنية."
+        highlights.append({"type": "mistakes_goals", "label": label, "value": mistakes_goals, "tone": "danger", "explanation": explanation})
+    return highlights
 
 
 def _percentile(target, values, direction=1):
@@ -1842,21 +2149,91 @@ def _narrative(target, dimensions, confidence, verdict, rankings, language):
 
 
 def _appendix_metrics(target, language):
-    ignored = {"№", "Player", "Team", "Position", "Minutes played"}
-    items = []
-    for metric in target:
-        if metric in ignored:
-            continue
-        value = target.get(metric)
-        if _number(value) is None:
-            continue
+    group = _group(target)
+    role_metrics = set(KEY_METRICS[group])
+    for dimension in ROLE_CONFIGS[group]["dimensions"]:
+        role_metrics.update(specification["metric"] for specification in dimension[1:])
+    decisive_metrics = {
+        "Goals", "Assists", "Mistakes leading to goals", "Mistakes leading to chances",
+        "Chances", "Chances successful", "Chances successful, %", "Chances created",
+        "Involvement in scoring attacks", "Index",
+    }
+    columns = list(SPORTSBASE_PLAYER_COLUMNS)
+    columns.extend(metric for metric in target if metric not in columns)
+    not_assessed = {
+        "fr": "0 tentative · non évalué",
+        "en": "0 attempts · not assessed",
+        "ar": "0 محاولة · غير مقيم",
+    }[language]
+
+    def category_for(metric):
+        for category, metrics in APPENDIX_CATEGORIES.items():
+            if metric in metrics:
+                return category
+        return "other"
+
+    def display_value(metric):
+        raw = target.get(metric)
+        if metric in {"Player", "Team", "Position"}:
+            return str(raw or "—")
         if metric == "Index":
-            display = _format_number(_number(value))
-        else:
-            kind = "action_rate" if metric in RATE_WEIGHTS or "%" in metric else "volume"
-            display = _metric_result(target, _s(metric, kind, target=1), language)["display"]
-        items.append({"metric": metric, "label": _label(metric, language), "display": display})
-    return items
+            return _format_number(_number(raw))
+        if metric in {"№", "Minutes played"}:
+            return _format_number(_number(raw, missing_zero=True))
+        denominator = PERCENT_DENOMINATORS.get(metric)
+        if denominator:
+            attempts = _number(target.get(denominator), missing_zero=True)
+            rate = _rate(raw)
+            if attempts <= 0 or rate is None:
+                return not_assessed
+            successes = max(0, min(round(attempts), round(attempts * rate / 100)))
+            return f"{successes}/{round(attempts)} · {_format_number(rate)}%"
+        if "%" in metric:
+            rate = _rate(raw)
+            return not_assessed if rate is None else f"{_format_number(rate)}%"
+        number = _number(raw)
+        if number is not None:
+            return _format_number(number)
+        # A blank or dash in a statistical count means no registered event.
+        return "0"
+
+    items = []
+    for source_order, metric in enumerate(columns):
+        category = category_for(metric)
+        role_specific = metric in role_metrics
+        decisive = metric in decisive_metrics
+        items.append(
+            {
+                "metric": metric,
+                "label": _label(metric, language),
+                "display": display_value(metric),
+                "category": category,
+                "category_label": APPENDIX_CATEGORY_LABELS[language][category],
+                "role_specific": role_specific,
+                "decisive": decisive,
+                "priority": 0 if decisive else 1 if role_specific else 2,
+                "source_order": source_order,
+            }
+        )
+    items.sort(
+        key=lambda item: (
+            tuple(APPENDIX_CATEGORY_LABELS[language]).index(item["category"]),
+            item["priority"],
+            item["source_order"],
+        )
+    )
+    groups = []
+    for category in APPENDIX_CATEGORY_LABELS[language]:
+        category_items = [item for item in items if item["category"] == category]
+        if category_items:
+            groups.append(
+                {
+                    "key": category,
+                    "label": APPENDIX_CATEGORY_LABELS[language][category],
+                    "items": category_items,
+                }
+            )
+    return {"items": items, "groups": groups, "total_columns": len(columns)}
 
 
 def analyse_match_dataset(rows, player_name, language="fr", context=None):
@@ -1883,6 +2260,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     population = [row for row in rows if _position(row) in homologous_codes and _minutes(row) > 0]
     dimensions = _role_dimensions(target, group, language)
     profile_score = _overall_score(dimensions)
+    score_breakdown = _score_breakdown(dimensions, language)
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
     key_metrics = _key_metrics(target, population, group, language)
@@ -1900,6 +2278,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     )
     global_benchmarks = _global_benchmarks(target, rows, group, language)
     narrative = _narrative(target, dimensions, confidence, verdict, rankings, language)
+    appendix = _appendix_metrics(target, language)
     return {
         "version": ANALYSIS_VERSION,
         "available": True,
@@ -1916,10 +2295,12 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "profile_score": profile_score,
         },
         "verdict": verdict,
+        "decisive_highlights": _decisive_highlights(target, language),
         "confidence": confidence,
         "context": context_payload,
         "rankings": rankings,
         "dimensions": dimensions,
+        "score_breakdown": score_breakdown,
         "key_metrics": key_metrics,
         "same_position_comparison": counterpart,
         "global_benchmarks": global_benchmarks,
@@ -1930,7 +2311,9 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             if metric in KEY_METRICS[group]
             or metric in {"Progressive passes", "Key passes", "Final third entries", "xG (expected goals)"}
         ],
-        "appendix_metrics": _appendix_metrics(target, language),
+        "appendix_metrics": appendix["items"],
+        "appendix_groups": appendix["groups"],
+        "appendix_total_columns": appendix["total_columns"],
         "population": {
             "position": _position(target),
             "players": len(population),
