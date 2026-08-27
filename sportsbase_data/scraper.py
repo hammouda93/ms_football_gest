@@ -1,8 +1,10 @@
 import base64
 import json
+import math
 import os
 import re
 import shutil
+import textwrap
 import time
 import traceback
 from datetime import datetime, timezone
@@ -10,7 +12,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urljoin
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
@@ -23,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v11-analysis-data-20260827"
+SCRAPER_BUILD = "season-kpis-radar-v12-season-stats-position-radar-20260827"
 
 
 def _now_iso():
@@ -261,7 +263,11 @@ class SportsBaseSubscriptionScraper:
         ball_touches_points = list(
             getattr(self, "_last_ball_touches_points", [])
         )
-        radar = self._capture_radar(page)
+        radar = self._capture_radar(
+            page,
+            player_name=raw.get("name") or job["player"]["name"],
+            position_label=(positions[0].get("name") if positions else ""),
+        )
         return {
             "season": job["season"],
             "sportsbase_player_id": player_id.group(1) if player_id else "",
@@ -296,8 +302,8 @@ class SportsBaseSubscriptionScraper:
     def _capture_named_map(self, page, label):
         return self._capture_map_field(page, page, label)
 
-    def _capture_radar(self, page):
-        """Capture the real performance radar SVG and retain normalized series data."""
+    def _capture_radar(self, page, *, player_name="", position_label=""):
+        """Read SportsBase radar values and draw a clear positional comparison."""
         try:
             radar_tab = page.get_by_text("Radar", exact=True).first
             radar_tab.scroll_into_view_if_needed(timeout=10_000)
@@ -396,15 +402,228 @@ class SportsBaseSubscriptionScraper:
                 """
             )
             print(
-                "[SPORTSBASE] Radar exact détecté — "
-                f"{len(metrics)} axe(s) — capture SVG complète."
+                "[SPORTSBASE] Radar positionnel détecté — "
+                f"{len(metrics)} axe(s) — joueur vs moyenne du poste."
             )
-            return {"png": best.screenshot(type="png"), "metrics": metrics}
+            comparison_png = self._build_position_comparison_radar(
+                metrics,
+                player_name=player_name,
+                position_label=position_label,
+            )
+            return {
+                "png": comparison_png or best.screenshot(type="png"),
+                "metrics": metrics,
+            }
         except Exception as exc:
             print(f"[SPORTSBASE][WARN] Capture radar impossible : {exc}")
             return {"png": b"", "metrics": []}
 
+    @staticmethod
+    def _radar_font(size, *, bold=False):
+        candidates = (
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            if bold
+            else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path(r"C:\Windows\Fonts\arialbd.ttf")
+            if bold
+            else Path(r"C:\Windows\Fonts\arial.ttf"),
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return ImageFont.truetype(str(candidate), size=size)
+        return ImageFont.load_default()
+
+    @classmethod
+    def _build_position_comparison_radar(
+        cls, metrics, *, player_name="", position_label=""
+    ):
+        """Create a portal-ready graph: player against the same-position average."""
+        metrics = [
+            item
+            for item in metrics
+            if item.get("label")
+            and item.get("player") is not None
+            and item.get("average") is not None
+        ][:12]
+        if len(metrics) < 3:
+            return b""
+
+        width, height = 1400, 1150
+        centre_x, centre_y = width // 2, 590
+        radius = 315
+        image = Image.new("RGBA", (width, height), (247, 250, 252, 255))
+        draw = ImageDraw.Draw(image, "RGBA")
+        navy = (7, 24, 39, 255)
+        teal = (13, 148, 136, 255)
+        teal_fill = (19, 184, 166, 76)
+        red = (196, 66, 76, 255)
+        red_fill = (217, 93, 102, 58)
+        grid = (199, 214, 224, 255)
+        muted = (97, 116, 139, 255)
+
+        title_font = cls._radar_font(38, bold=True)
+        subtitle_font = cls._radar_font(23)
+        label_font = cls._radar_font(19, bold=True)
+        value_font = cls._radar_font(17)
+        legend_font = cls._radar_font(20, bold=True)
+        small_font = cls._radar_font(16)
+
+        draw.text(
+            (70, 55),
+            player_name or "Player",
+            font=title_font,
+            fill=navy,
+        )
+        subtitle = "Comparaison avec la moyenne des joueurs du même poste"
+        if position_label:
+            subtitle += f" · {position_label}"
+        draw.text((70, 108), subtitle, font=subtitle_font, fill=muted)
+        draw.line((70, 158, width - 70, 158), fill=(216, 227, 234, 255), width=2)
+
+        count = len(metrics)
+        angles = [
+            -math.pi / 2 + 2 * math.pi * index / count
+            for index in range(count)
+        ]
+
+        def polygon(scale):
+            return [
+                (
+                    centre_x + math.cos(angle) * radius * scale,
+                    centre_y + math.sin(angle) * radius * scale,
+                )
+                for angle in angles
+            ]
+
+        for ring in (0.2, 0.4, 0.6, 0.8, 1.0):
+            points = polygon(ring)
+            draw.line(points + [points[0]], fill=grid, width=2)
+            draw.text(
+                (centre_x + 8, centre_y - radius * ring - 18),
+                str(round(ring * 100)),
+                font=small_font,
+                fill=(139, 155, 173, 255),
+            )
+        for angle in angles:
+            draw.line(
+                (
+                    centre_x,
+                    centre_y,
+                    centre_x + math.cos(angle) * radius,
+                    centre_y + math.sin(angle) * radius,
+                ),
+                fill=grid,
+                width=2,
+            )
+
+        def series_points(key):
+            points = []
+            for angle, item in zip(angles, metrics):
+                value = max(0.0, min(100.0, float(item.get(key) or 0))) / 100
+                points.append(
+                    (
+                        centre_x + math.cos(angle) * radius * value,
+                        centre_y + math.sin(angle) * radius * value,
+                    )
+                )
+            return points
+
+        average_points = series_points("average")
+        player_points = series_points("player")
+        draw.polygon(average_points, fill=red_fill)
+        draw.line(
+            average_points + [average_points[0]], fill=red, width=5, joint="curve"
+        )
+        draw.polygon(player_points, fill=teal_fill)
+        draw.line(
+            player_points + [player_points[0]], fill=teal, width=6, joint="curve"
+        )
+        for point in average_points:
+            draw.ellipse(
+                (point[0] - 5, point[1] - 5, point[0] + 5, point[1] + 5),
+                fill=red,
+            )
+        for point in player_points:
+            draw.ellipse(
+                (point[0] - 6, point[1] - 6, point[0] + 6, point[1] + 6),
+                fill=teal,
+            )
+
+        label_radius = radius + 74
+        for angle, item in zip(angles, metrics):
+            label = "\n".join(
+                textwrap.wrap(str(item.get("label") or ""), width=24)
+            )
+            x = centre_x + math.cos(angle) * label_radius
+            y = centre_y + math.sin(angle) * label_radius
+            box = draw.multiline_textbbox(
+                (0, 0), label, font=label_font, spacing=3, align="center"
+            )
+            label_width = box[2] - box[0]
+            label_height = box[3] - box[1]
+            if math.cos(angle) > 0.2:
+                x -= 4
+            elif math.cos(angle) < -0.2:
+                x -= label_width
+            else:
+                x -= label_width / 2
+            if math.sin(angle) > 0.2:
+                y -= 2
+            elif math.sin(angle) < -0.2:
+                y -= label_height
+            else:
+                y -= label_height / 2
+            draw.multiline_text(
+                (x, y),
+                label,
+                font=label_font,
+                fill=navy,
+                spacing=3,
+                align="center",
+            )
+
+        legend_y = height - 76
+        draw.line((365, legend_y, 425, legend_y), fill=teal, width=7)
+        draw.text((440, legend_y - 14), player_name or "Joueur", font=legend_font, fill=navy)
+        draw.line((790, legend_y, 850, legend_y), fill=red, width=7)
+        draw.text(
+            (865, legend_y - 14),
+            "Moyenne du poste",
+            font=legend_font,
+            fill=navy,
+        )
+        draw.text(
+            (70, height - 30),
+            "Échelle SportsBase normalisée de 0 à 100",
+            font=value_font,
+            fill=muted,
+        )
+
+        buffer = BytesIO()
+        image.convert("RGB").save(buffer, format="PNG", optimize=True)
+        return buffer.getvalue()
+
     def _read_season_statistics(self, page):
+        try:
+            opened = page.evaluate(
+                r"""
+                () => {
+                  const clean = (node) => (node?.textContent || '').replace(/\s+/g, ' ').trim();
+                  const statistics = [...document.querySelectorAll('span')].find((node) =>
+                    clean(node) === 'Statistics' &&
+                    [...(node.closest('ul')?.querySelectorAll('span') || [])]
+                      .some((item) => clean(item) === 'Radar')
+                  );
+                  if (!statistics) return false;
+                  (statistics.closest('[class*="Tab-sc-"]') || statistics).click();
+                  return true;
+                }
+                """
+            )
+            if opened:
+                page.wait_for_timeout(450)
+        except Exception:
+            pass
         data = page.evaluate(
             r"""
             () => {
@@ -429,9 +648,11 @@ class SportsBaseSubscriptionScraper:
                 if (!block) return;
                 block.querySelectorAll('li').forEach((row) => {
                   const label = text(row.querySelector(
-                    '[class*="StatsName"], [class*="StatName"], [class*="ParamName"]'
+                    '[class*="Name-sc-"], [class*="StatsName"], [class*="StatName"], [class*="ParamName"]'
                   ));
-                  const values = [...row.querySelectorAll('[class*="StatValue"]')];
+                  const values = [...row.querySelectorAll(
+                    '[class*="StatValue-sc-"], [class*="StatValue"]'
+                  )];
                   if (!label || !values.length) return;
                   const primary = cleanValue(values[0]);
                   if (primary) result[label] = primary;
@@ -446,17 +667,24 @@ class SportsBaseSubscriptionScraper:
               };
 
               const season = {};
-              const seasonBlocks = [
+              const averages = {};
+              const sectionTitles = [
                 ...document.querySelectorAll(
-                  '[class*="PlayerStatsBody"], ul[class*="PlayerStats"], ul[class*="LeftStatBlock"], [class*="SeasonStats"]'
+                  '[class*="StatsTitle-sc-"], [class*="StatsTitle"]'
                 )
               ];
-              seasonBlocks.forEach((block) => addRows(block, season));
-
-              const averages = {};
-              document.querySelectorAll('[class*="AverageStats"], [class*="Averages"]').forEach(
-                (block) => addRows(block, averages)
-              );
+              sectionTitles.forEach((titleNode) => {
+                const title = text(titleNode).toLowerCase();
+                const titleRow = titleNode.closest('[class*="Titles-sc-"]') || titleNode.parentElement;
+                const block = titleRow?.nextElementSibling;
+                if (title === 'season') addRows(block, season);
+                if (title === 'average per match') addRows(block, averages);
+              });
+              if (!Object.keys(season).length || !Object.keys(averages).length) {
+                const blocks = [...document.querySelectorAll('ul[class*="LeftStatBlock"]')];
+                if (!Object.keys(season).length) addRows(blocks[0], season);
+                if (!Object.keys(averages).length) addRows(blocks[1], averages);
+              }
               let bestTable = {headers: [], rows: []};
               document.querySelectorAll('[role="table"]').forEach((table) => {
                 const headers = [...table.querySelectorAll('[role="headercell"], [role="columnheader"]')].map(headerText);

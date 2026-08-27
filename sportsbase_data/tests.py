@@ -1,7 +1,10 @@
 import base64
 from datetime import timedelta
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+from PIL import Image
 
 from django.core import mail
 from django.contrib.auth.models import User
@@ -496,6 +499,69 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_season_and_average_sections_remain_separate(self):
+        class FakePage:
+            def __init__(self):
+                self.calls = 0
+                self.waited = []
+
+            def evaluate(self, _script):
+                self.calls += 1
+                if self.calls == 1:
+                    return True
+                return {
+                    "season": {
+                        "Index": "169",
+                        "Matches played": "25",
+                        "Goals": "6",
+                    },
+                    "averages": {
+                        "Key passes": "0.4",
+                        "Shots": "1.8",
+                        "Challenges won, %": "30%",
+                    },
+                    "table": {"headers": [], "rows": []},
+                }
+
+            def wait_for_timeout(self, milliseconds):
+                self.waited.append(milliseconds)
+
+        page = FakePage()
+        result = SportsBaseSubscriptionScraper._read_season_statistics(
+            object(), page
+        )
+
+        self.assertEqual(result["season_statistics"]["Matches played"], "25")
+        self.assertEqual(result["season_statistics"]["Goals"], "6")
+        self.assertNotIn("Shots", result["season_statistics"])
+        self.assertEqual(result["average_statistics"]["Shots"], "1.8")
+        self.assertEqual(
+            result["average_statistics"]["Challenges won, %"], "30%"
+        )
+        self.assertEqual(page.waited, [450])
+
+    def test_position_comparison_radar_is_a_valid_portal_png(self):
+        metrics = [
+            {"label": "Shots", "player": 62.3, "average": 52.6},
+            {"label": "Passes", "player": 62.2, "average": 63.2},
+            {
+                "label": "Defensive challenges",
+                "player": 42.3,
+                "average": 64.4,
+            },
+            {"label": "Interceptions", "player": 37.1, "average": 60.2},
+        ]
+
+        png = SportsBaseSubscriptionScraper._build_position_comparison_radar(
+            metrics,
+            player_name="Iyed Belwafi",
+            position_label="Left attacking midfielder",
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (1400, 1150))
+
     def test_team_table_marks_player_and_calculates_ranks(self):
         rows = [
             {"headers": ["Player", "Index", "Pos", "Min"], "cells": []},
