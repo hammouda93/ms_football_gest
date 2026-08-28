@@ -14,18 +14,12 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+from .agent_config import youtube_upload_enabled
 from .scraper import SportsBaseSubscriptionScraper
 from .youtube_uploader import YouTubeStudioUploader
 
 
 load_dotenv()
-
-
-def _enabled(name, default=False):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().casefold() in {"1", "true", "yes", "on", "oui"}
 
 
 def _site_url():
@@ -53,7 +47,7 @@ class SportsBaseAgentClient:
         )
         self.session = requests.Session()
         self.scraper = SportsBaseSubscriptionScraper(self.storage_root)
-        self.youtube_enabled = _enabled("YOUTUBE_UPLOAD_ENABLED", False)
+        self.youtube_enabled = youtube_upload_enabled()
         self.youtube_uploader = YouTubeStudioUploader(self.storage_root)
         if not self.username or not self.password:
             raise ValueError(
@@ -277,7 +271,7 @@ class SportsBaseAgentClient:
         print(f"[SPORTSBASE] Agent actif — stockage : {self.storage_root}")
         print(
             "[YOUTUBE] Upload automatique : "
-            f"{'actif' if self.youtube_enabled else 'désactivé'}"
+            f"{'actif — piloté par chaque abonnement' if self.youtube_enabled else 'désactivé par YOUTUBE_UPLOAD_ENABLED'}"
         )
         self.print_initial_queue()
         while True:
