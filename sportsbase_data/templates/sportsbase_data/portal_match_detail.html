@@ -30,6 +30,21 @@
 </nav>
 
 {% if stats %}
+{% if match_headline %}
+<section class="performance-impact-summary tone-{{ match_headline.tone }}">
+    <header>
+        <div><span class="eyebrow">{{ copy.performance_summary }}</span><h2>{{ copy.direct_impact }}</h2></div>
+        <span class="performance-verdict"><small>{{ copy.analyst_verdict }}</small><strong>{{ match_headline.verdict }}</strong></span>
+    </header>
+    <div class="performance-impact-grid">
+        <article class="impact-goals"><i class="fas fa-futbol"></i><span>{{ copy.goals }}</span><strong>{{ match_headline.goals|stat_value }}</strong></article>
+        <article class="impact-assists"><i class="fas fa-handshake-angle"></i><span>{{ copy.assists }}</span><strong>{{ match_headline.assists|stat_value }}</strong></article>
+        <article class="impact-key-passes"><i class="fas fa-key"></i><span>{{ copy.key_passes }}</span><strong>{{ match_headline.key_passes|stat_value }}</strong></article>
+        <article class="impact-score"><i class="fas fa-gauge-high"></i><span>{{ copy.ms_score }}</span><strong>{% if match_headline.ms_score != None %}{{ match_headline.ms_score }}/100{% else %}—{% endif %}</strong></article>
+    </div>
+</section>
+{% endif %}
+
 <section class="performance-rank-grid">
     <article><span>{{ copy.match_index }}</span><strong>{{ stats.index|stat_value }}</strong><small>{{ copy.global_indicator }}</small></article>
     <article><span>{{ copy.team_rank }}</span><strong>{% if stats.team_rank %}#{{ stats.team_rank }}{% else %}—{% endif %}</strong><small>{{ stats.team_name|default:player.club }}</small></article>
