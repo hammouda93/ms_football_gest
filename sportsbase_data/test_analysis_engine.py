@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from zipfile import ZipFile
 
 from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS, analyse_match_dataset
-from .report_pdf import render_performance_pdf
+from .report_pdf import PDF_COPY, render_performance_pdf
 from .xlsx_statistics import read_players_statistics_xlsx
 
 
@@ -549,7 +549,8 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertTrue({"Goals", "Key passes", "Dribbles", "Chances"}.issubset(driver_metrics))
         goal = next(item for item in drivers if item["metric"] == "Goals")
         self.assertIn("impact direct", goal["explanation"])
-        self.assertIn("note finale", goal["score_sentence"])
+        self.assertIn("MS Score", goal["score_sentence"])
+        self.assertEqual(goal["ms_points"], 20)
 
     def test_match_radar_uses_highest_percentage_position_and_stored_average(self):
         rows = [
@@ -606,7 +607,77 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(metrics["Interceptions"]["position_average"], 3.36)
         self.assertEqual(metrics["Interceptions"]["difference"], 0.01)
         self.assertEqual(metrics["Interceptions"]["player_normalized"], 55.4)
-        self.assertIn("valeurs SportsBase par 90 minutes", benchmark["note"])
+        self.assertIn("valeurs saisonnières par 90 minutes", benchmark["note"])
+
+    def test_ms_score_is_open_ended_and_adds_exactly_twenty_points_per_goal(self):
+        opponent = _row("Opponent", "B", "ST", 90)
+        scores = []
+        for goals in (0, 1, 2):
+            target = _row(
+                "Scorer",
+                "A",
+                "ST",
+                90,
+                **{
+                    "Goals": goals,
+                    "Shots": 4,
+                    "Shots from the penalty area": 3,
+                    "Shots on target, %": 0.5,
+                    "Actions in opponent's box": 7,
+                },
+            )
+            analysis = analyse_match_dataset([target, opponent], "Scorer", "fr")
+            scores.append(analysis["player"]["ms_score"])
+            self.assertEqual(analysis["verdict"]["score"], analysis["player"]["ms_score"])
+            self.assertEqual(analysis["score_breakdown"]["scale"], "open_ended_points")
+        self.assertGreater(scores[0], 100)
+        self.assertEqual(scores[1] - scores[0], 20)
+        self.assertEqual(scores[2] - scores[1], 20)
+
+    def test_ms_score_keeps_position_missions_and_exposes_every_awarded_point(self):
+        rows = [
+            _row(
+                "Centre Back",
+                "A",
+                "CB",
+                90,
+                **{
+                    "Goals": 1,
+                    "Defensive challenges": 6,
+                    "Defensive challenges won, %": 0.75,
+                    "Tackles": 5,
+                    "Tackles successful, %": 0.8,
+                    "Interceptions": 4,
+                    "Progressive passes": 8,
+                    "Progressive passes accurate, %": 0.75,
+                    "Long passes": 7,
+                    "Long passes accurate, %": 0.57,
+                },
+            ),
+            _row("Opponent", "B", "CB", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Centre Back", "en")
+        breakdown = analysis["score_breakdown"]
+        criteria = {
+            criterion["metric"]: criterion
+            for mission in breakdown["dimensions"]
+            for criterion in mission["criteria"]
+        }
+        self.assertGreater(criteria["Tackles"]["ms_points"], 0)
+        self.assertGreater(criteria["Interceptions"]["ms_points"], 0)
+        self.assertGreater(criteria["Progressive passes"]["ms_points"], 0)
+        self.assertEqual(criteria["Goals"]["points_source"], "decisive")
+        goal = next(item for item in breakdown["point_events"] if item["metric"] == "Goals")
+        self.assertEqual(goal["unit_points"], 20)
+        self.assertEqual(goal["points"], 20)
+        expected = (
+            breakdown["base_points"]
+            + breakdown["mission_points"]
+            + breakdown["decisive_points"]
+            + breakdown["ranking_points"]
+            + breakdown["penalty_points"]
+        )
+        self.assertLess(abs(expected - breakdown["raw_total_points"]), 0.02)
 
     def test_legacy_normalized_radar_is_not_presented_as_a_real_value(self):
         rows = [_row("Target", "A", "LCM", 90), _row("Opponent", "B", "LCM", 90)]
@@ -733,6 +804,11 @@ class PositionAnalysisTests(unittest.TestCase):
 
 
 class PerformancePdfTests(unittest.TestCase):
+    def test_report_copy_is_source_brand_neutral(self):
+        visible_copy = str(PDF_COPY).lower()
+        self.assertNotIn("sportsbase", visible_copy)
+        self.assertNotIn("سبورتس", visible_copy)
+
     def test_professional_report_is_a_multipage_pdf(self):
         rows = [
             _row("Target", "Team A", "RCF", 29, **{"Actions in opponent's box": 4}),
