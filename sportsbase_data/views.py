@@ -500,6 +500,29 @@ def report_pdf(request, pk):
     return response
 
 
+@production_required
+@require_GET
+def api_report_pdf(request, pk):
+    """Authenticated PDF download dedicated to the local production agent."""
+    report = get_object_or_404(
+        PerformanceReport.objects.select_related(
+            "subscription__player", "match"
+        ),
+        pk=pk,
+        status=PerformanceReport.Status.PUBLISHED,
+        report_type=PerformanceReport.ReportType.MATCH,
+    )
+    content = render_report_pdf(report)
+    response = HttpResponse(content, content_type="application/pdf")
+    match_id = report.match.sportsbase_match_id if report.match_id else report.pk
+    response["Content-Disposition"] = (
+        f'attachment; filename="MS_Performance__match_{match_id}.pdf"'
+    )
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @never_cache
 @portal_required
 def portal_performance_overview(request):
@@ -686,7 +709,9 @@ def api_job_result(request, job_id):
     report_downloads = [
         {
             "match_id": report.match.sportsbase_match_id,
-            "download_url": reverse("performance:report_pdf", args=(report.pk,)),
+            "download_url": reverse(
+                "performance:api_report_pdf", args=(report.pk,)
+            ),
             "filename": (
                 f"MS_Performance__match_{report.match.sportsbase_match_id}.pdf"
             ),
