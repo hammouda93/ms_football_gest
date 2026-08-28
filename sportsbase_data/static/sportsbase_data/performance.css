@@ -198,6 +198,23 @@
 .performance-lineup { display: flex; z-index: 1; align-items: flex-end; flex-direction: column; text-align: right; }
 .performance-lineup span { font-size: .75rem; font-weight: 800; }
 .performance-lineup small { margin-top: 4px; color: #b8c8d8; font-size: .62rem; }
+.performance-impact-summary { --impact-accent: var(--performance-blue); margin: 16px 0; padding: 20px; color: #fff; background: linear-gradient(135deg, #071827, #123a5a); border: 1px solid rgba(255, 255, 255, .08); border-radius: 22px; box-shadow: 0 16px 34px rgba(7, 24, 39, .16); }
+.performance-impact-summary.tone-excellent { --impact-accent: #2dd4bf; }
+.performance-impact-summary.tone-positive { --impact-accent: #34d399; }
+.performance-impact-summary.tone-warning { --impact-accent: #fbbf24; }
+.performance-impact-summary.tone-danger { --impact-accent: #fb7185; }
+.performance-impact-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
+.performance-impact-summary h2 { margin: 3px 0 0; color: #fff; font-size: 1.15rem; }
+.performance-impact-summary .eyebrow { color: var(--impact-accent); }
+.performance-verdict { display: flex; min-width: 190px; align-items: flex-end; flex-direction: column; padding: 10px 13px; background: rgba(255, 255, 255, .09); border-left: 3px solid var(--impact-accent); border-radius: 12px; text-align: right; }
+.performance-verdict small { color: #b8c8d8; font-size: .58rem; font-weight: 750; text-transform: uppercase; }
+.performance-verdict strong { margin-top: 3px; color: var(--impact-accent); font-size: .86rem; }
+.performance-impact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.performance-impact-grid article { display: grid; min-width: 0; grid-template-columns: 36px minmax(0, 1fr); gap: 2px 9px; padding: 12px; background: rgba(255, 255, 255, .075); border: 1px solid rgba(255, 255, 255, .08); border-radius: 13px; }
+.performance-impact-grid i { grid-row: 1 / 3; display: grid; width: 36px; height: 36px; place-items: center; color: var(--impact-accent); background: rgba(255, 255, 255, .09); border-radius: 10px; }
+.performance-impact-grid span { align-self: end; overflow: hidden; color: #b8c8d8; font-size: .6rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.performance-impact-grid strong { color: #fff; font-size: 1.15rem; line-height: 1.05; }
+.performance-impact-grid .impact-score { background: color-mix(in srgb, var(--impact-accent) 17%, transparent); border-color: color-mix(in srgb, var(--impact-accent) 40%, transparent); }
 .performance-rank-grid article { display: flex; flex-direction: column; }
 .performance-rank-grid strong { margin: 5px 0; font-size: 1.7rem; }
 .performance-team-table { padding: 0; }
@@ -315,6 +332,9 @@
     .performance-match-row .performance-actions-state { grid-column: 2 / 4; justify-self: start; }
     .performance-fixture > strong { font-size: .66rem; }
     .performance-match-hero { grid-template-columns: 1fr; gap: 18px; padding: 22px; }
+    .performance-impact-summary > header { align-items: flex-start; flex-direction: column; }
+    .performance-verdict { width: 100%; align-items: flex-start; border-right: 0; border-left: 3px solid var(--impact-accent); text-align: left; }
+    .performance-impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .performance-lineup { align-items: flex-start; text-align: left; }
     .performance-scoreboard { order: -1; }
     .performance-stat-list.advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -346,6 +366,8 @@
     .performance-scoreboard { gap: 7px; }
     .performance-scoreboard span { font-size: .7rem; }
     .performance-scoreboard strong { padding: 8px 10px; font-size: 1.15rem; }
+    .performance-impact-summary { padding: 15px; }
+    .performance-impact-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
     .performance-stat-list.advanced { grid-template-columns: 1fr; }
     .performance-analysis-card { padding: 13px; }
     .performance-analysis-visual { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; }
