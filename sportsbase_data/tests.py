@@ -171,7 +171,7 @@ class SyncServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(claimed.payload["season"], "2025/2026")
         self.assertNotIn("password", claimed.payload)
 
-    def test_job_payload_exposes_downloaded_players_statistics_workbook(self):
+    def test_job_payload_exposes_stored_players_statistics_headers(self):
         match = SportsBaseMatch.objects.create(
             subscription=self.subscription,
             sportsbase_match_id="772538",
@@ -181,19 +181,15 @@ class SyncServiceTests(SportsBaseFixtureMixin, TestCase):
         )
         SportsBaseMatchStats.objects.create(
             match=match,
-            source_metadata={
-                "players_statistics_xlsx": (
-                    "match_772538__players_statistics.xlsx"
-                )
-            },
+            players_statistics_headers=["Player", "Team", "Headers"],
         )
         queue_sync(self.subscription, requested_by=self.admin)
 
         claimed = claim_next_job()
 
         self.assertEqual(
-            claimed.payload["known_matches"][0]["players_statistics_xlsx"],
-            "match_772538__players_statistics.xlsx",
+            claimed.payload["known_matches"][0]["players_statistics_headers"],
+            ["Player", "Team", "Headers"],
         )
 
     def test_result_upserts_profile_match_stats_and_maps(self):
@@ -677,20 +673,52 @@ class ScraperNormalizationTests(TestCase):
         self.assertEqual(result["match_rank"], 2)
         self.assertTrue(result["team_table"][1]["is_current_player"])
 
-    def test_xlsx_validation_checks_non_empty_zip_signature(self):
-        with TemporaryDirectory() as directory:
-            valid = Path(directory) / "statistics.xlsx"
-            invalid = Path(directory) / "statistics.html"
-            valid.write_bytes(b"PK\x03\x04workbook")
-            invalid.write_bytes(b"<html>login</html>")
+    def test_direct_players_table_snapshot_preserves_values_and_teams(self):
+        snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
+            {
+                "headers": [
+                    "№", "Player", "Team", "Index", "Headers",
+                    "Headers on target, %",
+                ],
+                "rows": [
+                    {
+                        "№": "9",
+                        "Player": "  Test  Striker ",
+                        "Team": " Team A ",
+                        "Index": "170",
+                        "Headers": "3",
+                        "Headers on target, %": "67%",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(snapshot["rows"][0]["Player"], "Test Striker")
+        self.assertEqual(snapshot["rows"][0]["Team"], "Team A")
+        self.assertEqual(snapshot["rows"][0]["Headers"], 3)
+        self.assertEqual(snapshot["rows"][0]["Headers on target, %"], "67%")
 
-            self.assertTrue(SportsBaseSubscriptionScraper._valid_xlsx(valid))
-            self.assertFalse(SportsBaseSubscriptionScraper._valid_xlsx(invalid))
-            self.assertFalse(
-                SportsBaseSubscriptionScraper._valid_xlsx(
-                    Path(directory) / "missing.xlsx"
-                )
-            )
+    def test_players_table_requires_enriched_custom_headers(self):
+        enriched = [
+            "Goals by head",
+            "Free-kick shots",
+            "Free-kick goals",
+            "Short passes",
+            "Short passes accurate, %",
+            "Shots on target from the penalty area, %",
+            "Shots on target from outside the penalty area, %",
+            "Headers",
+            "Headers on target, %",
+            "Shots on post / bar",
+        ]
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._missing_enriched_players_headers(enriched),
+            [],
+        )
+        missing = SportsBaseSubscriptionScraper._missing_enriched_players_headers(
+            ["Player", "Shots", "Shots on target, %"]
+        )
+        self.assertIn("Headers", missing)
+        self.assertIn("Shots on target from the penalty area, %", missing)
 
 
 class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
