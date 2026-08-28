@@ -628,14 +628,19 @@ class ScraperNormalizationTests(TestCase):
 
     def test_position_comparison_radar_is_a_valid_portal_png(self):
         metrics = [
-            {"label": "Shots", "player": 62.3, "average": 52.6},
-            {"label": "Passes", "player": 62.2, "average": 63.2},
+            {"label": "Shots", "player": 0.86, "average": 1.19, "player_normalized": 35.8, "average_normalized": 49.6, "scale_max": 2.4, "precision": 2, "unit": "per_90"},
+            {"label": "Passes into the penalty box accurate, %", "player": 93, "average": 71, "player_normalized": 93, "average_normalized": 71, "scale_max": 100, "precision": 0, "unit": "%"},
             {
                 "label": "Defensive challenges",
-                "player": 42.3,
-                "average": 64.4,
+                "player": 9.14,
+                "average": 7.18,
+                "player_normalized": 89.9,
+                "average_normalized": 70.6,
+                "scale_max": 10.17,
+                "precision": 2,
+                "unit": "per_90",
             },
-            {"label": "Interceptions", "player": 37.1, "average": 60.2},
+            {"label": "Interceptions", "player": 3.37, "average": 3.36, "player_normalized": 55.4, "average_normalized": 55.3, "scale_max": 6.10, "precision": 2, "unit": "per_90"},
         ]
 
         png = SportsBaseSubscriptionScraper._build_position_comparison_radar(

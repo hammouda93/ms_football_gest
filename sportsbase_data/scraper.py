@@ -25,7 +25,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-v13-pitch-maps-20260827"
+SCRAPER_BUILD = "season-kpis-radar-real-values-v14-20260828"
 
 
 def _now_iso():
@@ -356,8 +356,12 @@ class SportsBaseSubscriptionScraper:
             page.wait_for_timeout(300)
             metrics = best.evaluate(
                 r"""
-                (svg) => {
+                async (svg) => {
                   const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                  const number = (value) => {
+                    const match = clean(value).replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+                    return match ? Number(match[0]) : null;
+                  };
                   const labels = [...svg.querySelectorAll('text')]
                     .filter((node) => Number(node.getAttribute('font-size') || 0) >= 10)
                     .map((node) => clean([...node.querySelectorAll('tspan')]
@@ -377,33 +381,149 @@ class SportsBaseSubscriptionScraper:
                   const height = viewBox?.height || Number(svg.getAttribute('height')) || 540;
                   const centreX = (viewBox?.x || 0) + width / 2;
                   const centreY = (viewBox?.y || 0) + height / 2;
-                  const chartRadius = Math.min(width, height) * 0.444444;
-                  const normalizedRadius = (node) => {
+                  const axes = [...svg.querySelectorAll('line[x1][y1][x2][y2]')]
+                    .map((node) => ({
+                      inner: Math.hypot(
+                        Number(node.getAttribute('x1')),
+                        Number(node.getAttribute('y1'))
+                      ),
+                      outer: Math.hypot(
+                        Number(node.getAttribute('x2')),
+                        Number(node.getAttribute('y2'))
+                      ),
+                    }))
+                    .filter((item) => item.outer > 0);
+                  const innerRadius = Math.min(...axes.map((item) => item.inner));
+                  const outerRadius = Math.max(...axes.map((item) => item.outer));
+                  const axisCount = labels.length;
+                  const tickGroups = Array.from({length: axisCount}, () => []);
+                  [...svg.querySelectorAll('text')]
+                    .filter((node) => Number(node.getAttribute('font-size') || 0) < 10)
+                    .forEach((node) => {
+                      const raw = clean(node.textContent);
+                      const tick = number(raw);
+                      const x = Number(node.getAttribute('x'));
+                      const y = Number(node.getAttribute('y'));
+                      if (tick === null || !Number.isFinite(x) || !Number.isFinite(y)) return;
+                      const angle = (Math.atan2(y, x) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+                      const index = Math.round(angle / (Math.PI * 2 / axisCount)) % axisCount;
+                      tickGroups[index].push({value: tick, raw});
+                    });
+                  const scaleFor = (index) => {
+                    const ticks = tickGroups[index] || [];
+                    return ticks.reduce((maximum, item) => Math.max(maximum, item.value), 0);
+                  };
+                  const precisionFor = (index) => {
+                    const ticks = tickGroups[index] || [];
+                    return Math.min(2, ticks.reduce((maximum, item) => {
+                      const decimal = item.raw.replace(',', '.').split('.')[1] || '';
+                      return Math.max(maximum, decimal.length);
+                    }, 0));
+                  };
+                  const point = (node, index) => {
                     if (!node) return 0;
-                    const point = svg.createSVGPoint();
-                    point.x = Number(node.getAttribute('cx'));
-                    point.y = Number(node.getAttribute('cy'));
-                    const absolute = point.matrixTransform(node.getCTM());
+                    const svgPoint = svg.createSVGPoint();
+                    svgPoint.x = Number(node.getAttribute('cx'));
+                    svgPoint.y = Number(node.getAttribute('cy'));
+                    const absolute = svgPoint.matrixTransform(node.getCTM());
                     const dx = absolute.x - centreX;
                     const dy = absolute.y - centreY;
-                    return Math.round(Math.max(0, Math.min(100,
-                      Math.hypot(dx, dy) / chartRadius * 100
-                    )) * 10) / 10;
+                    const normalized = Math.max(0, Math.min(100,
+                      (Math.hypot(dx, dy) - innerRadius) /
+                      Math.max(1, outerRadius - innerRadius) * 100
+                    ));
+                    const scaleMax = scaleFor(index);
+                    const precision = precisionFor(index);
+                    return {
+                      normalized: Math.round(normalized * 10) / 10,
+                      value: Number((normalized / 100 * scaleMax).toFixed(precision)),
+                      scaleMax,
+                      precision,
+                    };
                   };
+
+                  const tooltipValue = async (node) => {
+                    if (!node) return null;
+                    const rect = node.getBoundingClientRect();
+                    const options = {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                      clientX: rect.left + rect.width / 2,
+                      clientY: rect.top + rect.height / 2,
+                    };
+                    node.dispatchEvent(new MouseEvent('mouseenter', options));
+                    node.dispatchEvent(new MouseEvent('mouseover', options));
+                    node.dispatchEvent(new MouseEvent('mousemove', options));
+                    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+                    const root = svg.parentElement || svg;
+                    const tooltip = [...root.querySelectorAll('div')].find((item) => {
+                      const style = getComputedStyle(item);
+                      return style.visibility !== 'hidden' && style.display !== 'none' &&
+                        /:\s*-?\d/.test(clean(item.textContent));
+                    });
+                    if (!tooltip) return null;
+                    const text = clean(tooltip.textContent);
+                    const rawValue = clean(text.slice(text.lastIndexOf(':') + 1)).replace(',', '.');
+                    const value = number(rawValue);
+                    if (value === null) return null;
+                    return {
+                      value,
+                      precision: Math.min(2, (rawValue.split('.')[1] || '').replace(/\D/g, '').length),
+                    };
+                  };
+
                   const count = Math.min(labels.length, player.length, average.length);
-                  return labels.slice(0, count).map((label, index) => ({
-                    name: label,
-                    label,
-                    value: normalizedRadius(player[index]),
-                    player: normalizedRadius(player[index]),
-                    average: normalizedRadius(average[index]),
-                  }));
+                  const metrics = [];
+                  for (let index = 0; index < count; index += 1) {
+                    const playerPoint = point(player[index], index);
+                    const averagePoint = point(average[index], index);
+                    const rawPlayerTooltip = await tooltipValue(player[index]);
+                    const rawAverageTooltip = await tooltipValue(average[index]);
+                    const verifiedTooltip = (tooltip, geometry) => {
+                      if (!tooltip) return null;
+                      const tolerance = Math.max(
+                        geometry.scaleMax * 0.12,
+                        2 / Math.pow(10, geometry.precision)
+                      );
+                      return Math.abs(tooltip.value - geometry.value) <= tolerance
+                        ? tooltip
+                        : null;
+                    };
+                    const playerTooltip = verifiedTooltip(rawPlayerTooltip, playerPoint);
+                    const averageTooltip = verifiedTooltip(rawAverageTooltip, averagePoint);
+                    const label = labels[index];
+                    const isPercentage = /%|accurate|successf/i.test(label);
+                    metrics.push({
+                      name: label,
+                      label,
+                      value: playerTooltip?.value ?? playerPoint.value,
+                      player: playerTooltip?.value ?? playerPoint.value,
+                      average: averageTooltip?.value ?? averagePoint.value,
+                      player_normalized: playerPoint.normalized,
+                      average_normalized: averagePoint.normalized,
+                      scale_min: 0,
+                      scale_max: playerPoint.scaleMax,
+                      precision: Math.max(
+                        playerPoint.precision,
+                        averagePoint.precision,
+                        playerTooltip?.precision || 0,
+                        averageTooltip?.precision || 0
+                      ),
+                      unit: isPercentage ? '%' : 'per_90',
+                      scope: 'season_per_90',
+                      value_source: playerTooltip !== null && averageTooltip !== null
+                        ? 'sportsbase_tooltip'
+                        : 'sportsbase_axis_scale',
+                    });
+                  }
+                  return metrics;
                 }
                 """
             )
             print(
                 "[SPORTSBASE] Radar positionnel détecté — "
-                f"{len(metrics)} axe(s) — joueur vs moyenne du poste."
+                f"{len(metrics)} axe(s) — valeurs réelles joueur vs moyenne du poste."
             )
             comparison_png = self._build_position_comparison_radar(
                 metrics,
@@ -498,12 +618,6 @@ class SportsBaseSubscriptionScraper:
         for ring in (0.2, 0.4, 0.6, 0.8, 1.0):
             points = polygon(ring)
             draw.line(points + [points[0]], fill=grid, width=2)
-            draw.text(
-                (centre_x + 8, centre_y - radius * ring - 18),
-                str(round(ring * 100)),
-                font=small_font,
-                fill=(139, 155, 173, 255),
-            )
         for angle in angles:
             draw.line(
                 (
@@ -516,10 +630,19 @@ class SportsBaseSubscriptionScraper:
                 width=2,
             )
 
+        def normalized_value(item, key):
+            direct = item.get(f"{key}_normalized")
+            if direct is not None:
+                return max(0.0, min(100.0, float(direct)))
+            scale_max = float(item.get("scale_max") or 0)
+            if scale_max > 0:
+                return max(0.0, min(100.0, float(item.get(key) or 0) / scale_max * 100))
+            return max(0.0, min(100.0, float(item.get(key) or 0)))
+
         def series_points(key):
             points = []
             for angle, item in zip(angles, metrics):
-                value = max(0.0, min(100.0, float(item.get(key) or 0))) / 100
+                value = normalized_value(item, key) / 100
                 points.append(
                     (
                         centre_x + math.cos(angle) * radius * value,
@@ -581,6 +704,16 @@ class SportsBaseSubscriptionScraper:
                 spacing=3,
                 align="center",
             )
+            precision = max(0, min(2, int(item.get("precision") or 0)))
+            suffix = "%" if item.get("unit") == "%" else " /90"
+            player_value = f"{float(item.get('player') or 0):.{precision}f}".rstrip("0").rstrip(".")
+            average_value = f"{float(item.get('average') or 0):.{precision}f}".rstrip("0").rstrip(".")
+            values = f"J {player_value}{suffix}  ·  Moy {average_value}{suffix}"
+            value_box = draw.textbbox((0, 0), values, font=value_font)
+            value_width = value_box[2] - value_box[0]
+            value_x = x if math.cos(angle) > 0.2 else x + label_width - value_width if math.cos(angle) < -0.2 else x + (label_width - value_width) / 2
+            value_y = y + label_height + 5
+            draw.text((value_x, value_y), values, font=value_font, fill=muted)
 
         legend_y = height - 76
         draw.line((365, legend_y, 425, legend_y), fill=teal, width=7)
@@ -594,7 +727,7 @@ class SportsBaseSubscriptionScraper:
         )
         draw.text(
             (70, height - 30),
-            "Échelle SportsBase normalisée de 0 à 100",
+            "Valeurs réelles SportsBase par 90 minutes. La forme est normalisée séparément sur chaque axe.",
             font=value_font,
             fill=muted,
         )

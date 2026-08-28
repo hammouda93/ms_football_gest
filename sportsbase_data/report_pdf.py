@@ -39,11 +39,11 @@ PDF_COPY = {
         "score_total_note": "Total pondéré avant arrondi : {raw} points. Score de mission final : {score}/100.",
         "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
         "impact_note": "Chaque ligne ci-dessous appartient au calcul : elle n’est pas ajoutée après le verdict.",
-        "position_benchmark": "Radar du match face à la moyenne du poste",
+        "position_benchmark": "Profil saisonnier face à la moyenne du poste",
         "benchmark_position": "Référence retenue : {position} ({percent} % du profil SportsBase) · saison {season}",
-        "benchmark_match": "Match — note analytique",
-        "benchmark_average": "Moyenne SportsBase du poste",
-        "benchmark_raw": "Total réel du match",
+        "benchmark_match": "Joueur — valeur réelle /90",
+        "benchmark_average": "Moyenne du poste /90",
+        "benchmark_raw": "Échelle de l’axe",
         "benchmark_difference": "ÉCART",
         "not_assessed": "Non évalué",
         "coverage": "données observées",
@@ -131,11 +131,11 @@ PDF_COPY = {
         "score_total_note": "Weighted total before rounding: {raw} points. Final mission score: {score}/100.",
         "impact_drivers": "Why decisive actions count in the score",
         "impact_note": "Every line below belongs to the calculation; it is not added after the verdict.",
-        "position_benchmark": "Match radar against the position average",
+        "position_benchmark": "Season profile against the position average",
         "benchmark_position": "Selected reference: {position} ({percent}% of the SportsBase profile) · season {season}",
-        "benchmark_match": "Match — analytical score",
-        "benchmark_average": "SportsBase position average",
-        "benchmark_raw": "Real match total",
+        "benchmark_match": "Player — real value /90",
+        "benchmark_average": "Position average /90",
+        "benchmark_raw": "Axis scale",
         "benchmark_difference": "GAP",
         "not_assessed": "Not assessed",
         "coverage": "observed data",
@@ -223,11 +223,11 @@ PDF_COPY = {
         "score_total_note": "المجموع الموزون قبل التقريب: {raw} نقطة. درجة المهمة النهائية: {score}/100.",
         "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
         "impact_note": "كل سطر أدناه جزء من الحساب ولا يضاف بعد الخلاصة.",
-        "position_benchmark": "رادار المباراة مقارنة بمتوسط المركز",
+        "position_benchmark": "الملف الموسمي مقارنة بمتوسط المركز",
         "benchmark_position": "المرجع المختار: {position} ({percent}% من ملف سبورتس بايز) · موسم {season}",
-        "benchmark_match": "المباراة — الدرجة التحليلية",
-        "benchmark_average": "متوسط المركز في سبورتس بايز",
-        "benchmark_raw": "الرقم الحقيقي للمباراة",
+        "benchmark_match": "اللاعب — القيمة الحقيقية لكل 90",
+        "benchmark_average": "متوسط المركز لكل 90",
+        "benchmark_raw": "مقياس المحور",
         "benchmark_difference": "الفارق",
         "not_assessed": "غير مقيم",
         "coverage": "بيانات ملاحظة",
@@ -560,7 +560,7 @@ def render_performance_pdf(report):
             canvas.restoreState()
 
     class BenchmarkRadar(Flowable):
-        """Two-series vector radar: this match versus the position benchmark."""
+        """Two-series vector radar using raw values and axis-only normalisation."""
 
         def __init__(self, metrics, width=164 * mm, height=102 * mm):
             super().__init__()
@@ -594,7 +594,7 @@ def render_performance_pdf(report):
             cx, cy = self.width / 2, self.height / 2 + 7 * mm
             radius = min(self.width * 0.23, self.height * 0.31)
             canvas.saveState()
-            for ring, label in ((0.25, "25"), (0.5, "50"), (0.75, "75"), (1.0, "100")):
+            for ring in (0.25, 0.5, 0.75, 1.0):
                 points = []
                 for index in range(count):
                     angle = math.pi / 2 - 2 * math.pi * index / count
@@ -607,21 +607,18 @@ def render_performance_pdf(report):
                 canvas.setStrokeColor(colors.HexColor(LINE))
                 canvas.setLineWidth(0.45)
                 canvas.drawPath(path, stroke=1, fill=0)
-                canvas.setFillColor(colors.HexColor(MUTED))
-                canvas.setFont(font_name, 4.6)
-                canvas.drawString(cx + 1.2 * mm, cy + radius * ring, label)
 
             series = []
             for index, item in enumerate(self.metrics):
                 angle = math.pi / 2 - 2 * math.pi * index / count
                 canvas.setStrokeColor(colors.HexColor(LINE))
                 canvas.line(cx, cy, cx + radius * math.cos(angle), cy + radius * math.sin(angle))
-                average = max(0, min(100, float(item.get("position_average") or 0))) / 100
-                match = max(0, min(100, float(item.get("match_score") or 0))) / 100
+                average = max(0, min(100, float(item.get("average_normalized") or 0))) / 100
+                player = max(0, min(100, float(item.get("player_normalized") or 0))) / 100
                 series.append(
                     (
                         (cx + radius * average * math.cos(angle), cy + radius * average * math.sin(angle)),
-                        (cx + radius * match * math.cos(angle), cy + radius * match * math.sin(angle)),
+                        (cx + radius * player * math.cos(angle), cy + radius * player * math.sin(angle)),
                     )
                 )
                 label_radius = radius + 13 * mm
@@ -1429,21 +1426,33 @@ def render_performance_pdf(report):
             p(copy["indicator"], table_head),
             p(copy["benchmark_match"], table_head),
             p(copy["benchmark_average"], table_head),
-            p(copy["benchmark_raw"], table_head),
             p(copy["benchmark_difference"], table_head),
         ]]
         for item in benchmark_metrics:
             difference = item.get("difference")
+            precision = max(0, min(2, int(item.get("precision") or 0)))
+            unit = item.get("unit")
+
+            def radar_value(value):
+                if value is None:
+                    return "—"
+                rendered = f"{float(value):.{precision}f}".rstrip("0").rstrip(".")
+                return f"{rendered} %" if unit == "%" else f"{rendered} /90"
+
+            if difference is None:
+                difference_display = "—"
+            else:
+                rendered_difference = f"{float(difference):+.{precision}f}".rstrip("0").rstrip(".")
+                difference_display = f"{rendered_difference} pts" if unit == "%" else f"{rendered_difference} /90"
             benchmark_rows.append(
                 [
                     p(item.get("label") or item.get("metric"), small),
-                    p(f"{item.get('match_score')}/100", body_bold),
-                    p(f"{item.get('position_average')}/100", body),
-                    p(item.get("match_display") or "—", body),
-                    p("—" if difference is None else f"{difference:+.1f}", body_bold),
+                    p(radar_value(item.get("season_player")), body_bold),
+                    p(radar_value(item.get("position_average")), body),
+                    p(difference_display, body_bold),
                 ]
             )
-        story.append(standard_table(benchmark_rows, [51 * mm, 30 * mm, 32 * mm, 31 * mm, 25 * mm]))
+        story.append(standard_table(benchmark_rows, [62 * mm, 39 * mm, 39 * mm, 29 * mm]))
         section_number += 1
     story.extend([PageBreak(), section_title(copy["performance_reading"], section_number), p(copy["performance_note"], small), Spacer(1, 3 * mm)])
     section_number += 1

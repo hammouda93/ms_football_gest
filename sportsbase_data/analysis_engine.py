@@ -2244,12 +2244,11 @@ def _canonical_radar_metric(name):
 
 
 def _position_benchmark(target, context, group, language):
-    """Compare the match's role scores with SportsBase's position benchmark.
+    """Expose the real SportsBase season values behind the radar geometry.
 
-    SportsBase's red reference is already normalised from 0 to 100.  Match raw
-    totals cannot be overlaid on that scale, so each observed match indicator is
-    converted with the same transparent role criterion used in the mission
-    score.  Raw match values remain attached to every axis for auditability.
+    Every SportsBase radar axis has its own real-world scale.  The stored
+    normalised values are used only to draw comparable polygons; the report
+    displays the real player and same-position tournament values per 90.
     """
     context = context if isinstance(context, dict) else {}
     source = context.get("position_benchmark")
@@ -2270,43 +2269,65 @@ def _position_benchmark(target, context, group, language):
         season_player = _number(source_metric.get("player"))
         if season_player is None:
             season_player = _number(source_metric.get("value"))
-        if metric not in target:
-            match_result = None
-        else:
-            match_result = _metric_result(target, _spec_for_metric(group, metric), language)
-        match_score = match_result.get("score") if match_result else None
-        comparable = match_score is not None and average is not None
+        scale_max = _number(source_metric.get("scale_max"))
+        player_normalized = _number(source_metric.get("player_normalized"))
+        average_normalized = _number(source_metric.get("average_normalized"))
+        if scale_max and scale_max > 0:
+            if player_normalized is None and season_player is not None:
+                player_normalized = season_player / scale_max * 100
+            if average_normalized is None and average is not None:
+                average_normalized = average / scale_max * 100
+        has_real_scale = scale_max is not None and scale_max > 0
+        comparable = (
+            has_real_scale
+            and season_player is not None
+            and average is not None
+            and player_normalized is not None
+            and average_normalized is not None
+        )
+        unit = str(source_metric.get("unit") or ("%" if "%" in metric else "per_90"))
+        precision = max(0, min(2, int(_number(source_metric.get("precision"), missing_zero=True))))
         metrics.append(
             {
                 "metric": metric,
                 "label": _label(metric, language),
                 "definition": _definition(metric, language),
-                "match_display": match_result.get("display") if match_result else "—",
-                "match_score": match_score,
-                "position_average": round(average, 1) if average is not None else None,
-                "season_player": round(season_player, 1) if season_player is not None else None,
-                "difference": round(match_score - average, 1) if comparable else None,
+                "season_player": round(season_player, precision) if season_player is not None else None,
+                "position_average": round(average, precision) if average is not None else None,
+                "player_normalized": round(max(0, min(100, player_normalized)), 1)
+                if player_normalized is not None
+                else None,
+                "average_normalized": round(max(0, min(100, average_normalized)), 1)
+                if average_normalized is not None
+                else None,
+                "scale_min": 0,
+                "scale_max": round(scale_max, precision) if scale_max is not None else None,
+                "precision": precision,
+                "unit": unit,
+                "scope": str(source_metric.get("scope") or "season_per_90"),
+                "value_source": str(source_metric.get("value_source") or ""),
+                "difference": round(season_player - average, precision) if comparable else None,
                 "comparable": comparable,
             }
         )
     comparable_metrics = [item for item in metrics if item.get("comparable")]
     note = {
         "fr": (
-            "La moyenne du poste provient du radar saisonnier SportsBase, normalisé de 0 à 100. "
-            "La valeur du match est la note analytique MS Performance du même critère, également sur 100, "
-            "calculée à partir du total réel et de la fiabilité de l’échantillon. Les volumes bruts ne sont "
-            "jamais comparés directement à l’indice saisonnier."
+            "Ce radar décrit le profil saisonnier du joueur face à la moyenne réelle des joueurs du même poste "
+            "dans le championnat. Les nombres sont les valeurs SportsBase par 90 minutes ; les pourcentages "
+            "restent en %. Chaque axe possède sa propre échelle : la normalisation sert uniquement à dessiner "
+            "la forme et ne constitue ni une note sur 100 ni une projection de ce match."
         ),
         "en": (
-            "The position average comes from SportsBase's season radar, normalised from 0 to 100. The match "
-            "value is the MS Performance analytical score for the same criterion, also on a 0–100 scale, "
-            "using the real match total and sample reliability. Raw volumes are never compared directly with "
-            "the season index."
+            "This radar describes the player's season profile against the real tournament average for players "
+            "in the same position. Numbers are SportsBase values per 90 minutes and percentages remain in %. "
+            "Each axis has its own scale: normalisation is used only to draw the shape and is neither a score "
+            "out of 100 nor a projection of this match."
         ),
         "ar": (
-            "متوسط المركز مأخوذ من رادار سبورتس بايز الموسمي من 0 إلى 100. قيمة المباراة هي درجة تحليلية "
-            "من MS Performance للمعيار نفسه على 100 اعتمادا على الرقم الحقيقي وموثوقية العينة، ولا تتم مقارنة "
-            "الأحجام الخام مباشرة بالمؤشر الموسمي."
+            "يعرض هذا الرادار ملف اللاعب الموسمي مقارنة بالمتوسط الحقيقي للاعبي المركز نفسه في البطولة. "
+            "الأرقام هي قيم سبورتس بايز لكل 90 دقيقة وتبقى النسب المئوية بوحدة %. لكل محور مقياسه الخاص، "
+            "ويستخدم التطبيع للرسم فقط ولا يمثل درجة من 100 أو إسقاطا لأرقام هذه المباراة."
         ),
     }[language]
     return {
@@ -2316,7 +2337,7 @@ def _position_benchmark(target, context, group, language):
         "position_name": str(primary.get("name") or primary.get("code") or ""),
         "position_percent": round(_number(primary.get("percent"), missing_zero=True)),
         "selection_rule": "highest_position_percentage",
-        "scale": "normalized_0_100",
+        "scale": "real_per_90_values_axis_normalized_for_shape_only",
         "metrics": metrics,
         "comparable_metrics": comparable_metrics,
         "note": note,
@@ -2996,7 +3017,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "match_result_context_analysis": False,
             "index_usage": "explicit_verdict_validation_signal",
             "position_benchmark_selection": "highest_stored_position_percentage",
-            "position_benchmark_scale": "match_role_criterion_0_100_vs_sportsbase_season_position_average_0_100",
+            "position_benchmark_scale": "sportsbase_real_per_90_player_vs_position_average_axis_normalized_for_shape_only",
             "performance_reading": "three_non_overlapping_lenses_global_attacking_defensive",
             "xlsx_integrity": "all_players_sheet_columns_preserved_with_zero_events_explicit",
             "raw_volume_vs_season_index_comparison": False,

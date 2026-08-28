@@ -516,11 +516,11 @@ class PositionAnalysisTests(unittest.TestCase):
                     {"code": "RCM", "name": "Right central midfielder", "percent": 16},
                 ],
                 "radar_metrics": [
-                    {"name": "Chances", "player": 22.5, "average": 44.5},
-                    {"name": "Passes into the penalty box accurate...", "player": 93.1, "average": 70.7},
-                    {"name": "Defensive challenges", "player": 90.9, "average": 72.5},
-                    {"name": "Dribbling in the final third successf...", "player": 46.3, "average": 58.8},
-                    {"name": "Interceptions", "player": 59.5, "average": 59.3},
+                    {"name": "Chances", "player": 0.14, "average": 0.37, "player_normalized": 14.7, "average_normalized": 38.9, "scale_max": 0.95, "precision": 2, "unit": "per_90"},
+                    {"name": "Passes into the penalty box accurate...", "player": 93, "average": 71, "player_normalized": 93, "average_normalized": 71, "scale_max": 100, "precision": 0, "unit": "%"},
+                    {"name": "Defensive challenges", "player": 9.14, "average": 7.18, "player_normalized": 89.9, "average_normalized": 70.6, "scale_max": 10.17, "precision": 2, "unit": "per_90"},
+                    {"name": "Dribbling in the final third successf...", "player": 46, "average": 59, "player_normalized": 46, "average_normalized": 59, "scale_max": 100, "precision": 0, "unit": "%"},
+                    {"name": "Interceptions", "player": 3.37, "average": 3.36, "player_normalized": 55.4, "average_normalized": 55.3, "scale_max": 6.10, "precision": 2, "unit": "per_90", "value_source": "sportsbase_tooltip"},
                 ],
             }
         }
@@ -529,12 +529,35 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertTrue(benchmark["available"])
         self.assertEqual(benchmark["position_code"], "LCM")
         self.assertEqual(benchmark["position_percent"], 53)
-        self.assertEqual(benchmark["scale"], "normalized_0_100")
+        self.assertEqual(
+            benchmark["scale"],
+            "real_per_90_values_axis_normalized_for_shape_only",
+        )
         metrics = {item["metric"]: item for item in benchmark["metrics"]}
         self.assertIn("Passes into the penalty box accurate, %", metrics)
         self.assertIn("Dribbling in the final third successful, %", metrics)
-        self.assertEqual(metrics["Defensive challenges"]["position_average"], 72.5)
-        self.assertIn("volumes bruts", benchmark["note"])
+        self.assertEqual(metrics["Defensive challenges"]["position_average"], 7.18)
+        self.assertEqual(metrics["Interceptions"]["season_player"], 3.37)
+        self.assertEqual(metrics["Interceptions"]["position_average"], 3.36)
+        self.assertEqual(metrics["Interceptions"]["difference"], 0.01)
+        self.assertEqual(metrics["Interceptions"]["player_normalized"], 55.4)
+        self.assertIn("valeurs SportsBase par 90 minutes", benchmark["note"])
+
+    def test_legacy_normalized_radar_is_not_presented_as_a_real_value(self):
+        rows = [_row("Target", "A", "LCM", 90), _row("Opponent", "B", "LCM", 90)]
+        context = {
+            "position_benchmark": {
+                "positions": [{"code": "LCM", "percent": 100}],
+                "radar_metrics": [
+                    {"name": "Chances", "player": 22.5, "average": 44.5},
+                    {"name": "Shots", "player": 60.0, "average": 50.0},
+                    {"name": "Interceptions", "player": 59.5, "average": 59.3},
+                ],
+            }
+        }
+        benchmark = analyse_match_dataset(rows, "Target", "fr", context=context)["position_benchmark"]
+        self.assertFalse(benchmark["available"])
+        self.assertFalse(any(item["comparable"] for item in benchmark["metrics"]))
 
     def test_trabelsi_style_involvement_and_box_actions_are_read_exactly(self):
         rows = [
