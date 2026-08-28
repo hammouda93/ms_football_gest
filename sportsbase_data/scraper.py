@@ -26,7 +26,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v19-20260828"
+SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v20-20260828"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -2630,6 +2630,30 @@ class SportsBaseSubscriptionScraper:
         """Generate All Actions last, then click each ready row exactly once."""
         if not queue:
             return
+
+        if any(should_generate for _match, _item, should_generate in queue):
+            # Reading the enriched XLSX happens in a second match tab. SportsBase
+            # can then re-render the player page while keeping a stale match row
+            # without its action buttons. Rebuild the exact page state used by
+            # the proven pre-XLSX workflow before requesting All Actions.
+            print(
+                "[SPORTSBASE] Retour à la page joueur après le XLSX pour "
+                "préparer All Actions…"
+            )
+            self.automation.ensure_logged_in_and_open_player(
+                page, job["player"]["sportsbase_url"]
+            )
+            self.automation.open_player_statistics(page)
+            try:
+                matches_played = self.automation.get_matches_played(
+                    page, seasons_to_process=1
+                )
+            except Exception:
+                matches_played = 100
+            self.automation.expand_matches_list(page, matches_played)
+            print(
+                "[SPORTSBASE] Liste des matchs restaurée — génération All Actions"
+            )
 
         generated_matches = []
         for match_data, _match_item, should_generate in queue:
