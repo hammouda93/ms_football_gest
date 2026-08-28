@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "ms-position-score-calibration-v11-20260828"
+ANALYSIS_VERSION = "ms-position-score-phases-v12-20260828"
 
 
 # The public InStat / Wyscout / SportsBase products do not publish a formula
@@ -183,6 +183,7 @@ TEXT = {
             "unseen": "À CONFIRMER",
         },
         "counterpart": "Homologue adverse au même poste",
+        "teammate_counterpart": "Coéquipier au profil symétrique",
         "sample_caution": (
             "Les volumes affichés sont les totaux réels du match. Aucun événement n’est "
             "projeté sur 90 minutes. Les pourcentages sont toujours lus avec leur nombre "
@@ -262,6 +263,7 @@ TEXT = {
             "unseen": "TO CONFIRM",
         },
         "counterpart": "Opposition player in the exact same position",
+        "teammate_counterpart": "Team-mate in the symmetric role profile",
         "sample_caution": (
             "Displayed volumes are the player's real match totals. No event is projected "
             "to 90 minutes. Every percentage is read with its attempt count."
@@ -339,6 +341,7 @@ TEXT = {
             "unseen": "يحتاج إلى تأكيد",
         },
         "counterpart": "اللاعب المنافس في نفس المركز تماما",
+        "teammate_counterpart": "زميل الفريق في الملف المقابل للمركز",
         "sample_caution": (
             "الأحجام المعروضة هي الأرقام الحقيقية للمباراة ولا يتم تحويلها إلى 90 دقيقة. "
             "كل نسبة تقرأ مع عدد المحاولات."
@@ -941,6 +944,122 @@ DIMENSION_LABELS = {
 }
 
 
+DIMENSION_DESCRIPTIONS = {
+    "fr": {
+        "distribution": "Jouer proprement avec les partenaires proches et trouver les premières passes utiles.",
+        "space_control": "Intervenir dans l’espace à protéger et récupérer les ballons accessibles.",
+        "risk_control": "Éviter les pertes dangereuses, les erreurs créant une occasion et les erreurs menant à un but.",
+        "build_up": "Donner du volume et de la sécurité à la première relance.",
+        "ground_control": "Gagner les interventions au sol et empêcher l’adversaire de progresser.",
+        "aerial_control": "Répondre présent dans les duels aériens, avec le volume et le taux de réussite visibles.",
+        "progression": "Faire avancer le jeu par passes progressives, passes vers l’avant ou conduites dans le dernier tiers.",
+        "defending": "Gagner les duels utiles, réussir les tacles et intercepter sans concéder d’erreur majeure.",
+        "delivery": "Créer depuis le couloir par les centres, les passes dans la surface et les passes préparant un tir.",
+        "attacking_support": "Accompagner l’attaque par les dribbles, la présence dans la surface et les actions dangereuses réussies.",
+        "ball_security": "Conserver une utilisation fiable du ballon et limiter les pertes dans les zones à risque.",
+        "protection": "Protéger l’axe par les récupérations, duels défensifs, tacles et interceptions.",
+        "circulation": "Participer au jeu avec un volume de passes cohérent et une exécution propre.",
+        "switching": "Changer le point d’attaque grâce aux passes longues et très longues réussies.",
+        "transition_control": "Freiner les transitions adverses et sécuriser le replacement après perte.",
+        "final_third_presence": "Entrer dans le dernier tiers, éliminer et produire des actions utiles dans ou autour de la surface.",
+        "creation": "Préparer des tirs et trouver des partenaires dans la surface par des passes utiles.",
+        "duel_balance": "Apporter un équilibre défensif par les duels, tacles, interceptions et récupérations.",
+        "between_lines": "Recevoir, progresser et éliminer entre les lignes pour rapprocher l’équipe du but.",
+        "one_v_one": "Éliminer directement l’adversaire et conserver un bon taux de réussite dans les dribbles.",
+        "goal_threat": "Se mettre en position de tirer et transformer la présence offensive en menace réelle.",
+        "counterpress": "Réagir après la perte, récupérer haut et gagner les premiers duels défensifs.",
+        "box_presence": "Être réellement présent dans la surface par les actions réussies et les tirs dans la zone décisive.",
+        "finishing": "Cadrer les tirs disponibles et convertir les occasions, notamment dans la surface et de la tête.",
+        "link_play": "Relier les partenaires, sécuriser les remises et préparer une action de tir.",
+        "direct_play": "Résister aux duels offensifs, jouer dans les airs et éliminer pour faire avancer l’attaque.",
+        "defensive_work": "Presser, récupérer haut et contribuer sans ballon sans multiplier les pertes.",
+        "impact": "Peser directement sur le score ou les occasions par les buts, passes décisives, passes clés, occasions créées et implication dans les attaques de but.",
+        "involvement": "Être disponible et actif : le volume d’actions mesure la présence dans le jeu, leur taux de réussite mesure la qualité d’exécution.",
+    },
+    "en": {
+        "distribution": "Connect cleanly with nearby team-mates and find the first useful passes.",
+        "space_control": "Intervene in the space to protect and recover reachable balls.",
+        "risk_control": "Avoid dangerous losses, chance-creating mistakes and goal-leading errors.",
+        "build_up": "Provide volume and security in the first build-up line.",
+        "ground_control": "Win ground interventions and stop the opponent progressing.",
+        "aerial_control": "Compete in the air, with both volume and success rate kept visible.",
+        "progression": "Move play forward through progressive passes, forward passes or carries into the final third.",
+        "defending": "Win useful duels, complete tackles and intercept without major errors.",
+        "delivery": "Create from wide areas through crosses, box entries and shot-assisting passes.",
+        "attacking_support": "Support attacks through dribbles, box presence and successful dangerous actions.",
+        "ball_security": "Use the ball reliably and limit losses in high-risk zones.",
+        "protection": "Protect the centre through recoveries, defensive duels, tackles and interceptions.",
+        "circulation": "Stay involved through an appropriate passing volume and clean execution.",
+        "switching": "Change the point of attack through successful long and super-long passes.",
+        "transition_control": "Slow opposition transitions and secure the reaction after losing possession.",
+        "final_third_presence": "Enter the final third, eliminate opponents and produce useful actions around the box.",
+        "creation": "Set up shots and find team-mates in the box with useful passes.",
+        "duel_balance": "Provide defensive balance through duels, tackles, interceptions and recoveries.",
+        "between_lines": "Receive, progress and eliminate between the lines to move the team closer to goal.",
+        "one_v_one": "Beat the direct opponent while maintaining a useful dribble success rate.",
+        "goal_threat": "Reach shooting positions and turn attacking presence into real threat.",
+        "counterpress": "React after losing the ball, recover high and win the first defensive duels.",
+        "box_presence": "Occupy the box through successful actions and shots in the decisive zone.",
+        "finishing": "Put available shots on target and convert chances, including headers and box shots.",
+        "link_play": "Connect team-mates, secure combinations and prepare shooting actions.",
+        "direct_play": "Compete in attacking duels, play in the air and beat opponents to advance the attack.",
+        "defensive_work": "Press, recover high and contribute off the ball without excessive losses.",
+        "impact": "Directly affect goals and chances through goals, assists, key passes, chances created and involvement in scoring attacks.",
+        "involvement": "Be available and active: action volume measures involvement, while success rate measures execution quality.",
+    },
+    "ar": {
+        "distribution": "الربط الجيد مع الزملاء وإيجاد التمريرة الأولى المفيدة.",
+        "space_control": "التدخل في المساحة المطلوب حمايتها واسترجاع الكرات الممكنة.",
+        "risk_control": "تجنب فقدان الكرة الخطير والأخطاء التي تصنع فرصة أو هدفا.",
+        "build_up": "منح البناء الأول حجما وأمانا في التمرير.",
+        "ground_control": "الفوز بالتدخلات الأرضية ومنع المنافس من التقدم.",
+        "aerial_control": "الحضور في الكرات الهوائية مع إظهار الحجم ونسبة النجاح.",
+        "progression": "تقديم اللعب بالتمريرات التقدمية أو الأمامية أو الحمل إلى الثلث الأخير.",
+        "defending": "الفوز بالثنائيات المفيدة ونجاح التدخلات والاعتراض دون أخطاء كبيرة.",
+        "delivery": "الصناعة من الرواق بالعرضيات والتمريرات إلى المنطقة والتمريرات التي تحضر تسديدة.",
+        "attacking_support": "مساندة الهجوم بالمراوغة والحضور داخل المنطقة والأفعال الخطرة الناجحة.",
+        "ball_security": "استعمال الكرة بأمان وتقليل الخسائر في المناطق الخطرة.",
+        "protection": "حماية العمق بالاسترجاع والثنائيات الدفاعية والتدخلات والاعتراضات.",
+        "circulation": "المشاركة بحجم تمرير مناسب وتنفيذ نظيف.",
+        "switching": "تغيير جهة اللعب بالتمريرات الطويلة والطويلة جدا الناجحة.",
+        "transition_control": "إبطاء تحول المنافس وتأمين رد الفعل بعد فقدان الكرة.",
+        "final_third_presence": "دخول الثلث الأخير وتجاوز المنافس وإنتاج أفعال مفيدة قرب المنطقة وداخلها.",
+        "creation": "تحضير التسديدات وإيجاد الزملاء داخل المنطقة بتمريرات مفيدة.",
+        "duel_balance": "توفير التوازن الدفاعي بالثنائيات والتدخلات والاعتراضات والاسترجاع.",
+        "between_lines": "الاستلام والتقدم وتجاوز المنافس بين الخطوط للاقتراب من المرمى.",
+        "one_v_one": "تجاوز المنافس المباشر مع الحفاظ على نسبة نجاح مفيدة في المراوغة.",
+        "goal_threat": "الوصول إلى وضعيات التسديد وتحويل الحضور الهجومي إلى خطورة حقيقية.",
+        "counterpress": "رد الفعل بعد الفقدان والاسترجاع عاليا والفوز بأول ثنائي دفاعي.",
+        "box_presence": "الحضور الحقيقي داخل المنطقة بالأفعال الناجحة والتسديدات في المنطقة الحاسمة.",
+        "finishing": "توجيه التسديدات المتاحة وتحويل الفرص بما فيها الكرات الرأسية وتسديدات المنطقة.",
+        "link_play": "ربط الزملاء وتأمين التبادلات وتحضير فعل ينتهي بتسديدة.",
+        "direct_play": "مقاومة الثنائيات الهجومية واللعب الهوائي وتجاوز المنافس لتقديم الهجوم.",
+        "defensive_work": "الضغط والاسترجاع عاليا والمساهمة دون كرة مع تقليل الخسائر.",
+        "impact": "التأثير المباشر في الأهداف والفرص عبر التسجيل والتمرير الحاسم والمفتاحي وصناعة الفرص والمشاركة في هجمات التسجيل.",
+        "involvement": "التوفر والنشاط: حجم الأفعال يقيس المشاركة ونسبة النجاح تقيس جودة التنفيذ.",
+    },
+}
+
+
+DIMENSION_PHASES = {
+    "distribution": "construction", "build_up": "construction", "circulation": "construction",
+    "switching": "construction", "ball_security": "construction", "involvement": "involvement",
+    "progression": "progression", "between_lines": "progression", "final_third_presence": "progression",
+    "impact": "decisive", "creation": "decisive", "delivery": "decisive", "attacking_support": "decisive",
+    "one_v_one": "decisive", "goal_threat": "decisive", "box_presence": "decisive", "finishing": "decisive",
+    "link_play": "decisive", "direct_play": "decisive",
+    "space_control": "defensive", "risk_control": "defensive", "ground_control": "defensive",
+    "aerial_control": "defensive", "defending": "defensive", "protection": "defensive",
+    "transition_control": "defensive", "counterpress": "defensive", "defensive_work": "defensive",
+}
+
+PHASE_LABELS = {
+    "fr": {"involvement": "Implication dans le jeu", "construction": "Construction et qualité de passe", "progression": "Progression et dernier tiers", "decisive": "Création, surface et impact décisif", "defensive": "Duels, récupération et sécurité"},
+    "en": {"involvement": "Involvement in play", "construction": "Build-up and passing quality", "progression": "Progression and final third", "decisive": "Creation, box presence and decisive impact", "defensive": "Duels, recoveries and security"},
+    "ar": {"involvement": "المشاركة في اللعب", "construction": "البناء وجودة التمرير", "progression": "التقدم والثلث الأخير", "decisive": "الصناعة والحضور في المنطقة والتأثير الحاسم", "defensive": "الثنائيات والاسترجاع والأمان"},
+}
+
+
 def _s(
     metric,
     kind="volume",
@@ -1240,6 +1359,35 @@ GLOBAL_BENCHMARK_METRICS = {
     "attacking_midfielder": ("Index", "__duels_won__", "Dribbles successful, %", "Key passes", "Passes for a shot", "Actions in opponent's box"),
     "winger": ("Index", "__duels_won__", "Dribbles successful, %", "Crosses accurate, %", "Shots on target, %", "Actions in opponent's box"),
     "forward": ("Index", "__duels_won__", "Attacking challenges won, %", "Shots on target from the penalty area, %", "Headers on target, %", "Shots from the penalty area", "Actions in opponent's box"),
+}
+
+
+ROLE_COMPARISON_METRICS = {
+    "goalkeeper": ("Actions successful, %", "Passes accurate, %", "Long passes accurate, %", "Progressive passes", "Interceptions", "Mistakes leading to chances"),
+    "centre_back": ("Goals", "Assists", "Actions successful, %", "Passes accurate, %", "Defensive challenges won, %", "Interceptions", "Ball recoveries", "Progressive passes", "Mistakes leading to chances"),
+    "full_back": ("Goals", "Assists", "Key passes", "Actions in opponent's box successful, %", "Final third entries", "Progressive passes", "Crosses accurate, %", "Defensive challenges won, %", "Dribbles successful, %"),
+    "wing_back": ("Goals", "Assists", "Key passes", "Actions in opponent's box successful, %", "Final third entries", "Progressive passes", "Crosses accurate, %", "Defensive challenges won, %", "Dribbles successful, %"),
+    "holding_midfielder": ("Goals", "Assists", "Actions successful, %", "Ball recoveries", "Defensive challenges won, %", "Progressive passes", "Passes forward to the final third", "Passes accurate, %"),
+    "box_to_box_midfielder": ("Goals", "Assists", "Key passes", "Actions successful, %", "Dribbles successful, %", "Involvement in scoring attacks", "Progressive passes", "Final third entries", "Actions in opponent's box"),
+    "attacking_midfielder": ("Goals", "Assists", "Key passes", "Chances created", "Actions successful, %", "Dribbles successful, %", "Final third entries", "Actions in opponent's box", "xG (expected goals)"),
+    "winger": ("Goals", "Assists", "Key passes", "Chances created", "Dribbles successful, %", "Actions successful, %", "Final third entries", "Actions in opponent's box", "Shots on target, %"),
+    "forward": ("Goals", "Assists", "xG (expected goals)", "Chances", "Involvement in scoring attacks", "Actions in opponent's box successful, %", "Shots on target, %", "Headers on target, %", "Attacking challenges won, %"),
+}
+
+
+# The same direct event does not represent the same share of the job for every
+# position.  Mission weights already encode most of that difference; this
+# second, bounded scale only adjusts the small decisive bonus.
+DECISIVE_ROLE_SCALE = {
+    "goalkeeper": 0.65,
+    "centre_back": 0.70,
+    "full_back": 0.85,
+    "wing_back": 0.95,
+    "holding_midfielder": 0.80,
+    "box_to_box_midfielder": 0.95,
+    "attacking_midfielder": 1.05,
+    "winger": 1.05,
+    "forward": 1.15,
 }
 
 BENCHMARK_LABELS = {
@@ -1714,6 +1862,12 @@ def _role_dimensions(target, group, language):
             {
                 "key": key,
                 "label": DIMENSION_LABELS[language].get(key, key),
+                "description": DIMENSION_DESCRIPTIONS[language].get(key, ""),
+                "phase": DIMENSION_PHASES.get(key, "involvement"),
+                "phase_label": PHASE_LABELS[language].get(
+                    DIMENSION_PHASES.get(key, "involvement"),
+                    DIMENSION_LABELS[language].get(key, key),
+                ),
                 "score": score,
                 "coverage": coverage,
                 "grade_code": grade_code,
@@ -1974,7 +2128,7 @@ def _round_half_up(value):
     return math.floor(float(value) + 0.5 + 1e-9)
 
 
-def _bounded_decisive_adjustment(target, language):
+def _bounded_decisive_adjustment(target, language, group):
     """Return a small, diminishing adjustment for match-changing actions.
 
     Direct outcomes are deliberately stronger than supporting actions, while
@@ -1989,21 +2143,24 @@ def _bounded_decisive_adjustment(target, language):
         direct += 4.0 + min(max(goals - 1, 0), 2) * 1.5 + max(goals - 3, 0) * 0.75
     if assists > 0:
         direct += 3.5 + min(max(assists - 1, 0), 2) * 1.25 + max(assists - 3, 0) * 0.5
-    direct = min(6.5, direct)
+    role_scale = DECISIVE_ROLE_SCALE.get(group, 1.0)
+    direct = min(7.0, direct * role_scale)
 
     successful_dribbles = _successful_actions(target, "Dribbles successful, %") or 0
     successful_box_actions = _successful_actions(
         target, "Actions in opponent's box successful, %"
     ) or 0
     supporting = min(
-        2.0,
+        2.25,
+        (
         0.45 * _number(target.get("Key passes"), missing_zero=True)
         + 0.55 * _number(target.get("Chances created"), missing_zero=True)
         + 0.30 * _number(target.get("Chances"), missing_zero=True)
         + 0.50 * _number(target.get("Involvement in scoring attacks"), missing_zero=True)
         + min(0.75, _number(target.get("xG (expected goals)"), missing_zero=True))
         + 0.20 * successful_dribbles
-        + 0.15 * successful_box_actions,
+        + 0.15 * successful_box_actions
+        ) * max(0.85, min(1.10, role_scale)),
     )
 
     penalty = min(
@@ -2110,7 +2267,7 @@ def _bounded_context_adjustment(rankings, language):
     ]
 
 
-def _score_breakdown(dimensions, language, *, target=None, rankings=None):
+def _score_breakdown(dimensions, language, *, target=None, rankings=None, group=None):
     """Expose every coefficient used by the mission-score formula."""
     total_dimension_weight = sum(item.get("weight", 0) for item in dimensions)
     effect_labels = {
@@ -2186,6 +2343,9 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
             {
                 "key": dimension.get("key"),
                 "label": dimension.get("label"),
+                "description": dimension.get("description"),
+                "phase": dimension.get("phase"),
+                "phase_label": dimension.get("phase_label"),
                 "configured_weight": dimension.get("weight", 0),
                 "effective_weight": round(effective_weight, 1),
                 "score": dimension.get("score") if used else None,
@@ -2204,6 +2364,7 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
             "Le MS Score répond à une question simple : le joueur a-t-il rempli les missions prioritaires de son "
             "poste pendant ses minutes réelles ? La plus grande partie de la note vient de ces missions. Les buts, "
             "passes décisives, passes clés, occasions, xG et actions dangereuses valorisent ensuite l’impact direct ; "
+            "leur poids est plus élevé pour les postes dont la mission première est de décider dans les trente derniers mètres. "
             "le rang dans l’équipe et la rencontre sert seulement de confirmation. Une action non rencontrée dans "
             "le match n’est pas automatiquement considérée comme une faiblesse et aucun total n’est projeté sur 90 minutes."
         ),
@@ -2211,12 +2372,13 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
             "MS Score answers one simple question: did the player fulfil the priority missions of the position during "
             "the minutes actually played? Most of the score comes from those missions. Goals, assists, key passes, "
             "chances, xG and dangerous actions then reward direct impact; team and match rank are confirmation only. "
+            "Their weight is higher for positions whose primary job is to decide in the final third. "
             "An action that did not arise is not automatically treated as a weakness, and totals are never projected to 90 minutes."
         ),
         "ar": (
             "يجيب مؤشر MS عن سؤال بسيط: هل نفذ اللاعب أهم مهام مركزه خلال الدقائق التي لعبها فعليا؟ تأتي أغلب "
             "الدرجة من هذه المهام، ثم تعزز الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والأفعال "
-            "الخطرة التأثير المباشر، بينما يستخدم الترتيب داخل الفريق والمباراة للتأكيد فقط. عدم حدوث فعل معين لا "
+            "الخطرة التأثير المباشر ويزداد وزنها للمراكز الهجومية، بينما يستخدم الترتيب داخل الفريق والمباراة للتأكيد فقط. عدم حدوث فعل معين لا "
             "يعد ضعفا تلقائيا ولا تحول الأرقام إلى 90 دقيقة."
         ),
     }[language]
@@ -2301,7 +2463,9 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
                     }[language],
                 }
             )
-    decisive_adjustment, decisive_events = _bounded_decisive_adjustment(target or {}, language)
+    decisive_adjustment, decisive_events = _bounded_decisive_adjustment(
+        target or {}, language, group or _group(target or {})
+    )
     context_adjustment, context_events = _bounded_context_adjustment(rankings or {}, language)
     score_before_clamp = raw_total + decisive_adjustment + context_adjustment
     total_points = _round_half_up(max(0, min(100, score_before_clamp)))
@@ -2350,6 +2514,7 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
         "position_score": round(raw_total, 2),
         "mission_points": round(raw_total, 2),
         "decisive_adjustment": decisive_adjustment,
+        "decisive_role_scale": DECISIVE_ROLE_SCALE.get(group or _group(target or {}), 1.0),
         "decisive_points": round(decisive_positive, 2),
         "context_adjustment": context_adjustment,
         "ranking_points": context_adjustment,
@@ -2758,24 +2923,33 @@ def _homologous_position_codes(position):
     return groups.get(position, (position,))
 
 
-def _same_position_comparison(target, opponents, title, language, key_metrics, group):
-    """Compare only with the opposition player's exact or narrow equivalent position."""
-    position = _position(target)
-    selected = [row for row in opponents if _position(row) == position and _minutes(row) > 0]
-    match_type = "exact"
-    if not selected:
-        equivalents = set(_homologous_position_codes(position)) - {position}
-        selected = [row for row in opponents if _position(row) in equivalents and _minutes(row) > 0]
-        match_type = "equivalent"
-    if not selected:
-        return None
-    counterpart = max(selected, key=_minutes)
+def _teammate_profile_codes(position):
+    """Return the narrow same-team mirror used for a secondary comparison."""
+    groups = {
+        "RB": ("LB", "LWB"), "LB": ("RB", "RWB"),
+        "RWB": ("LWB", "LB"), "LWB": ("RWB", "RB"),
+        "RCB": ("LCB", "CB"), "LCB": ("RCB", "CB"), "CB": ("RCB", "LCB"),
+        "RCM": ("LCM", "CM"), "LCM": ("RCM", "CM"), "CM": ("RCM", "LCM"),
+        "RDM": ("LDM", "DM", "CDM"), "LDM": ("RDM", "DM", "CDM"),
+        "RCDM": ("LCDM", "DM", "CDM"), "LCDM": ("RCDM", "DM", "CDM"),
+        "DM": ("RDM", "LDM", "RCDM", "LCDM"), "CDM": ("RDM", "LDM", "RCDM", "LCDM"),
+        "RCAM": ("LCAM", "CAM"), "LCAM": ("RCAM", "CAM"), "CAM": ("RCAM", "LCAM"),
+        "RW": ("LW", "LM", "LAM"), "LW": ("RW", "RM", "RAM"),
+        "RM": ("LM", "LW", "LAM"), "LM": ("RM", "RW", "RAM"),
+        "RAM": ("LAM", "LW", "LM"), "LAM": ("RAM", "RW", "RM"),
+        "RCF": ("LCF", "CF", "ST"), "LCF": ("RCF", "CF", "ST"),
+        "CF": ("ST", "RCF", "LCF"), "ST": ("CF", "RCF", "LCF"),
+    }
+    return groups.get(position, ())
+
+
+def _comparison_payload(target, counterpart, title, language, key_metrics, group, match_type):
     target_minutes, opponent_minutes = _minutes(target), _minutes(counterpart)
     maximum = max(target_minutes, opponent_minutes)
     ratio = min(target_minutes, opponent_minutes) / maximum if maximum else 0
     comparable = abs(target_minutes - opponent_minutes) <= 15 or ratio >= 0.75
     metrics = []
-    for metric in key_metrics[:6]:
+    for metric in key_metrics:
         target_value, target_display, lower = _format_comparison_value(target, metric, group, language)
         opponent_value, opponent_display, _lower = _format_comparison_value(counterpart, metric, group, language)
         metrics.append(
@@ -2786,6 +2960,8 @@ def _same_position_comparison(target, opponents, title, language, key_metrics, g
                 "target_display": target_display,
                 "opponent": opponent_value,
                 "opponent_display": opponent_display,
+                "reference": opponent_value,
+                "reference_display": opponent_display,
                 "lower_is_better": lower,
                 "volume_comparable": comparable or metric in RATE_WEIGHTS or "%" in metric,
             }
@@ -2800,6 +2976,52 @@ def _same_position_comparison(target, opponents, title, language, key_metrics, g
         "comparable_minutes": comparable,
         "metrics": metrics,
     }
+
+
+def _same_position_comparison(target, opponents, title, language, key_metrics, group):
+    """Compare only with the opposition player's exact or narrow equivalent position."""
+    position = _position(target)
+    selected = [row for row in opponents if _position(row) == position and _minutes(row) > 0]
+    match_type = "exact"
+    if not selected:
+        equivalents = set(_homologous_position_codes(position)) - {position}
+        selected = [row for row in opponents if _position(row) in equivalents and _minutes(row) > 0]
+        match_type = "equivalent"
+    if not selected:
+        return None
+    return _comparison_payload(
+        target,
+        max(selected, key=_minutes),
+        title,
+        language,
+        key_metrics,
+        group,
+        match_type,
+    )
+
+
+def _teammate_profile_comparison(target, teammates, title, language, key_metrics, group):
+    """Compare with one same-team mirror profile, never with a whole unit."""
+    preferred = set(_teammate_profile_codes(_position(target)))
+    selected = [
+        row for row in teammates
+        if _position(row) in preferred and _minutes(row) > 0 and _group(row) == group
+    ]
+    match_type = "symmetric"
+    if not selected:
+        selected = [row for row in teammates if _minutes(row) > 0 and _group(row) == group]
+        match_type = "same_role"
+    if not selected:
+        return None
+    return _comparison_payload(
+        target,
+        max(selected, key=_minutes),
+        title,
+        language,
+        key_metrics,
+        group,
+        match_type,
+    )
 
 
 def _benchmark_value(row, metric):
@@ -3338,6 +3560,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         language,
         target=target,
         rankings=rankings,
+        group=group,
     )
     ms_score = score_breakdown.get("total_points")
     confidence = _confidence(_minutes(target), language)
@@ -3352,13 +3575,27 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         mission_quality_score=profile_score,
     )
     opponents = [row for row in rows if str(row.get("Team") or "") == opponent_team]
+    teammates = [
+        row for row in rows
+        if str(row.get("Team") or "") == target_team
+        and _plain(row.get("Player")) != _plain(target.get("Player"))
+    ]
     copy = TEXT[language]
+    comparison_metrics = ROLE_COMPARISON_METRICS.get(group, KEY_METRICS[group])
     counterpart = _same_position_comparison(
         target,
         opponents,
         copy["counterpart"],
         language,
-        KEY_METRICS[group],
+        comparison_metrics,
+        group,
+    )
+    teammate_counterpart = _teammate_profile_comparison(
+        target,
+        teammates,
+        copy["teammate_counterpart"],
+        language,
+        comparison_metrics,
         group,
     )
     global_benchmarks = _global_benchmarks(target, rows, group, language)
@@ -3392,6 +3629,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         "position_benchmark": position_benchmark,
         "key_metrics": key_metrics,
         "same_position_comparison": counterpart,
+        "teammate_profile_comparison": teammate_counterpart,
         "global_benchmarks": global_benchmarks,
         "narrative": narrative,
         "glossary": [
@@ -3416,7 +3654,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "volume_normalisation": "none_raw_match_totals",
             "duration_calibration": "six_coarse_playing_time_windows",
             "rate_aggregation": "weighted_by_attempts",
-            "comparison_scope": "same_or_strictly_equivalent_position_and_individual_match_leaders_only",
+            "comparison_scope": "opposition_same_position_plus_one_symmetric_teammate_profile_and_individual_match_leaders_only",
             "collective_unit_analysis": False,
             "match_result_context_analysis": False,
             "index_usage": "display_offset_plus_20_with_unchanged_rank_validation",

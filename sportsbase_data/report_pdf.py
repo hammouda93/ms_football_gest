@@ -19,7 +19,7 @@ PDF_COPY = {
         "reliability": "FIABILITÉ",
         "index": "INDICE MS",
         "mission_score": "MS SCORE",
-        "verdict": "Verdict de l’analyste",
+        "verdict": "Opinion de l’analyste",
         "decisive_facts": "Faits décisifs de la rencontre",
         "rankings": "Repères dans le match",
         "index_team": "Rang Index — équipe",
@@ -27,7 +27,7 @@ PDF_COPY = {
         "index_position": "Rang Index — poste homologue",
         "index_note": "L’Indice MS offre un repère global. Le classement dans l’équipe et dans la rencontre confirme le contexte, mais les missions du poste restent la base de l’évaluation.",
         "role_missions": "Missions du poste",
-        "mission_note": "Chaque score juge uniquement cette apparition. Les missions et critères sont classés selon leur importance pour le poste.",
+        "mission_note": "Chaque score juge uniquement cette apparition. Les missions sont classées par importance et rattachées à une phase de jeu pour rendre la lecture immédiate.",
         "score_explained": "Comment le MS Score est calculé",
         "configured_weight": "POIDS POSTE",
         "effective_weight": "POIDS FIXE DU POSTE",
@@ -56,7 +56,7 @@ PDF_COPY = {
         "coverage": "données observées",
         "key_metrics": "Indicateurs clés du poste",
         "performance_reading": "Lecture du match par phase",
-        "performance_note": "Une seule lecture, sans doublon : implication globale, contribution offensive puis contribution défensive. Les définitions sont placées directement sous les KPI utiles.",
+        "performance_note": "Les informations sont centralisées par phase : implication, qualité de passe, progression et dernier tiers, présence dans la surface et impact décisif, puis duels et récupération. Les définitions sont placées sous les KPI utiles.",
         "raw_note": "Totaux réels du match, sans projection sur 90 minutes. Un taux est toujours présenté avec son dénominateur.",
         "indicator": "INDICATEUR",
         "real_value": "VALEUR RÉELLE",
@@ -79,20 +79,22 @@ PDF_COPY = {
         "central": "Axe",
         "strengths": "Ce qui a été bien fait",
         "risks": "Points à améliorer",
-        "development": "Plan d’action individuel",
+        "development": "Plan d’action individuel — à valider avec l’analyste",
         "video_check": "À confirmer avec la vidéo All Actions",
         "comparisons": "Repères individuels — comparaison secondaire",
-        "comparison_note": "Aucune analyse collective ou par compartiment n’est réalisée. La comparaison directe concerne uniquement l’homologue adverse au même poste ou à son équivalent strict dans une autre organisation.",
+        "comparison_note": "Aucune analyse collective ou par compartiment n’est réalisée. Deux repères secondaires sont autorisés : l’homologue adverse au poste équivalent et un seul coéquipier au profil symétrique. Ils expliquent la prestation sans calculer le MS Score.",
         "player": "JOUEUR",
         "position": "POSTE",
         "profile": "MISSION",
         "matchups": "Homologue adverse au poste équivalent",
+        "teammate_profile": "Coéquipier au profil symétrique",
         "global_leaders": "Meilleures performances individuelles des deux équipes",
         "global_note": "Pour les pourcentages de réussite, le classement exige au moins 3 tentatives. Le nombre de réussites et le dénominateur restent visibles.",
         "match_leader": "MEILLEUR DES DEUX ÉQUIPES",
         "target_rank": "RANG DU JOUEUR",
         "target": "JOUEUR",
         "opponent": "ADVERSAIRE",
+        "teammate": "COÉQUIPIER",
         "not_comparable": "* volume non comparable : temps de jeu trop différents",
         "appendix": "Toutes les données du match",
         "full_data_note": "Toutes les colonnes de la table statistique du match sont présentées. Une action absente apparaît à 0 ; un pourcentage sans tentative reste non évalué afin de ne pas inventer un taux de réussite.",
@@ -100,13 +102,14 @@ PDF_COPY = {
         "decisive_kpi": "DONNÉE DÉCISIVE",
         "columns_presented": "{count} indicateurs du match présentés",
         "method": "Méthodologie et limites",
-        "method_text": "Le moteur juge d’abord les missions prioritaires du poste, puis l’impact décisif. Il utilise les totaux réellement produits pendant les minutes jouées, lit chaque pourcentage avec son nombre de tentatives et ne considère jamais une action non rencontrée comme une faiblesse automatique.",
+        "method_text": "Le moteur juge les missions prioritaires du poste pendant les minutes réellement jouées. L’impact décisif pèse davantage pour les postes offensifs ; les duels, la relance, la progression et l’absence d’erreur pèsent davantage pour les postes défensifs. Chaque taux conserve son nombre de tentatives et une action non rencontrée n’est jamais une faiblesse automatique.",
         "source": "Références méthodologiques",
         "prepared": "Préparé par l’équipe d’analyse MS Performance",
         "page": "Page",
         "unavailable": "Les données complètes de la table statistique ne sont pas disponibles pour ce match.",
         "no_data": "Aucune donnée exploitable.",
         "no_comparison": "Aucun joueur comparable n’est disponible sur cette rencontre.",
+        "no_teammate_comparison": "Aucun coéquipier au profil symétrique n’est disponible sur cette rencontre.",
     },
     "en": {
         "brand": "PERFORMANCE ANALYSIS",
@@ -118,7 +121,7 @@ PDF_COPY = {
         "reliability": "RELIABILITY",
         "index": "MS INDEX",
         "mission_score": "MS SCORE",
-        "verdict": "Analyst verdict",
+        "verdict": "Analyst opinion",
         "decisive_facts": "Decisive match facts",
         "rankings": "Match reference points",
         "index_team": "Index rank — team",
@@ -126,7 +129,7 @@ PDF_COPY = {
         "index_position": "Index rank — counterpart position",
         "index_note": "MS Index provides an overall reference. Team and match rank confirm the context, while the position missions remain the basis of the assessment.",
         "role_missions": "Position missions",
-        "mission_note": "Each score assesses this appearance only. Missions and criteria are ordered by importance for the position.",
+        "mission_note": "Each score assesses this appearance only. Missions are ordered by importance and attached to a phase of play for immediate reading.",
         "score_explained": "How the MS Score is calculated",
         "configured_weight": "POSITION WEIGHT",
         "effective_weight": "FIXED POSITION WEIGHT",
@@ -155,7 +158,7 @@ PDF_COPY = {
         "coverage": "observed data",
         "key_metrics": "Position-specific key indicators",
         "performance_reading": "Match reading by phase",
-        "performance_note": "One non-redundant reading: overall involvement, attacking contribution, then defensive contribution. Definitions sit directly below the useful KPIs.",
+        "performance_note": "Information is centralised by phase: involvement, passing quality, progression and final third, box presence and decisive impact, then duels and recoveries. Definitions sit below the useful KPIs.",
         "raw_note": "Real match totals, with no 90-minute projection. Every rate is shown with its denominator.",
         "indicator": "INDICATOR",
         "real_value": "REAL VALUE",
@@ -178,20 +181,22 @@ PDF_COPY = {
         "central": "Central lane",
         "strengths": "What was done well",
         "risks": "Points to improve",
-        "development": "Individual action plan",
+        "development": "Individual action plan — to validate with the analyst",
         "video_check": "To confirm through All Actions video",
         "comparisons": "Individual reference points — secondary comparison",
-        "comparison_note": "No collective or unit analysis is produced. The direct comparison uses only the opposition player in the same position or its strict equivalent in another shape.",
+        "comparison_note": "No collective or unit analysis is produced. Two secondary references are allowed: the opposition counterpart in the equivalent position and one team-mate in the symmetric role profile. They explain the performance but do not calculate MS Score.",
         "player": "PLAYER",
         "position": "POSITION",
         "profile": "MISSION",
         "matchups": "Opposition counterpart in the equivalent position",
+        "teammate_profile": "Team-mate in the symmetric role profile",
         "global_leaders": "Best individual performances across both teams",
         "global_note": "Success-rate rankings require at least 3 attempts. Successes and denominators remain visible.",
         "match_leader": "BEST ACROSS BOTH TEAMS",
         "target_rank": "PLAYER RANK",
         "target": "PLAYER",
         "opponent": "OPPONENT",
+        "teammate": "TEAM-MATE",
         "not_comparable": "* non-comparable volume: playing times differ too much",
         "appendix": "All match data",
         "full_data_note": "Every column in the match statistics table is presented. An absent event appears as 0; a percentage with no attempt remains not assessed so no success rate is invented.",
@@ -199,13 +204,14 @@ PDF_COPY = {
         "decisive_kpi": "DECISIVE DATA",
         "columns_presented": "{count} match indicators presented",
         "method": "Methodology and limitations",
-        "method_text": "The engine first assesses the priority missions of the position, then decisive impact. It uses the totals actually produced during the minutes played, reads every percentage with its attempts and never treats an action that did not arise as an automatic weakness.",
+        "method_text": "The engine assesses the position's priority missions during the minutes actually played. Decisive impact weighs more for attacking roles; duels, build-up, progression and error avoidance weigh more for defensive roles. Every rate keeps its attempt count and an action that did not arise is never an automatic weakness.",
         "source": "Methodology references",
         "prepared": "Prepared by the MS Performance analysis team",
         "page": "Page",
         "unavailable": "The full match statistics dataset is unavailable for this match.",
         "no_data": "No usable data.",
         "no_comparison": "No comparable player is available in this match.",
+        "no_teammate_comparison": "No team-mate in a symmetric role profile is available in this match.",
     },
     "ar": {
         "brand": "تحليل الأداء",
@@ -217,7 +223,7 @@ PDF_COPY = {
         "reliability": "الموثوقية",
         "index": "مؤشر MS",
         "mission_score": "مؤشر MS",
-        "verdict": "خلاصة المحلل",
+        "verdict": "رأي المحلل",
         "decisive_facts": "الوقائع الحاسمة في المباراة",
         "rankings": "الترتيب داخل المباراة",
         "index_team": "ترتيب المؤشر داخل الفريق",
@@ -225,7 +231,7 @@ PDF_COPY = {
         "index_position": "ترتيب المؤشر في نفس المركز",
         "index_note": "يقدم مؤشر MS مرجعا عاما، ويؤكد الترتيب داخل الفريق والمباراة السياق، بينما تبقى مهام المركز أساس التقييم.",
         "role_missions": "مهام المركز",
-        "mission_note": "تخص كل درجة هذه المشاركة فقط وترتب المهام والمعايير حسب أهميتها للمركز.",
+        "mission_note": "تخص كل درجة هذه المشاركة فقط وترتب المهام حسب أهميتها مع ربطها بمرحلة اللعب لتسهيل القراءة.",
         "score_explained": "كيفية حساب مؤشر MS",
         "configured_weight": "وزن المهمة",
         "effective_weight": "الوزن الثابت للمركز",
@@ -277,20 +283,22 @@ PDF_COPY = {
         "central": "العمق",
         "strengths": "ما تم إنجازه جيدا",
         "risks": "نقاط التحسين",
-        "development": "خطة العمل الفردية",
+        "development": "خطة العمل الفردية — تعتمد مع المحلل",
         "video_check": "يجب تأكيده بفيديو جميع اللقطات",
         "comparisons": "مراجع فردية — مقارنة ثانوية",
-        "comparison_note": "لا يوجد تحليل جماعي أو حسب الخطوط، والمقارنة المباشرة تخص لاعب الخصم في نفس المركز أو ما يعادله مباشرة في تنظيم مختلف.",
+        "comparison_note": "لا يوجد تحليل جماعي أو حسب الخطوط. يسمح بمرجعين ثانويين فقط: لاعب الخصم في المركز المعادل وزميل واحد في الملف المقابل للمركز. تساعد المقارنة في الشرح ولا تدخل في حساب مؤشر MS.",
         "player": "اللاعب",
         "position": "المركز",
         "profile": "المهمة",
         "matchups": "لاعب الخصم في المركز المعادل",
+        "teammate_profile": "زميل الفريق في الملف المقابل للمركز",
         "global_leaders": "أفضل الأداءات الفردية في الفريقين",
         "global_note": "يتطلب ترتيب نسب النجاح ثلاث محاولات على الأقل مع إظهار عدد النجاحات والمحاولات.",
         "match_leader": "الأفضل في الفريقين",
         "target_rank": "ترتيب اللاعب",
         "target": "اللاعب",
         "opponent": "المنافس",
+        "teammate": "زميل الفريق",
         "not_comparable": "* حجم غير قابل للمقارنة بسبب اختلاف دقائق اللعب",
         "appendix": "جميع بيانات المباراة",
         "full_data_note": "تعرض جميع أعمدة جدول إحصائيات المباراة. يظهر الحدث غير المسجل بقيمة صفر، بينما تبقى النسبة دون محاولة غير مقيمة حتى لا يتم اختراع نسبة نجاح.",
@@ -298,13 +306,14 @@ PDF_COPY = {
         "decisive_kpi": "بيان حاسم",
         "columns_presented": "تم عرض {count} مؤشرا من المباراة",
         "method": "المنهجية والحدود",
-        "method_text": "يحلل المحرك اللاعب ومهام مركزه فقط، ويحافظ على الأرقام الحقيقية ويتكيف مع المشاركات القصيرة ويخفض وزن العينات الصغيرة ولا يعتبر غياب الفرصة نقطة ضعف. لا ينتج تحليلا جماعيا ولا استنتاجا مرتبطا بنتيجة المباراة.",
+        "method_text": "يقيم المحرك مهام المركز خلال الدقائق الحقيقية. يرتفع وزن التأثير الحاسم للمراكز الهجومية، بينما ترتفع أهمية الثنائيات والبناء والتقدم وتجنب الخطأ للمراكز الدفاعية. تعرض كل نسبة مع عدد المحاولات ولا يعتبر غياب الفعل نقطة ضعف تلقائية.",
         "source": "المراجع المنهجية",
         "prepared": "إعداد فريق تحليل MS Performance",
         "page": "صفحة",
         "unavailable": "بيانات جدول المباراة الكاملة غير متاحة لهذه المباراة.",
         "no_data": "لا توجد بيانات قابلة للاستعمال.",
         "no_comparison": "لا يوجد لاعب قابل للمقارنة في هذه المباراة.",
+        "no_teammate_comparison": "لا يوجد زميل في ملف مركز مقابل قابل للمقارنة في هذه المباراة.",
     },
 }
 
@@ -1379,7 +1388,11 @@ def render_performance_pdf(report):
         ]
         dimension_rows.append(
             [
-                p(item.get("label"), body_bold),
+                [
+                    p(item.get("label"), body_bold),
+                    p(item.get("phase_label") or "", tiny),
+                    p(item.get("description") or "", tiny),
+                ],
                 p(f"{item.get('configured_weight', 0)}%", body),
                 p(score_value, body),
                 p(f"{item.get('contribution', 0)}", body_bold),
@@ -1398,7 +1411,7 @@ def render_performance_pdf(report):
     story.append(
         standard_table(
             dimension_rows,
-            [33 * mm, 20 * mm, 20 * mm, 22 * mm, 74 * mm],
+            [43 * mm, 20 * mm, 20 * mm, 22 * mm, 64 * mm],
             extra_style=[
                 ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(PALE)),
                 ("LINEABOVE", (0, -1), (-1, -1), 1.2, colors.HexColor(TEAL_DARK)),
@@ -1551,7 +1564,11 @@ def render_performance_pdf(report):
     )
     section_number += 1
     phase_priority = {
-        "global": ("Actions", "Actions successful, %", "Passes", "Passes accurate, %", "Index"),
+        "global": (
+            "Actions", "Actions successful, %", "Passes", "Passes accurate, %",
+            "Long passes", "Long passes accurate, %", "Super long passes",
+            "Super long passes accurate, %", "Index",
+        ),
         "offensive": (
             "Goals", "Assists", "xG (expected goals)", "Key passes", "Chances created",
             "Involvement in scoring attacks", "Shots", "Shots from the penalty area",
@@ -1559,7 +1576,10 @@ def render_performance_pdf(report):
             "Shots on post / bar", "Actions in opponent's box",
             "Actions in opponent's box successful, %", "Final third entries",
             "Final third entries through pass", "Final third entries through carry",
-            "Progressive passes", "Dribbles",
+            "Progressive passes", "Progressive passes accurate, %", "Passes forward to the final third",
+            "Passes forward to the final third accurate, %", "Dribbles", "Dribbles successful, %",
+            "Crosses", "Crosses accurate, %", "Passes into the penalty box",
+            "Passes into the penalty box accurate, %",
         ),
         "defensive": (
             "Defensive challenges", "Defensive challenges won, %", "Tackles",
@@ -1567,6 +1587,57 @@ def render_performance_pdf(report):
             "Aerial challenges won, %", "Ball recoveries", "Lost balls in own half",
         ),
     }
+
+    offensive_buckets = (
+        (
+            "Goals", "Assists", "Key passes", "Chances created",
+            "Involvement in scoring attacks", "xG (expected goals)",
+        ),
+        (
+            "Progressive passes", "Progressive passes accurate, %", "Final third entries",
+            "Final third entries through pass", "Final third entries through carry",
+            "Passes forward to the final third", "Passes forward to the final third accurate, %",
+        ),
+        (
+            "Actions in opponent's box", "Actions in opponent's box successful, %",
+            "Shots", "Shots from the penalty area", "Shots on target, %",
+            "Shots on target from the penalty area, %", "Headers", "Headers on target, %",
+            "Dribbles", "Dribbles successful, %", "Crosses", "Crosses accurate, %",
+            "Passes into the penalty box", "Passes into the penalty box accurate, %",
+        ),
+    )
+
+    def select_phase_metrics(lens):
+        metrics = lens.get("metrics") or []
+        metrics_by_name = {item.get("metric"): item for item in metrics}
+        selected = []
+
+        def add(names, limit=None, observed_only=False):
+            added = 0
+            for name in names:
+                item = metrics_by_name.get(name)
+                if not item or item in selected:
+                    continue
+                if observed_only and item.get("score") is None:
+                    continue
+                selected.append(item)
+                added += 1
+                if limit is not None and added >= limit:
+                    break
+
+        if lens.get("key") == "offensive":
+            add(offensive_buckets[0], limit=3, observed_only=True)
+            add(offensive_buckets[1], limit=3, observed_only=True)
+            add(offensive_buckets[2], limit=4, observed_only=True)
+        else:
+            add(phase_priority.get(lens.get("key"), ()), observed_only=True)
+        for item in metrics:
+            if item not in selected and item.get("score") is not None:
+                selected.append(item)
+            if len(selected) >= 10:
+                break
+        return selected[:10]
+
     for lens in analysis.get("performance_lenses") or []:
         score = lens.get("score")
         story.extend(
@@ -1591,14 +1662,7 @@ def render_performance_pdf(report):
         )
         for sentence in lens.get("interpretation") or []:
             story.extend([Spacer(1, 1.5 * mm), note_box(sentence, lens.get("tone") or "neutral")])
-        metrics_by_name = {item.get("metric"): item for item in lens.get("metrics") or []}
-        visible_metrics = [metrics_by_name[name] for name in phase_priority.get(lens.get("key"), ()) if name in metrics_by_name]
-        for item in lens.get("metrics") or []:
-            if item in visible_metrics or item.get("score") is None:
-                continue
-            visible_metrics.append(item)
-            if len(visible_metrics) >= 12:
-                break
+        visible_metrics = select_phase_metrics(lens)
         metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["reading"], table_head), p(copy["profile"], table_head)]]
         for item in visible_metrics:
             sample = item.get("sample") or {}
@@ -1702,17 +1766,16 @@ def render_performance_pdf(report):
 
     story.extend([PageBreak(), section_title(copy["comparisons"], section_number), p(copy["comparison_note"], small), Spacer(1, 5 * mm), p(copy["matchups"], h2)])
     section_number += 1
-    matchup = analysis.get("same_position_comparison")
-    if not matchup:
-        story.append(note_box(copy["no_comparison"], "neutral"))
-    else:
+    def comparison_block(comparison, reference_label, empty_message):
+        if not comparison:
+            return [note_box(empty_message, "neutral"), Spacer(1, 4 * mm)]
         title = (
-            f"{matchup.get('title')} — {matchup.get('player')} · {matchup.get('team')} · "
-            f"{matchup.get('position')} ({matchup.get('minutes', 0)} min)"
+            f"{comparison.get('title')} — {comparison.get('player')} · {comparison.get('team')} · "
+            f"{comparison.get('position')} ({comparison.get('minutes', 0)} min)"
         )
-        rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["opponent"], table_head)]]
+        rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(reference_label, table_head)]]
         has_non_comparable = False
-        for item in matchup.get("metrics") or []:
+        for item in comparison.get("metrics") or []:
             comparable = item.get("volume_comparable", True)
             has_non_comparable = has_non_comparable or not comparable
             marker = "*" if not comparable else ""
@@ -1720,13 +1783,29 @@ def render_performance_pdf(report):
                 [
                     p(item.get("label"), body),
                     p(f"{item.get('target_display')}{marker}", body_bold),
-                    p(f"{item.get('opponent_display')}{marker}", body),
+                    p(f"{item.get('reference_display')}{marker}", body),
                 ]
             )
         block = [p(title, h2), standard_table(rows, [91 * mm, 39 * mm, 39 * mm])]
         if has_non_comparable:
             block.append(p(copy["not_comparable"], tiny))
-        story.extend([KeepTogether(block), Spacer(1, 5 * mm)])
+        return [KeepTogether(block), Spacer(1, 5 * mm)]
+
+    story.extend(
+        comparison_block(
+            analysis.get("same_position_comparison"),
+            copy["opponent"],
+            copy["no_comparison"],
+        )
+    )
+    story.extend([Spacer(1, 2 * mm), p(copy["teammate_profile"], h2)])
+    story.extend(
+        comparison_block(
+            analysis.get("teammate_profile_comparison"),
+            copy["teammate"],
+            copy["no_teammate_comparison"],
+        )
+    )
 
     story.extend([Spacer(1, 4 * mm), p(copy["global_leaders"], h2), p(copy["global_note"], tiny), Spacer(1, 3 * mm)])
     leader_rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["target_rank"], table_head), p(copy["match_leader"], table_head)]]

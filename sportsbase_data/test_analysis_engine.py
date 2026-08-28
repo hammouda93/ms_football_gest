@@ -511,7 +511,8 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(highlight["label"], "BUTTEUR DÉCISIF — 1 BUT")
         self.assertIn("ce match", highlight["explanation"])
         self.assertIn("pas le niveau de finition sur une saison complète", highlight["explanation"])
-        self.assertEqual(analysis["score_breakdown"]["decisive_adjustment"], 4)
+        self.assertGreater(analysis["score_breakdown"]["decisive_adjustment"], 4)
+        self.assertEqual(analysis["score_breakdown"]["decisive_role_scale"], 1.15)
         self.assertEqual(analysis["verdict"]["code"], "solid")
         self.assertLessEqual(analysis["verdict"]["score"], 100)
 
@@ -701,7 +702,8 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertGreater(criteria["Progressive passes"]["ms_points"], 0)
         self.assertEqual(criteria["Goals"]["points_source"], "position_mission")
         direct = next(item for item in breakdown["point_events"] if item["metric"] == "Direct outcome")
-        self.assertEqual(direct["points"], 4)
+        self.assertEqual(direct["points"], 2.8)
+        self.assertEqual(breakdown["decisive_role_scale"], 0.70)
         self.assertLessEqual(breakdown["decisive_adjustment"], 8)
         expected = (
             breakdown["position_score"]
@@ -710,7 +712,7 @@ class PositionAnalysisTests(unittest.TestCase):
         )
         self.assertLess(abs(expected - breakdown["raw_total_points"]), 0.02)
 
-    def test_full_decisive_match_is_clearly_separated_from_good_short_entry(self):
+    def test_complete_decisive_match_is_not_anchored_to_historical_scores(self):
         trabelsi = _row(
             "Mohamed Trabelsi", "CS Sfaxien", "LCM", 85,
             **{
@@ -752,14 +754,45 @@ class PositionAnalysisTests(unittest.TestCase):
         full_match = analyse_match_dataset(rows, "Mohamed Trabelsi", "fr")
         short_entry = analyse_match_dataset(rows, "Mohamed Salah Mhadhebi", "fr")
 
-        self.assertEqual(full_match["player"]["ms_score"], 75)
-        self.assertEqual(full_match["verdict"]["code"], "very_good")
-        self.assertEqual(short_entry["player"]["ms_score"], 56)
-        self.assertEqual(short_entry["verdict"]["label"], "BONNE ENTRÉE")
-        self.assertGreaterEqual(
-            full_match["player"]["ms_score"] - short_entry["player"]["ms_score"],
-            15,
+        self.assertGreater(full_match["player"]["ms_score"], short_entry["player"]["ms_score"])
+        self.assertGreaterEqual(full_match["player"]["ms_score"] - short_entry["player"]["ms_score"], 10)
+        self.assertEqual(short_entry["confidence"]["code"], "very_low")
+
+    def test_decisive_bonus_is_role_scaled_without_replacing_position_missions(self):
+        centre_back = _row("Centre Back", "A", "CB", 90, **{"Goals": 1})
+        forward = _row("Forward", "A", "ST", 90, **{"Goals": 1})
+        cb_analysis = analyse_match_dataset([centre_back, _row("CB Opponent", "B", "CB", 90)], "Centre Back", "en")
+        forward_analysis = analyse_match_dataset([forward, _row("ST Opponent", "B", "ST", 90)], "Forward", "en")
+        self.assertLess(
+            cb_analysis["score_breakdown"]["decisive_adjustment"],
+            forward_analysis["score_breakdown"]["decisive_adjustment"],
         )
+        self.assertEqual(cb_analysis["score_breakdown"]["decisive_role_scale"], 0.70)
+        self.assertEqual(forward_analysis["score_breakdown"]["decisive_role_scale"], 1.15)
+
+    def test_missions_explain_the_phase_and_football_objective(self):
+        rows = [_row("Full Back", "A", "RB", 90), _row("Opponent", "B", "RB", 90)]
+        analysis = analyse_match_dataset(rows, "Full Back", "fr")
+        self.assertTrue(all(item.get("description") for item in analysis["dimensions"]))
+        self.assertTrue(all(item.get("phase_label") for item in analysis["dimensions"]))
+        impact = next(item for item in analysis["dimensions"] if item["key"] == "impact")
+        self.assertIn("buts", impact["description"])
+
+    def test_symmetric_teammate_profile_is_compared_on_role_kpis_only(self):
+        rows = [
+            _row("Right Back", "A", "RB", 90, **{"Final third entries": 6}),
+            _row("Left Back", "A", "LB", 88, **{"Final third entries": 4}),
+            _row("Unrelated Winger", "A", "RW", 90, **{"Final third entries": 10}),
+            _row("Opponent Right Back", "B", "RB", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Right Back", "fr")
+        teammate = analysis["teammate_profile_comparison"]
+        self.assertEqual(teammate["player"], "Left Back")
+        self.assertEqual(teammate["position"], "LB")
+        self.assertEqual(teammate["position_match"], "symmetric")
+        compared = {item["metric"] for item in teammate["metrics"]}
+        self.assertIn("Final third entries", compared)
+        self.assertNotIn("Aerial challenges", compared)
 
     def test_legacy_normalized_radar_is_not_presented_as_a_real_value(self):
         rows = [_row("Target", "A", "LCM", 90), _row("Opponent", "B", "LCM", 90)]
