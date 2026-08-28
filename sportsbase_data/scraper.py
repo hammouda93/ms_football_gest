@@ -16,8 +16,6 @@ from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
-from sportsbase_data.xlsx_statistics import read_players_statistics_xlsx
-
 SPORTSBASE_ROOT = "https://football.sportsbase.world"
 MATCH_ID_RE = re.compile(r"/matches/(\d+)")
 PLAYER_ID_RE = re.compile(r"/players/(\d+)")
@@ -25,7 +23,24 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-radar-real-values-v14-20260828"
+SCRAPER_BUILD = "season-kpis-direct-players-table-v15-20260828"
+
+
+# These are the enriched Players-table columns configured in SportsBase with
+# "Add table".  The agent reads the React table directly and refuses a partial
+# configuration instead of silently producing an incomplete analysis.
+PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS = (
+    "Goals by head",
+    "Free-kick shots",
+    "Free-kick goals",
+    "Short passes",
+    "Short passes accurate, %",
+    "Shots on target from the penalty area, %",
+    "Shots on target from outside the penalty area, %",
+    "Headers",
+    "Headers on target, %",
+    "Shots on post / bar",
+)
 
 
 def _now_iso():
@@ -883,27 +898,11 @@ class SportsBaseSubscriptionScraper:
 
         for match_data in discovered:
             previous = known.get(match_data["sportsbase_match_id"], {})
-            previous_xlsx = str(
-                previous.get("players_statistics_xlsx") or ""
-            ).strip()
-            previous_folder_key = str(
-                previous.get("local_folder_key") or ""
-            ).strip()
-            if previous_folder_key:
-                previous_xlsx_path = (
-                    self.storage_root / previous_folder_key / previous_xlsx
-                )
-            else:
-                previous_xlsx_path = self._match_folder(
-                    player_root=player_root,
-                    season=job.get("season", ""),
-                    match_data=match_data,
-                ) / previous_xlsx
-            xlsx_is_local = bool(
-                previous_xlsx and self._valid_xlsx(previous_xlsx_path)
+            statistics_are_complete = not self._missing_enriched_players_headers(
+                previous.get("players_statistics_headers")
             )
             if previous.get("complete") and (
-                job["job_type"] == "all_actions" or xlsx_is_local
+                job["job_type"] == "all_actions" or statistics_are_complete
             ):
                 continue
             match_item = self._match_item(page, match_data["sportsbase_match_id"])
@@ -1091,11 +1090,6 @@ class SportsBaseSubscriptionScraper:
             match_data["match_url"],
             job["player"],
             match_data,
-            statistics_dir=self._match_folder(
-                player_root=player_root,
-                season=job.get("season", ""),
-                match_data=match_data,
-            ),
         )
         for field in ("match_date", "home_score", "away_score", "referee"):
             value = profile.get(field)
@@ -1131,11 +1125,11 @@ class SportsBaseSubscriptionScraper:
                 "players_statistics_url": profile.get(
                     "players_statistics_url", ""
                 ),
-                "players_statistics_xlsx": profile.get(
-                    "players_statistics_xlsx", ""
+                "players_statistics_source": profile.get(
+                    "players_statistics_source", ""
                 ),
-                "players_statistics_downloaded_at": profile.get(
-                    "players_statistics_downloaded_at", ""
+                "players_statistics_scraped_at": profile.get(
+                    "players_statistics_scraped_at", ""
                 ),
                 "players_statistics_error": profile.get(
                     "players_statistics_error", ""
@@ -1871,8 +1865,6 @@ class SportsBaseSubscriptionScraper:
         match_url,
         player,
         match_data=None,
-        *,
-        statistics_dir=None,
     ):
         page = context.new_page()
         try:
@@ -1940,22 +1932,18 @@ class SportsBaseSubscriptionScraper:
                 all_rows=all_rows,
             )
             result.update(metadata)
-            if statistics_dir is not None:
-                result.update(
-                    self._download_match_players_statistics(
-                        page=page,
-                        match_data=match_data or {},
-                        destination_dir=statistics_dir,
-                    )
+            result.update(
+                self._extract_match_players_statistics(
+                    page=page,
+                    match_data=match_data or {},
                 )
+            )
             return result
         finally:
             page.close()
 
-    def _download_match_players_statistics(
-        self, *, page, match_data, destination_dir
-    ):
-        """Download the full Players XLSX once the team ranking has been read."""
+    def _extract_match_players_statistics(self, *, page, match_data):
+        """Read the complete enriched Players table directly from the React DOM."""
         match_id = str(match_data.get("sportsbase_match_id") or "").strip()
         if not match_id:
             match = MATCH_ID_RE.search(page.url)
@@ -1963,26 +1951,8 @@ class SportsBaseSubscriptionScraper:
         if not match_id:
             return {
                 "players_statistics_error": (
-                    "Identifiant du match introuvable pour le téléchargement XLSX."
+                    "Identifiant du match introuvable pour la lecture de la table Players."
                 )
-            }
-
-        destination_dir = Path(destination_dir)
-        destination_dir.mkdir(parents=True, exist_ok=True)
-        destination = destination_dir / (
-            f"match_{self._file_component(match_id)}__players_statistics.xlsx"
-        )
-        if self._valid_xlsx(destination):
-            print(
-                "[SPORTSBASE] Statistiques Players XLSX déjà présentes : "
-                f"{destination}"
-            )
-            return {
-                "players_statistics_url": urljoin(
-                    SPORTSBASE_ROOT, f"/matches/{match_id}/players"
-                ),
-                "players_statistics_xlsx": destination.name,
-                **self._parse_players_statistics(destination),
             }
 
         players_path = f"/matches/{match_id}/players"
@@ -2003,93 +1973,284 @@ class SportsBaseSubscriptionScraper:
                 state="visible", timeout=30_000
             )
 
-            tooltip = page.get_by_text(
-                "Download statistics (XLSX)", exact=True
-            ).first
-            tooltip.wait_for(state="attached", timeout=15_000)
-            download_button = tooltip.locator(
-                'xpath=ancestor::*[contains(@class,"ActionIconWrapper")][1]'
+            self._wait_for_enriched_players_table(page)
+            stats_block = page.locator('[role="table"]').first.locator(
+                'xpath=ancestor::*[contains(@class,"BlockWrapper")][1]'
             )
-            if not download_button.count():
-                download_button = page.locator(
-                    '[class*="DownloadButtonContainer"] '
-                    '[class*="ActionIconWrapper"]'
-                ).first
-            download_button.wait_for(state="visible", timeout=15_000)
-            download_button.scroll_into_view_if_needed(timeout=10_000)
+            if not stats_block.count():
+                stats_block = page.locator("body")
 
-            print(
-                "[SPORTSBASE] Téléchargement des statistiques Players XLSX — "
-                f"match {match_id}"
+            self._select_all_players_table_teams(stats_block, page)
+            snapshot = self._wait_for_stable_players_table(
+                stats_block,
+                page,
+                match_data,
             )
-            with page.expect_download(timeout=30_000) as download_info:
-                download_button.click(timeout=10_000)
-            download = download_info.value
-            if destination.exists():
-                destination = self._unique_path(destination)
-            download.save_as(str(destination))
-            failure = download.failure()
-            if failure:
-                raise RuntimeError(failure)
-            if not self._valid_xlsx(destination):
+            headers = snapshot.get("headers") or []
+            rows = snapshot.get("rows") or []
+            missing = self._missing_enriched_players_headers(headers)
+            if missing:
                 raise RuntimeError(
-                    "Le fichier reçu n’est pas un classeur XLSX valide."
+                    "La table Players chargée reste incomplète. Colonnes manquantes : "
+                    + ", ".join(missing)
+                )
+            if not rows:
+                raise RuntimeError("La table Players enrichie ne contient aucun joueur.")
+            expected_teams = {
+                self._normalized_header(item)
+                for item in (
+                    match_data.get("home_team"),
+                    match_data.get("away_team"),
+                )
+                if item
+            }
+            observed_teams = {
+                self._normalized_header(item.get("Team"))
+                for item in rows
+                if item.get("Team")
+            }
+            if expected_teams and not expected_teams.issubset(observed_teams):
+                raise RuntimeError(
+                    "La table Players ne contient pas encore les deux équipes; "
+                    "la comparaison serait incomplète."
                 )
 
-            print(f"[SPORTSBASE] Statistiques Players XLSX enregistrées : {destination}")
+            print(
+                "[SPORTSBASE] Table Players lue directement — "
+                f"{len(rows)} joueur(s), {len(headers)} indicateur(s); aucun XLSX requis."
+            )
             return {
                 "players_statistics_url": players_url,
-                "players_statistics_xlsx": destination.name,
-                "players_statistics_downloaded_at": _now_iso(),
+                "players_statistics_source": "players_table_dom",
+                "players_statistics_scraped_at": _now_iso(),
                 "players_statistics_error": "",
-                **self._parse_players_statistics(destination),
-            }
-        except Exception as exc:
-            print(
-                "[SPORTSBASE][WARN] Téléchargement Players XLSX impossible — "
-                f"match {match_id} : {exc}"
-            )
-            return {
-                "players_statistics_url": players_url,
-                "players_statistics_xlsx": "",
-                "players_statistics_error": str(exc),
-            }
-
-    @staticmethod
-    def _parse_players_statistics(path):
-        try:
-            workbook = read_players_statistics_xlsx(path)
-            rows = workbook.get("rows") or []
-            print(
-                "[SPORTSBASE] Statistiques Players lues — "
-                f"{len(rows)} joueur(s), "
-                f"{len(workbook.get('headers') or [])} indicateur(s)"
-            )
-            return {
-                "players_statistics_headers": workbook.get("headers") or [],
+                "players_statistics_headers": headers,
                 "players_statistics_rows": rows,
             }
         except Exception as exc:
             print(
-                "[SPORTSBASE][WARN] Lecture du fichier Players XLSX impossible : "
-                f"{exc}"
+                "[SPORTSBASE][WARN] Lecture directe de la table Players impossible — "
+                f"match {match_id} : {exc}"
             )
             return {
+                "players_statistics_url": players_url,
+                "players_statistics_source": "players_table_dom",
                 "players_statistics_headers": [],
                 "players_statistics_rows": [],
                 "players_statistics_error": str(exc),
             }
 
     @staticmethod
-    def _valid_xlsx(path):
-        path = Path(path)
-        try:
-            if not path.is_file() or path.stat().st_size <= 0:
-                return False
-            with path.open("rb") as workbook:
-                return workbook.read(2) == b"PK"
-        except OSError:
-            return False
+    def _select_all_players_table_teams(stats_block, page):
+        toggles = stats_block.locator(
+            '[class*="TableSettings"] > [class*="Wrapper"]'
+        )
+        changed = False
+        for index in range(toggles.count()):
+            toggle = toggles.nth(index)
+            if toggle.locator('[class*="StyledIcon"]').count():
+                continue
+            toggle.click(timeout=10_000)
+            changed = True
+        if changed:
+            print(
+                "[SPORTSBASE] Les deux équipes ont été activées dans la table Players."
+            )
+            page.wait_for_timeout(1_000)
+
+    @staticmethod
+    def _players_table_snapshot(stats_block, match_data):
+        return stats_block.evaluate(
+            r"""
+            (root, fixture) => {
+              const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+              const headerText = (node) => {
+                const tooltip = node?.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
+                if (tooltip) return clean(tooltip.textContent);
+                const labels = [...(node?.querySelectorAll('[class*="LexicWrapper"]') || [])]
+                  .map((item) => clean(item.textContent)).filter(Boolean);
+                return labels.length ? labels[labels.length - 1] : clean(node?.textContent);
+              };
+              const configuredTeams = [...root.querySelectorAll(
+                '[class*="TableSettings"] > [class*="Wrapper"] [class*="Text"]'
+              )].map((node) => clean(node.textContent)).filter(Boolean);
+              const fixtureTeams = [fixture.homeTeam, fixture.awayTeam]
+                .map(clean).filter(Boolean);
+              const tables = [...root.querySelectorAll('[role="table"]')];
+              let headers = [];
+              const rows = [];
+
+              tables.forEach((table, tableIndex) => {
+                const tableHeaders = [...table.querySelectorAll('[role="headercell"], [role="columnheader"]')]
+                  .map(headerText).filter(Boolean);
+                if (!tableHeaders.length) return;
+                if (!headers.length) {
+                  headers = ['№', 'Player', 'Team', ...tableHeaders.slice(1)];
+                }
+                const team = configuredTeams[tableIndex] || fixtureTeams[tableIndex] || '';
+                [...table.querySelectorAll('[role="row"]')].forEach((row) => {
+                  const playerLink = row.querySelector('a[href*="/players/"]');
+                  if (!playerLink) return;
+                  const number = clean(row.querySelector('[class*="PlayerNumber"]')?.textContent);
+                  const cells = [...row.querySelectorAll('[role="bodycell"], [role="cell"]')]
+                    .map((cell) => clean(cell.textContent));
+                  const item = {
+                    '№': number,
+                    Player: clean(playerLink.textContent),
+                    Team: team,
+                  };
+                  tableHeaders.slice(1).forEach((header, index) => {
+                    item[header] = cells[index + 1] || '';
+                  });
+                  rows.push(item);
+                });
+              });
+              return {
+                headers,
+                rows,
+                teams: configuredTeams.length ? configuredTeams : fixtureTeams,
+                tableCount: tables.length,
+              };
+            }
+            """,
+            {
+                "homeTeam": match_data.get("home_team") or "",
+                "awayTeam": match_data.get("away_team") or "",
+            },
+        )
+
+    def _wait_for_stable_players_table(self, stats_block, page, match_data):
+        last_snapshot = {"headers": [], "rows": []}
+        last_count = -1
+        stable_reads = 0
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            snapshot = self._players_table_snapshot(stats_block, match_data)
+            row_count = len(snapshot.get("rows") or [])
+            expected_teams = {
+                self._normalized_header(item)
+                for item in (
+                    match_data.get("home_team"),
+                    match_data.get("away_team"),
+                )
+                if item
+            }
+            observed_teams = {
+                self._normalized_header(item.get("Team"))
+                for item in (snapshot.get("rows") or [])
+                if item.get("Team")
+            }
+            teams_complete = not expected_teams or expected_teams.issubset(
+                observed_teams
+            )
+            if row_count > 0 and row_count == last_count and teams_complete:
+                stable_reads += 1
+            else:
+                stable_reads = 0
+            last_snapshot = snapshot
+            last_count = row_count
+            if stable_reads >= 2:
+                return self._normalize_players_table_snapshot(snapshot)
+            page.wait_for_timeout(750)
+        return self._normalize_players_table_snapshot(last_snapshot)
+
+    @classmethod
+    def _normalize_players_table_snapshot(cls, snapshot):
+        headers = [
+            re.sub(r"\s+", " ", str(item or "")).strip()
+            for item in (snapshot.get("headers") or [])
+            if str(item or "").strip()
+        ]
+        rows = []
+        for raw_row in snapshot.get("rows") or []:
+            row = {}
+            for header in headers:
+                value = raw_row.get(header, "")
+                if header in {"Player", "Team", "Position"}:
+                    row[header] = re.sub(r"\s+", " ", str(value or "")).strip()
+                else:
+                    row[header] = cls._coerce_players_table_value(value)
+            if row.get("Player"):
+                rows.append(row)
+        return {
+            "headers": headers,
+            "rows": rows,
+            "teams": snapshot.get("teams") or [],
+            "table_count": snapshot.get("tableCount") or 0,
+        }
+
+    @staticmethod
+    def _coerce_players_table_value(value):
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text or text in {"-", "–", "—"}:
+            return "-"
+        if text.endswith("%"):
+            return text
+        normalized = text.replace(" ", "").replace(",", ".")
+        if re.fullmatch(r"-?\d+", normalized):
+            return int(normalized)
+        if re.fullmatch(r"-?\d+\.\d+", normalized):
+            return float(normalized)
+        return text
+
+    @staticmethod
+    def _normalized_header(value):
+        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+    @classmethod
+    def _missing_enriched_players_headers(cls, headers):
+        available = {cls._normalized_header(item) for item in (headers or [])}
+        return [
+            item
+            for item in PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS
+            if cls._normalized_header(item) not in available
+        ]
+
+    @staticmethod
+    def _live_players_table_headers(page):
+        table = page.locator('[role="table"]').first
+        return table.evaluate(
+            r"""
+            (table) => {
+              const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+              return [...table.querySelectorAll('[role="headercell"]')].map((cell) => {
+                const tooltips = [...cell.querySelectorAll('[class*="Tooltip"]')]
+                  .map((node) => clean(node.textContent)).filter(Boolean);
+                return tooltips.length ? tooltips[tooltips.length - 1] : clean(cell.textContent);
+              }).filter(Boolean);
+            }
+            """
+        )
+
+    def _wait_for_enriched_players_table(self, page):
+        """Wait until React exposes the configured custom table."""
+        last_headers = []
+        for attempt in range(2):
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                last_headers = self._live_players_table_headers(page)
+                if not self._missing_enriched_players_headers(last_headers):
+                    return last_headers
+                page.wait_for_timeout(750)
+            if attempt == 0:
+                missing = self._missing_enriched_players_headers(last_headers)
+                print(
+                    "[SPORTSBASE] Table enrichie pas encore chargée "
+                    f"({len(last_headers)} colonnes; manque : {', '.join(missing)}); "
+                    "actualisation unique…"
+                )
+                page.reload(wait_until="domcontentloaded", timeout=30_000)
+                page.locator('[role="table"]').first.wait_for(
+                    state="visible", timeout=30_000
+                )
+
+        missing = self._missing_enriched_players_headers(last_headers)
+        raise RuntimeError(
+            "La table Players enrichie n’est pas configurée dans le profil Chrome "
+            "persistant de l’agent. Ouvrez ce profil, utilisez « Add table » une seule "
+            "fois, ajoutez les KPI requis puis relancez l’agent. Colonnes manquantes : "
+            + ", ".join(missing)
+        )
 
     @staticmethod
     def _read_match_header_metadata(page, match_data):
