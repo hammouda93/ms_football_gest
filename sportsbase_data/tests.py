@@ -940,6 +940,13 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         pdf = render_report_pdf(report)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 1000)
+        self.client.force_login(self.admin)
+        agent_pdf = self.client.get(
+            reverse("performance:api_report_pdf", args=(report.pk,))
+        )
+        self.assertEqual(agent_pdf.status_code, 200)
+        self.assertEqual(agent_pdf["Content-Type"], "application/pdf")
+        self.assertIn("attachment", agent_pdf["Content-Disposition"])
 
     def test_email_waits_for_video_and_published_report(self):
         match = self._create_match(1)
