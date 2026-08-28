@@ -93,9 +93,6 @@ def reconcile_subscription_delivery_settings(
         "sync_queued": False,
         "youtube_jobs_created": 0,
     }
-    if not changed:
-        return result
-
     if not subscription.all_actions_enabled:
         # Keep already downloaded files.  Only unfinished requests are suspended.
         subscription.matches.filter(
@@ -113,11 +110,6 @@ def reconcile_subscription_delivery_settings(
     all_actions_activated = (
         "all_actions_enabled" in changed and subscription.all_actions_enabled
     )
-    youtube_activated = (
-        "youtube_delivery_enabled" in changed
-        and subscription.youtube_delivery_enabled
-    )
-
     if all_actions_activated:
         subscription.matches.filter(
             actions_state__in={
@@ -141,11 +133,7 @@ def reconcile_subscription_delivery_settings(
             }
         ).exists()
     )
-    if (
-        subscription.access_enabled
-        and actions_missing
-        and (all_actions_activated or youtube_activated)
-    ):
+    if subscription.access_enabled and actions_missing:
         pending_job = subscription.sync_jobs.filter(
             status=SportsBaseSyncJob.Status.PENDING
         ).first()
@@ -153,13 +141,16 @@ def reconcile_subscription_delivery_settings(
             running_exists = subscription.sync_jobs.filter(
                 status=SportsBaseSyncJob.Status.RUNNING
             ).exists()
-            _job, created = queue_sync(
-                subscription,
-                requested_by=requested_by,
-                job_type=SportsBaseSyncJob.JobType.FULL,
-                force=running_exists,
-            )
-            result["sync_queued"] = created
+            # An unchanged save can repair an already missing delivery, but it
+            # must not add a duplicate behind a job that is currently running.
+            if changed or not running_exists:
+                _job, created = queue_sync(
+                    subscription,
+                    requested_by=requested_by,
+                    job_type=SportsBaseSyncJob.JobType.FULL,
+                    force=running_exists,
+                )
+                result["sync_queued"] = created
     return result
 
 
