@@ -45,10 +45,16 @@
 </section>
 {% endif %}
 
-<section class="performance-rank-grid">
-    <article><span>{{ copy.match_index }}</span><strong>{{ stats.index|stat_value }}</strong><small>{{ copy.global_indicator }}</small></article>
-    <article><span>{{ copy.team_rank }}</span><strong>{% if stats.team_rank %}#{{ stats.team_rank }}{% else %}—{% endif %}</strong><small>{{ stats.team_name|default:player.club }}</small></article>
-    <article><span>{{ copy.match_rank }}</span><strong>{% if stats.match_rank %}#{{ stats.match_rank }}{% else %}—{% endif %}</strong><small>{{ copy.both_teams }}</small></article>
+<section class="performance-rank-grid match-rank-overview">
+    <article><span>{{ copy.match_index }}</span><strong>{{ stats.index|ms_index }}</strong><small>{{ copy.global_indicator }}</small></article>
+    <article class="performance-combined-rank">
+        <span>{{ copy.team_rank }} · {{ copy.match_rank }}</span>
+        <div>
+            <b><small>{{ stats.team_name|default:player.club }}</small><strong>{% if stats.team_rank %}#{{ stats.team_rank }}{% else %}—{% endif %}</strong></b>
+            <i></i>
+            <b><small>{{ copy.both_teams }}</small><strong>{% if stats.match_rank %}#{{ stats.match_rank }}{% else %}—{% endif %}</strong></b>
+        </div>
+    </article>
     <article><span>{{ copy.minutes_played }}</span><strong>{{ stats.minutes_played|stat_value }}</strong><small>{{ stats.position|default:copy.position_unknown }}</small></article>
 </section>
 
@@ -110,7 +116,7 @@
     <div class="table-responsive">
         <table>
             <thead><tr><th>#</th><th>{{ copy.player }}</th><th>{{ copy.index }}</th><th>{{ copy.position }}</th><th>{{ copy.minutes }}</th></tr></thead>
-            <tbody>{% for row in stats.team_table %}<tr class="{% if row.is_current_player %}current-player{% endif %}"><td>{{ row.rank|default:forloop.counter }}</td><td>{{ row.player_name|default:"—" }}</td><td><strong>{{ row.index|stat_value }}</strong></td><td>{{ row.position|default:"—" }}</td><td>{{ row.minutes|stat_value }}</td></tr>{% endfor %}</tbody>
+            <tbody>{% for row in stats.team_table %}<tr class="{% if row.is_current_player %}current-player{% endif %}"><td>{{ row.rank|default:forloop.counter }}</td><td>{{ row.player_name|default:"—" }}</td><td><strong>{{ row.index|ms_index }}</strong></td><td>{{ row.position|default:"—" }}</td><td>{{ row.minutes|stat_value }}</td></tr>{% endfor %}</tbody>
         </table>
     </div>
 </details>

@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "ms-position-score-calibration-v10-20260828"
+ANALYSIS_VERSION = "ms-position-score-calibration-v11-20260828"
 
 
 # The public InStat / Wyscout / SportsBase products do not publish a formula
@@ -18,6 +18,7 @@ ANALYSIS_VERSION = "ms-position-score-calibration-v10-20260828"
 # small rank validation.  The limits prevent one event or a provider index
 # from erasing the football requirements of the player's position.
 MS_NEUTRAL_SCORE = 50
+MS_INDEX_DISPLAY_OFFSET = 20
 MS_DECISIVE_ADJUSTMENT_LIMIT = 8.0
 MS_CONTEXT_ADJUSTMENT_LIMIT = 2.0
 MS_SCORE_BANDS = (
@@ -821,12 +822,16 @@ POSITION_GROUPS = {
     "DM": "holding_midfielder",
     "LDM": "holding_midfielder",
     "RDM": "holding_midfielder",
+    "LCDM": "holding_midfielder",
+    "RCDM": "holding_midfielder",
     "CM": "box_to_box_midfielder",
     "LCM": "box_to_box_midfielder",
     "RCM": "box_to_box_midfielder",
     "CAM": "attacking_midfielder",
     "AM": "attacking_midfielder",
     "SS": "attacking_midfielder",
+    "LCAM": "attacking_midfielder",
+    "RCAM": "attacking_midfielder",
     "LAM": "winger",
     "RAM": "winger",
     "LM": "winger",
@@ -966,7 +971,7 @@ ROLE_CONFIGS = {
         ),
     },
     "centre_back": {
-        "weights": {"defending": 25, "progression": 20, "aerial_control": 15, "build_up": 15, "involvement": 10, "risk_control": 10, "impact": 5},
+        "weights": {"defending": 25, "involvement": 15, "progression": 15, "aerial_control": 15, "build_up": 15, "risk_control": 10, "impact": 5},
         "dimensions": (
             ("defending", _s("Defensive challenges", target=5), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Tackles", target=4), _s("Tackles successful, %", "def_duel", weight=1.5), _s("Interceptions", target=5)),
             ("aerial_control", _s("Aerial challenges", target=4, zero_is_no_opportunity=True), _s("Aerial challenges won, %", "aerial", weight=2)),
@@ -976,7 +981,7 @@ ROLE_CONFIGS = {
         ),
     },
     "full_back": {
-        "weights": {"defending": 20, "progression": 15, "attacking_support": 15, "involvement": 15, "impact": 15, "delivery": 10, "ball_security": 10},
+        "weights": {"defending": 20, "attacking_support": 20, "involvement": 15, "impact": 15, "progression": 10, "delivery": 10, "ball_security": 10},
         "dimensions": (
             ("defending", _s("Defensive challenges", target=6), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Tackles", target=4), _s("Tackles successful, %", "def_duel"), _s("Interceptions", target=4)),
             ("progression", _s("Progressive passes", target=6), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=5), _s("Final third entries through pass", target=3), _s("Final third entries through carry", target=2)),
@@ -986,7 +991,7 @@ ROLE_CONFIGS = {
         ),
     },
     "wing_back": {
-        "weights": {"attacking_support": 20, "progression": 15, "delivery": 15, "defending": 15, "impact": 15, "involvement": 10, "ball_security": 10},
+        "weights": {"attacking_support": 25, "impact": 20, "delivery": 15, "progression": 10, "defending": 10, "involvement": 10, "ball_security": 10},
         "dimensions": (
             ("progression", _s("Progressive passes", target=6), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=6), _s("Final third entries through pass", target=3), _s("Final third entries through carry", target=3)),
             ("delivery", _s("Crosses", target=5), _s("Crosses accurate, %", "cross", weight=2), _s("Passes into the penalty box", target=3), _s("Passes into the penalty box accurate, %", "action_rate"), _s("Passes for a shot", target=2)),
@@ -996,7 +1001,7 @@ ROLE_CONFIGS = {
         ),
     },
     "holding_midfielder": {
-        "weights": {"protection": 20, "involvement": 20, "circulation": 15, "progression": 15, "switching": 10, "risk_control": 10, "impact": 10},
+        "weights": {"protection": 25, "progression": 20, "involvement": 15, "circulation": 10, "switching": 10, "risk_control": 10, "impact": 10},
         "dimensions": (
             ("protection", _s("Defensive challenges", target=7), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Tackles", target=5), _s("Tackles successful, %", "def_duel"), _s("Interceptions", target=5), _s("Ball recoveries", target=8)),
             ("circulation", _s("Passes", target=50), _s("Passes accurate, %", "pass_safe", weight=2)),
@@ -1006,7 +1011,7 @@ ROLE_CONFIGS = {
         ),
     },
     "box_to_box_midfielder": {
-        "weights": {"impact": 20, "involvement": 20, "final_third_presence": 20, "progression": 15, "circulation": 10, "duel_balance": 10, "creation": 5},
+        "weights": {"impact": 20, "involvement": 20, "final_third_presence": 15, "duel_balance": 15, "progression": 10, "creation": 10, "circulation": 10},
         "dimensions": (
             ("circulation", _s("Passes", target=45), _s("Passes accurate, %", "pass_general", weight=2), _s("Lost balls", "negative", target=8)),
             ("progression", _s("Progressive passes", target=8), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=6), _s("Final third entries through pass", target=3), _s("Final third entries through carry", target=3)),
@@ -1345,6 +1350,20 @@ def _number(value, *, missing_zero=False):
         return 0.0 if missing_zero else None
     match = re.search(r"-?\d+(?:\.\d+)?", normalized)
     return float(match.group()) if match else (0.0 if missing_zero else None)
+
+
+def platform_index(value):
+    """Return the MS-facing index while preserving the collected source value.
+
+    The fixed offset changes only the scale displayed to players.  Because the
+    same 20 points are applied to every available value, team and match ranks
+    remain exactly identical to the collected ranking.
+    """
+    number = _number(value)
+    if number is None:
+        return None
+    adjusted = number + MS_INDEX_DISPLAY_OFFSET
+    return int(adjusted) if adjusted.is_integer() else round(adjusted, 2)
 
 
 def _rate(value):
@@ -2182,26 +2201,23 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
         )
     formula = {
         "fr": (
-            "MS Score /100 = somme des missions pondérées selon le poste + ajustement décisif borné de -8 à +8 "
-            "+ validation de classement bornée à +2. Une mission non observable conserve la référence neutre "
-            "50/100 : son poids n’est jamais redistribué sur les quelques actions d’une entrée courte. Les buts, "
-            "passes décisives, passes clés, occasions, xG, dribbles réussis et actions réussies dans la surface "
-            "alimentent l’impact décisif avec rendements décroissants. Le score final reste toujours compris "
-            "entre 0 et 100. Les totaux réels ne sont jamais projetés sur 90 minutes."
+            "Le MS Score répond à une question simple : le joueur a-t-il rempli les missions prioritaires de son "
+            "poste pendant ses minutes réelles ? La plus grande partie de la note vient de ces missions. Les buts, "
+            "passes décisives, passes clés, occasions, xG et actions dangereuses valorisent ensuite l’impact direct ; "
+            "le rang dans l’équipe et la rencontre sert seulement de confirmation. Une action non rencontrée dans "
+            "le match n’est pas automatiquement considérée comme une faiblesse et aucun total n’est projeté sur 90 minutes."
         ),
         "en": (
-            "MS Score /100 = position-weighted missions + a decisive adjustment bounded from -8 to +8 + rank "
-            "validation bounded at +2. An unobserved mission keeps the neutral 50/100 reference, so its weight "
-            "is never reassigned to the few events in a short appearance. Goals, assists, key passes, chances, "
-            "xG, successful dribbles and successful box actions feed the decisive module with diminishing returns. "
-            "The final score is always bounded from 0 to 100 and real totals are never projected to 90 minutes."
+            "MS Score answers one simple question: did the player fulfil the priority missions of the position during "
+            "the minutes actually played? Most of the score comes from those missions. Goals, assists, key passes, "
+            "chances, xG and dangerous actions then reward direct impact; team and match rank are confirmation only. "
+            "An action that did not arise is not automatically treated as a weakness, and totals are never projected to 90 minutes."
         ),
         "ar": (
-            "مؤشر MS من 100 هو مجموع مهام المركز بأوزانها، مع تعديل حاسم محدود بين -8 و+8 وتأكيد ترتيب "
-            "لا يتجاوز نقطتين. المهمة غير القابلة للملاحظة تحتفظ بالمرجع المحايد 50/100 ولا يوزع وزنها على "
-            "أحداث مشاركة قصيرة. تدخل الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والمراوغات "
-            "الناجحة والأفعال الناجحة داخل المنطقة في التأثير الحاسم بعائد متناقص، ويبقى المجموع بين 0 و100 "
-            "دون تحويل الأرقام الحقيقية إلى 90 دقيقة."
+            "يجيب مؤشر MS عن سؤال بسيط: هل نفذ اللاعب أهم مهام مركزه خلال الدقائق التي لعبها فعليا؟ تأتي أغلب "
+            "الدرجة من هذه المهام، ثم تعزز الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والأفعال "
+            "الخطرة التأثير المباشر، بينما يستخدم الترتيب داخل الفريق والمباراة للتأكيد فقط. عدم حدوث فعل معين لا "
+            "يعد ضعفا تلقائيا ولا تحول الأرقام إلى 90 دقيقة."
         ),
     }[language]
     raw_total = (
@@ -3232,7 +3248,7 @@ def _appendix_metrics(target, language):
         if metric in {"Player", "Team", "Position"}:
             return str(raw or "—")
         if metric == "Index":
-            return _format_number(_number(raw))
+            return _format_number(platform_index(raw))
         if metric in {"№", "Minutes played"}:
             return _format_number(_number(raw, missing_zero=True))
         denominator = PERCENT_DENOMINATORS.get(metric)
@@ -3361,7 +3377,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "role_group": group,
             "role_label": copy["roles"][group],
             "minutes": round(_minutes(target)),
-            "index": _number(target.get("Index")),
+            "index": platform_index(target.get("Index")),
             "profile_score": profile_score,
             "ms_score": ms_score,
         },
@@ -3403,7 +3419,8 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "comparison_scope": "same_or_strictly_equivalent_position_and_individual_match_leaders_only",
             "collective_unit_analysis": False,
             "match_result_context_analysis": False,
-            "index_usage": "explicit_verdict_validation_signal",
+            "index_usage": "display_offset_plus_20_with_unchanged_rank_validation",
+            "score_calibration": "nine_matches_265_player_rows_same_match_same_position_comparisons",
             "position_benchmark_selection": "highest_stored_position_percentage",
             "position_benchmark_scale": "real_per_90_player_vs_position_average_axis_normalized_for_shape_only",
             "performance_reading": "three_non_overlapping_lenses_global_attacking_defensive",

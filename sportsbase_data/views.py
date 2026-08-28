@@ -19,6 +19,7 @@ from client_portal.decorators import (
 from client_portal.models import PlayerAccess, PortalProfile
 from client_portal.services import accessible_players_for
 
+from .analysis_engine import platform_index
 from .forms import PerformanceReportForm, SportsBaseSubscriptionForm
 from .models import (
     PerformanceReport,
@@ -43,7 +44,6 @@ from .services import (
     fail_sync_job,
     pending_jobs_overview,
     queue_sync,
-    reconcile_subscription_delivery_settings,
     retry_youtube_upload,
 )
 
@@ -129,7 +129,16 @@ def _build_match_analysis(stats):
         stats.detailed_statistics,
         stats.success_rates,
     )
-    consumed = {"index", "minutes played"}
+    # Goals, assists and key passes already form the priority impact strip at
+    # the top of the page.  Do not repeat them again in "other markers".
+    consumed = {
+        "index",
+        "minutes played",
+        "goals",
+        "assists",
+        "key passes",
+        "key passes accurate, %",
+    }
     pairs = []
 
     for metric_name, rate_name, icon in MATCH_METRIC_PAIRS:
@@ -259,6 +268,30 @@ def _build_season_analysis(snapshot):
     return pairs, season_other, average_other
 
 
+def _season_table_rows_with_ms_index(snapshot):
+    """Apply the MS index scale to the secondary season table only."""
+    if snapshot is None:
+        return []
+    headers = list(snapshot.season_table_headers or [])
+    try:
+        index_position = next(
+            index
+            for index, header in enumerate(headers)
+            if str(header).strip().casefold() == "index"
+        )
+    except StopIteration:
+        index_position = None
+    rows = []
+    for source in snapshot.season_match_rows or []:
+        item = dict(source) if isinstance(source, dict) else {"values": source}
+        values = list(item.get("values") or [])
+        if index_position is not None and index_position < len(values):
+            values[index_position] = platform_index(values[index_position])
+        item["values"] = values
+        rows.append(item)
+    return rows
+
+
 def _time_on_field_display(snapshot):
     """Format the playing-time percentage without ever producing `—%`."""
     if snapshot is None:
@@ -357,17 +390,6 @@ def subscription_form(request, pk=None):
     subscription = (
         get_object_or_404(SportsBaseSubscription, pk=pk) if pk else None
     )
-    previous_delivery_options = {
-        "all_actions_enabled": (
-            subscription.all_actions_enabled if subscription else False
-        ),
-        "email_delivery_enabled": (
-            subscription.email_delivery_enabled if subscription else False
-        ),
-        "youtube_delivery_enabled": (
-            subscription.youtube_delivery_enabled if subscription else False
-        ),
-    }
     form = SportsBaseSubscriptionForm(request.POST or None, instance=subscription)
     if request.method == "POST" and form.is_valid():
         item = form.save(commit=False)
@@ -376,21 +398,6 @@ def subscription_form(request, pk=None):
         item.save()
         _sync_direct_portal_language(item)
         generate_reports_for_subscription(item)
-        delivery_result = reconcile_subscription_delivery_settings(
-            item,
-            previous_options=previous_delivery_options,
-            requested_by=request.user,
-        )
-        if delivery_result["sync_queued"]:
-            messages.info(
-                request,
-                "La réactivation de All Actions a ajouté une tâche à l’agent local.",
-            )
-        elif delivery_result["youtube_jobs_created"]:
-            messages.info(
-                request,
-                "La publication YouTube a été ajoutée à la file de l’agent local.",
-            )
         messages.success(
             request,
             "L’abonnement Performance a été enregistré sans modifier la fiche du joueur.",
@@ -620,6 +627,7 @@ def portal_performance_detail(request, player_id):
             "season_analysis_pairs": season_analysis_pairs,
             "season_analysis_other": season_analysis_other,
             "season_average_other": season_average_other,
+            "season_match_rows": _season_table_rows_with_ms_index(snapshot),
             "time_on_field_display": _time_on_field_display(snapshot),
             "portal_language": request.portal_profile.preferred_language,
         },
@@ -705,14 +713,12 @@ def portal_match_map(request, player_id, match_id, map_kind):
 
 
 @production_required
-@never_cache
 @require_GET
 def api_pending_jobs(request):
     return JsonResponse(pending_jobs_overview())
 
 
 @production_required
-@never_cache
 @require_GET
 def api_next_job(request):
     job = claim_next_job()
@@ -773,7 +779,6 @@ def api_job_result(request, job_id):
 
 
 @production_required
-@never_cache
 @require_GET
 def api_next_youtube_job(request):
     upload = claim_next_youtube_upload()

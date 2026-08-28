@@ -16,7 +16,7 @@
 
 {% if snapshot %}
 <section class="performance-kpi-grid performance-season-kpis">
-    <article class="kpi-index"><i class="fas fa-gauge-high"></i><span>{{ copy.index }}</span><strong>{{ snapshot.season_statistics|dict_get:"Index"|stat_value }}</strong><small>{{ copy.global_indicator }}</small></article>
+    <article class="kpi-index"><i class="fas fa-gauge-high"></i><span>{{ copy.index }}</span><strong>{{ snapshot.season_statistics|dict_get:"Index"|ms_index }}</strong><small>{{ copy.global_indicator }}</small></article>
     <article class="kpi-matches"><i class="fas fa-calendar-check"></i><span>{{ copy.matches_played }}</span><strong>{{ snapshot.season_statistics|dict_get:"Matches played"|stat_value }}</strong><small>{{ subscription.season }}</small></article>
     <article class="kpi-goals"><i class="fas fa-futbol"></i><span>{{ "Goals"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Goals"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
     <article class="kpi-assists"><i class="fas fa-wand-magic-sparkles"></i><span>{{ "Assists"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Assists"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
@@ -31,7 +31,7 @@
             <a class="performance-match-row" href="{% url 'performance:portal_match' player.pk match.sportsbase_match_id %}">
                 <time>{{ match.match_date|date:"d M"|default:"—" }}<small>{{ match.match_date|date:"Y" }}</small></time>
                 <div class="performance-fixture"><small>{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</small><strong><span>{{ match.home_team }}</span><b>{{ match.score }}</b><span>{{ match.away_team }}</span></strong></div>
-                <div class="performance-match-index"><small>{{ copy.index }}</small><strong>{{ match.player_stats.index|stat_value }}</strong></div>
+                <div class="performance-match-index"><small>{{ copy.index }}</small><strong>{{ match.player_stats.index|ms_index }}</strong></div>
                 {% if match.youtube_upload.status == "uploaded" %}<span class="performance-actions-state state-uploaded"><i class="fas fa-circle-play"></i> {{ copy.watch }}</span>
                 {% elif match.youtube_upload.status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
                 {% elif match.youtube_upload.status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
@@ -126,11 +126,11 @@
     </div>
     {% endif %}
 </section>
-{% if snapshot.season_match_rows %}
+{% if season_match_rows %}
 <details class="performance-panel performance-season-table">
-    <summary><span><small>{{ copy.detailed_view }}</small>{{ copy.season_table }}</span><b>{{ snapshot.season_match_rows|length }} {{ copy.rows }}</b><i class="fas fa-chevron-down"></i></summary>
+    <summary><span><small>{{ copy.detailed_view }}</small>{{ copy.season_table }}</span><b>{{ season_match_rows|length }} {{ copy.rows }}</b><i class="fas fa-chevron-down"></i></summary>
     <p>{{ copy.table_help }}</p>
-    <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label_for:portal_language }}</th>{% endfor %}</tr></thead><tbody>{% for row in snapshot.season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+    <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label_for:portal_language }}</th>{% endfor %}</tr></thead><tbody>{% for row in season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
 </details>
 {% endif %}
 {% else %}

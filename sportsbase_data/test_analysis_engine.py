@@ -5,7 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZipFile
 
-from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS, analyse_match_dataset
+from .analysis_engine import (
+    SPORTSBASE_PLAYER_COLUMNS,
+    analyse_match_dataset,
+    platform_index,
+)
 from .report_pdf import PDF_COPY, render_performance_pdf
 from .xlsx_statistics import read_players_statistics_xlsx
 
@@ -59,6 +63,27 @@ class PlayersWorkbookReaderTests(unittest.TestCase):
 
 
 class PositionAnalysisTests(unittest.TestCase):
+    def test_ms_index_uses_fixed_display_offset_without_changing_missing_values(self):
+        self.assertEqual(platform_index(180), 200)
+        self.assertEqual(platform_index("201"), 221)
+        self.assertIsNone(platform_index("—"))
+
+    def test_extended_central_position_codes_use_the_correct_role_family(self):
+        expected = {
+            "LCDM": "holding_midfielder",
+            "RCDM": "holding_midfielder",
+            "LCAM": "attacking_midfielder",
+            "RCAM": "attacking_midfielder",
+        }
+        for position, role in expected.items():
+            rows = [
+                _row("Target", "Team A", position, 90, **{"Index": 180}),
+                _row("Opponent", "Team B", position, 90, **{"Index": 170}),
+            ]
+            analysis = analyse_match_dataset(rows, "Target", "fr")
+            self.assertEqual(analysis["player"]["role_group"], role)
+            self.assertEqual(analysis["player"]["index"], 200)
+
     def test_all_role_families_have_a_position_specific_profile(self):
         positions = ("GK", "LCB", "RB", "RWB", "CDM", "RCM", "CAM", "RW", "RCF")
         for position in positions:
@@ -727,9 +752,9 @@ class PositionAnalysisTests(unittest.TestCase):
         full_match = analyse_match_dataset(rows, "Mohamed Trabelsi", "fr")
         short_entry = analyse_match_dataset(rows, "Mohamed Salah Mhadhebi", "fr")
 
-        self.assertEqual(full_match["player"]["ms_score"], 76)
+        self.assertEqual(full_match["player"]["ms_score"], 75)
         self.assertEqual(full_match["verdict"]["code"], "very_good")
-        self.assertEqual(short_entry["player"]["ms_score"], 57)
+        self.assertEqual(short_entry["player"]["ms_score"], 56)
         self.assertEqual(short_entry["verdict"]["label"], "BONNE ENTRÉE")
         self.assertGreaterEqual(
             full_match["player"]["ms_score"] - short_entry["player"]["ms_score"],

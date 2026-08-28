@@ -1,5 +1,7 @@
 from django import template
 
+from sportsbase_data.analysis_engine import platform_index
+
 
 register = template.Library()
 
@@ -456,6 +458,12 @@ def stat_value(value):
     }:
         return "—"
     return value
+
+
+@register.filter
+def ms_index(value):
+    """Display every available index on the fixed MS platform scale."""
+    return stat_value(platform_index(value))
 
 
 @register.filter
