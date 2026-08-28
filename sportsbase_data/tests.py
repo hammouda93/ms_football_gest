@@ -46,6 +46,7 @@ from .services import (
     claim_next_youtube_upload,
     ensure_youtube_upload_jobs,
     queue_sync,
+    reconcile_subscription_delivery_settings,
 )
 from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
@@ -777,6 +778,29 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
             },
         )
 
+    def test_pending_job_reads_delivery_options_again_when_claimed(self):
+        self.subscription.all_actions_enabled = False
+        self.subscription.email_delivery_enabled = False
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "email_delivery_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        queue_sync(self.subscription, requested_by=self.admin)
+        SportsBaseSubscription.objects.filter(pk=self.subscription.pk).update(
+            all_actions_enabled=True,
+            email_delivery_enabled=True,
+            youtube_delivery_enabled=True,
+        )
+        claimed = claim_next_job()
+        self.assertTrue(claimed.payload["all_actions_enabled"])
+        self.assertTrue(claimed.payload["email_delivery_enabled"])
+        self.assertTrue(claimed.payload["youtube_delivery_enabled"])
+
     def test_upload_queue_is_idempotent_and_contains_no_source_brand(self):
         self.assertEqual(ensure_youtube_upload_jobs(), 1)
         self.assertEqual(ensure_youtube_upload_jobs(), 0)
@@ -807,6 +831,63 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
         self.assertEqual(ensure_youtube_upload_jobs(), 0)
         self.assertFalse(SportsBaseYouTubeUpload.objects.exists())
+
+    def test_pending_upload_is_suspended_while_youtube_is_disabled(self):
+        self.assertEqual(ensure_youtube_upload_jobs(), 1)
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.assertIsNone(claim_next_youtube_upload())
+        self.assertEqual(
+            SportsBaseYouTubeUpload.objects.get(match=self.match).status,
+            SportsBaseYouTubeUpload.Status.PENDING,
+        )
+
+    def test_reactivation_queues_missing_actions_and_reuses_downloaded_video(self):
+        self.subscription.all_actions_enabled = False
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        self.match.actions_state = SportsBaseMatch.ActionsState.NOT_REQUESTED
+        self.match.local_folder_key = ""
+        self.match.all_actions_filename = ""
+        self.match.save(
+            update_fields=(
+                "actions_state",
+                "local_folder_key",
+                "all_actions_filename",
+                "updated_at",
+            )
+        )
+        self.subscription.all_actions_enabled = True
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        result = reconcile_subscription_delivery_settings(
+            self.subscription,
+            previous_options={
+                "all_actions_enabled": False,
+                "email_delivery_enabled": True,
+                "youtube_delivery_enabled": False,
+            },
+            requested_by=self.admin,
+        )
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.actions_state, SportsBaseMatch.ActionsState.QUEUED)
+        self.assertTrue(result["sync_queued"])
+        self.assertEqual(
+            self.subscription.sync_jobs.get().job_type,
+            SportsBaseSyncJob.JobType.FULL,
+        )
 
 
 class YouTubeUploaderPathTests(TestCase):
@@ -949,20 +1030,34 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertIn("attachment", agent_pdf["Content-Disposition"])
 
     def test_email_waits_for_video_and_published_report(self):
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=("youtube_delivery_enabled", "updated_at")
+        )
         match = self._create_match(1)
         report = generate_match_report(match)
+        self.assertFalse(send_ready_delivery_notification(report))
         upload = SportsBaseYouTubeUpload.objects.create(
             match=match,
             status=SportsBaseYouTubeUpload.Status.UPLOADED,
             youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
             youtube_video_id="abcdefghijk",
         )
-        self.assertTrue(send_ready_delivery_notification(upload))
+        self.assertTrue(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn(upload.youtube_url, mail.outbox[0].body)
-        self.assertIn(reverse("performance:report_pdf", args=(report.pk,)), mail.outbox[0].body)
-        self.assertFalse(send_ready_delivery_notification(upload))
+        self.assertIn("espace joueur", mail.outbox[0].body)
+        self.assertNotIn("http://", mail.outbox[0].body)
+        self.assertNotIn("https://", mail.outbox[0].body)
+        self.assertFalse(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_email_option_suppresses_notification(self):
+        match = self._create_match(2)
+        report = generate_match_report(match)
+        self.subscription.email_delivery_enabled = False
+        self.subscription.save(update_fields=("email_delivery_enabled", "updated_at"))
+        self.assertFalse(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_portal_shows_embedded_video_and_dynamic_report(self):
         match = self._create_match(1)
