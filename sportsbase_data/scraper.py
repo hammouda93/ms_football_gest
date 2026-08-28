@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
+from sportsbase_data.analysis_engine import SPORTSBASE_PLAYER_COLUMNS
 SPORTSBASE_ROOT = "https://football.sportsbase.world"
 MATCH_ID_RE = re.compile(r"/matches/(\d+)")
 PLAYER_ID_RE = re.compile(r"/players/(\d+)")
@@ -23,23 +24,14 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-direct-players-table-v15-20260828"
+SCRAPER_BUILD = "season-kpis-auto-table-settings-v16-20260828"
 
 
-# These are the enriched Players-table columns configured in SportsBase with
-# "Add table".  The agent reads the React table directly and refuses a partial
-# configuration instead of silently producing an incomplete analysis.
-PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS = (
-    "Goals by head",
-    "Free-kick shots",
-    "Free-kick goals",
-    "Short passes",
-    "Short passes accurate, %",
-    "Shots on target from the penalty area, %",
-    "Shots on target from outside the penalty area, %",
-    "Headers",
-    "Headers on target, %",
-    "Shots on post / bar",
+# The table settings may expose more metrics after "Select all".  The scraper
+# validates and stores only the stable 81-column contract used by the analysis
+# engine.  Number and team are reconstructed locally rather than DOM headers.
+PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS = tuple(
+    header for header in SPORTSBASE_PLAYER_COLUMNS if header not in {"№", "Team"}
 )
 
 
@@ -2156,16 +2148,25 @@ class SportsBaseSubscriptionScraper:
 
     @classmethod
     def _normalize_players_table_snapshot(cls, snapshot):
-        headers = [
+        raw_headers = [
             re.sub(r"\s+", " ", str(item or "")).strip()
             for item in (snapshot.get("headers") or [])
             if str(item or "").strip()
+        ]
+        raw_header_by_normalized = {
+            cls._normalized_header(header): header for header in raw_headers
+        }
+        headers = [
+            header
+            for header in SPORTSBASE_PLAYER_COLUMNS
+            if cls._normalized_header(header) in raw_header_by_normalized
         ]
         rows = []
         for raw_row in snapshot.get("rows") or []:
             row = {}
             for header in headers:
-                value = raw_row.get(header, "")
+                raw_header = raw_header_by_normalized[cls._normalized_header(header)]
+                value = raw_row.get(raw_header, "")
                 if header in {"Player", "Team", "Position"}:
                     row[header] = re.sub(r"\s+", " ", str(value or "")).strip()
                 else:
@@ -2223,19 +2224,35 @@ class SportsBaseSubscriptionScraper:
         )
 
     def _wait_for_enriched_players_table(self, page):
-        """Wait until React exposes the configured custom table."""
+        """Ensure that React exposes every KPI required by the analysis engine."""
         last_headers = []
-        for attempt in range(2):
+        configuration_attempted = False
+        for attempt in range(3):
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 last_headers = self._live_players_table_headers(page)
                 if not self._missing_enriched_players_headers(last_headers):
                     return last_headers
                 page.wait_for_timeout(750)
-            if attempt == 0:
+
+            missing = self._missing_enriched_players_headers(last_headers)
+            if not configuration_attempted:
+                print(
+                    "[SPORTSBASE] Table Players incomplète "
+                    f"({len(last_headers)} colonnes; manque : {', '.join(missing)}); "
+                    "configuration automatique des indicateurs…"
+                )
+                self._configure_all_players_table_metrics(page)
+                configuration_attempted = True
+                page.locator('[role="table"]').first.wait_for(
+                    state="visible", timeout=30_000
+                )
+                continue
+
+            if attempt == 1:
                 missing = self._missing_enriched_players_headers(last_headers)
                 print(
-                    "[SPORTSBASE] Table enrichie pas encore chargée "
+                    "[SPORTSBASE] Table enrichie pas encore rechargée "
                     f"({len(last_headers)} colonnes; manque : {', '.join(missing)}); "
                     "actualisation unique…"
                 )
@@ -2246,10 +2263,77 @@ class SportsBaseSubscriptionScraper:
 
         missing = self._missing_enriched_players_headers(last_headers)
         raise RuntimeError(
-            "La table Players enrichie n’est pas configurée dans le profil Chrome "
-            "persistant de l’agent. Ouvrez ce profil, utilisez « Add table » une seule "
-            "fois, ajoutez les KPI requis puis relancez l’agent. Colonnes manquantes : "
+            "La configuration automatique de la table Players n’a pas rendu tous "
+            "les KPI requis disponibles. Colonnes manquantes : "
             + ", ".join(missing)
+        )
+
+    @staticmethod
+    def _configure_all_players_table_metrics(page):
+        """Select every metric in every Settings section, then persist the table."""
+        settings_button = page.get_by_role(
+            "button", name=re.compile(r"^Settings$", re.I)
+        ).first
+        settings_button.scroll_into_view_if_needed(timeout=10_000)
+        settings_button.click(timeout=10_000)
+
+        save_button = page.get_by_role(
+            "button", name=re.compile(r"^Save$", re.I)
+        ).last
+        save_button.wait_for(state="visible", timeout=15_000)
+        settings_panel = save_button.locator(
+            'xpath=ancestor::div['
+            './/*[normalize-space()="Section"] and '
+            './/*[normalize-space()="Select all"]][1]'
+        )
+        if not settings_panel.count():
+            raise RuntimeError(
+                "Le panneau Settings de la table Players est introuvable."
+            )
+
+        section_items = settings_panel.locator('[class*="BlocksItem"]')
+        section_names = []
+        for index in range(section_items.count()):
+            name = re.sub(
+                r"\s+", " ", section_items.nth(index).inner_text(timeout=5_000)
+            ).strip()
+            if name and name not in section_names:
+                section_names.append(name)
+        if not section_names:
+            raise RuntimeError(
+                "Aucune section d’indicateurs n’est visible dans Settings."
+            )
+
+        selected_sections = 0
+        for section_name in section_names:
+            section = settings_panel.locator('[class*="BlocksItem"]').filter(
+                has_text=re.compile(rf"^\s*{re.escape(section_name)}\s*$", re.I)
+            ).first
+            section.scroll_into_view_if_needed(timeout=10_000)
+            section.click(timeout=10_000)
+
+            select_all_label = settings_panel.locator("label").filter(
+                has_text=re.compile(r"^\s*Select all\s*$", re.I)
+            ).first
+            select_all_label.wait_for(state="visible", timeout=10_000)
+            checkbox = select_all_label.locator('input[type="checkbox"]').first
+            if checkbox.count() and not checkbox.is_checked():
+                select_all_label.click(timeout=10_000)
+                page.wait_for_timeout(250)
+            selected_sections += 1
+
+        print(
+            "[SPORTSBASE] Settings Players — "
+            f"Select all appliqué à {selected_sections} section(s)."
+        )
+        save_button.click(timeout=10_000)
+        save_button.wait_for(state="hidden", timeout=15_000)
+        page.locator('[role="table"]').first.wait_for(
+            state="visible", timeout=30_000
+        )
+        page.wait_for_timeout(1_000)
+        print(
+            "[SPORTSBASE] Configuration enrichie enregistrée dans le profil Chrome."
         )
 
     @staticmethod
