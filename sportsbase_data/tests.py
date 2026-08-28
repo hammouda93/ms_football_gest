@@ -889,6 +889,30 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
             SportsBaseSyncJob.JobType.FULL,
         )
 
+    def test_unchanged_enabled_options_repair_missing_actions(self):
+        self.match.actions_state = SportsBaseMatch.ActionsState.NOT_REQUESTED
+        self.match.local_folder_key = ""
+        self.match.all_actions_filename = ""
+        self.match.save(
+            update_fields=(
+                "actions_state",
+                "local_folder_key",
+                "all_actions_filename",
+                "updated_at",
+            )
+        )
+        result = reconcile_subscription_delivery_settings(
+            self.subscription,
+            previous_options={
+                "all_actions_enabled": True,
+                "email_delivery_enabled": True,
+                "youtube_delivery_enabled": True,
+            },
+            requested_by=self.admin,
+        )
+        self.assertFalse(result["changed"])
+        self.assertTrue(result["sync_queued"])
+
 
 class YouTubeUploaderPathTests(TestCase):
     def test_local_video_is_resolved_inside_subscription_storage(self):
