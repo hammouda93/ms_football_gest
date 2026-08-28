@@ -5,7 +5,6 @@ from collections import defaultdict
 
 from django.conf import settings
 from django.core.mail import EmailMessage
-from django.urls import reverse
 from django.utils import timezone
 
 from .analysis_engine import build_match_analysis
@@ -41,12 +40,12 @@ COPY = {
         "mail_subject": "Votre rapport et vos All Actions sont prêts — MS Performance",
         "mail_intro": (
             "L’analyse de votre dernière rencontre est terminée. Votre rapport "
-            "et votre vidéo All Actions sont disponibles."
+            "et votre vidéo All Actions sont disponibles dans votre espace joueur."
         ),
         "mail_subject_report_only": "Votre rapport de match est prêt — MS Performance",
         "mail_intro_report_only": (
             "L’analyse de votre dernière rencontre est terminée. Votre rapport "
-            "est disponible."
+            "est disponible dans votre espace joueur."
         ),
         "match": "Match",
         "watch": "Regarder All Actions",
@@ -75,11 +74,12 @@ COPY = {
         "mail_subject": "Your report and All Actions are ready — MS Performance",
         "mail_intro": (
             "The analysis of your latest match is complete. Your report and "
-            "All Actions video are available."
+            "All Actions video are available in your player space."
         ),
         "mail_subject_report_only": "Your match report is ready — MS Performance",
         "mail_intro_report_only": (
-            "The analysis of your latest match is complete. Your report is available."
+            "The analysis of your latest match is complete. Your report is available "
+            "in your player space."
         ),
         "match": "Match",
         "watch": "Watch All Actions",
@@ -101,11 +101,11 @@ COPY = {
         "no_improvement": "المحافظة على الاستمرارية ومواصلة تطوير جودة اتخاذ القرار.",
         "mail_subject": "تقريرك وفيديو جميع اللقطات جاهزان — MS Performance",
         "mail_intro": (
-            "اكتمل تحليل مباراتك الأخيرة. التقرير وفيديو جميع اللقطات متاحان الآن."
+            "اكتمل تحليل مباراتك الأخيرة. التقرير وفيديو جميع اللقطات متاحان الآن في مساحة اللاعب الخاصة بك."
         ),
         "mail_subject_report_only": "تقرير مباراتك جاهز — MS Performance",
         "mail_intro_report_only": (
-            "اكتمل تحليل مباراتك الأخيرة. التقرير متاح الآن."
+            "اكتمل تحليل مباراتك الأخيرة. التقرير متاح الآن في مساحة اللاعب الخاصة بك."
         ),
         "match": "المباراة",
         "watch": "مشاهدة جميع اللقطات",
@@ -438,6 +438,8 @@ def send_ready_delivery_notification(report):
         return False
 
     subscription = report.subscription
+    if not subscription.email_delivery_enabled:
+        return False
     upload = None
     if subscription.youtube_delivery_enabled:
         try:
@@ -471,27 +473,15 @@ def send_ready_delivery_notification(report):
 
     language = report.language if report.language in COPY else "fr"
     copy = COPY[language]
-    base_url = getattr(
-        settings,
-        "PUBLIC_SITE_URL",
-        "https://msfootball-1a882b44ed52.herokuapp.com",
-    ).rstrip("/")
-    report_url = base_url + reverse("performance:report_pdf", args=(report.pk,))
     fixture = (
         f"{report.match.home_team} {report.match.score} "
         f"{report.match.away_team}"
     ).strip()
     if subscription.youtube_delivery_enabled:
         subject = f"{copy['mail_subject']} — {fixture}"
-        portal_match_url = base_url + reverse(
-            "performance:portal_match",
-            args=(subscription.player_id, report.match.sportsbase_match_id),
-        )
         body_parts = (
             copy["mail_intro"],
             f"{copy['match']} : {fixture}",
-            f"{copy['portal_match']} : {portal_match_url}",
-            f"{copy['report']} : {report_url}",
             "MS Performance",
         )
     else:
@@ -499,7 +489,6 @@ def send_ready_delivery_notification(report):
         body_parts = (
             copy["mail_intro_report_only"],
             f"{copy['match']} : {fixture}",
-            f"{copy['report']} : {report_url}",
             "MS Performance",
         )
     message = EmailMessage(
