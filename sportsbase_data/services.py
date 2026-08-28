@@ -166,9 +166,9 @@ def _job_payload(job):
         "-match_date", "-sportsbase_match_id"
     ):
         try:
-            stats_metadata = match.player_stats.source_metadata or {}
+            statistics_headers = match.player_stats.players_statistics_headers or []
         except SportsBaseMatchStats.DoesNotExist:
-            stats_metadata = {}
+            statistics_headers = []
         known_matches.append(
             {
                 "sportsbase_match_id": match.sportsbase_match_id,
@@ -188,9 +188,7 @@ def _job_payload(job):
                     else None
                 ),
                 "delivery_error": match.delivery_error,
-                "players_statistics_xlsx": stats_metadata.get(
-                    "players_statistics_xlsx", ""
-                ),
+                "players_statistics_headers": statistics_headers,
             }
         )
     return {
