@@ -17,6 +17,7 @@ from playwright.sync_api import sync_playwright
 
 from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
 from sportsbase_data.analysis_engine import SPORTSBASE_PLAYER_COLUMNS
+from sportsbase_data.local_delivery import resolve_existing_actions_file
 from sportsbase_data.xlsx_statistics import read_players_statistics_xlsx
 SPORTSBASE_ROOT = "https://football.sportsbase.world"
 MATCH_ID_RE = re.compile(r"/matches/(\d+)")
@@ -25,7 +26,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-xlsx-report-portal-v17-20260828"
+SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v18-20260828"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -173,6 +174,18 @@ class SportsBaseSubscriptionScraper:
                         player_root=player_root,
                         downloads_dir=downloads_dir,
                     )
+                    if job.get("all_actions_enabled"):
+                        unfinished_actions = [
+                            item
+                            for item in result["matches"]
+                            if item.get("actions_state") not in {"downloaded", "emailed"}
+                        ]
+                        if unfinished_actions and result["status"] == "success":
+                            result["status"] = "partial"
+                            result["error"] = (
+                                "Les statistiques sont enregistrées, mais au moins un "
+                                "fichier All Actions reste à télécharger."
+                            )
             except Exception as exc:
                 result["status"] = (
                     "partial" if result["profile"] or result["matches"] else "failed"
@@ -926,7 +939,14 @@ class SportsBaseSubscriptionScraper:
 
             if not job.get("all_actions_enabled"):
                 match_data["actions_state"] = "not_requested"
-            elif previous.get("actions_state") in {"downloaded", "emailed"}:
+            elif (
+                previous.get("actions_state") in {"downloaded", "emailed"}
+                and resolve_existing_actions_file(
+                    self.storage_root,
+                    previous.get("local_folder_key"),
+                    previous.get("all_actions_filename"),
+                )
+            ):
                 # L’e-mail final est envoyé une seule fois par Django, lorsque le
                 # rapport (et, si activé, YouTube) est prêt. L’agent local conserve
                 # uniquement le fichier vidéo et ne l’envoie plus en pièce jointe.
@@ -940,6 +960,22 @@ class SportsBaseSubscriptionScraper:
                 ):
                     if previous.get(field) not in (None, ""):
                         match_data[field] = previous[field]
+                print(
+                    "[SPORTSBASE] All Actions locale déjà valide — "
+                    f"match {match_data['sportsbase_match_id']}"
+                )
+            elif previous.get("actions_state") in {"downloaded", "emailed"}:
+                # The database can say downloaded after the local MP4 was moved,
+                # deleted or left empty. Resume My Videos instead of silently
+                # finishing without a file that the YouTube uploader can use.
+                print(
+                    "[SPORTSBASE][WARN] All Actions marquée téléchargée mais fichier "
+                    f"local absent/vide — reprise My Videos pour le match "
+                    f"{match_data['sportsbase_match_id']}"
+                )
+                match_data["actions_state"] = "generating"
+                match_data["delivery_error"] = ""
+                generation_queue.append((match_data, match_item, False))
             elif previous.get("actions_state") == "generating":
                 # Une génération a déjà été demandée lors d'un passage précédent.
                 # On reprend uniquement My Videos, sans créer de doublon SportsBase.
@@ -948,6 +984,10 @@ class SportsBaseSubscriptionScraper:
             else:
                 match_data["actions_state"] = "queued"
                 generation_queue.append((match_data, match_item, True))
+                print(
+                    "[SPORTSBASE] All Actions ajoutée à la file — "
+                    f"match {match_data['sportsbase_match_id']}"
+                )
             output.append(match_data)
 
         try:
