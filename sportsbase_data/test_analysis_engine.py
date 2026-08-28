@@ -186,6 +186,71 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertTrue(any("6" in line for line in analysis["narrative"]["strengths"]))
         self.assertTrue(any("6" in line for line in analysis["narrative"]["risks"]))
 
+    def test_striker_finishing_reads_box_shots_and_headers_with_denominators(self):
+        striker = _row(
+            "Aerial Striker",
+            "Team A",
+            "CF",
+            90,
+            **{
+                "Goals": 1,
+                "Goals by head": 1,
+                "Shots": 5,
+                "Shots on target, %": "60%",
+                "Shots from the penalty area": 4,
+                "Shots on target from the penalty area, %": "50%",
+                "Shots from outside the penalty area": 1,
+                "Shots on target from outside the penalty area, %": "100%",
+                "Headers": 3,
+                "Headers on target, %": "66.67%",
+                "Shots on post / bar": 1,
+                "Short passes": 12,
+                "Short passes accurate, %": "83.33%",
+            },
+        )
+        rows = [
+            striker,
+            _row("Peer", "Team A", "CF", 90),
+            _row("Opponent", "Team B", "CF", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Aerial Striker", "fr")
+        dimensions = {item["key"]: item for item in analysis["dimensions"]}
+        finishing = {
+            item["metric"]: item for item in dimensions["finishing"]["evidence"]
+        }
+        link_play = {
+            item["metric"]: item for item in dimensions["link_play"]["evidence"]
+        }
+
+        self.assertEqual(
+            finishing["Shots on target from the penalty area, %"]["display"],
+            "2/4 · 50%",
+        )
+        self.assertEqual(
+            finishing["Headers on target, %"]["display"],
+            "2/3 · 66.67%",
+        )
+        self.assertEqual(
+            link_play["Short passes accurate, %"]["display"],
+            "10/12 · 83.33%",
+        )
+        offensive_lens = next(
+            item for item in analysis["performance_lenses"] if item["key"] == "offensive"
+        )
+        self.assertTrue(
+            any("Menace aérienne" in line for line in offensive_lens["interpretation"])
+        )
+
+        appendix = {
+            item["metric"]: item
+            for group in analysis["appendix_groups"]
+            for item in group["items"]
+        }
+        self.assertEqual(appendix["Goals by head"]["display"], "1")
+        self.assertEqual(
+            appendix["Headers on target, %"]["display"], "2/3 · 66.67%"
+        )
+
     def test_number_eight_is_rewarded_for_final_third_presence(self):
         rows = [
             _row(
@@ -400,7 +465,7 @@ class PositionAnalysisTests(unittest.TestCase):
         )
         analysis = analyse_match_dataset([target, _row("Opponent", "B", "RB", 70)], "Target", "fr")
         appendix = {item["metric"]: item for item in analysis["appendix_metrics"]}
-        self.assertEqual(analysis["appendix_total_columns"], 72)
+        self.assertEqual(analysis["appendix_total_columns"], 81)
         self.assertEqual(set(appendix), set(SPORTSBASE_PLAYER_COLUMNS))
         self.assertEqual(appendix["Shots"]["display"], "0")
         self.assertEqual(appendix["Goals"]["display"], "0")
