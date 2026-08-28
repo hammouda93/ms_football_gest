@@ -53,6 +53,116 @@ def queue_sync(subscription, *, requested_by=None, job_type=None, force=False):
     return job, True
 
 
+@transaction.atomic
+def reconcile_subscription_delivery_settings(
+    subscription,
+    *,
+    previous_options,
+    requested_by=None,
+):
+    """Apply delivery-option changes and queue only the work that became necessary.
+
+    Delivery settings are read when an agent claims a job.  This reconciliation
+    makes a saved reactivation actionable immediately instead of waiting for the
+    next periodic synchronization.
+    """
+    subscription = SportsBaseSubscription.objects.select_for_update().get(
+        pk=subscription.pk
+    )
+    previous = {
+        "all_actions_enabled": bool(
+            previous_options.get("all_actions_enabled", False)
+        ),
+        "email_delivery_enabled": bool(
+            previous_options.get("email_delivery_enabled", False)
+        ),
+        "youtube_delivery_enabled": bool(
+            previous_options.get("youtube_delivery_enabled", False)
+        ),
+    }
+    current = {
+        "all_actions_enabled": subscription.all_actions_enabled,
+        "email_delivery_enabled": subscription.email_delivery_enabled,
+        "youtube_delivery_enabled": subscription.youtube_delivery_enabled,
+    }
+    changed = {
+        name for name, value in current.items() if value != previous[name]
+    }
+    result = {
+        "changed": bool(changed),
+        "sync_queued": False,
+        "youtube_jobs_created": 0,
+    }
+    if not changed:
+        return result
+
+    if not subscription.all_actions_enabled:
+        # Keep already downloaded files.  Only unfinished requests are suspended.
+        subscription.matches.filter(
+            actions_state__in={
+                SportsBaseMatch.ActionsState.QUEUED,
+                SportsBaseMatch.ActionsState.GENERATING,
+                SportsBaseMatch.ActionsState.FAILED,
+            }
+        ).update(
+            actions_state=SportsBaseMatch.ActionsState.NOT_REQUESTED,
+            delivery_error="",
+        )
+        return result
+
+    all_actions_activated = (
+        "all_actions_enabled" in changed and subscription.all_actions_enabled
+    )
+    youtube_activated = (
+        "youtube_delivery_enabled" in changed
+        and subscription.youtube_delivery_enabled
+    )
+
+    if all_actions_activated:
+        subscription.matches.filter(
+            actions_state__in={
+                SportsBaseMatch.ActionsState.NOT_REQUESTED,
+                SportsBaseMatch.ActionsState.FAILED,
+            }
+        ).update(
+            actions_state=SportsBaseMatch.ActionsState.QUEUED,
+            delivery_error="",
+        )
+
+    if subscription.youtube_delivery_enabled:
+        result["youtube_jobs_created"] = ensure_youtube_upload_jobs()
+
+    actions_missing = (
+        not subscription.matches.exists()
+        or subscription.matches.exclude(
+            actions_state__in={
+                SportsBaseMatch.ActionsState.DOWNLOADED,
+                SportsBaseMatch.ActionsState.EMAILED,
+            }
+        ).exists()
+    )
+    if (
+        subscription.access_enabled
+        and actions_missing
+        and (all_actions_activated or youtube_activated)
+    ):
+        pending_job = subscription.sync_jobs.filter(
+            status=SportsBaseSyncJob.Status.PENDING
+        ).first()
+        if pending_job is None:
+            running_exists = subscription.sync_jobs.filter(
+                status=SportsBaseSyncJob.Status.RUNNING
+            ).exists()
+            _job, created = queue_sync(
+                subscription,
+                requested_by=requested_by,
+                job_type=SportsBaseSyncJob.JobType.FULL,
+                force=running_exists,
+            )
+            result["sync_queued"] = created
+    return result
+
+
 def ensure_due_jobs():
     now = timezone.now()
     stale_before = now - timedelta(
@@ -106,6 +216,7 @@ def pending_jobs_overview():
         .filter(
             status=SportsBaseYouTubeUpload.Status.PENDING,
             match__subscription__in=subscriptions,
+            match__subscription__youtube_delivery_enabled=True,
         )
         .order_by("created_at", "pk")
     )
@@ -203,10 +314,7 @@ def _job_payload(job):
         ),
         "first_match_id": subscription.first_match_id,
         "all_actions_enabled": subscription.all_actions_enabled,
-        "email_delivery_enabled": (
-            subscription.email_delivery_enabled
-            and not subscription.youtube_delivery_enabled
-        ),
+        "email_delivery_enabled": subscription.email_delivery_enabled,
         "youtube_delivery_enabled": subscription.youtube_delivery_enabled,
         "player": {
             "id": player.pk,
@@ -235,6 +343,10 @@ def claim_next_job():
     )
     if not job:
         return None
+    # A pending job may have been created before an administrator changed the
+    # delivery options.  Always rebuild its payload from a fresh subscription
+    # row at the exact moment the local agent claims it.
+    job.subscription.refresh_from_db()
     job.status = SportsBaseSyncJob.Status.RUNNING
     job.started_at = timezone.now()
     job.attempts += 1
@@ -521,7 +633,11 @@ def claim_next_youtube_upload():
     upload = (
         SportsBaseYouTubeUpload.objects.select_for_update()
         .select_related("match__subscription__player")
-        .filter(status=SportsBaseYouTubeUpload.Status.PENDING)
+        .filter(
+            status=SportsBaseYouTubeUpload.Status.PENDING,
+            match__subscription__in=active_subscriptions(),
+            match__subscription__youtube_delivery_enabled=True,
+        )
         .order_by("-match__match_date", "created_at")
         .first()
     )
