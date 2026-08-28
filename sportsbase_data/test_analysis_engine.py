@@ -274,7 +274,7 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertGreaterEqual(final_third["score"], 65)
         self.assertTrue(any("Projection offensive" in line for line in analysis["narrative"]["strengths"]))
 
-    def test_sportsbase_index_rank_validates_verdict_without_changing_mission_score(self):
+    def test_external_index_rank_is_a_bounded_validation_not_the_position_score(self):
         base = _row("Player", "A", "RB", 90, **{"Index": 50, "Defensive challenges": 6, "Defensive challenges won, %": 0.7})
         rows = [
             base,
@@ -290,7 +290,8 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(first["player"]["profile_score"], second["player"]["profile_score"])
         self.assertTrue(second["rankings"]["index_used_as_verdict_signal"])
         self.assertEqual(second["rankings"]["index_match"]["rank"], 1)
-        self.assertGreaterEqual(second["verdict"]["score"], 75)
+        self.assertEqual(second["score_breakdown"]["context_adjustment"], 2)
+        self.assertEqual(second["player"]["ms_score"] - first["player"]["ms_score"], 2)
         self.assertIn("index_rank_one", second["verdict"]["reasons"])
 
     def test_no_aerial_opportunity_is_not_scored_as_a_weakness(self):
@@ -375,7 +376,8 @@ class PositionAnalysisTests(unittest.TestCase):
         analysis = analyse_match_dataset(rows, "Sub Striker", "fr")
         self.assertEqual(analysis["verdict"]["appearance_type"], "entry")
         self.assertEqual(analysis["verdict"]["label"], "ENTRÉE DÉCISIVE")
-        self.assertGreaterEqual(analysis["verdict"]["score"], 85)
+        self.assertGreaterEqual(analysis["verdict"]["score"], 65)
+        self.assertLessEqual(analysis["verdict"]["score"], 100)
 
     def test_creative_short_attacking_appearance_can_be_very_good_without_goal(self):
         rows = [
@@ -397,7 +399,8 @@ class PositionAnalysisTests(unittest.TestCase):
         ]
         analysis = analyse_match_dataset(rows, "Creative Sub", "fr")
         self.assertIn(analysis["verdict"]["label"], {"TRÈS BONNE ENTRÉE", "ENTRÉE DÉCISIVE"})
-        self.assertGreaterEqual(analysis["verdict"]["score"], 75)
+        self.assertGreaterEqual(analysis["verdict"]["score"], 65)
+        self.assertLessEqual(analysis["verdict"]["score"], 100)
 
     def test_short_zero_losses_are_not_scored_as_positive_evidence(self):
         rows = [_row("Sub", "A", "ST", 13, **{"Lost balls": 0}), _row("Opponent", "B", "ST", 90)]
@@ -483,7 +486,9 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(highlight["label"], "BUTTEUR DÉCISIF — 1 BUT")
         self.assertIn("ce match", highlight["explanation"])
         self.assertIn("pas le niveau de finition sur une saison complète", highlight["explanation"])
-        self.assertGreaterEqual(analysis["verdict"]["score"], 75)
+        self.assertEqual(analysis["score_breakdown"]["decisive_adjustment"], 4)
+        self.assertEqual(analysis["verdict"]["code"], "solid")
+        self.assertLessEqual(analysis["verdict"]["score"], 100)
 
     def test_decisive_creation_actions_raise_the_mission_score_for_every_role(self):
         positions = ("GK", "CB", "RB", "RWB", "CDM", "LCM", "CAM", "RW", "ST")
@@ -550,7 +555,8 @@ class PositionAnalysisTests(unittest.TestCase):
         goal = next(item for item in drivers if item["metric"] == "Goals")
         self.assertIn("impact direct", goal["explanation"])
         self.assertIn("MS Score", goal["score_sentence"])
-        self.assertEqual(goal["ms_points"], 20)
+        self.assertGreater(goal["ms_points"], 0)
+        self.assertLessEqual(analysis["score_breakdown"]["decisive_adjustment"], 8)
 
     def test_match_radar_uses_highest_percentage_position_and_stored_average(self):
         rows = [
@@ -609,7 +615,7 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(metrics["Interceptions"]["player_normalized"], 55.4)
         self.assertIn("valeurs saisonnières par 90 minutes", benchmark["note"])
 
-    def test_ms_score_is_open_ended_and_adds_exactly_twenty_points_per_goal(self):
+    def test_ms_score_is_bounded_and_decisive_returns_are_diminishing(self):
         opponent = _row("Opponent", "B", "ST", 90)
         scores = []
         for goals in (0, 1, 2):
@@ -629,12 +635,14 @@ class PositionAnalysisTests(unittest.TestCase):
             analysis = analyse_match_dataset([target, opponent], "Scorer", "fr")
             scores.append(analysis["player"]["ms_score"])
             self.assertEqual(analysis["verdict"]["score"], analysis["player"]["ms_score"])
-            self.assertEqual(analysis["score_breakdown"]["scale"], "open_ended_points")
-        self.assertGreater(scores[0], 100)
-        self.assertEqual(scores[1] - scores[0], 20)
-        self.assertEqual(scores[2] - scores[1], 20)
+            self.assertEqual(analysis["score_breakdown"]["scale"], "bounded_0_100")
+            self.assertGreaterEqual(analysis["player"]["ms_score"], 0)
+            self.assertLessEqual(analysis["player"]["ms_score"], 100)
+        self.assertGreater(scores[1], scores[0])
+        self.assertGreater(scores[2], scores[1])
+        self.assertLess(scores[2] - scores[1], scores[1] - scores[0])
 
-    def test_ms_score_keeps_position_missions_and_exposes_every_awarded_point(self):
+    def test_ms_score_keeps_position_missions_and_exposes_bounded_adjustments(self):
         rows = [
             _row(
                 "Centre Back",
@@ -666,18 +674,67 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertGreater(criteria["Tackles"]["ms_points"], 0)
         self.assertGreater(criteria["Interceptions"]["ms_points"], 0)
         self.assertGreater(criteria["Progressive passes"]["ms_points"], 0)
-        self.assertEqual(criteria["Goals"]["points_source"], "decisive")
-        goal = next(item for item in breakdown["point_events"] if item["metric"] == "Goals")
-        self.assertEqual(goal["unit_points"], 20)
-        self.assertEqual(goal["points"], 20)
+        self.assertEqual(criteria["Goals"]["points_source"], "position_mission")
+        direct = next(item for item in breakdown["point_events"] if item["metric"] == "Direct outcome")
+        self.assertEqual(direct["points"], 4)
+        self.assertLessEqual(breakdown["decisive_adjustment"], 8)
         expected = (
-            breakdown["base_points"]
-            + breakdown["mission_points"]
-            + breakdown["decisive_points"]
-            + breakdown["ranking_points"]
-            + breakdown["penalty_points"]
+            breakdown["position_score"]
+            + breakdown["decisive_adjustment"]
+            + breakdown["context_adjustment"]
         )
         self.assertLess(abs(expected - breakdown["raw_total_points"]), 0.02)
+
+    def test_full_decisive_match_is_clearly_separated_from_good_short_entry(self):
+        trabelsi = _row(
+            "Mohamed Trabelsi", "CS Sfaxien", "LCM", 85,
+            **{
+                "Index": 201,
+                "Actions": 62, "Actions successful, %": 0.66,
+                "Passes": 32, "Passes accurate, %": 0.75, "Lost balls": 13,
+                "Progressive passes": 11, "Progressive passes accurate, %": 0.45,
+                "Final third entries": 2, "Final third entries through pass": 2,
+                "Final third entries through carry": 0,
+                "Actions in opponent's box": 4,
+                "Actions in opponent's box successful, %": 1,
+                "Shots": 2, "Dribbles": 3, "Dribbles successful, %": 1,
+                "Passes for a shot": 1, "Passes into the penalty box": 1,
+                "Passes into the penalty box accurate, %": 1,
+                "Defensive challenges": 10, "Defensive challenges won, %": 0.4,
+                "Tackles": 6, "Tackles successful, %": 0.5,
+                "Interceptions": 1, "Ball recoveries": 3,
+                "Ball recoveries in opponent's half": 1,
+                "Goals": 1, "Chances": 1, "Chances successful, %": 1,
+                "Involvement in scoring attacks": 1, "xG (expected goals)": 0.09,
+            },
+        )
+        mhadhebi = _row(
+            "Mohamed Salah Mhadhebi", "CS Sfaxien", "RWB", 13,
+            **{
+                "Index": "-", "Actions": 9, "Actions successful, %": 0.67,
+                "Passes": 6, "Passes accurate, %": 0.67, "Lost balls": 1,
+                "Progressive passes": 1, "Progressive passes accurate, %": 0,
+                "Passes into the penalty box": 1,
+                "Passes into the penalty box accurate, %": 1,
+                "Defensive challenges": 1, "Defensive challenges won, %": 1,
+                "Interceptions": 1,
+            },
+        )
+        rows = [trabelsi, mhadhebi] + [
+            _row(f"Opponent {index}", "Stade Tunisien", "CM", 90, **{"Index": value})
+            for index, value in enumerate((180, 170, 160, 150, 140), start=1)
+        ]
+        full_match = analyse_match_dataset(rows, "Mohamed Trabelsi", "fr")
+        short_entry = analyse_match_dataset(rows, "Mohamed Salah Mhadhebi", "fr")
+
+        self.assertEqual(full_match["player"]["ms_score"], 76)
+        self.assertEqual(full_match["verdict"]["code"], "very_good")
+        self.assertEqual(short_entry["player"]["ms_score"], 57)
+        self.assertEqual(short_entry["verdict"]["label"], "BONNE ENTRÉE")
+        self.assertGreaterEqual(
+            full_match["player"]["ms_score"] - short_entry["player"]["ms_score"],
+            15,
+        )
 
     def test_legacy_normalized_radar_is_not_presented_as_a_real_value(self):
         rows = [_row("Target", "A", "LCM", 90), _row("Opponent", "B", "LCM", 90)]
@@ -801,6 +858,31 @@ class PositionAnalysisTests(unittest.TestCase):
             for item in lens["metrics"]
         ]
         self.assertEqual(len(phase_metrics), len(set(phase_metrics)))
+
+    def test_dominant_centre_back_can_score_very_good_without_decisive_action(self):
+        centre_back = _row(
+            "Dominant Centre Back", "A", "CB", 90,
+            **{
+                "Actions": 70, "Actions successful, %": 0.90,
+                "Passes": 55, "Passes accurate, %": 0.90,
+                "Lost balls in own half": 0,
+                "Defensive challenges": 10, "Defensive challenges won, %": 0.90,
+                "Tackles": 6, "Tackles successful, %": 0.90,
+                "Interceptions": 5,
+                "Aerial challenges": 6, "Aerial challenges won, %": 0.90,
+                "Progressive passes": 12, "Progressive passes accurate, %": 0.90,
+                "Long passes": 10, "Long passes accurate, %": 0.80,
+                "Super long passes": 4, "Super long passes accurate, %": 0.75,
+            },
+        )
+        analysis = analyse_match_dataset(
+            [centre_back, _row("Opponent", "B", "CB", 90)],
+            "Dominant Centre Back",
+            "fr",
+        )
+        self.assertGreaterEqual(analysis["player"]["ms_score"], 85)
+        self.assertEqual(analysis["verdict"]["code"], "very_good")
+        self.assertEqual(analysis["score_breakdown"]["decisive_adjustment"], 0)
 
 
 class PerformancePdfTests(unittest.TestCase):
