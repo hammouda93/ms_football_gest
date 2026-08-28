@@ -22,6 +22,7 @@ from client_portal.models import (
 from gestion_joueurs.models import Player
 
 from .forms import SportsBaseSubscriptionForm
+from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS
 from .models import (
     PerformanceReport,
     SportsBaseMatch,
@@ -699,16 +700,9 @@ class ScraperNormalizationTests(TestCase):
 
     def test_players_table_requires_enriched_custom_headers(self):
         enriched = [
-            "Goals by head",
-            "Free-kick shots",
-            "Free-kick goals",
-            "Short passes",
-            "Short passes accurate, %",
-            "Shots on target from the penalty area, %",
-            "Shots on target from outside the penalty area, %",
-            "Headers",
-            "Headers on target, %",
-            "Shots on post / bar",
+            header
+            for header in SPORTSBASE_PLAYER_COLUMNS
+            if header not in {"№", "Team"}
         ]
         self.assertEqual(
             SportsBaseSubscriptionScraper._missing_enriched_players_headers(enriched),
@@ -719,6 +713,27 @@ class ScraperNormalizationTests(TestCase):
         )
         self.assertIn("Headers", missing)
         self.assertIn("Shots on target from the penalty area, %", missing)
+
+    def test_direct_players_table_keeps_only_analysis_contract_columns(self):
+        snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
+            {
+                "headers": [
+                    "№", "Player", "Team", "Index", "Headers", "Unused metric",
+                ],
+                "rows": [
+                    {
+                        "№": "9",
+                        "Player": "Test Striker",
+                        "Team": "Team A",
+                        "Index": "170",
+                        "Headers": "3",
+                        "Unused metric": "999",
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("Unused metric", snapshot["headers"])
+        self.assertNotIn("Unused metric", snapshot["rows"][0])
 
 
 class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
