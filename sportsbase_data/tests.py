@@ -702,7 +702,7 @@ class ScraperNormalizationTests(TestCase):
         enriched = [
             header
             for header in SPORTSBASE_PLAYER_COLUMNS
-            if header not in {"№", "Team"}
+            if header not in {"№", "Player", "Team"}
         ]
         self.assertEqual(
             SportsBaseSubscriptionScraper._missing_enriched_players_headers(enriched),
@@ -713,6 +713,19 @@ class ScraperNormalizationTests(TestCase):
         )
         self.assertIn("Headers", missing)
         self.assertIn("Shots on target from the penalty area, %", missing)
+        self.assertNotIn("Player", missing)
+
+    def test_xlsx_requires_complete_81_column_analysis_contract(self):
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._missing_xlsx_analysis_headers(
+                SPORTSBASE_PLAYER_COLUMNS
+            ),
+            [],
+        )
+        missing = SportsBaseSubscriptionScraper._missing_xlsx_analysis_headers(
+            [header for header in SPORTSBASE_PLAYER_COLUMNS if header != "Player"]
+        )
+        self.assertEqual(missing, ["Player"])
 
     def test_direct_players_table_keeps_only_analysis_contract_columns(self):
         snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
@@ -947,6 +960,21 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
     def test_portal_shows_embedded_video_and_dynamic_report(self):
         match = self._create_match(1)
         report = generate_match_report(match)
+        report.analysis_payload = {
+            "available": True,
+            "player": {"profile_score": 78},
+            "verdict": {
+                "score": 82,
+                "label": "TRÈS BON MATCH",
+                "tone": "excellent",
+            },
+            "appendix_metrics": [
+                {"metric": "Goals", "display": "1"},
+                {"metric": "Assists", "display": "0"},
+                {"metric": "Key passes", "display": "3"},
+            ],
+        }
+        report.save(update_fields=("analysis_payload", "updated_at"))
         SportsBaseYouTubeUpload.objects.create(
             match=match,
             status=SportsBaseYouTubeUpload.Status.UPLOADED,
@@ -964,6 +992,9 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         )
         self.assertContains(detail, "youtube-nocookie.com/embed/abcdefghijk")
         self.assertContains(detail, "Rapport de l’analyste")
+        self.assertContains(detail, "MS Score")
+        self.assertContains(detail, "TRÈS BON MATCH")
+        self.assertContains(detail, "Passes clés")
         pdf = self.client.get(reverse("performance:report_pdf", args=(report.pk,)))
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
