@@ -8,36 +8,24 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "ms-open-score-position-points-v9-20260828"
+ANALYSIS_VERSION = "ms-position-score-calibration-v10-20260828"
 
 
-# The MS Score is deliberately transparent and open-ended.  The 0-100 values
-# produced by the role engine remain useful to grade one criterion, but the
-# headline index is an accumulation of visible points rather than another
-# capped percentage.  Decisive actions are kept outside the mission budget so
-# that, for example, one goal is always exactly +20 and cannot be counted twice.
-MS_BASE_POINTS = 100
-MS_MISSION_BUDGET = 80
-MS_DECISIVE_POINT_RULES = {
-    "Goals": 20,
-    "Assists": 14,
-    "Key passes": 3,
-    "Chances created": 4,
-    "Chances": 2,
-    "Involvement in scoring attacks": 3,
-    "xG (expected goals)": 10,
-}
-MS_PENALTY_POINT_RULES = {
-    "Mistakes leading to goals": -20,
-    "Mistakes leading to chances": -8,
-    "Red cards": -12,
-}
+# The public InStat / Wyscout / SportsBase products do not publish a formula
+# that can be reproduced faithfully.  MS Score therefore uses an auditable
+# 0-100 model: fixed position-mission weights, a neutral value for missions
+# that could not be observed, a small bounded decisive adjustment and a very
+# small rank validation.  The limits prevent one event or a provider index
+# from erasing the football requirements of the player's position.
+MS_NEUTRAL_SCORE = 50
+MS_DECISIVE_ADJUSTMENT_LIMIT = 8.0
+MS_CONTEXT_ADJUSTMENT_LIMIT = 2.0
 MS_SCORE_BANDS = (
-    (195, "exceptional"),
-    (175, "very_good"),
-    (155, "solid"),
-    (135, "mixed"),
-    (115, "insufficient"),
+    (92, "exceptional"),
+    (75, "very_good"),
+    (68, "solid"),
+    (58, "mixed"),
+    (48, "insufficient"),
     (float("-inf"), "difficult"),
 )
 
@@ -76,6 +64,10 @@ METHODOLOGY_SOURCES = (
             "https://blogarchive.statsbomb.com/articles/soccer/"
             "using-statsbomb-iq-for-player-recruitment-forwards/"
         ),
+    },
+    {
+        "name": "Hudl Wyscout - Position-specific player ranking parameters",
+        "url": "https://www.hudl.com/blog/wyscout-teams-of-the-season-2023-24",
     },
     {
         "name": "StatsBomb - Player recruitment: centre-backs",
@@ -1939,11 +1931,21 @@ def _performance_lenses(target, dimensions, group, language):
 
 
 def _overall_score(dimensions):
-    observed = [item for item in dimensions if item.get("coverage")]
-    weight = sum(item.get("weight", 0) for item in observed)
-    if not weight:
+    """Return the fixed-weight position score before bounded adjustments.
+
+    Missing missions stay at the neutral reference instead of donating their
+    weight to the few events observed in a short appearance.  This is the key
+    distinction between a useful 13-minute entry and a complete high-impact
+    match: the entry can be praised without being inflated to full-match level.
+    """
+    total_weight = sum(item.get("weight", 0) for item in dimensions)
+    if not total_weight:
         return None
-    raw_score = sum(item["score"] * item.get("weight", 0) for item in observed) / weight
+    raw_score = sum(
+        (item.get("score", MS_NEUTRAL_SCORE) if item.get("coverage") else MS_NEUTRAL_SCORE)
+        * item.get("weight", 0)
+        for item in dimensions
+    ) / total_weight
     # Football-facing scores use conventional half-up rounding, which is easier
     # to audit than Python's banker rounding (58.5 must be presented as 59).
     return math.floor(raw_score + 0.5 + 1e-9)
@@ -1953,201 +1955,145 @@ def _round_half_up(value):
     return math.floor(float(value) + 0.5 + 1e-9)
 
 
-def _ms_rank_points(rankings):
-    """Return one non-duplicated contextual bonus from the performance rank."""
+def _bounded_decisive_adjustment(target, language):
+    """Return a small, diminishing adjustment for match-changing actions.
+
+    Direct outcomes are deliberately stronger than supporting actions, while
+    the complete module is capped.  A goal therefore matters for every role
+    without turning the MS Score into a goal-counting table.
+    """
+    target = target or {}
+    goals = _number(target.get("Goals"), missing_zero=True)
+    assists = _number(target.get("Assists"), missing_zero=True)
+    direct = 0.0
+    if goals > 0:
+        direct += 4.0 + min(max(goals - 1, 0), 2) * 1.5 + max(goals - 3, 0) * 0.75
+    if assists > 0:
+        direct += 3.5 + min(max(assists - 1, 0), 2) * 1.25 + max(assists - 3, 0) * 0.5
+    direct = min(6.5, direct)
+
+    successful_dribbles = _successful_actions(target, "Dribbles successful, %") or 0
+    successful_box_actions = _successful_actions(
+        target, "Actions in opponent's box successful, %"
+    ) or 0
+    supporting = min(
+        2.0,
+        0.45 * _number(target.get("Key passes"), missing_zero=True)
+        + 0.55 * _number(target.get("Chances created"), missing_zero=True)
+        + 0.30 * _number(target.get("Chances"), missing_zero=True)
+        + 0.50 * _number(target.get("Involvement in scoring attacks"), missing_zero=True)
+        + min(0.75, _number(target.get("xG (expected goals)"), missing_zero=True))
+        + 0.20 * successful_dribbles
+        + 0.15 * successful_box_actions,
+    )
+
+    penalty = min(
+        MS_DECISIVE_ADJUSTMENT_LIMIT,
+        4.0 * _number(target.get("Mistakes leading to goals"), missing_zero=True)
+        + 2.0 * _number(target.get("Mistakes leading to chances"), missing_zero=True)
+        + 3.0 * _number(target.get("Red cards"), missing_zero=True),
+    )
+    net = max(
+        -MS_DECISIVE_ADJUSTMENT_LIMIT,
+        min(MS_DECISIVE_ADJUSTMENT_LIMIT, direct + supporting - penalty),
+    )
+    labels = {
+        "fr": {
+            "direct": "Résultat direct (buts et passes décisives)",
+            "supporting": "Création, menace et présence dangereuse",
+            "penalty": "Erreurs et discipline décisives",
+        },
+        "en": {
+            "direct": "Direct outcome (goals and assists)",
+            "supporting": "Creation, threat and dangerous presence",
+            "penalty": "Decisive errors and discipline",
+        },
+        "ar": {
+            "direct": "النتيجة المباشرة (الأهداف والتمريرات الحاسمة)",
+            "supporting": "الصناعة والخطورة والحضور في المناطق الخطرة",
+            "penalty": "الأخطاء الحاسمة والانضباط",
+        },
+    }[language]
+    events = []
+    if direct:
+        events.append(
+            {
+                "category": "decisive",
+                "metric": "Direct outcome",
+                "label": labels["direct"],
+                "points": round(direct, 2),
+                "calculation": f"{round(goals)} G · {round(assists)} A",
+            }
+        )
+    if supporting:
+        events.append(
+            {
+                "category": "decisive",
+                "metric": "High-value attacking actions",
+                "label": labels["supporting"],
+                "points": round(supporting, 2),
+                "calculation": (
+                    f"KP {_format_number(_number(target.get('Key passes'), missing_zero=True))} · "
+                    f"xG {_format_number(_number(target.get('xG (expected goals)'), missing_zero=True))} · "
+                    f"box {round(successful_box_actions)} · dribbles {round(successful_dribbles)}"
+                ),
+            }
+        )
+    if penalty:
+        events.append(
+            {
+                "category": "penalty",
+                "metric": "Decisive errors",
+                "label": labels["penalty"],
+                "points": round(-penalty, 2),
+                "calculation": (
+                    f"G-errors {round(_number(target.get('Mistakes leading to goals'), missing_zero=True))} · "
+                    f"chance-errors {round(_number(target.get('Mistakes leading to chances'), missing_zero=True))} · "
+                    f"RC {round(_number(target.get('Red cards'), missing_zero=True))}"
+                ),
+            }
+        )
+    return round(net, 2), events
+
+
+def _bounded_context_adjustment(rankings, language):
+    """Use at most two points to validate, never replace, the role analysis."""
     rankings = rankings or {}
     match_rank = rankings.get("index_match") or {}
     team_rank = rankings.get("index_team") or {}
     match_total = int(match_rank.get("total") or 0)
     team_total = int(team_rank.get("total") or 0)
-    match_points = {1: 10, 2: 6, 3: 3}.get(match_rank.get("rank"), 0) if match_total >= 6 else 0
-    team_points = {1: 6, 2: 3, 3: 1}.get(team_rank.get("rank"), 0) if team_total >= 3 else 0
-    if match_points >= team_points and match_points:
-        return match_points, "match", match_rank
-    if team_points:
-        return team_points, "team", team_rank
-    return 0, None, {}
-
-
-def _ms_point_event(metric, value, unit_points, points, language, category):
-    label = _label(metric, language)
-    if metric == "xG (expected goals)":
-        calculation = f"{_format_number(value)} × {unit_points}"
-    else:
-        calculation = f"{_format_number(value)} × {unit_points}"
-    descriptions = {
-        "fr": {
-            "decisive": f"{label} : {calculation} = +{_format_number(abs(points))} pts",
-            "penalty": f"{label} : {calculation} = -{_format_number(abs(points))} pts",
-        },
-        "en": {
-            "decisive": f"{label}: {calculation} = +{_format_number(abs(points))} pts",
-            "penalty": f"{label}: {calculation} = -{_format_number(abs(points))} pts",
-        },
-        "ar": {
-            "decisive": f"{label}: {calculation} = +{_format_number(abs(points))} نقطة",
-            "penalty": f"{label}: {calculation} = -{_format_number(abs(points))} نقطة",
-        },
-    }
-    return {
-        "category": category,
-        "metric": metric,
-        "label": label,
-        "value": round(value, 3),
-        "unit_points": unit_points,
-        "points": round(points, 2),
-        "calculation": calculation,
-        "explanation": descriptions[language][category],
-    }
-
-
-def _apply_ms_open_score(result, target, rankings, language):
-    """Add transparent, open-ended MS points to the normalized mission detail."""
-    explicit_metrics = set(MS_DECISIVE_POINT_RULES) | set(MS_PENALTY_POINT_RULES)
-    eligible_dimensions = []
-    for dimension in result:
-        eligible = [
-            criterion for criterion in dimension.get("criteria") or []
-            if criterion.get("used") and criterion.get("metric") not in explicit_metrics
-        ]
-        if eligible:
-            eligible_dimensions.append((dimension, eligible))
-
-    total_position_weight = sum(
-        dimension.get("configured_weight", 0) for dimension, _criteria in eligible_dimensions
-    )
-    mission_points = 0.0
-    for dimension in result:
-        dimension["ms_budget"] = 0.0
-        dimension["ms_points"] = 0.0
-        for criterion in dimension.get("criteria") or []:
-            criterion["ms_points"] = 0.0
-            if criterion.get("metric") in MS_DECISIVE_POINT_RULES:
-                criterion["points_source"] = "decisive"
-            elif criterion.get("metric") in MS_PENALTY_POINT_RULES:
-                criterion["points_source"] = "penalty"
-            elif criterion.get("used"):
-                criterion["points_source"] = "position_mission"
-            else:
-                criterion["points_source"] = "unobserved"
-
-    for dimension, eligible in eligible_dimensions:
-        budget = (
-            MS_MISSION_BUDGET
-            * dimension.get("configured_weight", 0)
-            / total_position_weight
-            if total_position_weight
-            else 0
-        )
-        criterion_weight = sum(criterion.get("raw_weight", 1) for criterion in eligible)
-        dimension_points = 0.0
-        for criterion in eligible:
-            share = criterion.get("raw_weight", 1) / criterion_weight if criterion_weight else 0
-            points = (criterion.get("score", 0) / 100) * share * budget
-            criterion["ms_points"] = round(points, 2)
-            dimension_points += points
-        dimension["ms_budget"] = round(budget, 2)
-        dimension["ms_points"] = round(dimension_points, 2)
-        mission_points += dimension_points
-
-    point_events = []
-    decisive_points = 0.0
-    for metric, unit_points in MS_DECISIVE_POINT_RULES.items():
-        value = _number((target or {}).get(metric), missing_zero=True)
-        if value <= 0:
-            continue
-        points = value * unit_points
-        decisive_points += points
-        point_events.append(
-            _ms_point_event(metric, value, unit_points, points, language, "decisive")
-        )
-
-    penalty_points = 0.0
-    for metric, unit_points in MS_PENALTY_POINT_RULES.items():
-        value = _number((target or {}).get(metric), missing_zero=True)
-        if value <= 0:
-            continue
-        points = value * unit_points
-        penalty_points += points
-        point_events.append(
-            _ms_point_event(metric, value, unit_points, points, language, "penalty")
-        )
-
-    ranking_points, ranking_scope, ranking = _ms_rank_points(rankings)
-    if ranking_points:
-        rank = ranking.get("rank")
-        total = ranking.get("total")
-        labels = {
-            "fr": f"Rang à l’Indice de performance ({'match' if ranking_scope == 'match' else 'équipe'})",
-            "en": f"Performance Index rank ({'match' if ranking_scope == 'match' else 'team'})",
-            "ar": "ترتيب مؤشر الأداء في المباراة" if ranking_scope == "match" else "ترتيب مؤشر الأداء داخل الفريق",
-        }
-        point_events.append(
-            {
-                "category": "ranking",
-                "metric": "Index rank",
-                "label": labels[language],
-                "value": rank,
-                "unit_points": ranking_points,
-                "points": ranking_points,
-                "calculation": f"{rank}/{total}",
-                "explanation": {
-                    "fr": f"{labels[language]} : {rank}/{total} = +{ranking_points} pts",
-                    "en": f"{labels[language]}: {rank}/{total} = +{ranking_points} pts",
-                    "ar": f"{labels[language]}: {rank}/{total} = +{ranking_points} نقطة",
-                }[language],
-            }
-        )
-
-    raw_total = MS_BASE_POINTS + mission_points + decisive_points + ranking_points + penalty_points
-    total_points = _round_half_up(raw_total)
-    band_code = next(code for minimum, code in MS_SCORE_BANDS if total_points >= minimum)
-    rules = [
-        {
-            "metric": metric,
-            "label": _label(metric, language),
-            "unit_points": unit_points,
-        }
-        for metric, unit_points in MS_DECISIVE_POINT_RULES.items()
-    ]
-    formula = {
-        "fr": (
-            "MS Score = 100 points de base + jusqu’à 80 points issus des missions spécifiques du poste "
-            "+ les actions décisives + un seul bonus de classement - les erreurs décisives. "
-            "L’échelle est ouverte : elle n’est pas plafonnée à 100. Un but vaut toujours +20 points."
-        ),
-        "en": (
-            "MS Score = 100 base points + up to 80 points from position-specific missions + decisive actions "
-            "+ one ranking bonus - decisive errors. The scale is open-ended and is not capped at 100. "
-            "A goal is always worth +20 points."
-        ),
-        "ar": (
-            "يتكون مؤشر MS من 100 نقطة أساسية وما يصل إلى 80 نقطة لمهام المركز، ثم الأفعال الحاسمة "
-            "ومكافأة ترتيب واحدة ناقص الأخطاء الحاسمة. المقياس مفتوح وغير محدود عند 100، وكل هدف يساوي 20 نقطة."
-        ),
+    points = 0.0
+    scope = None
+    ranking = None
+    if match_total >= 6 and match_rank.get("rank") in {1, 2, 3}:
+        points = {1: 2.0, 2: 1.0, 3: 0.5}[match_rank.get("rank")]
+        scope, ranking = "match", match_rank
+    elif team_total >= 3 and team_rank.get("rank") in {1, 2}:
+        points = {1: 1.0, 2: 0.5}[team_rank.get("rank")]
+        scope, ranking = "team", team_rank
+    points = min(MS_CONTEXT_ADJUSTMENT_LIMIT, points)
+    if not points:
+        return 0.0, []
+    label = {
+        "fr": f"Validation par le rang de performance ({'match' if scope == 'match' else 'équipe'})",
+        "en": f"Performance-rank validation ({'match' if scope == 'match' else 'team'})",
+        "ar": "تأكيد بترتيب الأداء في المباراة" if scope == "match" else "تأكيد بترتيب الأداء داخل الفريق",
     }[language]
-    return {
-        "version": "ms-open-v1",
-        "scale": "open_ended_points",
-        "base_points": MS_BASE_POINTS,
-        "mission_budget": MS_MISSION_BUDGET,
-        "mission_points": round(mission_points, 2),
-        "decisive_points": round(decisive_points, 2),
-        "ranking_points": ranking_points,
-        "penalty_points": round(penalty_points, 2),
-        "raw_total_points": round(raw_total, 2),
-        "total_points": total_points,
-        "band_code": band_code,
-        "point_events": point_events,
-        "decisive_rules": rules,
-        "formula": formula,
-    }
+    return points, [
+        {
+            "category": "context",
+            "metric": "Index rank",
+            "label": label,
+            "points": points,
+            "calculation": f"{ranking.get('rank')}/{ranking.get('total')}",
+        }
+    ]
 
 
 def _score_breakdown(dimensions, language, *, target=None, rankings=None):
     """Expose every coefficient used by the mission-score formula."""
-    observed_dimensions = [item for item in dimensions if item.get("coverage")]
-    total_dimension_weight = sum(item.get("weight", 0) for item in observed_dimensions)
+    total_dimension_weight = sum(item.get("weight", 0) for item in dimensions)
     effect_labels = {
         "fr": {
             "very_positive": "Très positif", "positive": "Positif", "neutral": "Neutre",
@@ -2181,8 +2127,13 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
     result = []
     for dimension in sorted(dimensions, key=lambda item: item.get("weight", 0), reverse=True):
         used = bool(dimension.get("coverage")) and total_dimension_weight > 0
-        effective_weight = dimension.get("weight", 0) / total_dimension_weight * 100 if used else 0
-        contribution = dimension.get("score", 0) * effective_weight / 100 if used else 0
+        effective_weight = (
+            dimension.get("weight", 0) / total_dimension_weight * 100
+            if total_dimension_weight
+            else 0
+        )
+        scored_value = dimension.get("score", MS_NEUTRAL_SCORE) if used else MS_NEUTRAL_SCORE
+        contribution = scored_value * effective_weight / 100
         observed_criteria = [metric for metric in dimension.get("evidence") or [] if metric.get("score") is not None]
         criteria_weight = sum(metric.get("weight", 1) for metric in observed_criteria)
         criteria = []
@@ -2205,7 +2156,9 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
                     "raw_weight": metric.get("weight", 1),
                     "criterion_weight": round(share, 1),
                     "final_contribution": round(final_points, 2),
+                    "ms_points": round(final_points, 2),
                     "used": metric_used,
+                    "points_source": "position_mission" if metric_used else "unobserved",
                     "effect": effect(metric.get("score")),
                     "sample": metric.get("sample"),
                 }
@@ -2217,46 +2170,48 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
                 "configured_weight": dimension.get("weight", 0),
                 "effective_weight": round(effective_weight, 1),
                 "score": dimension.get("score") if used else None,
+                "scored_value": scored_value,
                 "contribution": round(contribution, 2),
+                "ms_budget": round(effective_weight, 1),
+                "ms_points": round(contribution, 2),
                 "coverage": dimension.get("coverage", 0),
                 "used": used,
+                "neutral_fill": not used,
                 "criteria": criteria,
             }
         )
     formula = {
         "fr": (
-            "Score de mission = somme des notes de critères pondérées dans chaque mission, puis pondérées "
-            "par l’importance de la mission pour le poste. La mission « impact décisif et création » intègre "
-            "explicitement buts, passes décisives, passes clés, occasions, xG et implication dans les attaques "
-            "qui mènent à un but. Les dribbles, actions dans la surface et entrées dans le dernier tiers sont "
-            "notés dans la mission offensive adaptée au poste. Pour l’avant-centre, les tirs dans la surface, "
-            "les têtes et leurs taux de cadrage complètent la finition sans compter deux fois un but de la tête. "
-            "Un critère sans occasion observable est affiché mais n’est pas noté. Le total est arrondi à "
-            "l’entier le plus proche. L’Indice de performance du match apporte un contexte au verdict, "
-            "sans entrer dans ce calcul technique."
+            "MS Score /100 = somme des missions pondérées selon le poste + ajustement décisif borné de -8 à +8 "
+            "+ validation de classement bornée à +2. Une mission non observable conserve la référence neutre "
+            "50/100 : son poids n’est jamais redistribué sur les quelques actions d’une entrée courte. Les buts, "
+            "passes décisives, passes clés, occasions, xG, dribbles réussis et actions réussies dans la surface "
+            "alimentent l’impact décisif avec rendements décroissants. Le score final reste toujours compris "
+            "entre 0 et 100. Les totaux réels ne sont jamais projetés sur 90 minutes."
         ),
         "en": (
-            "Mission score = the sum of criterion scores weighted inside each mission, then weighted by the "
-            "mission's importance for the position. The 'decisive impact and creation' mission explicitly "
-            "includes goals, assists, key passes, chances, xG and involvement in scoring attacks. Dribbles, "
-            "box actions and final-third entries are scored in the role's relevant attacking mission. For centre-forwards, "
-            "box shots, headers and their on-target rates complete finishing without double-counting a headed goal. A criterion with no "
-            "observable opportunity is displayed but not scored. The total is rounded to the nearest whole "
-            "number. The match Performance Index provides context for the verdict, not this technical calculation."
+            "MS Score /100 = position-weighted missions + a decisive adjustment bounded from -8 to +8 + rank "
+            "validation bounded at +2. An unobserved mission keeps the neutral 50/100 reference, so its weight "
+            "is never reassigned to the few events in a short appearance. Goals, assists, key passes, chances, "
+            "xG, successful dribbles and successful box actions feed the decisive module with diminishing returns. "
+            "The final score is always bounded from 0 to 100 and real totals are never projected to 90 minutes."
         ),
         "ar": (
-            "درجة المهمة هي مجموع درجات المعايير بعد ترجيحها داخل كل مهمة ثم حسب أهمية المهمة للمركز. "
-            "وتشمل مهمة التأثير الحاسم الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والمشاركة "
-            "في هجمات التسجيل، بينما تقيم المراوغات ودخول المنطقة والثلث الأخير ضمن المهمة الهجومية المناسبة للمركز. "
-            "يعرض المعيار الذي لم تسجل له فرصة لكنه لا يدخل في الحساب. يقرب المجموع إلى أقرب "
-            "عدد صحيح ويقدم مؤشر أداء المباراة سياقا للخلاصة النهائية دون أن يدخل في هذا الحساب الفني."
+            "مؤشر MS من 100 هو مجموع مهام المركز بأوزانها، مع تعديل حاسم محدود بين -8 و+8 وتأكيد ترتيب "
+            "لا يتجاوز نقطتين. المهمة غير القابلة للملاحظة تحتفظ بالمرجع المحايد 50/100 ولا يوزع وزنها على "
+            "أحداث مشاركة قصيرة. تدخل الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والمراوغات "
+            "الناجحة والأفعال الناجحة داخل المنطقة في التأثير الحاسم بعائد متناقص، ويبقى المجموع بين 0 و100 "
+            "دون تحويل الأرقام الحقيقية إلى 90 دقيقة."
         ),
     }[language]
     raw_total = (
-        sum(item.get("score", 0) * item.get("weight", 0) for item in observed_dimensions)
-        / total_dimension_weight
+        sum(
+            (item.get("score", MS_NEUTRAL_SCORE) if item.get("coverage") else MS_NEUTRAL_SCORE)
+            * item.get("weight", 0)
+            for item in dimensions
+        ) / total_dimension_weight
         if total_dimension_weight
-        else 0
+        else MS_NEUTRAL_SCORE
     )
     impact_drivers = []
     driver_metrics = {
@@ -2330,31 +2285,81 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None):
                     }[language],
                 }
             )
-    ms_score = _apply_ms_open_score(result, target or {}, rankings or {}, language)
-    event_points = {
-        item.get("metric"): item.get("points", 0)
-        for item in ms_score.get("point_events") or []
-    }
+    decisive_adjustment, decisive_events = _bounded_decisive_adjustment(target or {}, language)
+    context_adjustment, context_events = _bounded_context_adjustment(rankings or {}, language)
+    score_before_clamp = raw_total + decisive_adjustment + context_adjustment
+    total_points = _round_half_up(max(0, min(100, score_before_clamp)))
+    band_code = next(code for minimum, code in MS_SCORE_BANDS if total_points >= minimum)
+    point_events = decisive_events + context_events
+    decisive_positive = sum(
+        max(0, item.get("points", 0))
+        for item in decisive_events
+        if item.get("category") == "decisive"
+    )
+    penalty_points = sum(
+        min(0, item.get("points", 0))
+        for item in decisive_events
+        if item.get("category") == "penalty"
+    )
     criterion_points = {
         criterion.get("metric"): criterion.get("ms_points", 0)
         for dimension in result
         for criterion in dimension.get("criteria") or []
     }
     for driver in impact_drivers:
-        points = event_points.get(driver.get("metric"), criterion_points.get(driver.get("metric"), 0))
+        points = criterion_points.get(driver.get("metric"), 0)
         driver["ms_points"] = round(points or 0, 2)
         driver["score_sentence"] = {
-            "fr": f"Ce critère ajoute {_format_number(points or 0)} point(s) au MS Score.",
-            "en": f"This criterion adds {_format_number(points or 0)} point(s) to the MS Score.",
-            "ar": f"يضيف هذا المعيار {_format_number(points or 0)} نقطة إلى مؤشر MS.",
+            "fr": (
+                f"Contribution pondérée dans le MS Score : {_format_number(points or 0)} point(s). "
+                "L’ajustement décisif global reste plafonné à 8 points."
+            ),
+            "en": (
+                f"Weighted contribution inside MS Score: {_format_number(points or 0)} point(s). "
+                "The overall decisive adjustment remains capped at 8 points."
+            ),
+            "ar": (
+                f"المساهمة المرجحة داخل المهمة: {_format_number(points or 0)} نقطة. "
+                "ويبقى التعديل الحاسم الإجمالي محدودا بثماني نقاط."
+            ),
         }[language]
     return {
-        "formula": ms_score["formula"],
+        "version": "ms-position-100-v2",
+        "scale": "bounded_0_100",
+        "formula": formula,
         "mission_quality_formula": formula,
         "dimensions": result,
         "contribution_total": round(raw_total, 2),
         "rounded_score": math.floor(raw_total + 0.5 + 1e-9),
-        **ms_score,
+        "position_score": round(raw_total, 2),
+        "mission_points": round(raw_total, 2),
+        "decisive_adjustment": decisive_adjustment,
+        "decisive_points": round(decisive_positive, 2),
+        "context_adjustment": context_adjustment,
+        "ranking_points": context_adjustment,
+        "penalty_points": round(penalty_points, 2),
+        "raw_total_points": round(score_before_clamp, 2),
+        "total_points": total_points,
+        "band_code": band_code,
+        "point_events": point_events,
+        "decisive_rules": [
+            {
+                "label": {
+                    "fr": "Impact décisif et création",
+                    "en": "Decisive impact and creation",
+                    "ar": "التأثير الحاسم والصناعة",
+                }[language],
+                "rule": "-8…+8",
+            },
+            {
+                "label": {
+                    "fr": "Validation du classement",
+                    "en": "Ranking validation",
+                    "ar": "تأكيد الترتيب",
+                }[language],
+                "rule": "0…+2",
+            },
+        ],
         "impact_drivers": sorted(
             impact_drivers,
             key=lambda item: item.get("ms_points", 0),
@@ -2449,6 +2454,14 @@ def _verdict(score, language, *, target=None, rankings=None, mission_quality_sco
             "insufficient": "warning",
             "difficult": "danger",
         }[code]
+        decisive_errors = (
+            _number((target or {}).get("Mistakes leading to goals"), missing_zero=True)
+            + _number((target or {}).get("Red cards"), missing_zero=True)
+        )
+        if minutes >= 45 and (goals > 0 or assists > 0) and not decisive_errors:
+            if code in {"mixed", "insufficient", "difficult"}:
+                code, tone = "solid", "positive"
+                reasons.append("decisive_outcome_validates_verdict")
         if minutes < 45:
             entry_signal = _entry_impact_floor(target or {}, _group(target or {}))
             if goals > 0 or assists > 0:
