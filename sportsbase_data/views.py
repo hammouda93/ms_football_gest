@@ -6,6 +6,7 @@ from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import slugify
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -162,6 +163,44 @@ def _build_match_analysis(stats):
             other.append(item)
             consumed.add(key)
     return pairs, other
+
+
+def _build_match_headline(report):
+    """Return the decisive, player-facing summary displayed before all detail."""
+    if report is None or not isinstance(report.analysis_payload, dict):
+        return None
+    analysis = report.analysis_payload
+    if not analysis.get("available"):
+        return None
+    appendix = {
+        str(item.get("metric") or ""): item
+        for item in (analysis.get("appendix_metrics") or [])
+        if isinstance(item, dict)
+    }
+
+    def metric_value(name):
+        item = appendix.get(name) or {}
+        value = item.get("display")
+        return "0" if value in {None, "", "-", "–", "—"} else value
+
+    verdict = analysis.get("verdict") or {}
+    player = analysis.get("player") or {}
+    score = verdict.get("score")
+    if score is None:
+        score = player.get("profile_score")
+    if isinstance(score, float) and score.is_integer():
+        score = int(score)
+    tone = str(verdict.get("tone") or "neutral")
+    if tone not in {"excellent", "positive", "warning", "danger", "neutral"}:
+        tone = "neutral"
+    return {
+        "goals": metric_value("Goals"),
+        "assists": metric_value("Assists"),
+        "key_passes": metric_value("Key passes"),
+        "ms_score": score,
+        "verdict": str(verdict.get("label") or "—"),
+        "tone": tone,
+    }
 
 
 def _build_season_analysis(snapshot):
@@ -554,6 +593,7 @@ def portal_match_detail(request, player_id, match_id):
         performance_report = match.performance_report
     except PerformanceReport.DoesNotExist:
         performance_report = None
+    match_headline = _build_match_headline(performance_report)
     return render(
         request,
         "sportsbase_data/portal_match_detail.html",
@@ -564,6 +604,7 @@ def portal_match_detail(request, player_id, match_id):
             "stats": stats,
             "analysis_pairs": analysis_pairs,
             "analysis_other": analysis_other,
+            "match_headline": match_headline,
             "performance_report": performance_report,
             "portal_language": request.portal_profile.preferred_language,
         },
@@ -642,6 +683,21 @@ def api_job_result(request, job_id):
         fail_sync_job(job, exc)
         return JsonResponse({"success": False, "error": str(exc)}, status=400)
     imported_match_ids = finished_job.result_summary.get("match_ids", ())
+    report_downloads = [
+        {
+            "match_id": report.match.sportsbase_match_id,
+            "download_url": reverse("performance:report_pdf", args=(report.pk,)),
+            "filename": (
+                f"MS_Performance__match_{report.match.sportsbase_match_id}.pdf"
+            ),
+        }
+        for report in PerformanceReport.objects.select_related("match").filter(
+            subscription=finished_job.subscription,
+            report_type=PerformanceReport.ReportType.MATCH,
+            status=PerformanceReport.Status.PUBLISHED,
+            match__sportsbase_match_id__in=imported_match_ids,
+        )
+    ]
     ready_reports = PerformanceReport.objects.filter(
         subscription=finished_job.subscription,
         report_type=PerformanceReport.ReportType.MATCH,
@@ -657,6 +713,7 @@ def api_job_result(request, job_id):
             "job_id": finished_job.pk,
             "status": finished_job.status,
             "finished_at": finished_job.finished_at.isoformat(),
+            "reports": report_downloads,
         }
     )
 
