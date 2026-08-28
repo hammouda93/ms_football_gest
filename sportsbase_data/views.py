@@ -43,6 +43,7 @@ from .services import (
     fail_sync_job,
     pending_jobs_overview,
     queue_sync,
+    reconcile_subscription_delivery_settings,
     retry_youtube_upload,
 )
 
@@ -356,6 +357,17 @@ def subscription_form(request, pk=None):
     subscription = (
         get_object_or_404(SportsBaseSubscription, pk=pk) if pk else None
     )
+    previous_delivery_options = {
+        "all_actions_enabled": (
+            subscription.all_actions_enabled if subscription else False
+        ),
+        "email_delivery_enabled": (
+            subscription.email_delivery_enabled if subscription else False
+        ),
+        "youtube_delivery_enabled": (
+            subscription.youtube_delivery_enabled if subscription else False
+        ),
+    }
     form = SportsBaseSubscriptionForm(request.POST or None, instance=subscription)
     if request.method == "POST" and form.is_valid():
         item = form.save(commit=False)
@@ -364,6 +376,21 @@ def subscription_form(request, pk=None):
         item.save()
         _sync_direct_portal_language(item)
         generate_reports_for_subscription(item)
+        delivery_result = reconcile_subscription_delivery_settings(
+            item,
+            previous_options=previous_delivery_options,
+            requested_by=request.user,
+        )
+        if delivery_result["sync_queued"]:
+            messages.info(
+                request,
+                "La réactivation de All Actions a ajouté une tâche à l’agent local.",
+            )
+        elif delivery_result["youtube_jobs_created"]:
+            messages.info(
+                request,
+                "La publication YouTube a été ajoutée à la file de l’agent local.",
+            )
         messages.success(
             request,
             "L’abonnement Performance a été enregistré sans modifier la fiche du joueur.",
@@ -678,12 +705,14 @@ def portal_match_map(request, player_id, match_id, map_kind):
 
 
 @production_required
+@never_cache
 @require_GET
 def api_pending_jobs(request):
     return JsonResponse(pending_jobs_overview())
 
 
 @production_required
+@never_cache
 @require_GET
 def api_next_job(request):
     job = claim_next_job()
@@ -744,6 +773,7 @@ def api_job_result(request, job_id):
 
 
 @production_required
+@never_cache
 @require_GET
 def api_next_youtube_job(request):
     upload = claim_next_youtube_upload()
