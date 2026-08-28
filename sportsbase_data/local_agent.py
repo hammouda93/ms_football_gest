@@ -221,6 +221,12 @@ class SportsBaseAgentClient:
                 f"[SPORTSBASE] Tâche {job['job_id']} — "
                 f"{job['player']['name']} — {job['job_type']}"
             )
+            print(
+                "[SPORTSBASE] Options tâche — "
+                f"All Actions : {'actif' if job.get('all_actions_enabled') else 'désactivé'} — "
+                f"YouTube : {'actif' if job.get('youtube_delivery_enabled') else 'désactivé'} — "
+                f"e-mail : {'actif' if job.get('email_delivery_enabled') else 'désactivé'}"
+            )
             try:
                 result = self.scraper.run(job)
             except Exception as exc:
