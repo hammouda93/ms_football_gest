@@ -162,6 +162,47 @@ class SportsBaseAgentClient:
             result,
         ).json()
 
+    def download_generated_reports(self, submission, scrape_result):
+        """Save every generated match PDF beside its local All Actions file."""
+        reports = submission.get("reports") or []
+        if not reports:
+            return
+        folders = {
+            str(match.get("sportsbase_match_id") or ""): str(
+                match.get("local_folder_key") or ""
+            )
+            for match in (scrape_result.get("matches") or [])
+        }
+        storage_root = self.storage_root.resolve()
+        for report in reports:
+            match_id = str(report.get("match_id") or "").strip()
+            folder_key = folders.get(match_id, "").strip()
+            download_url = str(report.get("download_url") or "").strip()
+            if not match_id or not folder_key or not download_url:
+                continue
+            try:
+                match_folder = (storage_root / folder_key).resolve()
+                if storage_root != match_folder and storage_root not in match_folder.parents:
+                    raise RuntimeError("Dossier local du rapport invalide.")
+                match_folder.mkdir(parents=True, exist_ok=True)
+                response = self._get(download_url)
+                content = response.content
+                if not content.startswith(b"%PDF"):
+                    raise RuntimeError("La réponse reçue n’est pas un PDF valide.")
+                filename = Path(
+                    str(report.get("filename") or f"MS_Performance__match_{match_id}.pdf")
+                ).name
+                if not filename.lower().endswith(".pdf"):
+                    filename += ".pdf"
+                destination = match_folder / filename
+                destination.write_bytes(content)
+                print(f"[SPORTSBASE] Rapport PDF enregistré localement : {destination}")
+            except Exception as exc:
+                print(
+                    "[SPORTSBASE][WARN] Copie locale du rapport PDF impossible — "
+                    f"match {match_id} : {exc}"
+                )
+
     def next_youtube_job(self):
         return self._get(
             "/sportsbase/automation/youtube/jobs/next/"
@@ -194,7 +235,8 @@ class SportsBaseAgentClient:
                 }
             if result.get("error"):
                 print(f"[SPORTSBASE][DETAIL ECHEC] {result['error']}")
-            self.submit_result(job["job_id"], result)
+            submission = self.submit_result(job["job_id"], result)
+            self.download_generated_reports(submission, result)
             print(
                 f"[SPORTSBASE] Tâche {job['job_id']} terminée — "
                 f"{result['status']} — {len(result.get('matches', []))} match(s)"
