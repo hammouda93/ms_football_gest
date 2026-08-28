@@ -1,4 +1,4 @@
-"""Role-specific, player-facing analysis built from SportsBase match XLSX data.
+"""Role-specific, player-facing analysis built from the SportsBase Players table.
 
 The engine keeps the player's real match totals. Playing time describes
 reliability and selects a coarse activity window; it never turns a substitute
@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "role-phase-xlsx-integrity-v7-20260827"
+ANALYSIS_VERSION = "role-phase-enriched-finishing-v8-20260828"
 
 METHODOLOGY_SOURCES = (
     {
@@ -353,10 +353,20 @@ METRIC_LABELS = {
         "Shots on target": "Tirs cadrés",
         "Shots on target, %": "Tirs cadrés",
         "Shots from the penalty area": "Tirs dans la surface",
+        "Shots on target from the penalty area, %": "Tirs cadrés dans la surface",
         "Shots from outside the penalty area": "Tirs hors surface",
+        "Shots on target from outside the penalty area, %": "Tirs cadrés hors surface",
+        "Shots on post / bar": "Tirs sur le poteau ou la barre",
+        "Headers": "Têtes tentées",
+        "Headers on target, %": "Têtes cadrées",
+        "Goals by head": "Buts de la tête",
+        "Free-kick shots": "Tirs sur coup franc",
+        "Free-kick goals": "Buts sur coup franc",
         "Shots in box share": "Part des tirs dans la surface",
         "Passes": "Passes",
         "Passes accurate, %": "Passes réussies",
+        "Short passes": "Passes courtes",
+        "Short passes accurate, %": "Passes courtes réussies",
         "Key passes": "Passes clés",
         "Key passes accurate, %": "Passes clés réussies",
         "Crosses": "Centres",
@@ -430,9 +440,20 @@ METRIC_LABELS = {
         "Shots on target": "التسديدات المؤطرة",
         "Shots on target, %": "التسديدات المؤطرة",
         "Shots from the penalty area": "التسديدات من داخل المنطقة",
+        "Shots on target from the penalty area, %": "دقة التسديد من داخل المنطقة",
+        "Shots from outside the penalty area": "التسديدات من خارج المنطقة",
+        "Shots on target from outside the penalty area, %": "دقة التسديد من خارج المنطقة",
+        "Shots on post / bar": "التسديدات على القائم أو العارضة",
+        "Headers": "الضربات الرأسية",
+        "Headers on target, %": "دقة الضربات الرأسية",
+        "Goals by head": "الأهداف بالرأس",
+        "Free-kick shots": "تسديدات الركلات الحرة",
+        "Free-kick goals": "أهداف الركلات الحرة",
         "Shots in box share": "نسبة التسديدات من داخل المنطقة",
         "Passes": "التمريرات",
         "Passes accurate, %": "دقة التمرير",
+        "Short passes": "التمريرات القصيرة",
+        "Short passes accurate, %": "دقة التمريرات القصيرة",
         "Key passes": "التمريرات المفتاحية",
         "Crosses": "العرضيات",
         "Crosses accurate, %": "العرضيات الناجحة",
@@ -511,6 +532,15 @@ METRIC_DEFINITIONS = {
         "Shots": "Nombre de tirs tentés ; il mesure la capacité à se mettre en position de frapper, pas seulement la finition.",
         "Shots on target, %": "Part des tirs cadrés. Un tir cadré oblige le gardien à intervenir ou entre dans le but.",
         "Shots from the penalty area": "Tirs pris dans la surface, généralement depuis des positions plus favorables que les tirs lointains.",
+        "Shots on target from the penalty area, %": "Part des tirs pris dans la surface qui sont cadrés. Le volume mesure l’accès aux zones favorables ; le taux juge l’exécution.",
+        "Shots from outside the penalty area": "Tirs pris hors de la surface. Ils montrent une menace à distance, mais proviennent en moyenne de positions moins favorables.",
+        "Shots on target from outside the penalty area, %": "Part des tirs lointains cadrés, toujours lue avec le nombre de tentatives hors surface.",
+        "Shots on post / bar": "Tirs ayant touché un poteau ou la barre : signal d’une finition proche du but, sans être compté comme réalisation.",
+        "Headers": "Tentatives de finition de la tête. Pour un avant-centre, elles renseignent sur le placement aérien et l’accès aux centres.",
+        "Headers on target, %": "Part des têtes cadrées, présentée avec le nombre de têtes tentées afin de ne pas surinterpréter un petit échantillon.",
+        "Goals by head": "Buts inscrits de la tête. Ils précisent le mode de finition sans compter comme un but supplémentaire dans la note décisive.",
+        "Free-kick shots": "Tirs tentés directement sur coup franc.",
+        "Free-kick goals": "Buts inscrits directement sur coup franc ; ils sont déjà compris dans le total des buts.",
         "Shots in box share": "Part des tirs tentés dans la surface. Six tirs dans la surface sans but restent un signal positif de présence, avec une finition à améliorer.",
         "xG (expected goals)": "Qualité cumulée des tirs selon leur probabilité moyenne de devenir un but ; ce n’est pas une prédiction certaine.",
         "Actions in opponent's box": "Actions avec ballon réalisées dans la surface adverse ; elles mesurent la présence réelle dans la zone décisive.",
@@ -519,6 +549,8 @@ METRIC_DEFINITIONS = {
         "Tackles": "Tentatives d’intervention directe sur le porteur pour récupérer ou dégager le ballon.",
         "Tackles successful, %": "Part des tacles réussis, lue avec le nombre de tentatives.",
         "Long passes": "Passes longues tentées pour dépasser une pression, changer de zone ou accélérer la progression.",
+        "Short passes": "Passes de courte distance utilisées pour conserver, fixer ou combiner avec les partenaires proches.",
+        "Short passes accurate, %": "Part des passes courtes réussies, lue avec leur volume pour juger la qualité du jeu de liaison.",
         "Long passes accurate, %": "Part des passes longues arrivées à un partenaire.",
         "Super long passes": "Passes de très longue distance utilisées pour renverser le jeu ou attaquer un espace éloigné.",
         "Super long passes accurate, %": "Part des passes très longues arrivées à un partenaire.",
@@ -552,6 +584,17 @@ METRIC_DEFINITIONS = {
         "xG (expected goals)": "The combined average scoring probability of the player's shots; it is not a certain prediction.",
         "Shots": "Shot attempts show the ability to reach shooting positions, not only finishing quality.",
         "Shots on target, %": "The share of shots forcing a save or entering the goal.",
+        "Shots on target from the penalty area, %": "The share of box shots on target; volume shows access to favourable zones while the rate assesses execution.",
+        "Shots from outside the penalty area": "Shots attempted from outside the box, showing long-range threat from generally lower-quality locations.",
+        "Shots on target from outside the penalty area, %": "The share of long-range attempts on target, always read with the outside-box attempt count.",
+        "Shots on post / bar": "Shots hitting a post or the crossbar: near-goal finishing evidence, but not a scored goal.",
+        "Headers": "Headed shot attempts, showing aerial positioning and access to crosses for a centre-forward.",
+        "Headers on target, %": "The share of headed attempts on target, always shown with the number of headers.",
+        "Goals by head": "Goals scored with a header; this identifies the finishing method without counting an extra goal in decisive impact.",
+        "Free-kick shots": "Direct free-kick attempts.",
+        "Free-kick goals": "Direct free-kick goals, already included in the player's total goals.",
+        "Short passes": "Short-distance passes used to retain possession, fix an opponent or combine with nearby team-mates.",
+        "Short passes accurate, %": "The completion rate of short passes, read with their volume to assess link-play quality.",
         "Actions in opponent's box": "Recorded on-ball actions in the opposition box, measuring presence in the decisive area.",
         "Actions in opponent's box successful, %": "The share of opposition-box actions completed successfully, shown with successes and attempts.",
         "Involvement in scoring attacks": "Attacking sequences involving the player that ended in a goal, complementing goals and assists.",
@@ -585,6 +628,17 @@ METRIC_DEFINITIONS = {
         "Crosses accurate, %": "نسبة العرضيات التي وصلت إلى زميل.",
         "xG (expected goals)": "مجموع متوسط احتمالات تحول تسديدات اللاعب إلى أهداف وليس توقعا مؤكدا.",
         "Shots": "عدد التسديدات ويقيس الوصول إلى وضعية التسديد وليس الإنهاء فقط.",
+        "Shots on target from the penalty area, %": "نسبة التسديدات المؤطرة من داخل المنطقة مع عرض عدد المحاولات.",
+        "Shots from outside the penalty area": "التسديدات من خارج منطقة الجزاء وتوضح التهديد من المسافة.",
+        "Shots on target from outside the penalty area, %": "نسبة التسديدات البعيدة المؤطرة مع عرض عدد المحاولات.",
+        "Shots on post / bar": "التسديدات التي اصطدمت بالقائم أو العارضة وهي اقتراب من التسجيل وليست هدفا.",
+        "Headers": "محاولات التسديد بالرأس وتوضح التمركز الهوائي والوصول إلى العرضيات.",
+        "Headers on target, %": "نسبة الضربات الرأسية المؤطرة مع عدد المحاولات.",
+        "Goals by head": "الأهداف المسجلة بالرأس وهي ضمن العدد الإجمالي للأهداف.",
+        "Free-kick shots": "التسديدات المباشرة من الركلات الحرة.",
+        "Free-kick goals": "الأهداف المباشرة من الركلات الحرة وهي ضمن إجمالي الأهداف.",
+        "Short passes": "التمريرات القصيرة للاحتفاظ بالكرة أو الربط مع الزملاء القريبين.",
+        "Short passes accurate, %": "نسبة نجاح التمريرات القصيرة مع عرض حجمها.",
         "Actions in opponent's box": "إجراءات بالكرة داخل منطقة جزاء المنافس وتقيس الحضور في المنطقة الحاسمة.",
         "Actions in opponent's box successful, %": "نسبة الإجراءات الناجحة داخل منطقة المنافس مع عدد النجاحات والمحاولات.",
         "Involvement in scoring attacks": "هجمات شارك فيها اللاعب وانتهت بهدف وتكمل قراءة الأهداف والتمريرات الحاسمة.",
@@ -596,6 +650,7 @@ METRIC_DEFINITIONS = {
 RATE_WEIGHTS = {
     "Chances successful, %": "Chances",
     "Passes accurate, %": "Passes",
+    "Short passes accurate, %": "Short passes",
     "Key passes accurate, %": "Key passes",
     "Crosses accurate, %": "Crosses",
     "Progressive passes accurate, %": "Progressive passes",
@@ -611,37 +666,44 @@ RATE_WEIGHTS = {
     "Dribbling in the final third successful, %": "Dribbling in the final third",
     "Tackles successful, %": "Tackles",
     "Shots on target, %": "Shots",
+    "Shots on target from the penalty area, %": "Shots from the penalty area",
+    "Shots on target from outside the penalty area, %": "Shots from outside the penalty area",
+    "Headers on target, %": "Headers",
     "Actions successful, %": "Actions",
     "Actions in opponent's box successful, %": "Actions in opponent's box",
 }
 
 
-# Stable order from the SportsBase "Players" XLSX export.  Any future columns
+# Stable order from the enriched SportsBase "Players" table.  Any future columns
 # present in a row are appended automatically, so the report never loses data.
 SPORTSBASE_PLAYER_COLUMNS = (
     "№", "Player", "Team", "Index", "Minutes played", "Position",
     "Goals", "Assists", "Mistakes leading to goals", "Mistakes leading to chances",
     "Chances", "Chances successful", "Chances successful, %", "Chances created",
-    "Involvement in scoring attacks", "Shots", "Shots on target", "Yellow cards",
-    "Red cards", "Fouls", "Fouls suffered", "Passes", "Passes accurate, %",
-    "Key passes", "Key passes accurate, %", "Crosses", "Crosses accurate, %",
+    "Involvement in scoring attacks", "Yellow cards", "Red cards", "Fouls",
+    "Fouls suffered", "Shots", "Goals by head", "Free-kick shots",
+    "Free-kick goals", "Passes", "Passes accurate, %", "Key passes",
+    "Key passes accurate, %", "Crosses", "Crosses accurate, %",
     "Progressive passes", "Progressive passes accurate, %", "Progressive open passes",
-    "Long passes", "Long passes accurate, %", "Super long passes",
-    "Super long passes accurate, %", "Passes forward to the final third",
+    "Short passes", "Short passes accurate, %", "Long passes",
+    "Long passes accurate, %", "Passes forward to the final third",
     "Passes forward to the final third accurate, %", "Passes into the penalty box",
-    "Passes into the penalty box accurate, %", "Passes for a shot", "Challenges",
+    "Passes into the penalty box accurate, %", "Passes for a shot", "Super long passes",
+    "Super long passes accurate, %", "xG (expected goals)", "Challenges",
     "Challenges won, %", "Defensive challenges", "Defensive challenges won, %",
     "Attacking challenges", "Attacking challenges won, %", "Aerial challenges",
     "Aerial challenges won, %", "Dribbles", "Dribbles successful, %",
     "Dribbling in the final third", "Dribbling in the final third successful, %",
     "Tackles", "Tackles successful, %", "Interceptions", "Loose ball recoveries",
-    "xG (expected goals)", "Final third entries", "Final third entries through pass",
-    "Final third entries through pass, % of total", "Final third entries through carry",
-    "Final third entries through carry, % of total", "Shots on target, %",
-    "Shots from the penalty area", "Shots from outside the penalty area", "Lost balls",
-    "Lost balls in own half", "Ball recoveries", "Ball recoveries in opponent's half",
     "Actions", "Actions successful, %", "Actions in opponent's box",
-    "Actions in opponent's box successful, %",
+    "Actions in opponent's box successful, %", "Shots from the penalty area",
+    "Shots on target from the penalty area, %", "Shots from outside the penalty area",
+    "Shots on target from outside the penalty area, %", "Headers",
+    "Headers on target, %", "Shots on target, %", "Shots on post / bar",
+    "Final third entries", "Final third entries through pass",
+    "Final third entries through pass, % of total", "Final third entries through carry",
+    "Final third entries through carry, % of total", "Lost balls", "Lost balls in own half",
+    "Ball recoveries", "Ball recoveries in opponent's half",
 )
 
 PERCENT_DENOMINATORS = {
@@ -688,12 +750,16 @@ APPENDIX_CATEGORIES = {
         "Involvement in scoring attacks",
     },
     "finishing": {
-        "Shots", "Shots on target", "Shots on target, %", "Shots from the penalty area",
-        "Shots from outside the penalty area", "xG (expected goals)",
+        "Shots", "Shots on target", "Shots on target, %", "Goals by head",
+        "Free-kick shots", "Free-kick goals", "Shots from the penalty area",
+        "Shots on target from the penalty area, %", "Shots from outside the penalty area",
+        "Shots on target from outside the penalty area, %", "Headers",
+        "Headers on target, %", "Shots on post / bar", "xG (expected goals)",
         "Actions in opponent's box", "Actions in opponent's box successful, %",
     },
     "creation": {
-        "Passes", "Passes accurate, %", "Key passes", "Key passes accurate, %",
+        "Passes", "Passes accurate, %", "Short passes", "Short passes accurate, %",
+        "Key passes", "Key passes accurate, %",
         "Crosses", "Crosses accurate, %", "Progressive passes",
         "Progressive passes accurate, %", "Progressive open passes", "Long passes",
         "Long passes accurate, %", "Super long passes", "Super long passes accurate, %",
@@ -931,7 +997,7 @@ ROLE_CONFIGS = {
         "dimensions": (
             ("between_lines", _s("Progressive passes", target=7), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=7), _s("Final third entries through pass", target=4), _s("Final third entries through carry", target=3), _s("Dribbles", target=4), _s("Dribbles successful, %", "dribble")),
             ("creation", _s("Passes for a shot", target=3), _s("Passes into the penalty box", target=4), _s("Passes into the penalty box accurate, %", "action_rate")),
-            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Actions in opponent's box", target=5), _s("Actions in opponent's box successful, %", "action_rate", weight=1.5)),
+            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Shots on target from the penalty area, %", "shot_target", weight=1.5), _s("Shots from outside the penalty area", target=1, zero_is_no_opportunity=True), _s("Shots on target from outside the penalty area, %", "shot_target"), _s("Actions in opponent's box", target=5), _s("Actions in opponent's box successful, %", "action_rate", weight=1.5)),
             ("ball_security", _s("Passes", target=40), _s("Passes accurate, %", "pass_general"), _s("Lost balls", "negative", target=9)),
             ("counterpress", _s("Ball recoveries in opponent's half", target=3), _s("Defensive challenges", target=4), _s("Defensive challenges won, %", "def_duel")),
         ),
@@ -941,17 +1007,17 @@ ROLE_CONFIGS = {
         "dimensions": (
             ("one_v_one", _s("Dribbles", target=5), _s("Dribbles successful, %", "dribble", weight=2), _s("Dribbling in the final third", target=3), _s("Dribbling in the final third successful, %", "dribble"), _s("Fouls suffered", target=2)),
             ("creation", _s("Passes for a shot", target=2), _s("Crosses", target=4), _s("Crosses accurate, %", "cross"), _s("Passes into the penalty box", target=3), _s("Passes into the penalty box accurate, %", "action_rate")),
-            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Shots in box share", "shot_location"), _s("Actions in opponent's box", target=6), _s("Actions in opponent's box successful, %", "action_rate", weight=1.5)),
+            ("goal_threat", _s("Shots", target=3), _s("Shots from the penalty area", target=2), _s("Shots on target from the penalty area, %", "shot_target", weight=1.5), _s("Shots from outside the penalty area", target=1, zero_is_no_opportunity=True), _s("Shots on target from outside the penalty area, %", "shot_target"), _s("Shots in box share", "shot_location"), _s("Actions in opponent's box", target=6), _s("Actions in opponent's box successful, %", "action_rate", weight=1.5)),
             ("progression", _s("Progressive passes", target=5), _s("Progressive passes accurate, %", "progressive_rate"), _s("Final third entries", target=7), _s("Final third entries through pass", target=3), _s("Final third entries through carry", target=4)),
             ("defensive_work", _s("Ball recoveries in opponent's half", target=2), _s("Defensive challenges", target=3), _s("Lost balls", "negative", target=9)),
         ),
     },
     "forward": {
-        "weights": {"impact": 35, "box_presence": 25, "finishing": 15, "involvement": 10, "link_play": 5, "direct_play": 5, "defensive_work": 5},
+        "weights": {"impact": 35, "box_presence": 22, "finishing": 18, "involvement": 10, "link_play": 5, "direct_play": 5, "defensive_work": 5},
         "dimensions": (
             ("box_presence", _s("Actions in opponent's box", target=8, weight=2), _s("Actions in opponent's box successful, %", "action_rate", weight=1.5), _s("Shots", target=3), _s("Shots from the penalty area", target=3, weight=2), _s("Shots in box share", "shot_location")),
-            ("finishing", _s("Shots on target", target=2), _s("Shots on target, %", "shot_target", weight=2)),
-            ("link_play", _s("Passes", target=22), _s("Passes accurate, %", "pass_forward"), _s("Passes for a shot", target=1)),
+            ("finishing", _s("Shots on target, %", "shot_target", weight=1.5), _s("Shots on target from the penalty area, %", "shot_target", weight=2.5), _s("Shots on target from outside the penalty area, %", "shot_target", weight=0.5), _s("Headers", target=2, zero_is_no_opportunity=True, weight=1.5), _s("Headers on target, %", "shot_target", weight=2), _s("Shots on post / bar", "positive_volume", target=1, weight=0.5)),
+            ("link_play", _s("Passes", target=22), _s("Passes accurate, %", "pass_forward"), _s("Short passes", target=15, weight=0.75), _s("Short passes accurate, %", "pass_safe", weight=0.75), _s("Passes for a shot", target=1)),
             ("direct_play", _s("Attacking challenges", target=6), _s("Attacking challenges won, %", "att_duel", weight=2), _s("Aerial challenges", target=4, zero_is_no_opportunity=True), _s("Aerial challenges won, %", "aerial"), _s("Dribbles", target=3), _s("Dribbles successful, %", "dribble"), _s("Fouls suffered", target=2)),
             ("defensive_work", _s("Defensive challenges", target=4), _s("Defensive challenges won, %", "def_duel", weight=2), _s("Ball recoveries in opponent's half", target=2), _s("Lost balls", "negative", target=8)),
         ),
@@ -1084,7 +1150,7 @@ KEY_METRICS = {
     "box_to_box_midfielder": ("Actions", "Actions successful, %", "Final third entries", "Final third entries through pass", "Final third entries through carry", "Actions in opponent's box", "Actions in opponent's box successful, %", "xG (expected goals)", "Progressive passes", "Passes for a shot", "Defensive challenges won, %", "Tackles successful, %", "Interceptions"),
     "attacking_midfielder": ("Actions", "Actions successful, %", "Goals", "Assists", "xG (expected goals)", "Key passes", "Passes for a shot", "Final third entries", "Final third entries through pass", "Final third entries through carry", "Actions in opponent's box", "Actions in opponent's box successful, %", "Dribbles successful, %"),
     "winger": ("Actions", "Actions successful, %", "Goals", "Assists", "xG (expected goals)", "Dribbles successful, %", "Dribbling in the final third", "Crosses accurate, %", "Key passes", "Shots", "Shots in box share", "Actions in opponent's box", "Actions in opponent's box successful, %"),
-    "forward": ("Actions", "Actions successful, %", "Goals", "Assists", "xG (expected goals)", "Actions in opponent's box", "Actions in opponent's box successful, %", "Shots", "Shots in box share", "Shots on target, %", "Key passes", "Attacking challenges won, %"),
+    "forward": ("Actions", "Actions successful, %", "Goals", "Goals by head", "Assists", "xG (expected goals)", "Actions in opponent's box", "Actions in opponent's box successful, %", "Shots", "Shots from the penalty area", "Shots on target from the penalty area, %", "Headers", "Headers on target, %", "Shots on target, %", "Shots on post / bar", "Key passes", "Attacking challenges won, %"),
 }
 
 
@@ -1145,7 +1211,7 @@ GLOBAL_BENCHMARK_METRICS = {
     "box_to_box_midfielder": ("Index", "__duels_won__", "Challenges won, %", "Final third entries", "Progressive passes", "Passes for a shot"),
     "attacking_midfielder": ("Index", "__duels_won__", "Dribbles successful, %", "Key passes", "Passes for a shot", "Actions in opponent's box"),
     "winger": ("Index", "__duels_won__", "Dribbles successful, %", "Crosses accurate, %", "Shots on target, %", "Actions in opponent's box"),
-    "forward": ("Index", "__duels_won__", "Attacking challenges won, %", "Shots on target, %", "Shots from the penalty area", "Actions in opponent's box"),
+    "forward": ("Index", "__duels_won__", "Attacking challenges won, %", "Shots on target from the penalty area, %", "Headers on target, %", "Shots from the penalty area", "Actions in opponent's box"),
 }
 
 BENCHMARK_LABELS = {
@@ -1651,7 +1717,7 @@ BOX_ACTION_TARGETS = {
 
 
 def _phase_interpretation(target, group, phase, language):
-    """Translate the raw XLSX values into concise, role-calibrated football language."""
+    """Translate the raw Players-table values into role-calibrated football language."""
     minutes = _minutes(target)
     sentences = []
     if phase == "global":
@@ -1696,6 +1762,33 @@ def _phase_interpretation(target, group, phase, language):
             )
         else:
             sentences.append(f"التأثير الحاسم: {goals} هدف، {assists} تمريرة حاسمة، {key_passes} تمريرة مفتاحية، {chances_created} فرصة مصنوعة و{_format_number(xg)} أهداف متوقعة.")
+
+        if group == "forward":
+            headers = _number(target.get("Headers"), missing_zero=True)
+            header_rate = _rate(target.get("Headers on target, %"))
+            headed_goals = _number(target.get("Goals by head"), missing_zero=True)
+            header_success = _successful_actions(target, "Headers on target, %")
+            if headers > 0:
+                header_display = (
+                    f"{round(header_success)}/{round(headers)} · {_format_number(header_rate)}%"
+                    if header_success is not None and header_rate is not None
+                    else f"{round(headers)}"
+                )
+                if language == "fr":
+                    sentences.append(
+                        f"Menace aérienne : {header_display} tête(s) cadrée(s) et {round(headed_goals)} but(s) de la tête. "
+                        "Le volume juge l’accès aux centres ; le taux juge la qualité de la finition aérienne."
+                    )
+                elif language == "en":
+                    sentences.append(
+                        f"Aerial threat: {header_display} headed attempts on target and {round(headed_goals)} headed goal(s). "
+                        "Volume assesses access to crosses; the rate assesses aerial finishing execution."
+                    )
+                else:
+                    sentences.append(
+                        f"التهديد الهوائي: {header_display} و{round(headed_goals)} هدف بالرأس. "
+                        "الحجم يقيس الوصول إلى العرضيات والنسبة تقيس جودة الإنهاء بالرأس."
+                    )
 
         box_actions = _number(target.get("Actions in opponent's box"), missing_zero=True)
         box_rate = _rate(target.get("Actions in opponent's box successful, %"))
@@ -1909,7 +2002,8 @@ def _score_breakdown(dimensions, language):
             "par l’importance de la mission pour le poste. La mission « impact décisif et création » intègre "
             "explicitement buts, passes décisives, passes clés, occasions, xG et implication dans les attaques "
             "qui mènent à un but. Les dribbles, actions dans la surface et entrées dans le dernier tiers sont "
-            "notés dans la mission offensive adaptée au poste. "
+            "notés dans la mission offensive adaptée au poste. Pour l’avant-centre, les tirs dans la surface, "
+            "les têtes et leurs taux de cadrage complètent la finition sans compter deux fois un but de la tête. "
             "Un critère sans occasion observable est affiché mais n’est pas noté. Le total est arrondi à "
             "l’entier le plus proche. L’Index SportsBase influence le verdict final, pas ce calcul technique."
         ),
@@ -1917,7 +2011,8 @@ def _score_breakdown(dimensions, language):
             "Mission score = the sum of criterion scores weighted inside each mission, then weighted by the "
             "mission's importance for the position. The 'decisive impact and creation' mission explicitly "
             "includes goals, assists, key passes, chances, xG and involvement in scoring attacks. Dribbles, "
-            "box actions and final-third entries are scored in the role's relevant attacking mission. A criterion with no "
+            "box actions and final-third entries are scored in the role's relevant attacking mission. For centre-forwards, "
+            "box shots, headers and their on-target rates complete finishing without double-counting a headed goal. A criterion with no "
             "observable opportunity is displayed but not scored. The total is rounded to the nearest whole "
             "number. SportsBase Index affects the final verdict, not this technical calculation."
         ),
@@ -1940,6 +2035,7 @@ def _score_breakdown(dimensions, language):
         "Goals", "Assists", "Key passes", "Chances created", "Chances",
         "Chances successful, %", "Dribbles", "Dribbles successful, %",
         "Involvement in scoring attacks", "xG (expected goals)",
+        "Headers", "Headers on target, %", "Shots on target from the penalty area, %",
     }
     driver_criteria = [
         criterion
@@ -2632,6 +2728,8 @@ def _role_specific_observations(target, group, language):
             box_shots = _number(target.get("Shots from the penalty area"), missing_zero=True)
             goals = _number(target.get("Goals"), missing_zero=True)
             box_actions = _number(target.get("Actions in opponent's box"), missing_zero=True)
+            headers = _number(target.get("Headers"), missing_zero=True)
+            header_rate = _rate(target.get("Headers on target, %"))
             if shots >= 3 and box_shots >= max(2, shots * 0.60):
                 strengths.append(f"Présence de finition : {box_shots:.0f}/{shots:.0f} tirs ont été pris dans la surface.")
             if box_actions >= _window_target(6, minutes):
@@ -2645,6 +2743,16 @@ def _role_specific_observations(target, group, language):
                 risks.append(
                     f"La présence est positive, mais les {shots:.0f} tirs n’ont pas encore produit de but : "
                     "travailler la sélection et l’exécution, sans dévaloriser l’accès aux occasions."
+                )
+            if headers >= 2 and header_rate is not None and header_rate >= 50:
+                strengths.append(
+                    f"Menace aérienne crédible : {round(headers * header_rate / 100)}/{round(headers)} "
+                    f"têtes cadrées ({header_rate:.0f} %)."
+                )
+            elif headers >= 3 and header_rate is not None and header_rate < 35:
+                risks.append(
+                    f"Accès aérien réel ({headers:.0f} têtes), mais cadrage limité ({header_rate:.0f} %) : "
+                    "travailler le timing d’appel, l’orientation du corps et la zone de contact."
                 )
         elif group == "box_to_box_midfielder":
             entries = _number(target.get("Final third entries"), missing_zero=True)
@@ -2702,6 +2810,8 @@ def _role_specific_observations(target, group, language):
             box_shots = _number(target.get("Shots from the penalty area"), missing_zero=True)
             goals = _number(target.get("Goals"), missing_zero=True)
             box_actions = _number(target.get("Actions in opponent's box"), missing_zero=True)
+            headers = _number(target.get("Headers"), missing_zero=True)
+            header_rate = _rate(target.get("Headers on target, %"))
             if shots >= 3 and box_shots >= max(2, shots * 0.60):
                 strengths.append(f"Finishing presence: {box_shots:.0f}/{shots:.0f} shots came from inside the box.")
             if box_actions >= _window_target(6, minutes):
@@ -2715,6 +2825,16 @@ def _role_specific_observations(target, group, language):
                 risks.append(
                     f"The presence was positive, but {shots:.0f} shots did not produce a goal: improve "
                     "selection and execution without discounting access to chances."
+                )
+            if headers >= 2 and header_rate is not None and header_rate >= 50:
+                strengths.append(
+                    f"Credible aerial threat: {round(headers * header_rate / 100)}/{round(headers)} "
+                    f"headers on target ({header_rate:.0f}%)."
+                )
+            elif headers >= 3 and header_rate is not None and header_rate < 35:
+                risks.append(
+                    f"Real aerial access ({headers:.0f} headers), but limited accuracy ({header_rate:.0f}%): "
+                    "work on run timing, body orientation and contact zone."
                 )
     else:
         if group == "goalkeeper":
