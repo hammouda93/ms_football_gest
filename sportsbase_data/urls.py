@@ -87,6 +87,11 @@ urlpatterns = [
         name="api_job_result",
     ),
     path(
+        "sportsbase/automation/reports/<int:pk>/pdf/",
+        views.api_report_pdf,
+        name="api_report_pdf",
+    ),
+    path(
         "sportsbase/automation/youtube/jobs/next/",
         views.api_next_youtube_job,
         name="api_next_youtube_job",
