@@ -26,7 +26,11 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v20-20260828"
+PLAYER_ACTIONS_BUTTON_RE = re.compile(
+    r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
+    re.IGNORECASE,
+)
+SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v21-20260828"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -2672,9 +2676,9 @@ class SportsBaseSubscriptionScraper:
                 match_item = self._match_item(
                     page, match_data["sportsbase_match_id"]
                 )
-                action_button = match_item.locator(
+                action_button = match_item.get_by_role(
                     "button",
-                    has_text=re.compile(r"All\s+(?:player\s+)?actions", re.I),
+                    name=PLAYER_ACTIONS_BUTTON_RE,
                 ).first
                 if not action_button.count() or not action_button.is_visible():
                     # An expanded More details panel can temporarily hide the
@@ -2688,14 +2692,38 @@ class SportsBaseSubscriptionScraper:
                         match_item = self._match_item(
                             page, match_data["sportsbase_match_id"]
                         )
+                        action_button = match_item.get_by_role(
+                            "button",
+                            name=PLAYER_ACTIONS_BUTTON_RE,
+                        ).first
                 print(
                     "[SPORTSBASE] Ouverture All Actions — match "
                     f"{match_data['sportsbase_match_id']}"
                 )
-                popup = self.automation.click_all_players_actions_for_match(
-                    page,
-                    match_item,
-                    match_data["source_metadata"]["list_position"] - 1,
+                if not action_button.count():
+                    raise RuntimeError(
+                        "Bouton Player actions introuvable dans la ligne du match"
+                    )
+                action_button.wait_for(state="visible", timeout=10_000)
+                action_button.scroll_into_view_if_needed(timeout=10_000)
+                match_position = (
+                    match_data["source_metadata"]["list_position"] - 1
+                )
+                print(
+                    f"[DEBUG] Match {match_position + 1} href: "
+                    f"/matches/{match_data['sportsbase_match_id']}"
+                )
+                with page.expect_popup(timeout=20_000) as popup_info:
+                    action_button.click(timeout=10_000)
+                popup = popup_info.value
+                popup.wait_for_load_state("domcontentloaded", timeout=30_000)
+                popup.wait_for_timeout(4_000)
+                print(
+                    f"[DEBUG] Popup URL match {match_position + 1}: {popup.url}"
+                )
+                print(
+                    f"[DEBUG] Popup title match {match_position + 1}: "
+                    f"{popup.title()}"
                 )
                 title, _confirmed, _cancelled = (
                     self.automation.generate_download_in_popup(popup)
