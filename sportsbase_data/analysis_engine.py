@@ -1,4 +1,4 @@
-"""Role-specific, player-facing analysis built from the SportsBase Players table.
+"""Role-specific, player-facing analysis built from the match Players table.
 
 The engine keeps the player's real match totals. Playing time describes
 reliability and selects a coarse activity window; it never turns a substitute
@@ -8,7 +8,38 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "role-phase-enriched-finishing-v8-20260828"
+ANALYSIS_VERSION = "ms-open-score-position-points-v9-20260828"
+
+
+# The MS Score is deliberately transparent and open-ended.  The 0-100 values
+# produced by the role engine remain useful to grade one criterion, but the
+# headline index is an accumulation of visible points rather than another
+# capped percentage.  Decisive actions are kept outside the mission budget so
+# that, for example, one goal is always exactly +20 and cannot be counted twice.
+MS_BASE_POINTS = 100
+MS_MISSION_BUDGET = 80
+MS_DECISIVE_POINT_RULES = {
+    "Goals": 20,
+    "Assists": 14,
+    "Key passes": 3,
+    "Chances created": 4,
+    "Chances": 2,
+    "Involvement in scoring attacks": 3,
+    "xG (expected goals)": 10,
+}
+MS_PENALTY_POINT_RULES = {
+    "Mistakes leading to goals": -20,
+    "Mistakes leading to chances": -8,
+    "Red cards": -12,
+}
+MS_SCORE_BANDS = (
+    (195, "exceptional"),
+    (175, "very_good"),
+    (155, "solid"),
+    (135, "mixed"),
+    (115, "insufficient"),
+    (float("-inf"), "difficult"),
+)
 
 METHODOLOGY_SOURCES = (
     {
@@ -169,11 +200,11 @@ TEXT = {
             "consignes, les déplacements sans ballon et les causes doivent être confirmés "
             "avec la vidéo All Actions."
         ),
-        "index_first_match": "1er Index SportsBase de la rencontre ({rank}/{total}) : signal majeur d’une prestation de très haut niveau statistique.",
-        "index_first_team": "1er Index SportsBase de son équipe ({rank}/{total}) : signal fort d’un très bon impact statistique.",
-        "index_top_three": "Classé {rank}e sur {total} à l’Index SportsBase dans son équipe : il figure parmi les performances statistiques les plus fortes de son équipe.",
-        "index_available": "Index SportsBase : rang {rank}/{total} dans son équipe.",
-        "index_unavailable": "Index SportsBase non disponible : il n’influence pas le verdict.",
+        "index_first_match": "1er à l’Indice de performance de la rencontre ({rank}/{total}) : signal majeur d’une prestation de très haut niveau statistique.",
+        "index_first_team": "1er à l’Indice de performance de son équipe ({rank}/{total}) : signal fort d’un très bon impact statistique.",
+        "index_top_three": "Classé {rank}e sur {total} à l’Indice de performance dans son équipe : il figure parmi les performances statistiques les plus fortes de son équipe.",
+        "index_available": "Indice de performance : rang {rank}/{total} dans son équipe.",
+        "index_unavailable": "Indice de performance non disponible : il n’influence pas le verdict.",
     },
     "en": {
         "roles": {
@@ -246,11 +277,11 @@ TEXT = {
             "The data creates performance hypotheses. Intent, tactical instructions, "
             "off-ball movement and causes must be confirmed through All Actions video."
         ),
-        "index_first_match": "1st SportsBase Index in the match ({rank}/{total}): a major signal of a very high-level statistical performance.",
-        "index_first_team": "1st SportsBase Index in his team ({rank}/{total}): a strong signal of very good statistical impact.",
-        "index_top_three": "Ranked {rank}/{total} on SportsBase Index in his team: among his team's strongest statistical performances.",
-        "index_available": "SportsBase Index: ranked {rank}/{total} in his team.",
-        "index_unavailable": "SportsBase Index is unavailable and does not affect the verdict.",
+        "index_first_match": "1st on the Performance Index in the match ({rank}/{total}): a major signal of a very high-level statistical performance.",
+        "index_first_team": "1st on the Performance Index in his team ({rank}/{total}): a strong signal of very good statistical impact.",
+        "index_top_three": "Ranked {rank}/{total} on the Performance Index in his team: among his team's strongest statistical performances.",
+        "index_available": "Performance Index: ranked {rank}/{total} in his team.",
+        "index_unavailable": "The Performance Index is unavailable and does not affect the verdict.",
     },
     "ar": {
         "roles": {
@@ -323,11 +354,11 @@ TEXT = {
             "تقدم البيانات فرضيات للأداء، ويجب تأكيد النوايا والتعليمات والتحركات دون "
             "كرة والأسباب عبر فيديو جميع اللقطات."
         ),
-        "index_first_match": "الأول في مؤشر سبورتس بايز في المباراة ({rank}/{total})، وهي إشارة قوية إلى أداء إحصائي رفيع المستوى.",
-        "index_first_team": "الأول في مؤشر سبورتس بايز داخل فريقه ({rank}/{total})، وهي إشارة قوية إلى تأثير إحصائي ممتاز.",
-        "index_top_three": "المرتبة {rank}/{total} في مؤشر سبورتس بايز داخل فريقه، ضمن أفضل أداءات فريقه إحصائيا.",
-        "index_available": "المرتبة {rank}/{total} في مؤشر سبورتس بايز داخل فريقه.",
-        "index_unavailable": "مؤشر سبورتس بايز غير متاح ولا يؤثر في الخلاصة.",
+        "index_first_match": "الأول في مؤشر الأداء في المباراة ({rank}/{total})، وهي إشارة قوية إلى أداء إحصائي رفيع المستوى.",
+        "index_first_team": "الأول في مؤشر الأداء داخل فريقه ({rank}/{total})، وهي إشارة قوية إلى تأثير إحصائي ممتاز.",
+        "index_top_three": "المرتبة {rank}/{total} في مؤشر الأداء داخل فريقه، ضمن أفضل أداءات فريقه إحصائيا.",
+        "index_available": "المرتبة {rank}/{total} في مؤشر الأداء داخل فريقه.",
+        "index_unavailable": "مؤشر الأداء غير متاح ولا يؤثر في الخلاصة.",
     },
 }
 
@@ -337,7 +368,7 @@ METRIC_LABELS = {
         "№": "N°",
         "Player": "Joueur",
         "Team": "Équipe",
-        "Index": "Index SportsBase",
+        "Index": "Indice de performance",
         "Minutes played": "Minutes jouées",
         "Position": "Poste",
         "Goals": "Buts",
@@ -423,7 +454,7 @@ METRIC_LABELS = {
         "№": "No.",
         "Player": "Player",
         "Team": "Team",
-        "Index": "SportsBase Index",
+        "Index": "Performance Index",
         "Minutes played": "Minutes played",
         "Position": "Position",
     },
@@ -431,7 +462,7 @@ METRIC_LABELS = {
         "№": "الرقم",
         "Player": "اللاعب",
         "Team": "الفريق",
-        "Index": "مؤشر سبورتس بايز",
+        "Index": "مؤشر الأداء",
         "Minutes played": "دقائق اللعب",
         "Position": "المركز",
         "Goals": "الأهداف",
@@ -556,7 +587,7 @@ METRIC_DEFINITIONS = {
         "Super long passes accurate, %": "Part des passes très longues arrivées à un partenaire.",
         "Lost balls": "Ballons perdus par le joueur. Le lieu, la pression et le niveau de risque doivent être confirmés en vidéo.",
         "Lost balls in own half": "Ballons perdus dans son propre camp, où une perte peut exposer plus directement l’équipe.",
-        "Index": "Indice synthétique SportsBase. Son rang dans l’équipe et le match sert de validation globale du verdict.",
+        "Index": "Indice synthétique du match. Son rang dans l’équipe et la rencontre sert de repère global pour le verdict.",
     },
     "en": {
         "Goals": "A goal scored by the player: the most direct decisive contribution.",
@@ -605,7 +636,7 @@ METRIC_DEFINITIONS = {
         "Super long passes": "Very long deliveries used to switch play or attack distant space.",
         "Super long passes accurate, %": "The share of very long passes reaching a team-mate.",
         "Shots in box share": "The share of shots from inside the box; six box shots without a goal still show strong presence but weaker finishing.",
-        "Index": "SportsBase's composite index; its team and match rank validates the overall verdict.",
+        "Index": "Composite match index; its team and match rank provides a global reference for the verdict.",
     },
     "ar": {
         "Goals": "هدف سجله اللاعب وهو أوضح مساهمة حاسمة.",
@@ -642,7 +673,7 @@ METRIC_DEFINITIONS = {
         "Actions in opponent's box": "إجراءات بالكرة داخل منطقة جزاء المنافس وتقيس الحضور في المنطقة الحاسمة.",
         "Actions in opponent's box successful, %": "نسبة الإجراءات الناجحة داخل منطقة المنافس مع عدد النجاحات والمحاولات.",
         "Involvement in scoring attacks": "هجمات شارك فيها اللاعب وانتهت بهدف وتكمل قراءة الأهداف والتمريرات الحاسمة.",
-        "Index": "مؤشر سبورتس بايز المركب ويستخدم ترتيبه داخل الفريق والمباراة لتأكيد الخلاصة.",
+        "Index": "مؤشر أداء مركب ويستخدم ترتيبه داخل الفريق والمباراة مرجعا عاما للخلاصة.",
     },
 }
 
@@ -720,7 +751,7 @@ APPENDIX_CATEGORY_LABELS = {
         "creation": "Création, passes et progression",
         "duels": "Duels, défense et un contre un",
         "possession": "Possession, récupérations et discipline",
-        "other": "Autres données SportsBase",
+        "other": "Autres données du match",
     },
     "en": {
         "identity": "Profile and reference points",
@@ -729,7 +760,7 @@ APPENDIX_CATEGORY_LABELS = {
         "creation": "Creation, passing and progression",
         "duels": "Duels, defending and one-v-one",
         "possession": "Possession, recoveries and discipline",
-        "other": "Other SportsBase data",
+        "other": "Other match data",
     },
     "ar": {
         "identity": "الملف والمؤشرات العامة",
@@ -738,7 +769,7 @@ APPENDIX_CATEGORY_LABELS = {
         "creation": "الصناعة والتمرير والتقدم",
         "duels": "الثنائيات والدفاع والمواجهة الفردية",
         "possession": "الاستحواذ والاسترجاع والانضباط",
-        "other": "بيانات سبورتس بايز الأخرى",
+        "other": "بيانات المباراة الأخرى",
     },
 }
 
@@ -1918,7 +1949,202 @@ def _overall_score(dimensions):
     return math.floor(raw_score + 0.5 + 1e-9)
 
 
-def _score_breakdown(dimensions, language):
+def _round_half_up(value):
+    return math.floor(float(value) + 0.5 + 1e-9)
+
+
+def _ms_rank_points(rankings):
+    """Return one non-duplicated contextual bonus from the performance rank."""
+    rankings = rankings or {}
+    match_rank = rankings.get("index_match") or {}
+    team_rank = rankings.get("index_team") or {}
+    match_total = int(match_rank.get("total") or 0)
+    team_total = int(team_rank.get("total") or 0)
+    match_points = {1: 10, 2: 6, 3: 3}.get(match_rank.get("rank"), 0) if match_total >= 6 else 0
+    team_points = {1: 6, 2: 3, 3: 1}.get(team_rank.get("rank"), 0) if team_total >= 3 else 0
+    if match_points >= team_points and match_points:
+        return match_points, "match", match_rank
+    if team_points:
+        return team_points, "team", team_rank
+    return 0, None, {}
+
+
+def _ms_point_event(metric, value, unit_points, points, language, category):
+    label = _label(metric, language)
+    if metric == "xG (expected goals)":
+        calculation = f"{_format_number(value)} × {unit_points}"
+    else:
+        calculation = f"{_format_number(value)} × {unit_points}"
+    descriptions = {
+        "fr": {
+            "decisive": f"{label} : {calculation} = +{_format_number(abs(points))} pts",
+            "penalty": f"{label} : {calculation} = -{_format_number(abs(points))} pts",
+        },
+        "en": {
+            "decisive": f"{label}: {calculation} = +{_format_number(abs(points))} pts",
+            "penalty": f"{label}: {calculation} = -{_format_number(abs(points))} pts",
+        },
+        "ar": {
+            "decisive": f"{label}: {calculation} = +{_format_number(abs(points))} نقطة",
+            "penalty": f"{label}: {calculation} = -{_format_number(abs(points))} نقطة",
+        },
+    }
+    return {
+        "category": category,
+        "metric": metric,
+        "label": label,
+        "value": round(value, 3),
+        "unit_points": unit_points,
+        "points": round(points, 2),
+        "calculation": calculation,
+        "explanation": descriptions[language][category],
+    }
+
+
+def _apply_ms_open_score(result, target, rankings, language):
+    """Add transparent, open-ended MS points to the normalized mission detail."""
+    explicit_metrics = set(MS_DECISIVE_POINT_RULES) | set(MS_PENALTY_POINT_RULES)
+    eligible_dimensions = []
+    for dimension in result:
+        eligible = [
+            criterion for criterion in dimension.get("criteria") or []
+            if criterion.get("used") and criterion.get("metric") not in explicit_metrics
+        ]
+        if eligible:
+            eligible_dimensions.append((dimension, eligible))
+
+    total_position_weight = sum(
+        dimension.get("configured_weight", 0) for dimension, _criteria in eligible_dimensions
+    )
+    mission_points = 0.0
+    for dimension in result:
+        dimension["ms_budget"] = 0.0
+        dimension["ms_points"] = 0.0
+        for criterion in dimension.get("criteria") or []:
+            criterion["ms_points"] = 0.0
+            if criterion.get("metric") in MS_DECISIVE_POINT_RULES:
+                criterion["points_source"] = "decisive"
+            elif criterion.get("metric") in MS_PENALTY_POINT_RULES:
+                criterion["points_source"] = "penalty"
+            elif criterion.get("used"):
+                criterion["points_source"] = "position_mission"
+            else:
+                criterion["points_source"] = "unobserved"
+
+    for dimension, eligible in eligible_dimensions:
+        budget = (
+            MS_MISSION_BUDGET
+            * dimension.get("configured_weight", 0)
+            / total_position_weight
+            if total_position_weight
+            else 0
+        )
+        criterion_weight = sum(criterion.get("raw_weight", 1) for criterion in eligible)
+        dimension_points = 0.0
+        for criterion in eligible:
+            share = criterion.get("raw_weight", 1) / criterion_weight if criterion_weight else 0
+            points = (criterion.get("score", 0) / 100) * share * budget
+            criterion["ms_points"] = round(points, 2)
+            dimension_points += points
+        dimension["ms_budget"] = round(budget, 2)
+        dimension["ms_points"] = round(dimension_points, 2)
+        mission_points += dimension_points
+
+    point_events = []
+    decisive_points = 0.0
+    for metric, unit_points in MS_DECISIVE_POINT_RULES.items():
+        value = _number((target or {}).get(metric), missing_zero=True)
+        if value <= 0:
+            continue
+        points = value * unit_points
+        decisive_points += points
+        point_events.append(
+            _ms_point_event(metric, value, unit_points, points, language, "decisive")
+        )
+
+    penalty_points = 0.0
+    for metric, unit_points in MS_PENALTY_POINT_RULES.items():
+        value = _number((target or {}).get(metric), missing_zero=True)
+        if value <= 0:
+            continue
+        points = value * unit_points
+        penalty_points += points
+        point_events.append(
+            _ms_point_event(metric, value, unit_points, points, language, "penalty")
+        )
+
+    ranking_points, ranking_scope, ranking = _ms_rank_points(rankings)
+    if ranking_points:
+        rank = ranking.get("rank")
+        total = ranking.get("total")
+        labels = {
+            "fr": f"Rang à l’Indice de performance ({'match' if ranking_scope == 'match' else 'équipe'})",
+            "en": f"Performance Index rank ({'match' if ranking_scope == 'match' else 'team'})",
+            "ar": "ترتيب مؤشر الأداء في المباراة" if ranking_scope == "match" else "ترتيب مؤشر الأداء داخل الفريق",
+        }
+        point_events.append(
+            {
+                "category": "ranking",
+                "metric": "Index rank",
+                "label": labels[language],
+                "value": rank,
+                "unit_points": ranking_points,
+                "points": ranking_points,
+                "calculation": f"{rank}/{total}",
+                "explanation": {
+                    "fr": f"{labels[language]} : {rank}/{total} = +{ranking_points} pts",
+                    "en": f"{labels[language]}: {rank}/{total} = +{ranking_points} pts",
+                    "ar": f"{labels[language]}: {rank}/{total} = +{ranking_points} نقطة",
+                }[language],
+            }
+        )
+
+    raw_total = MS_BASE_POINTS + mission_points + decisive_points + ranking_points + penalty_points
+    total_points = _round_half_up(raw_total)
+    band_code = next(code for minimum, code in MS_SCORE_BANDS if total_points >= minimum)
+    rules = [
+        {
+            "metric": metric,
+            "label": _label(metric, language),
+            "unit_points": unit_points,
+        }
+        for metric, unit_points in MS_DECISIVE_POINT_RULES.items()
+    ]
+    formula = {
+        "fr": (
+            "MS Score = 100 points de base + jusqu’à 80 points issus des missions spécifiques du poste "
+            "+ les actions décisives + un seul bonus de classement - les erreurs décisives. "
+            "L’échelle est ouverte : elle n’est pas plafonnée à 100. Un but vaut toujours +20 points."
+        ),
+        "en": (
+            "MS Score = 100 base points + up to 80 points from position-specific missions + decisive actions "
+            "+ one ranking bonus - decisive errors. The scale is open-ended and is not capped at 100. "
+            "A goal is always worth +20 points."
+        ),
+        "ar": (
+            "يتكون مؤشر MS من 100 نقطة أساسية وما يصل إلى 80 نقطة لمهام المركز، ثم الأفعال الحاسمة "
+            "ومكافأة ترتيب واحدة ناقص الأخطاء الحاسمة. المقياس مفتوح وغير محدود عند 100، وكل هدف يساوي 20 نقطة."
+        ),
+    }[language]
+    return {
+        "version": "ms-open-v1",
+        "scale": "open_ended_points",
+        "base_points": MS_BASE_POINTS,
+        "mission_budget": MS_MISSION_BUDGET,
+        "mission_points": round(mission_points, 2),
+        "decisive_points": round(decisive_points, 2),
+        "ranking_points": ranking_points,
+        "penalty_points": round(penalty_points, 2),
+        "raw_total_points": round(raw_total, 2),
+        "total_points": total_points,
+        "band_code": band_code,
+        "point_events": point_events,
+        "decisive_rules": rules,
+        "formula": formula,
+    }
+
+
+def _score_breakdown(dimensions, language, *, target=None, rankings=None):
     """Expose every coefficient used by the mission-score formula."""
     observed_dimensions = [item for item in dimensions if item.get("coverage")]
     total_dimension_weight = sum(item.get("weight", 0) for item in observed_dimensions)
@@ -1976,6 +2202,7 @@ def _score_breakdown(dimensions, language):
                     "value": metric.get("value"),
                     "display": metric.get("display"),
                     "score": metric.get("score"),
+                    "raw_weight": metric.get("weight", 1),
                     "criterion_weight": round(share, 1),
                     "final_contribution": round(final_points, 2),
                     "used": metric_used,
@@ -2005,7 +2232,8 @@ def _score_breakdown(dimensions, language):
             "notés dans la mission offensive adaptée au poste. Pour l’avant-centre, les tirs dans la surface, "
             "les têtes et leurs taux de cadrage complètent la finition sans compter deux fois un but de la tête. "
             "Un critère sans occasion observable est affiché mais n’est pas noté. Le total est arrondi à "
-            "l’entier le plus proche. L’Index SportsBase influence le verdict final, pas ce calcul technique."
+            "l’entier le plus proche. L’Indice de performance du match apporte un contexte au verdict, "
+            "sans entrer dans ce calcul technique."
         ),
         "en": (
             "Mission score = the sum of criterion scores weighted inside each mission, then weighted by the "
@@ -2014,14 +2242,14 @@ def _score_breakdown(dimensions, language):
             "box actions and final-third entries are scored in the role's relevant attacking mission. For centre-forwards, "
             "box shots, headers and their on-target rates complete finishing without double-counting a headed goal. A criterion with no "
             "observable opportunity is displayed but not scored. The total is rounded to the nearest whole "
-            "number. SportsBase Index affects the final verdict, not this technical calculation."
+            "number. The match Performance Index provides context for the verdict, not this technical calculation."
         ),
         "ar": (
             "درجة المهمة هي مجموع درجات المعايير بعد ترجيحها داخل كل مهمة ثم حسب أهمية المهمة للمركز. "
             "وتشمل مهمة التأثير الحاسم الأهداف والتمريرات الحاسمة والمفتاحية والفرص والأهداف المتوقعة والمشاركة "
             "في هجمات التسجيل، بينما تقيم المراوغات ودخول المنطقة والثلث الأخير ضمن المهمة الهجومية المناسبة للمركز. "
             "يعرض المعيار الذي لم تسجل له فرصة لكنه لا يدخل في الحساب. يقرب المجموع إلى أقرب "
-            "عدد صحيح ويؤثر مؤشر سبورتس بايز في الخلاصة النهائية لا في هذا الحساب الفني."
+            "عدد صحيح ويقدم مؤشر أداء المباراة سياقا للخلاصة النهائية دون أن يدخل في هذا الحساب الفني."
         ),
     }[language]
     raw_total = (
@@ -2102,14 +2330,34 @@ def _score_breakdown(dimensions, language):
                     }[language],
                 }
             )
+    ms_score = _apply_ms_open_score(result, target or {}, rankings or {}, language)
+    event_points = {
+        item.get("metric"): item.get("points", 0)
+        for item in ms_score.get("point_events") or []
+    }
+    criterion_points = {
+        criterion.get("metric"): criterion.get("ms_points", 0)
+        for dimension in result
+        for criterion in dimension.get("criteria") or []
+    }
+    for driver in impact_drivers:
+        points = event_points.get(driver.get("metric"), criterion_points.get(driver.get("metric"), 0))
+        driver["ms_points"] = round(points or 0, 2)
+        driver["score_sentence"] = {
+            "fr": f"Ce critère ajoute {_format_number(points or 0)} point(s) au MS Score.",
+            "en": f"This criterion adds {_format_number(points or 0)} point(s) to the MS Score.",
+            "ar": f"يضيف هذا المعيار {_format_number(points or 0)} نقطة إلى مؤشر MS.",
+        }[language]
     return {
-        "formula": formula,
+        "formula": ms_score["formula"],
+        "mission_quality_formula": formula,
         "dimensions": result,
         "contribution_total": round(raw_total, 2),
         "rounded_score": math.floor(raw_total + 0.5 + 1e-9),
+        **ms_score,
         "impact_drivers": sorted(
             impact_drivers,
-            key=lambda item: item.get("final_contribution", 0),
+            key=lambda item: item.get("ms_points", 0),
             reverse=True,
         ),
     }
@@ -2172,26 +2420,12 @@ def _entry_impact_floor(target, group):
     return None
 
 
-def _verdict(score, language, *, target=None, rankings=None):
+def _verdict(score, language, *, target=None, rankings=None, mission_quality_score=None):
     minutes = _minutes(target or {})
-    decision_score = score
     reasons = []
-    entry_floor = _entry_impact_floor(target or {}, _group(target or {}))
-    if entry_floor is not None and (decision_score is None or decision_score < entry_floor):
-        decision_score = entry_floor
-        reasons.append("short_appearance_positive_impact")
-
     goals = _number((target or {}).get("Goals"), missing_zero=True)
     assists = _number((target or {}).get("Assists"), missing_zero=True)
-    decisive_floor = None
-    if goals >= 2 or (goals >= 1 and assists >= 1):
-        decisive_floor = 85
-    elif goals >= 1:
-        decisive_floor = 75
-    elif assists >= 1:
-        decisive_floor = 68
-    if decisive_floor is not None and (decision_score is None or decision_score < decisive_floor):
-        decision_score = decisive_floor
+    if goals > 0 or assists > 0:
         reasons.append("decisive_goal_or_assist")
 
     rankings = rankings or {}
@@ -2200,30 +2434,38 @@ def _verdict(score, language, *, target=None, rankings=None):
     first_in_match = match_rank.get("rank") == 1 and (match_rank.get("total") or 0) >= 6
     first_in_team = team_rank.get("rank") == 1 and (team_rank.get("total") or 0) >= 3
     if first_in_match or first_in_team:
-        if decision_score is None or decision_score < 75:
-            decision_score = 75
         reasons.append("index_rank_one")
 
     copy = TEXT[language]["entry_verdicts" if minutes < 45 else "verdicts"]
-    if decision_score is None:
+    if score is None:
         code, tone = "partial", "neutral"
-    elif decision_score >= 85:
-        code, tone = "exceptional", "excellent"
-    elif decision_score >= 75:
-        code, tone = "very_good", "excellent"
-    elif decision_score >= 65:
-        code, tone = "solid", "positive"
-    elif decision_score >= 50:
-        code, tone = "mixed", "warning"
-    elif decision_score >= 35:
-        code, tone = "insufficient", "warning"
     else:
-        code, tone = "difficult", "danger"
+        code = next(code for minimum, code in MS_SCORE_BANDS if score >= minimum)
+        tone = {
+            "exceptional": "excellent",
+            "very_good": "excellent",
+            "solid": "positive",
+            "mixed": "warning",
+            "insufficient": "warning",
+            "difficult": "danger",
+        }[code]
+        if minutes < 45:
+            entry_signal = _entry_impact_floor(target or {}, _group(target or {}))
+            if goals > 0 or assists > 0:
+                code, tone = "exceptional", "excellent"
+            elif entry_signal is not None and entry_signal >= 75 and code not in {"exceptional", "very_good"}:
+                code, tone = "very_good", "excellent"
+                reasons.append("short_appearance_positive_impact")
+            elif entry_signal is not None and entry_signal >= 65 and code in {"insufficient", "difficult"}:
+                code, tone = "solid", "positive"
+                reasons.append("short_appearance_positive_impact")
     return {
         "code": code,
         "label": copy[code],
-        "score": decision_score,
-        "mission_score": score,
+        "score": score,
+        "ms_score": score,
+        "mission_score": mission_quality_score,
+        "mission_quality_score": mission_quality_score,
         "tone": tone,
         "appearance_type": "entry" if minutes < 45 else "match",
         "reasons": reasons,
@@ -2410,19 +2652,19 @@ def _position_benchmark(target, context, group, language):
     note = {
         "fr": (
             "Ce radar décrit le profil saisonnier du joueur face à la moyenne réelle des joueurs du même poste "
-            "dans le championnat. Les nombres sont les valeurs SportsBase par 90 minutes ; les pourcentages "
+            "dans le championnat. Les nombres sont les valeurs saisonnières par 90 minutes ; les pourcentages "
             "restent en %. Chaque axe possède sa propre échelle : la normalisation sert uniquement à dessiner "
             "la forme et ne constitue ni une note sur 100 ni une projection de ce match."
         ),
         "en": (
             "This radar describes the player's season profile against the real tournament average for players "
-            "in the same position. Numbers are SportsBase values per 90 minutes and percentages remain in %. "
+            "in the same position. Numbers are season values per 90 minutes and percentages remain in %. "
             "Each axis has its own scale: normalisation is used only to draw the shape and is neither a score "
             "out of 100 nor a projection of this match."
         ),
         "ar": (
             "يعرض هذا الرادار ملف اللاعب الموسمي مقارنة بالمتوسط الحقيقي للاعبي المركز نفسه في البطولة. "
-            "الأرقام هي قيم سبورتس بايز لكل 90 دقيقة وتبقى النسب المئوية بوحدة %. لكل محور مقياسه الخاص، "
+            "الأرقام هي القيم الموسمية لكل 90 دقيقة وتبقى النسب المئوية بوحدة %. لكل محور مقياسه الخاص، "
             "ويستخدم التطبيع للرسم فقط ولا يمثل درجة من 100 أو إسقاطا لأرقام هذه المباراة."
         ),
     }[language]
@@ -2671,9 +2913,9 @@ def _territorial_profile(points, language):
     thirds_pct = {key: round(value / total * 100) for key, value in thirds.items()}
     lanes_pct = {key: round(value / total * 100) for key, value in lanes.items()}
     note = {
-        "fr": "Les tiers gauche/droit suivent l’affichage SportsBase : le sens d’attaque n’est pas déduit sans donnée explicite.",
-        "en": "Left/right thirds follow the SportsBase display; attacking direction is not inferred without explicit data.",
-        "ar": "الثلثان الأيسر والأيمن يتبعان عرض سبورتس بايز ولا يتم افتراض اتجاه الهجوم دون بيانات صريحة.",
+        "fr": "Les tiers gauche/droit suivent l’affichage de la carte source : le sens d’attaque n’est pas déduit sans donnée explicite.",
+        "en": "Left/right thirds follow the source-map display; attacking direction is not inferred without explicit data.",
+        "ar": "الثلثان الأيسر والأيمن يتبعان عرض خريطة المصدر ولا يتم افتراض اتجاه الهجوم دون بيانات صريحة.",
     }[language]
     return {
         "available": True,
@@ -3061,13 +3303,25 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     dimensions = _role_dimensions(target, group, language)
     performance_lenses = _performance_lenses(target, dimensions, group, language)
     profile_score = _overall_score(dimensions)
-    score_breakdown = _score_breakdown(dimensions, language)
+    rankings = _rankings(target, rows, dimensions, language)
+    score_breakdown = _score_breakdown(
+        dimensions,
+        language,
+        target=target,
+        rankings=rankings,
+    )
+    ms_score = score_breakdown.get("total_points")
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
     position_benchmark = _position_benchmark(target, context, group, language)
     key_metrics = _key_metrics(target, population, group, language)
-    rankings = _rankings(target, rows, dimensions, language)
-    verdict = _verdict(profile_score, language, target=target, rankings=rankings)
+    verdict = _verdict(
+        ms_score,
+        language,
+        target=target,
+        rankings=rankings,
+        mission_quality_score=profile_score,
+    )
     opponents = [row for row in rows if str(row.get("Team") or "") == opponent_team]
     copy = TEXT[language]
     counterpart = _same_position_comparison(
@@ -3096,6 +3350,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "minutes": round(_minutes(target)),
             "index": _number(target.get("Index")),
             "profile_score": profile_score,
+            "ms_score": ms_score,
         },
         "verdict": verdict,
         "decisive_highlights": _decisive_highlights(target, language),
@@ -3137,7 +3392,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "match_result_context_analysis": False,
             "index_usage": "explicit_verdict_validation_signal",
             "position_benchmark_selection": "highest_stored_position_percentage",
-            "position_benchmark_scale": "sportsbase_real_per_90_player_vs_position_average_axis_normalized_for_shape_only",
+            "position_benchmark_scale": "real_per_90_player_vs_position_average_axis_normalized_for_shape_only",
             "performance_reading": "three_non_overlapping_lenses_global_attacking_defensive",
             "xlsx_integrity": "all_players_sheet_columns_preserved_with_zero_events_explicit",
             "raw_volume_vs_season_index_comparison": False,
