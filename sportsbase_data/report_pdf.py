@@ -25,27 +25,27 @@ PDF_COPY = {
         "index_team": "Rang Index — équipe",
         "index_match": "Rang Index — match",
         "index_position": "Rang Index — poste homologue",
-        "index_note": "L’Indice de performance et son rang sont lus avec les missions du poste. Une 1re place dans l’équipe ou le match ajoute un bonus visible au MS Score.",
+        "index_note": "L’Indice de performance sert de validation contextuelle. Son rang peut ajuster le MS Score de 0 à +2 seulement : il ne remplace jamais les missions du poste.",
         "role_missions": "Missions du poste",
         "mission_note": "Chaque score juge uniquement cette apparition. Les missions et critères sont classés selon leur importance pour le poste.",
         "score_explained": "Comment le MS Score est calculé",
         "configured_weight": "POIDS POSTE",
-        "effective_weight": "POIDS EFFECTIF",
+        "effective_weight": "POIDS FIXE DU POSTE",
         "criterion": "CRITÈRE",
         "criterion_score": "NOTE CRITÈRE",
-        "contribution": "POINTS MS",
-        "weighted_total": "POINTS DES MISSIONS",
+        "contribution": "CONTRIBUTION /100",
+        "weighted_total": "SCORE DES MISSIONS",
         "score_reasons": "CRITÈRES QUI EXPLIQUENT LA NOTE",
-        "score_total_note": "{base} base + {mission} missions + {decisive} décisif + {ranking} classement {penalty} pénalités = {score} points. Échelle ouverte, sans plafond.",
-        "base_points": "BASE",
+        "score_total_note": "{mission}/100 pour les missions du poste {decisive} d’ajustement décisif {ranking} de validation du rang = {score}/100. Les ajustements sont bornés et le résultat reste entre 0 et 100.",
+        "base_points": "RÉFÉRENCE NEUTRE",
         "mission_points": "MISSIONS DU POSTE",
-        "decisive_points": "ACTIONS DÉCISIVES",
-        "ranking_points": "CLASSEMENT",
-        "penalty_points": "PÉNALITÉS",
-        "open_scale": "ÉCHELLE OUVERTE",
-        "points_rule": "BARÈME APPLIQUÉ",
+        "decisive_points": "AJUSTEMENT DÉCISIF",
+        "ranking_points": "VALIDATION DU RANG",
+        "penalty_points": "ERREURS DÉCISIVES",
+        "open_scale": "SCORE FINAL /100",
+        "points_rule": "AJUSTEMENTS BORNÉS",
         "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
-        "impact_note": "Chaque ligne ci-dessous appartient au calcul : elle n’est pas ajoutée après le verdict.",
+        "impact_note": "Ces actions restent d’abord évaluées dans la mission du poste. Leur influence supplémentaire est limitée par l’ajustement décisif global de -8 à +8.",
         "position_benchmark": "Profil saisonnier face à la moyenne du poste",
         "benchmark_position": "Référence retenue : {position} ({percent} % du profil positionnel) · saison {season}",
         "benchmark_match": "Joueur — valeur réelle /90",
@@ -124,27 +124,27 @@ PDF_COPY = {
         "index_team": "Index rank — team",
         "index_match": "Index rank — match",
         "index_position": "Index rank — counterpart position",
-        "index_note": "The Performance Index and its rank are read alongside position missions. Ranking first in the team or match adds a visible bonus to the MS Score.",
+        "index_note": "The Performance Index is contextual validation only. Its rank may adjust MS Score by 0 to +2; it never replaces the position missions.",
         "role_missions": "Position missions",
         "mission_note": "Each score assesses this appearance only. Missions and criteria are ordered by importance for the position.",
         "score_explained": "How the MS Score is calculated",
         "configured_weight": "POSITION WEIGHT",
-        "effective_weight": "EFFECTIVE WEIGHT",
+        "effective_weight": "FIXED POSITION WEIGHT",
         "criterion": "CRITERION",
         "criterion_score": "CRITERION SCORE",
-        "contribution": "MS POINTS",
-        "weighted_total": "MISSION POINTS",
+        "contribution": "CONTRIBUTION /100",
+        "weighted_total": "POSITION-MISSION SCORE",
         "score_reasons": "CRITERIA BEHIND THE SCORE",
-        "score_total_note": "{base} base + {mission} missions + {decisive} decisive + {ranking} ranking {penalty} penalties = {score} points. Open-ended scale with no cap.",
-        "base_points": "BASE",
+        "score_total_note": "{mission}/100 from position missions {decisive} decisive adjustment {ranking} rank validation = {score}/100. Adjustments are bounded and the result always remains between 0 and 100.",
+        "base_points": "NEUTRAL REFERENCE",
         "mission_points": "POSITION MISSIONS",
-        "decisive_points": "DECISIVE ACTIONS",
-        "ranking_points": "RANKING",
-        "penalty_points": "PENALTIES",
-        "open_scale": "OPEN SCALE",
-        "points_rule": "APPLIED POINT RULE",
+        "decisive_points": "DECISIVE ADJUSTMENT",
+        "ranking_points": "RANK VALIDATION",
+        "penalty_points": "DECISIVE ERRORS",
+        "open_scale": "FINAL SCORE /100",
+        "points_rule": "BOUNDED ADJUSTMENTS",
         "impact_drivers": "Why decisive actions count in the score",
-        "impact_note": "Every line below belongs to the calculation; it is not added after the verdict.",
+        "impact_note": "These actions are first assessed inside the position mission. Their additional influence is limited by the overall -8 to +8 decisive adjustment.",
         "position_benchmark": "Season profile against the position average",
         "benchmark_position": "Selected reference: {position} ({percent}% of the position profile) · season {season}",
         "benchmark_match": "Player — real value /90",
@@ -223,27 +223,27 @@ PDF_COPY = {
         "index_team": "ترتيب المؤشر داخل الفريق",
         "index_match": "ترتيب المؤشر داخل المباراة",
         "index_position": "ترتيب المؤشر في نفس المركز",
-        "index_note": "يقرأ مؤشر الأداء وترتيبه مع مهام المركز، وتضيف المرتبة الأولى داخل الفريق أو المباراة نقاطا ظاهرة إلى مؤشر MS.",
+        "index_note": "يستخدم مؤشر الأداء للتحقق السياقي فقط، ولا يتجاوز تأثير ترتيبه نقطتين ولا يعوض مهام المركز.",
         "role_missions": "مهام المركز",
         "mission_note": "تخص كل درجة هذه المشاركة فقط وترتب المهام والمعايير حسب أهميتها للمركز.",
         "score_explained": "كيفية حساب مؤشر MS",
         "configured_weight": "وزن المهمة",
-        "effective_weight": "الوزن الفعلي",
+        "effective_weight": "الوزن الثابت للمركز",
         "criterion": "المعيار",
         "criterion_score": "درجة المعيار",
-        "contribution": "نقاط MS",
-        "weighted_total": "نقاط المهام",
+        "contribution": "المساهمة من 100",
+        "weighted_total": "درجة مهام المركز",
         "score_reasons": "المعايير التي تفسر الدرجة",
-        "score_total_note": "{base} أساس + {mission} مهام + {decisive} حاسم + {ranking} ترتيب {penalty} عقوبات = {score} نقطة. مقياس مفتوح دون سقف.",
-        "base_points": "الأساس",
+        "score_total_note": "{mission}/100 لمهام المركز {decisive} تعديل حاسم {ranking} تأكيد ترتيب = {score}/100. التعديلات محدودة والنتيجة تبقى بين 0 و100.",
+        "base_points": "المرجع المحايد",
         "mission_points": "مهام المركز",
-        "decisive_points": "الأفعال الحاسمة",
-        "ranking_points": "الترتيب",
-        "penalty_points": "العقوبات",
-        "open_scale": "مقياس مفتوح",
-        "points_rule": "قاعدة النقاط المطبقة",
+        "decisive_points": "التعديل الحاسم",
+        "ranking_points": "تأكيد الترتيب",
+        "penalty_points": "الأخطاء الحاسمة",
+        "open_scale": "النتيجة النهائية من 100",
+        "points_rule": "تعديلات محدودة",
         "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
-        "impact_note": "كل سطر أدناه جزء من الحساب ولا يضاف بعد الخلاصة.",
+        "impact_note": "تقيم هذه الأفعال أولا داخل مهمة المركز، ويظل تأثيرها الإضافي محدودا بين -8 و+8.",
         "position_benchmark": "الملف الموسمي مقارنة بمتوسط المركز",
         "benchmark_position": "المرجع المختار: {position} ({percent}% من ملف المركز) · موسم {season}",
         "benchmark_match": "اللاعب — القيمة الحقيقية لكل 90",
@@ -773,10 +773,7 @@ def render_performance_pdf(report):
             canvas = self.canv
             accent, _background = tone_colors(self.tone)
             score = None if self.score is None else float(self.score)
-            # The ring is only a visual band from the 100-point base to an
-            # exceptional 220-point reference.  The printed MS Score itself
-            # remains open-ended and is never clipped.
-            progress = None if score is None else max(0, min(1, (score - 100) / 120))
+            progress = None if score is None else max(0, min(1, score / 100))
             cx, cy = self.width / 2, self.height / 2
             radius = min(self.width, self.height) * 0.36
             canvas.saveState()
@@ -793,7 +790,7 @@ def render_performance_pdf(report):
             canvas.drawCentredString(cx, cy + 1.5 * mm, "—" if score is None else str(round(score)))
             canvas.setFillColor(colors.HexColor(MUTED))
             canvas.setFont(font_name, 6.2)
-            canvas.drawCentredString(cx, cy - 3.2 * mm, "MS PTS")
+            canvas.drawCentredString(cx, cy - 3.2 * mm, "MS / 100")
             canvas.restoreState()
 
     class IconBadge(Flowable):
@@ -939,7 +936,7 @@ def render_performance_pdf(report):
     def verdict_badge(verdict, width=169 * mm):
         accent, background = tone_colors(verdict.get("tone"))
         score = verdict.get("score")
-        score_text = "—" if score is None else f"{score} pts"
+        score_text = "—" if score is None else f"{score}/100"
         return Table(
             [[p(verdict.get("label") or "—", body_bold), p(score_text, card_value)]],
             colWidths=[width * 0.74, width * 0.26],
@@ -1271,7 +1268,7 @@ def render_performance_pdf(report):
                     info_card(copy["minutes"], player.get("minutes", "—"), "neutral", icon="clock"),
                     info_card(copy["reliability"], confidence.get("label") or "—", "warning" if confidence.get("score", 0) < 60 else "positive", icon="shield"),
                     info_card(copy["index"], player.get("index") if player.get("index") is not None else "—", "neutral", icon="index"),
-                    info_card(copy["mission_score"], "—" if player.get("ms_score") is None else f"{player.get('ms_score')} pts", verdict.get("tone", "neutral"), icon="target"),
+                    info_card(copy["mission_score"], "—" if player.get("ms_score") is None else f"{player.get('ms_score')}/100", verdict.get("tone", "neutral"), icon="target"),
                 ]],
                 colWidths=[42.25 * mm] * 4,
                 style=TableStyle(
@@ -1307,9 +1304,9 @@ def render_performance_pdf(report):
     )
     dimensions = analysis.get("dimensions") or []
     stamp_rows = []
-    # The verdict page keeps the four highest-weight missions.  The full list
-    # and every criterion follow immediately in the calculation pages.
-    summary_dimensions = dimensions[:4]
+    # Keep only the two highest-weight missions on the verdict page. The full
+    # ordered list follows immediately, avoiding a nearly empty spill page.
+    summary_dimensions = dimensions[:2]
     for index in range(0, len(summary_dimensions), 2):
         row = [stamp_card(summary_dimensions[index])]
         row.append(stamp_card(summary_dimensions[index + 1]) if index + 1 < len(summary_dimensions) else "")
@@ -1340,18 +1337,19 @@ def render_performance_pdf(report):
             Spacer(1, 4 * mm),
         ]
     )
+    decisive_adjustment = score_breakdown.get("decisive_adjustment", 0)
+    context_adjustment = score_breakdown.get("context_adjustment", 0)
     score_cards = [
-        info_card(copy["base_points"], f"{score_breakdown.get('base_points', 0)} pts", "neutral", width=33.8 * mm),
-        info_card(copy["mission_points"], f"{score_breakdown.get('mission_points', 0)} pts", "positive", width=33.8 * mm),
-        info_card(copy["decisive_points"], f"+{score_breakdown.get('decisive_points', 0)} pts", "excellent", width=33.8 * mm),
-        info_card(copy["ranking_points"], f"+{score_breakdown.get('ranking_points', 0)} pts", "neutral", width=33.8 * mm),
-        info_card(copy["penalty_points"], f"{score_breakdown.get('penalty_points', 0):+g} pts", "danger" if score_breakdown.get("penalty_points", 0) else "neutral", width=33.8 * mm),
+        info_card(copy["mission_points"], f"{score_breakdown.get('rounded_score', 0)}/100", "positive", width=42.25 * mm),
+        info_card(copy["decisive_points"], f"{decisive_adjustment:+g}", "excellent" if decisive_adjustment > 0 else "danger" if decisive_adjustment < 0 else "neutral", width=42.25 * mm),
+        info_card(copy["ranking_points"], f"{context_adjustment:+g}", "neutral", width=42.25 * mm),
+        info_card(copy["open_scale"], f"{score_breakdown.get('total_points', 0)}/100", verdict.get("tone", "neutral"), width=42.25 * mm),
     ]
     story.extend(
         [
             Table(
                 [score_cards],
-                colWidths=[33.8 * mm] * 5,
+                colWidths=[42.25 * mm] * 4,
                 style=TableStyle(
                     [
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1365,10 +1363,14 @@ def render_performance_pdf(report):
     )
     dimension_rows = [[p(copy["role_missions"], table_head), p(copy["effective_weight"], table_head), p(copy["reading"], table_head), p(copy["contribution"], table_head), p(copy["score_reasons"], table_head)]]
     for item in breakdown_dimensions:
-        score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
+        score_value = (
+            f"50/100 · {copy['not_assessed']}"
+            if item.get("score") is None
+            else f"{item.get('score')}/100"
+        )
         used_criteria = sorted(
             [criterion for criterion in item.get("criteria") or [] if criterion.get("used")],
-            key=lambda criterion: criterion.get("ms_points", 0),
+            key=lambda criterion: criterion.get("final_contribution", 0),
             reverse=True,
         )
         reason_lines = [
@@ -1378,18 +1380,18 @@ def render_performance_pdf(report):
         dimension_rows.append(
             [
                 p(item.get("label"), body_bold),
-                p(f"{item.get('ms_budget', 0)} pts max", body),
+                p(f"{item.get('configured_weight', 0)}%", body),
                 p(score_value, body),
-                p(f"{item.get('ms_points', 0)} pts", body_bold),
+                p(f"{item.get('contribution', 0)}", body_bold),
                 p(" · ".join(reason_lines) if reason_lines else copy["not_assessed"], tiny),
             ]
         )
     dimension_rows.append(
         [
             p(copy["weighted_total"], body_bold),
-            p(f"{score_breakdown.get('mission_budget', 80)} pts max", body_bold),
-            p(f"{score_breakdown.get('mission_points', 0)}/{score_breakdown.get('mission_budget', 80)}", body_bold),
-            p(f"{score_breakdown.get('mission_points', 0)} pts", body_bold),
+            p("100%", body_bold),
+            p(f"{score_breakdown.get('rounded_score', 0)}/100", body_bold),
+            p(f"{score_breakdown.get('position_score', 0)}", body_bold),
             p(copy["mission_note"], tiny),
         ]
     )
@@ -1463,7 +1465,7 @@ def render_performance_pdf(report):
     rules = score_breakdown.get("decisive_rules") or []
     if rules:
         rule_text = " · ".join(
-            f"{item.get('label')}: +{item.get('unit_points')} pts"
+            f"{item.get('label')}: {item.get('rule')}"
             for item in rules
         )
         story.extend([p(rule_text, tiny), Spacer(1, 2 * mm)])
@@ -1472,10 +1474,10 @@ def render_performance_pdf(report):
             Spacer(1, 3 * mm),
             note_box(
                 copy["score_total_note"].format(
-                    base=score_breakdown.get("base_points", 0),
-                    mission=score_breakdown.get("mission_points", 0),
-                    decisive=score_breakdown.get("decisive_points", 0),
-                    ranking=score_breakdown.get("ranking_points", 0),
+                    base=50,
+                    mission=score_breakdown.get("rounded_score", 0),
+                    decisive=f"{score_breakdown.get('decisive_adjustment', 0):+g}",
+                    ranking=f"{score_breakdown.get('context_adjustment', 0):+g}",
                     penalty=f"{score_breakdown.get('penalty_points', 0):+g}",
                     score=score_breakdown.get("total_points", "—"),
                 ),
