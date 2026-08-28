@@ -26,7 +26,7 @@ DATE_RE = re.compile(
     r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
 )
 SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
-SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v18-20260828"
+SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v19-20260828"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -2632,7 +2632,7 @@ class SportsBaseSubscriptionScraper:
             return
 
         generated_matches = []
-        for match_data, match_item, should_generate in queue:
+        for match_data, _match_item, should_generate in queue:
             popup = None
             if not should_generate:
                 generated_matches.append(
@@ -2640,6 +2640,34 @@ class SportsBaseSubscriptionScraper:
                 )
                 continue
             try:
+                # The Players/XLSX page is opened in another tab. React can
+                # replace the original match row while that tab is active, so a
+                # locator captured before the XLSX download is not reliable here.
+                page.bring_to_front()
+                page.wait_for_timeout(500)
+                match_item = self._match_item(
+                    page, match_data["sportsbase_match_id"]
+                )
+                action_button = match_item.locator(
+                    "button",
+                    has_text=re.compile(r"All\s+(?:player\s+)?actions", re.I),
+                ).first
+                if not action_button.count() or not action_button.is_visible():
+                    # An expanded More details panel can temporarily hide the
+                    # action controls. Collapse it, then resolve the row again.
+                    less_details = match_item.get_by_text(
+                        "Less details", exact=False
+                    ).first
+                    if less_details.count() and less_details.is_visible():
+                        less_details.click(timeout=10_000)
+                        page.wait_for_timeout(750)
+                        match_item = self._match_item(
+                            page, match_data["sportsbase_match_id"]
+                        )
+                print(
+                    "[SPORTSBASE] Ouverture All Actions — match "
+                    f"{match_data['sportsbase_match_id']}"
+                )
                 popup = self.automation.click_all_players_actions_for_match(
                     page,
                     match_item,
@@ -2658,6 +2686,11 @@ class SportsBaseSubscriptionScraper:
             except Exception as exc:
                 match_data["actions_state"] = "failed"
                 match_data["delivery_error"] = str(exc)
+                print(
+                    "[SPORTSBASE][ERREUR ALL ACTIONS] Match "
+                    f"{match_data['sportsbase_match_id']} : {exc}"
+                )
+                traceback.print_exc()
             finally:
                 if popup is not None:
                     try:
