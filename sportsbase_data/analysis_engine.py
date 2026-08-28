@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "ms-position-score-phases-v12-20260828"
+ANALYSIS_VERSION = "ms-position-score-duration-radar-v13-20260828"
 
 
 # The public InStat / Wyscout / SportsBase products do not publish a formula
@@ -21,6 +21,15 @@ MS_NEUTRAL_SCORE = 50
 MS_INDEX_DISPLAY_OFFSET = 20
 MS_DECISIVE_ADJUSTMENT_LIMIT = 8.0
 MS_CONTEXT_ADJUSTMENT_LIMIT = 2.0
+RADAR_PRIORITY_WEIGHT = 1.35
+INVOLVEMENT_DURATION_CEILINGS = (
+    (20, 72),
+    (45, 82),
+    (60, 88),
+    (75, 93),
+    (90, 97),
+    (float("inf"), 100),
+)
 MS_SCORE_BANDS = (
     (92, "exceptional"),
     (75, "very_good"),
@@ -1838,19 +1847,178 @@ def _grade(score, coverage, language):
     return code, copy["grades"][code], tone
 
 
-def _role_dimensions(target, group, language):
+def _involvement_duration_ceiling(minutes):
+    """Keep involvement volume proportional to the time actually observed.
+
+    Quality rates remain untouched: a substitute can complete every action he
+    attempts.  Only the *volume-based involvement mission* is capped, because
+    a short appearance cannot demonstrate the same sustained participation as
+    a player who completed the match.
+    """
+    for upper, ceiling in INVOLVEMENT_DURATION_CEILINGS:
+        if minutes < upper:
+            return ceiling
+    return 100
+
+
+def _radar_mission(group, metric, available_dimensions):
+    """Route a stored position-radar axis into an existing role mission."""
+    normalized = _plain(metric)
+    if any(token in normalized for token in ("goal", "assist", "chance", "scoring attack", "expected goal")):
+        preferred = ("impact", "creation", "goal_threat")
+    elif any(token in normalized for token in ("penalty box", "pass for a shot", "cross")):
+        preferred = ("creation", "delivery", "attacking_support", "box_presence", "impact")
+    elif any(token in normalized for token in ("shot", "dribbl", "opponent s box")):
+        preferred = {
+            "full_back": ("attacking_support", "delivery", "impact"),
+            "wing_back": ("attacking_support", "delivery", "impact"),
+            "box_to_box_midfielder": ("final_third_presence", "creation", "impact"),
+            "attacking_midfielder": ("goal_threat", "between_lines", "impact"),
+            "winger": ("one_v_one", "goal_threat", "impact"),
+            "forward": ("box_presence", "finishing", "direct_play", "impact"),
+        }.get(group, ("impact",))
+    elif any(token in normalized for token in ("defensive", "tackle", "interception", "recover")):
+        preferred = {
+            "goalkeeper": ("space_control", "risk_control"),
+            "centre_back": ("defending", "aerial_control"),
+            "full_back": ("defending",),
+            "wing_back": ("defending",),
+            "holding_midfielder": ("protection",),
+            "box_to_box_midfielder": ("duel_balance",),
+            "attacking_midfielder": ("counterpress",),
+            "winger": ("defensive_work",),
+            "forward": ("defensive_work",),
+        }.get(group, ())
+    elif any(token in normalized for token in ("progressive", "final third", "forward")):
+        preferred = ("progression", "between_lines", "final_third_presence")
+    elif "pass" in normalized:
+        preferred = ("circulation", "build_up", "ball_security", "distribution", "link_play")
+    else:
+        preferred = ("involvement", "impact")
+    return next((key for key in preferred if key in available_dimensions), None)
+
+
+def _radar_specification(metric, benchmark_item):
+    if metric in RATE_WEIGHTS or "%" in metric:
+        normalized = _plain(metric)
+        if "dribbl" in normalized:
+            kind = "dribble"
+        elif "defensive challenge" in normalized or "tackle" in normalized:
+            kind = "def_duel"
+        elif "aerial" in normalized or "header" in normalized:
+            kind = "aerial"
+        elif "shot" in normalized or "chance" in normalized:
+            kind = "shot_target"
+        else:
+            kind = "action_rate"
+        specification = _s(metric, kind)
+    else:
+        reference = _number(benchmark_item.get("position_average"))
+        target = reference if reference is not None and reference > 0 else 1
+        kind = "positive_decimal_volume" if target < 1 else "positive_volume"
+        specification = _s(metric, kind, target=target)
+    specification["radar_derived"] = True
+    return specification
+
+
+def _relative_reference_score(value, reference, *, lower_is_better=False):
+    if value is None or reference is None or reference <= 0:
+        return None
+    ratio = value / reference
+    if lower_is_better:
+        ratio = 1 / ratio if ratio > 0 else 2
+    if ratio <= 0:
+        return 25
+    if ratio < 0.50:
+        return 42
+    if ratio < 0.80:
+        return 58
+    if ratio < 1.20:
+        return 74
+    if ratio < 1.75:
+        return 88
+    return 98
+
+
+def _apply_radar_priority(result, benchmark_item):
+    """Blend the role threshold with the same-position reference.
+
+    The radar does not create a second score.  Its axes receive additional
+    weight inside their existing position mission and retain the football
+    threshold as the main (70%) reference.
+    """
+    if not benchmark_item or not benchmark_item.get("comparable"):
+        return result
+    result["radar_priority"] = True
+    result["base_weight"] = result.get("weight", 1.0)
+    result["priority_multiplier"] = RADAR_PRIORITY_WEIGHT
+    result["weight"] = result["base_weight"] * RADAR_PRIORITY_WEIGHT
+    result["position_reference"] = benchmark_item.get("position_reference")
+    result["position_reference_display"] = benchmark_item.get("position_reference_display")
+    role_score = result.get("score")
+    reference_score = _relative_reference_score(
+        benchmark_item.get("match_actual_raw", benchmark_item.get("match_actual")),
+        benchmark_item.get("position_reference_raw", benchmark_item.get("position_reference")),
+        lower_is_better=result.get("lower_is_better", False),
+    )
+    if reference_score is not None and result.get("sample"):
+        factor = result["sample"].get("factor", 0)
+        reference_score = round(55 + (reference_score - 55) * factor)
+    result["role_threshold_score"] = role_score
+    result["position_reference_score"] = reference_score
+    if role_score is not None and reference_score is not None:
+        result["score"] = round(0.70 * role_score + 0.30 * reference_score)
+        result["score_basis"] = "70_percent_role_threshold_30_percent_position_reference"
+    return result
+
+
+def _role_dimensions(target, group, language, position_benchmark=None):
     config = ROLE_CONFIGS[group]
+    benchmark_metrics = {
+        item.get("metric"): item
+        for item in (position_benchmark or {}).get("comparable_metrics") or []
+        if item.get("metric")
+    }
+    dimension_specs = [
+        [item[0], *[dict(specification) for specification in item[1:]]]
+        for item in _dimension_specs(group)
+    ]
+    available_dimensions = {item[0] for item in dimension_specs}
+    configured_metrics = {
+        specification.get("metric")
+        for item in dimension_specs
+        for specification in item[1:]
+    }
+    for metric, benchmark_item in benchmark_metrics.items():
+        if metric in configured_metrics:
+            continue
+        mission = _radar_mission(group, metric, available_dimensions)
+        if not mission:
+            continue
+        target_dimension = next(item for item in dimension_specs if item[0] == mission)
+        target_dimension.append(_radar_specification(metric, benchmark_item))
+        configured_metrics.add(metric)
     dimensions = []
-    for item in _dimension_specs(group):
+    for item in dimension_specs:
         key, specifications = item[0], item[1:]
-        evidence = [_metric_result(target, spec, language) for spec in specifications]
+        evidence = [
+            _apply_radar_priority(
+                _metric_result(target, spec, language),
+                benchmark_metrics.get(spec["metric"]),
+            )
+            for spec in specifications
+        ]
         observed = [metric for metric in evidence if metric["score"] is not None]
         total_weight = sum(metric["weight"] for metric in observed)
-        score = (
+        uncapped_score = (
             round(sum(metric["score"] * metric["weight"] for metric in observed) / total_weight)
             if total_weight
             else 55
         )
+        involvement_ceiling = (
+            _involvement_duration_ceiling(_minutes(target)) if key == "involvement" else None
+        )
+        score = min(uncapped_score, involvement_ceiling) if involvement_ceiling is not None else uncapped_score
         coverage = round(len(observed) / len(evidence) * 100) if evidence else 0
         grade_code, grade_label, tone = _grade(score, coverage, language)
         ranked_evidence = sorted(
@@ -1869,6 +2037,8 @@ def _role_dimensions(target, group, language):
                     DIMENSION_LABELS[language].get(key, key),
                 ),
                 "score": score,
+                "uncapped_score": uncapped_score,
+                "duration_ceiling": involvement_ceiling,
                 "coverage": coverage,
                 "grade_code": grade_code,
                 "grade_label": grade_label,
@@ -1879,6 +2049,9 @@ def _role_dimensions(target, group, language):
                 "positive_evidence": [metric for metric in ranked_evidence if metric["score"] >= 65][:2],
                 "negative_evidence": [metric for metric in ranked_evidence if metric["score"] <= 45][:2],
                 "weight": config["weights"].get(key, 0),
+                "radar_priority_metrics": [
+                    metric["metric"] for metric in evidence if metric.get("radar_priority")
+                ],
             }
         )
     # The first mission a player sees must be the mission that matters most for
@@ -2330,6 +2503,14 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None, group=
                     "display": metric.get("display"),
                     "score": metric.get("score"),
                     "raw_weight": metric.get("weight", 1),
+                    "base_weight": metric.get("base_weight", metric.get("weight", 1)),
+                    "radar_priority": bool(metric.get("radar_priority")),
+                    "priority_multiplier": metric.get("priority_multiplier", 1.0),
+                    "role_threshold_score": metric.get("role_threshold_score"),
+                    "position_reference_score": metric.get("position_reference_score"),
+                    "position_reference": metric.get("position_reference"),
+                    "position_reference_display": metric.get("position_reference_display"),
+                    "score_basis": metric.get("score_basis"),
                     "criterion_weight": round(share, 1),
                     "final_contribution": round(final_points, 2),
                     "ms_points": round(final_points, 2),
@@ -2356,6 +2537,9 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None, group=
                 "coverage": dimension.get("coverage", 0),
                 "used": used,
                 "neutral_fill": not used,
+                "uncapped_score": dimension.get("uncapped_score"),
+                "duration_ceiling": dimension.get("duration_ceiling"),
+                "radar_priority_metrics": dimension.get("radar_priority_metrics") or [],
                 "criteria": criteria,
             }
         )
@@ -2776,11 +2960,12 @@ def _canonical_radar_metric(name):
 
 
 def _position_benchmark(target, context, group, language):
-    """Expose the real SportsBase season values behind the radar geometry.
+    """Compare real match totals with the position reference for those minutes.
 
-    Every SportsBase radar axis has its own real-world scale.  The stored
-    normalised values are used only to draw comparable polygons; the report
-    displays the real player and same-position tournament values per 90.
+    Volume axes in the stored season radar are expressed per 90.  Only the
+    *position reference* is converted to the player's exact playing time; the
+    player's match total is never projected.  Percentage axes remain rates and
+    keep their match denominator.
     """
     context = context if isinstance(context, dict) else {}
     source = context.get("position_benchmark")
@@ -2792,6 +2977,7 @@ def _position_benchmark(target, context, group, language):
         key=lambda item: _number(item.get("percent"), missing_zero=True),
         default={},
     )
+    minutes = _minutes(target)
     metrics = []
     for source_metric in source.get("radar_metrics") or []:
         if not isinstance(source_metric, dict):
@@ -2802,23 +2988,51 @@ def _position_benchmark(target, context, group, language):
         if season_player is None:
             season_player = _number(source_metric.get("value"))
         scale_max = _number(source_metric.get("scale_max"))
-        player_normalized = _number(source_metric.get("player_normalized"))
-        average_normalized = _number(source_metric.get("average_normalized"))
-        if scale_max and scale_max > 0:
-            if player_normalized is None and season_player is not None:
-                player_normalized = season_player / scale_max * 100
-            if average_normalized is None and average is not None:
-                average_normalized = average / scale_max * 100
-        has_real_scale = scale_max is not None and scale_max > 0
-        comparable = (
-            has_real_scale
-            and season_player is not None
-            and average is not None
-            and player_normalized is not None
-            and average_normalized is not None
-        )
         unit = str(source_metric.get("unit") or ("%" if "%" in metric else "per_90"))
         precision = max(0, min(2, int(_number(source_metric.get("precision"), missing_zero=True))))
+        is_rate = unit == "%" or metric in RATE_WEIGHTS or "%" in metric
+        match_actual = _metric_raw(target, metric)
+        position_reference = average if is_rate else (average * minutes / 90 if average is not None else None)
+        adjusted_scale_max = scale_max if is_rate else (scale_max * minutes / 90 if scale_max is not None else None)
+        match_normalized = (
+            match_actual / adjusted_scale_max * 100
+            if match_actual is not None and adjusted_scale_max is not None and adjusted_scale_max > 0
+            else None
+        )
+        reference_normalized = (
+            position_reference / adjusted_scale_max * 100
+            if position_reference is not None and adjusted_scale_max is not None and adjusted_scale_max > 0
+            else None
+        )
+        attempts_metric = RATE_WEIGHTS.get(metric)
+        attempts = _number(target.get(attempts_metric), missing_zero=True) if attempts_metric else None
+        successes = (
+            max(0, min(round(attempts), round(attempts * match_actual / 100)))
+            if attempts is not None and attempts > 0 and match_actual is not None
+            else None
+        )
+        comparable = (
+            minutes > 0
+            and average is not None
+            and match_actual is not None
+            and adjusted_scale_max is not None
+            and adjusted_scale_max > 0
+            and match_normalized is not None
+            and reference_normalized is not None
+        )
+        rounded_actual = round(match_actual, precision) if match_actual is not None else None
+        rounded_reference = round(position_reference, precision) if position_reference is not None else None
+        if is_rate and rounded_actual is not None and attempts is not None and attempts > 0:
+            match_display = f"{successes}/{round(attempts)} · {_format_number(rounded_actual)}%"
+        elif is_rate and rounded_actual is not None:
+            match_display = f"{_format_number(rounded_actual)}%"
+        else:
+            match_display = _format_number(rounded_actual)
+        reference_display = (
+            f"{_format_number(rounded_reference)}%"
+            if is_rate and rounded_reference is not None
+            else _format_number(rounded_reference)
+        )
         metrics.append(
             {
                 "metric": metric,
@@ -2826,40 +3040,63 @@ def _position_benchmark(target, context, group, language):
                 "definition": _definition(metric, language),
                 "season_player": round(season_player, precision) if season_player is not None else None,
                 "position_average": round(average, precision) if average is not None else None,
-                "player_normalized": round(max(0, min(100, player_normalized)), 1)
-                if player_normalized is not None
+                "match_actual": rounded_actual,
+                "match_actual_raw": match_actual,
+                "match_display": match_display,
+                "match_attempts": round(attempts) if attempts is not None else None,
+                "match_successes": successes,
+                "position_reference": rounded_reference,
+                "position_reference_raw": position_reference,
+                "position_reference_display": reference_display,
+                "match_normalized": round(max(0, min(100, match_normalized)), 1)
+                if match_normalized is not None
                 else None,
-                "average_normalized": round(max(0, min(100, average_normalized)), 1)
-                if average_normalized is not None
+                "reference_normalized": round(max(0, min(100, reference_normalized)), 1)
+                if reference_normalized is not None
+                else None,
+                # Backwards-compatible geometry keys now point to the match
+                # and its duration-adjusted reference, not to a /90 player
+                # projection.
+                "player_normalized": round(max(0, min(100, match_normalized)), 1)
+                if match_normalized is not None
+                else None,
+                "average_normalized": round(max(0, min(100, reference_normalized)), 1)
+                if reference_normalized is not None
                 else None,
                 "scale_min": 0,
                 "scale_max": round(scale_max, precision) if scale_max is not None else None,
+                "adjusted_scale_max": round(adjusted_scale_max, precision)
+                if adjusted_scale_max is not None
+                else None,
                 "precision": precision,
-                "unit": unit,
-                "scope": str(source_metric.get("scope") or "season_per_90"),
+                "unit": "%" if is_rate else "match_total",
+                "source_unit": unit,
+                "scope": "match_actual_vs_position_average_adjusted_to_minutes",
                 "value_source": str(source_metric.get("value_source") or ""),
-                "difference": round(season_player - average, precision) if comparable else None,
+                "difference": round(match_actual - position_reference, precision) if comparable else None,
                 "comparable": comparable,
+                "radar_priority": comparable,
             }
         )
     comparable_metrics = [item for item in metrics if item.get("comparable")]
     note = {
         "fr": (
-            "Ce radar décrit le profil saisonnier du joueur face à la moyenne réelle des joueurs du même poste "
-            "dans le championnat. Les nombres sont les valeurs saisonnières par 90 minutes ; les pourcentages "
-            "restent en %. Chaque axe possède sa propre échelle : la normalisation sert uniquement à dessiner "
-            "la forme et ne constitue ni une note sur 100 ni une projection de ce match."
+            f"Le polygone vert montre les totaux réels du joueur pendant ses {round(minutes)} minutes, sans "
+            "projection sur 90. Le polygone rouge transpose uniquement la moyenne saisonnière des joueurs du "
+            "même poste à cette durée exacte. Les pourcentages restent inchangés et sont lus avec le nombre de "
+            "tentatives du match. Ces axes sont des KPI prioritaires à l’intérieur des missions du poste ; le "
+            "radar n’ajoute pas une seconde note."
         ),
         "en": (
-            "This radar describes the player's season profile against the real tournament average for players "
-            "in the same position. Numbers are season values per 90 minutes and percentages remain in %. "
-            "Each axis has its own scale: normalisation is used only to draw the shape and is neither a score "
-            "out of 100 nor a projection of this match."
+            f"The green polygon shows the player's real totals during the {round(minutes)} minutes played, with "
+            "no 90-minute projection. Only the season average for players in the same position is converted to "
+            "that exact duration. Percentages remain unchanged and retain the match attempt count. These axes "
+            "are priority KPIs inside the position missions; the radar does not add a second score."
         ),
         "ar": (
-            "يعرض هذا الرادار ملف اللاعب الموسمي مقارنة بالمتوسط الحقيقي للاعبي المركز نفسه في البطولة. "
-            "الأرقام هي القيم الموسمية لكل 90 دقيقة وتبقى النسب المئوية بوحدة %. لكل محور مقياسه الخاص، "
-            "ويستخدم التطبيع للرسم فقط ولا يمثل درجة من 100 أو إسقاطا لأرقام هذه المباراة."
+            f"يمثل المضلع الأخضر الأرقام الحقيقية للاعب خلال {round(minutes)} دقيقة دون تحويلها إلى 90 دقيقة. "
+            "يحول فقط متوسط لاعبي المركز في الموسم إلى المدة نفسها، بينما تبقى النسب المئوية كما هي مع عدد "
+            "محاولات المباراة. هذه المحاور مؤشرات أولوية داخل مهام المركز ولا تضيف درجة ثانية."
         ),
     }[language]
     return {
@@ -2869,7 +3106,8 @@ def _position_benchmark(target, context, group, language):
         "position_name": str(primary.get("name") or primary.get("code") or ""),
         "position_percent": round(_number(primary.get("percent"), missing_zero=True)),
         "selection_rule": "highest_position_percentage",
-        "scale": "real_per_90_values_axis_normalized_for_shape_only",
+        "minutes": round(minutes),
+        "scale": "real_match_totals_vs_position_reference_adjusted_to_minutes",
         "metrics": metrics,
         "comparable_metrics": comparable_metrics,
         "note": note,
@@ -3551,7 +3789,13 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     group = _group(target)
     homologous_codes = set(_homologous_position_codes(_position(target)))
     population = [row for row in rows if _position(row) in homologous_codes and _minutes(row) > 0]
-    dimensions = _role_dimensions(target, group, language)
+    position_benchmark = _position_benchmark(target, context, group, language)
+    dimensions = _role_dimensions(
+        target,
+        group,
+        language,
+        position_benchmark=position_benchmark,
+    )
     performance_lenses = _performance_lenses(target, dimensions, group, language)
     profile_score = _overall_score(dimensions)
     rankings = _rankings(target, rows, dimensions, language)
@@ -3565,7 +3809,6 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
     ms_score = score_breakdown.get("total_points")
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
-    position_benchmark = _position_benchmark(target, context, group, language)
     key_metrics = _key_metrics(target, population, group, language)
     verdict = _verdict(
         ms_score,
@@ -3660,7 +3903,8 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "index_usage": "display_offset_plus_20_with_unchanged_rank_validation",
             "score_calibration": "nine_matches_265_player_rows_same_match_same_position_comparisons",
             "position_benchmark_selection": "highest_stored_position_percentage",
-            "position_benchmark_scale": "real_per_90_player_vs_position_average_axis_normalized_for_shape_only",
+            "position_benchmark_scale": "real_match_totals_vs_position_average_adjusted_to_exact_minutes",
+            "position_benchmark_score_usage": "priority_axes_inside_existing_missions_only_70_role_30_position_reference_weight_1_35",
             "performance_reading": "three_non_overlapping_lenses_global_attacking_defensive",
             "xlsx_integrity": "all_players_sheet_columns_preserved_with_zero_events_explicit",
             "raw_volume_vs_season_index_comparison": False,

@@ -46,10 +46,10 @@ PDF_COPY = {
         "points_rule": "AJUSTEMENTS BORNÉS",
         "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
         "impact_note": "Ces actions restent d’abord évaluées dans la mission du poste. Leur influence supplémentaire est limitée par l’ajustement décisif global de -8 à +8.",
-        "position_benchmark": "Profil saisonnier face à la moyenne du poste",
+        "position_benchmark": "Match face à la référence du poste",
         "benchmark_position": "Référence retenue : {position} ({percent} % du profil positionnel) · saison {season}",
-        "benchmark_match": "Joueur — valeur réelle /90",
-        "benchmark_average": "Moyenne du poste /90",
+        "benchmark_match": "Match — total réel",
+        "benchmark_average": "Référence poste — mêmes minutes",
         "benchmark_raw": "Échelle de l’axe",
         "benchmark_difference": "ÉCART",
         "not_assessed": "Non évalué",
@@ -99,10 +99,11 @@ PDF_COPY = {
         "appendix": "Toutes les données du match",
         "full_data_note": "Toutes les colonnes de la table statistique du match sont présentées. Une action absente apparaît à 0 ; un pourcentage sans tentative reste non évalué afin de ne pas inventer un taux de réussite.",
         "role_kpi": "KPI PRIORITAIRE DU POSTE",
+        "radar_priority_kpi": "KPI RADAR PRIORITAIRE",
         "decisive_kpi": "DONNÉE DÉCISIVE",
         "columns_presented": "{count} indicateurs du match présentés",
         "method": "Méthodologie et limites",
-        "method_text": "Le moteur juge les missions prioritaires du poste pendant les minutes réellement jouées. L’impact décisif pèse davantage pour les postes offensifs ; les duels, la relance, la progression et l’absence d’erreur pèsent davantage pour les postes défensifs. Chaque taux conserve son nombre de tentatives et une action non rencontrée n’est jamais une faiblesse automatique.",
+        "method_text": "Le moteur juge les missions prioritaires du poste pendant les minutes réellement jouées. L’impact décisif direct pèse davantage pour les postes offensifs ; création, progression, dernier tiers et surface valorisent aussi l’apport décisif des latéraux et milieux. Les axes du radar sont renforcés dans leur mission existante, sans ajouter une seconde note. Chaque taux conserve son nombre de tentatives et une action non rencontrée n’est jamais une faiblesse automatique.",
         "source": "Références méthodologiques",
         "prepared": "Préparé par l’équipe d’analyse MS Performance",
         "page": "Page",
@@ -148,10 +149,10 @@ PDF_COPY = {
         "points_rule": "BOUNDED ADJUSTMENTS",
         "impact_drivers": "Why decisive actions count in the score",
         "impact_note": "These actions are first assessed inside the position mission. Their additional influence is limited by the overall -8 to +8 decisive adjustment.",
-        "position_benchmark": "Season profile against the position average",
+        "position_benchmark": "Match against the position reference",
         "benchmark_position": "Selected reference: {position} ({percent}% of the position profile) · season {season}",
-        "benchmark_match": "Player — real value /90",
-        "benchmark_average": "Position average /90",
+        "benchmark_match": "Match — real total",
+        "benchmark_average": "Position reference — same minutes",
         "benchmark_raw": "Axis scale",
         "benchmark_difference": "GAP",
         "not_assessed": "Not assessed",
@@ -201,10 +202,11 @@ PDF_COPY = {
         "appendix": "All match data",
         "full_data_note": "Every column in the match statistics table is presented. An absent event appears as 0; a percentage with no attempt remains not assessed so no success rate is invented.",
         "role_kpi": "POSITION-PRIORITY KPI",
+        "radar_priority_kpi": "PRIORITY RADAR KPI",
         "decisive_kpi": "DECISIVE DATA",
         "columns_presented": "{count} match indicators presented",
         "method": "Methodology and limitations",
-        "method_text": "The engine assesses the position's priority missions during the minutes actually played. Decisive impact weighs more for attacking roles; duels, build-up, progression and error avoidance weigh more for defensive roles. Every rate keeps its attempt count and an action that did not arise is never an automatic weakness.",
+        "method_text": "The engine assesses position-priority missions during the minutes actually played. Direct decisive impact weighs more for attacking roles; creation, progression, final-third work and box presence also reward decisive contributions by full-backs and midfielders. Radar axes are strengthened inside their existing mission and never add a second score. Every rate keeps its attempt count and an action that did not arise is never an automatic weakness.",
         "source": "Methodology references",
         "prepared": "Prepared by the MS Performance analysis team",
         "page": "Page",
@@ -250,10 +252,10 @@ PDF_COPY = {
         "points_rule": "تعديلات محدودة",
         "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
         "impact_note": "تقيم هذه الأفعال أولا داخل مهمة المركز، ويظل تأثيرها الإضافي محدودا بين -8 و+8.",
-        "position_benchmark": "الملف الموسمي مقارنة بمتوسط المركز",
+        "position_benchmark": "المباراة مقارنة بمرجع المركز",
         "benchmark_position": "المرجع المختار: {position} ({percent}% من ملف المركز) · موسم {season}",
-        "benchmark_match": "اللاعب — القيمة الحقيقية لكل 90",
-        "benchmark_average": "متوسط المركز لكل 90",
+        "benchmark_match": "المباراة — المجموع الحقيقي",
+        "benchmark_average": "مرجع المركز — الدقائق نفسها",
         "benchmark_raw": "مقياس المحور",
         "benchmark_difference": "الفارق",
         "not_assessed": "غير مقيم",
@@ -303,10 +305,11 @@ PDF_COPY = {
         "appendix": "جميع بيانات المباراة",
         "full_data_note": "تعرض جميع أعمدة جدول إحصائيات المباراة. يظهر الحدث غير المسجل بقيمة صفر، بينما تبقى النسبة دون محاولة غير مقيمة حتى لا يتم اختراع نسبة نجاح.",
         "role_kpi": "مؤشر أساسي للمركز",
+        "radar_priority_kpi": "مؤشر رادار ذو أولوية",
         "decisive_kpi": "بيان حاسم",
         "columns_presented": "تم عرض {count} مؤشرا من المباراة",
         "method": "المنهجية والحدود",
-        "method_text": "يقيم المحرك مهام المركز خلال الدقائق الحقيقية. يرتفع وزن التأثير الحاسم للمراكز الهجومية، بينما ترتفع أهمية الثنائيات والبناء والتقدم وتجنب الخطأ للمراكز الدفاعية. تعرض كل نسبة مع عدد المحاولات ولا يعتبر غياب الفعل نقطة ضعف تلقائية.",
+        "method_text": "يقيم المحرك مهام المركز خلال الدقائق الحقيقية. يرتفع وزن التأثير الحاسم المباشر للمراكز الهجومية، كما تكافئ الصناعة والتقدم والثلث الأخير والحضور في المنطقة إسهام الظهير ولاعب الوسط. تقوى محاور الرادار داخل المهمة نفسها دون إضافة درجة ثانية، وتعرض كل نسبة مع عدد المحاولات.",
         "source": "المراجع المنهجية",
         "prepared": "إعداد فريق تحليل MS Performance",
         "page": "صفحة",
@@ -1383,7 +1386,7 @@ def render_performance_pdf(report):
             reverse=True,
         )
         reason_lines = [
-            f"{criterion.get('label')}: {criterion.get('display')}"
+            f"{'★ ' if criterion.get('radar_priority') else ''}{criterion.get('label')}: {criterion.get('display')}"
             for criterion in used_criteria[:4]
         ]
         dimension_rows.append(
@@ -1533,22 +1536,33 @@ def render_performance_pdf(report):
             precision = max(0, min(2, int(item.get("precision") or 0)))
             unit = item.get("unit")
 
-            def radar_value(value):
+            def radar_value(value, suffix=""):
                 if value is None:
                     return "—"
-                rendered = f"{float(value):.{precision}f}".rstrip("0").rstrip(".")
-                return f"{rendered} %" if unit == "%" else f"{rendered} /90"
+                rendered = f"{float(value):.{precision}f}"
+                if "." in rendered:
+                    rendered = rendered.rstrip("0").rstrip(".")
+                return f"{rendered}{suffix}"
 
             if difference is None:
                 difference_display = "—"
             else:
-                rendered_difference = f"{float(difference):+.{precision}f}".rstrip("0").rstrip(".")
-                difference_display = f"{rendered_difference} pts" if unit == "%" else f"{rendered_difference} /90"
+                rendered_difference = f"{float(difference):+.{precision}f}"
+                if "." in rendered_difference:
+                    rendered_difference = rendered_difference.rstrip("0").rstrip(".")
+                difference_display = f"{rendered_difference} pts" if unit == "%" else rendered_difference
             benchmark_rows.append(
                 [
-                    p(item.get("label") or item.get("metric"), small),
-                    p(radar_value(item.get("season_player")), body_bold),
-                    p(radar_value(item.get("position_average")), body),
+                    [
+                        p(item.get("label") or item.get("metric"), small),
+                        p(copy["radar_priority_kpi"], tiny),
+                    ],
+                    p(item.get("match_display") or radar_value(item.get("match_actual")), body_bold),
+                    p(
+                        item.get("position_reference_display")
+                        or radar_value(item.get("position_reference"), "%" if unit == "%" else ""),
+                        body,
+                    ),
                     p(difference_display, body_bold),
                 ]
             )
@@ -1667,9 +1681,12 @@ def render_performance_pdf(report):
         for item in visible_metrics:
             sample = item.get("sample") or {}
             score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
+            indicator_cell = [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)]
+            if item.get("radar_priority"):
+                indicator_cell.insert(1, p(copy["radar_priority_kpi"], tiny))
             metric_rows.append(
                 [
-                    [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
+                    indicator_cell,
                     [p(item.get("display") or "0", body_bold), p(sample.get("label") or "", tiny)],
                     [p(score_value, body_bold), ScoreGauge(item.get("score"), width=23 * mm)],
                     p(item.get("mission") or "—", small),

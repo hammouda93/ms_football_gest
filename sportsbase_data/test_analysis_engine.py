@@ -629,17 +629,106 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertEqual(benchmark["position_percent"], 53)
         self.assertEqual(
             benchmark["scale"],
-            "real_per_90_values_axis_normalized_for_shape_only",
+            "real_match_totals_vs_position_reference_adjusted_to_minutes",
         )
         metrics = {item["metric"]: item for item in benchmark["metrics"]}
         self.assertIn("Passes into the penalty box accurate, %", metrics)
         self.assertIn("Dribbling in the final third successful, %", metrics)
-        self.assertEqual(metrics["Defensive challenges"]["position_average"], 7.18)
+        self.assertEqual(metrics["Defensive challenges"]["match_actual"], 8)
+        self.assertEqual(metrics["Defensive challenges"]["position_reference"], 7.18)
         self.assertEqual(metrics["Interceptions"]["season_player"], 3.37)
         self.assertEqual(metrics["Interceptions"]["position_average"], 3.36)
-        self.assertEqual(metrics["Interceptions"]["difference"], 0.01)
-        self.assertEqual(metrics["Interceptions"]["player_normalized"], 55.4)
-        self.assertIn("valeurs saisonnières par 90 minutes", benchmark["note"])
+        self.assertEqual(metrics["Interceptions"]["match_actual"], 3)
+        self.assertEqual(metrics["Interceptions"]["position_reference"], 3.36)
+        self.assertEqual(metrics["Interceptions"]["difference"], -0.36)
+        self.assertEqual(metrics["Interceptions"]["player_normalized"], 49.2)
+        self.assertIn("totaux réels", benchmark["note"])
+
+    def test_position_radar_scales_only_the_reference_to_exact_minutes(self):
+        rows = [
+            _row("Substitute", "A", "LCM", 13, **{"Interceptions": 1}),
+            _row("Opponent", "B", "LCM", 90),
+        ]
+        context = {
+            "position_benchmark": {
+                "positions": [{"code": "LCM", "name": "Left central midfielder", "percent": 100}],
+                "radar_metrics": [
+                    {
+                        "name": "Interceptions",
+                        "player": 3.2,
+                        "average": 3.6,
+                        "scale_max": 6,
+                        "precision": 2,
+                        "unit": "per_90",
+                    }
+                ],
+            }
+        }
+        metric = analyse_match_dataset(rows, "Substitute", "fr", context=context)["position_benchmark"]["metrics"][0]
+        self.assertEqual(metric["match_actual"], 1)
+        self.assertEqual(metric["position_reference"], 0.52)
+        self.assertNotEqual(metric["match_actual"], round(1 * 90 / 13, 2))
+
+    def test_short_minutes_cap_involvement_volume_but_not_success_quality(self):
+        short = analyse_match_dataset(
+            [
+                _row("Short", "A", "LCM", 13, **{"Actions": 9, "Actions successful, %": 0.88}),
+                _row("Opponent", "B", "LCM", 90),
+            ],
+            "Short",
+            "fr",
+        )
+        long = analyse_match_dataset(
+            [
+                _row("Long", "A", "LCM", 88, **{"Actions": 60, "Actions successful, %": 0.88}),
+                _row("Opponent", "B", "LCM", 90),
+            ],
+            "Long",
+            "fr",
+        )
+        short_mission = next(item for item in short["dimensions"] if item["key"] == "involvement")
+        long_mission = next(item for item in long["dimensions"] if item["key"] == "involvement")
+        short_rate = next(item for item in short_mission["evidence"] if item["metric"] == "Actions successful, %")
+        long_rate = next(item for item in long_mission["evidence"] if item["metric"] == "Actions successful, %")
+        self.assertEqual(short_rate["value"], long_rate["value"])
+        self.assertEqual(short_rate["raw_score"], long_rate["raw_score"])
+        self.assertEqual(short_mission["duration_ceiling"], 72)
+        self.assertLessEqual(short_mission["score"], 72)
+        self.assertLess(short_mission["score"], long_mission["score"])
+
+    def test_radar_axes_receive_priority_inside_existing_role_missions(self):
+        rows = [
+            _row("Target", "A", "LCM", 90, **{"Interceptions": 4}),
+            _row("Opponent", "B", "LCM", 90),
+        ]
+        context = {
+            "position_benchmark": {
+                "positions": [{"code": "LCM", "percent": 100}],
+                "radar_metrics": [
+                    {
+                        "name": "Interceptions",
+                        "player": 3.5,
+                        "average": 3.0,
+                        "scale_max": 6,
+                        "precision": 2,
+                        "unit": "per_90",
+                    }
+                ],
+            }
+        }
+        analysis = analyse_match_dataset(rows, "Target", "en", context=context)
+        duel_mission = next(item for item in analysis["dimensions"] if item["key"] == "duel_balance")
+        metric = next(item for item in duel_mission["evidence"] if item["metric"] == "Interceptions")
+        self.assertTrue(metric["radar_priority"])
+        self.assertEqual(metric["priority_multiplier"], 1.35)
+        self.assertEqual(metric["score_basis"], "70_percent_role_threshold_30_percent_position_reference")
+        breakdown_metric = next(
+            criterion
+            for mission in analysis["score_breakdown"]["dimensions"]
+            for criterion in mission["criteria"]
+            if criterion["metric"] == "Interceptions"
+        )
+        self.assertTrue(breakdown_metric["radar_priority"])
 
     def test_ms_score_is_bounded_and_decisive_returns_are_diminishing(self):
         opponent = _row("Opponent", "B", "ST", 90)
