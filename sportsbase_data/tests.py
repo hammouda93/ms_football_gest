@@ -25,6 +25,7 @@ from .forms import SportsBaseSubscriptionForm
 from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS
 from .models import (
     PerformanceReport,
+    PerformanceSubscriptionPayment,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -96,6 +97,34 @@ class SportsBaseFixtureMixin:
 
 
 class SubscriptionModelTests(SportsBaseFixtureMixin, TestCase):
+    def test_performance_payment_updates_paid_amount_and_remaining_balance(self):
+        self.subscription.total_amount = 900
+        self.subscription.currency = SportsBaseSubscription.Currency.TND
+        self.subscription.save(update_fields=("total_amount", "currency", "updated_at"))
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse(
+                "performance:subscription_payment_add",
+                args=(self.subscription.pk,),
+            ),
+            {
+                "amount": "250.00",
+                "payment_date": timezone.localdate(),
+                "payment_method": PerformanceSubscriptionPayment.Method.BANK_TRANSFER,
+                "reference": "VIR-250",
+                "notes": "Premier règlement",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("performance:subscription_edit", args=(self.subscription.pk,)),
+            fetch_redirect_response=False,
+        )
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.amount_paid, 250)
+        self.assertEqual(self.subscription.remaining_balance, 650)
+        self.assertEqual(self.subscription.payment_state, "partial")
+
     def test_subscription_is_additive_and_does_not_change_player(self):
         original = (self.player.name, self.player.club, self.player.email)
         self.subscription.is_active = False
@@ -473,6 +502,35 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(match, "--analysis-progress: 89.0%")
         self.assertContains(match, "youtube-nocookie.com/embed/abcdefghijk")
         self.assertNotContains(match, "all-actions-open-link")
+
+    def test_player_profile_shows_transfermarkt_and_subscription_payment(self):
+        self.player.transfermarkt_url = "https://www.transfermarkt.com/example/profil/spieler/123"
+        self.player.save(update_fields=("transfermarkt_url",))
+        self.subscription.total_amount = 1200
+        self.subscription.currency = SportsBaseSubscription.Currency.TND
+        self.subscription.payment_url = "https://payments.example.com/performance/secure"
+        self.subscription.save(
+            update_fields=("total_amount", "currency", "payment_url", "updated_at")
+        )
+        PerformanceSubscriptionPayment.objects.create(
+            subscription=self.subscription,
+            amount=400,
+            payment_method=PerformanceSubscriptionPayment.Method.ONLINE,
+            created_by=self.admin,
+        )
+        user = self.portal_user("payment-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Transfermarkt")
+        self.assertContains(response, self.player.transfermarkt_url)
+        self.assertContains(response, "Règlement de l’abonnement")
+        self.assertContains(response, "400.00 TND")
+        self.assertContains(response, "800.00 TND")
+        self.assertContains(response, self.subscription.payment_url)
 
     def test_average_only_season_metrics_keep_source_order_and_values(self):
         self.snapshot.season_statistics = {
@@ -1119,6 +1177,7 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(detail, "youtube-nocookie.com/embed/abcdefghijk")
         self.assertContains(detail, "Rapport de l’analyste")
         self.assertContains(detail, "MS Score")
+        self.assertContains(detail, "8.2/10")
         self.assertContains(detail, "TRÈS BON MATCH")
         self.assertContains(detail, "Passes clés")
         pdf = self.client.get(reverse("performance:report_pdf", args=(report.pk,)))

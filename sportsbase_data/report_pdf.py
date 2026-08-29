@@ -18,7 +18,7 @@ PDF_COPY = {
         "minutes": "MINUTES",
         "reliability": "FIABILITÉ",
         "index": "INDICE MS",
-        "mission_score": "MS SCORE",
+        "mission_score": "MS SCORE /10",
         "verdict": "Opinion de l’analyste",
         "decisive_facts": "Faits décisifs de la rencontre",
         "rankings": "Repères dans le match",
@@ -28,24 +28,24 @@ PDF_COPY = {
         "index_note": "L’Indice MS offre un repère global. Le classement dans l’équipe et dans la rencontre confirme le contexte, mais les missions du poste restent la base de l’évaluation.",
         "role_missions": "Missions du poste",
         "mission_note": "Chaque score juge uniquement cette apparition. Les missions sont classées par importance et rattachées à une phase de jeu pour rendre la lecture immédiate.",
-        "score_explained": "Comment le MS Score est calculé",
+        "score_explained": "MS Score — missions du poste",
         "configured_weight": "POIDS POSTE",
         "effective_weight": "POIDS FIXE DU POSTE",
         "criterion": "CRITÈRE",
         "criterion_score": "NOTE CRITÈRE",
-        "contribution": "CONTRIBUTION /100",
+        "contribution": "CONTRIBUTION /10",
         "weighted_total": "SCORE DES MISSIONS",
         "score_reasons": "CRITÈRES QUI EXPLIQUENT LA NOTE",
-        "score_total_note": "{mission}/100 pour les missions du poste {decisive} pour l’impact décisif {ranking} pour la confirmation du classement = {score}/100. Les missions du poste restent la base de la note.",
+        "score_total_note": "{mission}/10 pour les missions du poste {decisive} pour l’impact décisif {ranking} pour la confirmation du classement = {score}/10. Les missions du poste restent la base de la note.",
         "base_points": "RÉFÉRENCE NEUTRE",
         "mission_points": "MISSIONS DU POSTE",
         "decisive_points": "AJUSTEMENT DÉCISIF",
         "ranking_points": "VALIDATION DU RANG",
         "penalty_points": "ERREURS DÉCISIVES",
-        "open_scale": "SCORE FINAL /100",
+        "open_scale": "SCORE FINAL /10",
         "points_rule": "AJUSTEMENTS BORNÉS",
         "impact_drivers": "Pourquoi les actions décisives comptent dans la note",
-        "impact_note": "Ces actions restent d’abord évaluées dans la mission du poste. Leur influence supplémentaire est limitée par l’ajustement décisif global de -8 à +8.",
+        "impact_note": "Ces actions restent d’abord évaluées dans la mission du poste. Leur influence supplémentaire est limitée par l’ajustement décisif global de -0,8 à +0,8 sur la note finale.",
         "position_benchmark": "Match face à la référence du poste",
         "benchmark_position": "Référence retenue : {position} ({percent} % du profil positionnel) · saison {season}",
         "benchmark_match": "Match — total réel",
@@ -77,9 +77,12 @@ PDF_COPY = {
         "wide": "Largeur",
         "half_space": "Demi-espaces",
         "central": "Axe",
+        "attack_direction": "Défense → Attaque",
+        "position_reading": "Interprétation du positionnement",
         "strengths": "Ce qui a été bien fait",
         "risks": "Points à améliorer",
-        "development": "Plan d’action individuel — à valider avec l’analyste",
+        "development": "Plan d’action individuel",
+        "analyst_contact": "Vous pouvez contacter l’analyste pour préparer une vidéo de visionnage de vos erreurs ou définir avec lui des axes d’amélioration individualisés.",
         "video_check": "À confirmer avec la vidéo All Actions",
         "comparisons": "Repères individuels — comparaison secondaire",
         "comparison_note": "Aucune analyse collective ou par compartiment n’est réalisée. Deux repères secondaires sont autorisés : l’homologue adverse au poste équivalent et un seul coéquipier au profil symétrique. Ils expliquent la prestation sans calculer le MS Score.",
@@ -91,6 +94,8 @@ PDF_COPY = {
         "global_leaders": "Meilleures performances individuelles des deux équipes",
         "global_note": "Pour les pourcentages de réussite, le classement exige au moins 3 tentatives. Le nombre de réussites et le dénominateur restent visibles.",
         "match_leader": "MEILLEUR DES DEUX ÉQUIPES",
+        "team_one_leader": "MEILLEUR — ÉQUIPE 1",
+        "team_two_leader": "MEILLEUR — ÉQUIPE 2",
         "target_rank": "RANG DU JOUEUR",
         "target": "JOUEUR",
         "opponent": "ADVERSAIRE",
@@ -103,7 +108,7 @@ PDF_COPY = {
         "decisive_kpi": "DONNÉE DÉCISIVE",
         "columns_presented": "{count} indicateurs du match présentés",
         "method": "Méthodologie et limites",
-        "method_text": "Le moteur juge les missions prioritaires du poste pendant les minutes réellement jouées. L’impact décisif direct pèse davantage pour les postes offensifs ; création, progression, dernier tiers et surface valorisent aussi l’apport décisif des latéraux et milieux. Les axes du radar sont renforcés dans leur mission existante, sans ajouter une seconde note. Chaque taux conserve son nombre de tentatives et une action non rencontrée n’est jamais une faiblesse automatique.",
+        "method_text": "L’évaluation juge les missions prioritaires du poste pendant les minutes réellement jouées. L’impact décisif direct pèse davantage pour les postes offensifs ; création, progression, dernier tiers et surface valorisent aussi l’apport des latéraux et milieux. Les axes de référence du championnat sont renforcés dans leur mission existante, sans ajouter une seconde note. Chaque taux conserve son nombre de tentatives et une action non rencontrée n’est jamais considérée comme une faiblesse par défaut.",
         "source": "Références méthodologiques",
         "prepared": "Préparé par l’équipe d’analyse MS Performance",
         "page": "Page",
@@ -121,7 +126,7 @@ PDF_COPY = {
         "minutes": "MINUTES",
         "reliability": "RELIABILITY",
         "index": "MS INDEX",
-        "mission_score": "MS SCORE",
+        "mission_score": "MS SCORE /10",
         "verdict": "Analyst opinion",
         "decisive_facts": "Decisive match facts",
         "rankings": "Match reference points",
@@ -131,24 +136,24 @@ PDF_COPY = {
         "index_note": "MS Index provides an overall reference. Team and match rank confirm the context, while the position missions remain the basis of the assessment.",
         "role_missions": "Position missions",
         "mission_note": "Each score assesses this appearance only. Missions are ordered by importance and attached to a phase of play for immediate reading.",
-        "score_explained": "How the MS Score is calculated",
+        "score_explained": "MS Score — position missions",
         "configured_weight": "POSITION WEIGHT",
         "effective_weight": "FIXED POSITION WEIGHT",
         "criterion": "CRITERION",
         "criterion_score": "CRITERION SCORE",
-        "contribution": "CONTRIBUTION /100",
+        "contribution": "CONTRIBUTION /10",
         "weighted_total": "POSITION-MISSION SCORE",
         "score_reasons": "CRITERIA BEHIND THE SCORE",
-        "score_total_note": "{mission}/100 from position missions {decisive} for decisive impact {ranking} for rank confirmation = {score}/100. Position missions remain the basis of the score.",
+        "score_total_note": "{mission}/10 from position missions {decisive} for decisive impact {ranking} for rank confirmation = {score}/10. Position missions remain the basis of the score.",
         "base_points": "NEUTRAL REFERENCE",
         "mission_points": "POSITION MISSIONS",
         "decisive_points": "DECISIVE ADJUSTMENT",
         "ranking_points": "RANK VALIDATION",
         "penalty_points": "DECISIVE ERRORS",
-        "open_scale": "FINAL SCORE /100",
+        "open_scale": "FINAL SCORE /10",
         "points_rule": "BOUNDED ADJUSTMENTS",
         "impact_drivers": "Why decisive actions count in the score",
-        "impact_note": "These actions are first assessed inside the position mission. Their additional influence is limited by the overall -8 to +8 decisive adjustment.",
+        "impact_note": "These actions are first assessed inside the position mission. Their additional influence is limited to -0.8 to +0.8 on the final rating.",
         "position_benchmark": "Match against the position reference",
         "benchmark_position": "Selected reference: {position} ({percent}% of the position profile) · season {season}",
         "benchmark_match": "Match — real total",
@@ -180,9 +185,12 @@ PDF_COPY = {
         "wide": "Wide lanes",
         "half_space": "Half-spaces",
         "central": "Central lane",
+        "attack_direction": "Defence → Attack",
+        "position_reading": "Positioning interpretation",
         "strengths": "What was done well",
         "risks": "Points to improve",
-        "development": "Individual action plan — to validate with the analyst",
+        "development": "Individual action plan",
+        "analyst_contact": "You can contact the analyst to prepare a video review of your errors or define individual improvement priorities together.",
         "video_check": "To confirm through All Actions video",
         "comparisons": "Individual reference points — secondary comparison",
         "comparison_note": "No collective or unit analysis is produced. Two secondary references are allowed: the opposition counterpart in the equivalent position and one team-mate in the symmetric role profile. They explain the performance but do not calculate MS Score.",
@@ -194,6 +202,8 @@ PDF_COPY = {
         "global_leaders": "Best individual performances across both teams",
         "global_note": "Success-rate rankings require at least 3 attempts. Successes and denominators remain visible.",
         "match_leader": "BEST ACROSS BOTH TEAMS",
+        "team_one_leader": "BEST — TEAM 1",
+        "team_two_leader": "BEST — TEAM 2",
         "target_rank": "PLAYER RANK",
         "target": "PLAYER",
         "opponent": "OPPONENT",
@@ -206,7 +216,7 @@ PDF_COPY = {
         "decisive_kpi": "DECISIVE DATA",
         "columns_presented": "{count} match indicators presented",
         "method": "Methodology and limitations",
-        "method_text": "The engine assesses position-priority missions during the minutes actually played. Direct decisive impact weighs more for attacking roles; creation, progression, final-third work and box presence also reward decisive contributions by full-backs and midfielders. Radar axes are strengthened inside their existing mission and never add a second score. Every rate keeps its attempt count and an action that did not arise is never an automatic weakness.",
+        "method_text": "The assessment judges position-priority missions during the minutes actually played. Direct decisive impact weighs more for attacking roles; creation, progression, final-third work and box presence also reward full-backs and midfielders. Championship-reference axes are strengthened inside their existing mission and never add a second score. Every rate keeps its attempt count and an action that did not arise is never an automatic weakness.",
         "source": "Methodology references",
         "prepared": "Prepared by the MS Performance analysis team",
         "page": "Page",
@@ -224,7 +234,7 @@ PDF_COPY = {
         "minutes": "الدقائق",
         "reliability": "الموثوقية",
         "index": "مؤشر MS",
-        "mission_score": "مؤشر MS",
+        "mission_score": "مؤشر MS من 10",
         "verdict": "رأي المحلل",
         "decisive_facts": "الوقائع الحاسمة في المباراة",
         "rankings": "الترتيب داخل المباراة",
@@ -239,19 +249,19 @@ PDF_COPY = {
         "effective_weight": "الوزن الثابت للمركز",
         "criterion": "المعيار",
         "criterion_score": "درجة المعيار",
-        "contribution": "المساهمة من 100",
+        "contribution": "المساهمة من 10",
         "weighted_total": "درجة مهام المركز",
         "score_reasons": "المعايير التي تفسر الدرجة",
-        "score_total_note": "{mission}/100 لمهام المركز {decisive} للتأثير الحاسم {ranking} لتأكيد الترتيب = {score}/100. تبقى مهام المركز أساس الدرجة.",
+        "score_total_note": "{mission}/10 لمهام المركز {decisive} للتأثير الحاسم {ranking} لتأكيد الترتيب = {score}/10. تبقى مهام المركز أساس الدرجة.",
         "base_points": "المرجع المحايد",
         "mission_points": "مهام المركز",
         "decisive_points": "التعديل الحاسم",
         "ranking_points": "تأكيد الترتيب",
         "penalty_points": "الأخطاء الحاسمة",
-        "open_scale": "النتيجة النهائية من 100",
+        "open_scale": "النتيجة النهائية من 10",
         "points_rule": "تعديلات محدودة",
         "impact_drivers": "لماذا تدخل الأفعال الحاسمة في الدرجة",
-        "impact_note": "تقيم هذه الأفعال أولا داخل مهمة المركز، ويظل تأثيرها الإضافي محدودا بين -8 و+8.",
+        "impact_note": "تقيم هذه الأفعال أولا داخل مهمة المركز، ويظل تأثيرها الإضافي محدودا بين -0.8 و+0.8 في الدرجة النهائية.",
         "position_benchmark": "المباراة مقارنة بمرجع المركز",
         "benchmark_position": "المرجع المختار: {position} ({percent}% من ملف المركز) · موسم {season}",
         "benchmark_match": "المباراة — المجموع الحقيقي",
@@ -283,9 +293,12 @@ PDF_COPY = {
         "wide": "الأطراف",
         "half_space": "أنصاف المساحات",
         "central": "العمق",
+        "attack_direction": "الدفاع ← الهجوم",
+        "position_reading": "تفسير التمركز",
         "strengths": "ما تم إنجازه جيدا",
         "risks": "نقاط التحسين",
-        "development": "خطة العمل الفردية — تعتمد مع المحلل",
+        "development": "خطة العمل الفردية",
+        "analyst_contact": "يمكنك التواصل مع المحلل لإعداد فيديو لمراجعة الأخطاء أو لتحديد محاور تحسين فردية معه.",
         "video_check": "يجب تأكيده بفيديو جميع اللقطات",
         "comparisons": "مراجع فردية — مقارنة ثانوية",
         "comparison_note": "لا يوجد تحليل جماعي أو حسب الخطوط. يسمح بمرجعين ثانويين فقط: لاعب الخصم في المركز المعادل وزميل واحد في الملف المقابل للمركز. تساعد المقارنة في الشرح ولا تدخل في حساب مؤشر MS.",
@@ -297,6 +310,8 @@ PDF_COPY = {
         "global_leaders": "أفضل الأداءات الفردية في الفريقين",
         "global_note": "يتطلب ترتيب نسب النجاح ثلاث محاولات على الأقل مع إظهار عدد النجاحات والمحاولات.",
         "match_leader": "الأفضل في الفريقين",
+        "team_one_leader": "الأفضل — الفريق الأول",
+        "team_two_leader": "الأفضل — الفريق الثاني",
         "target_rank": "ترتيب اللاعب",
         "target": "اللاعب",
         "opponent": "المنافس",
@@ -309,7 +324,7 @@ PDF_COPY = {
         "decisive_kpi": "بيان حاسم",
         "columns_presented": "تم عرض {count} مؤشرا من المباراة",
         "method": "المنهجية والحدود",
-        "method_text": "يقيم المحرك مهام المركز خلال الدقائق الحقيقية. يرتفع وزن التأثير الحاسم المباشر للمراكز الهجومية، كما تكافئ الصناعة والتقدم والثلث الأخير والحضور في المنطقة إسهام الظهير ولاعب الوسط. تقوى محاور الرادار داخل المهمة نفسها دون إضافة درجة ثانية، وتعرض كل نسبة مع عدد المحاولات.",
+        "method_text": "يقيم التحليل مهام المركز خلال الدقائق الحقيقية. يرتفع وزن التأثير الحاسم المباشر للمراكز الهجومية، كما تكافئ الصناعة والتقدم والثلث الأخير والحضور في المنطقة إسهام الظهير ولاعب الوسط. تقوى محاور مرجع البطولة داخل المهمة نفسها دون إضافة درجة ثانية، وتعرض كل نسبة مع عدد المحاولات.",
         "source": "المراجع المنهجية",
         "prepared": "إعداد فريق تحليل MS Performance",
         "page": "صفحة",
@@ -685,17 +700,17 @@ def render_performance_pdf(report):
                     canvas.setFillColor(colors.HexColor(stroke))
                     canvas.circle(point[0], point[1], 1.3, stroke=0, fill=1)
 
-            polygon(0, RED, colors.Color(0.85, 0.36, 0.40, alpha=0.13))
-            polygon(1, TEAL_DARK, colors.Color(0.075, 0.72, 0.65, alpha=0.22))
+            polygon(0, "#E23B47", colors.Color(0.89, 0.23, 0.28, alpha=0.18))
+            polygon(1, "#0057B8", colors.Color(0.00, 0.34, 0.72, alpha=0.26))
 
             legend_y = 3 * mm
             canvas.setLineWidth(2)
-            canvas.setStrokeColor(colors.HexColor(TEAL_DARK))
+            canvas.setStrokeColor(colors.HexColor("#0057B8"))
             canvas.line(cx - 55 * mm, legend_y, cx - 45 * mm, legend_y)
             canvas.setFillColor(colors.HexColor(INK))
             canvas.setFont(font_name, 6.2)
             canvas.drawString(cx - 42 * mm, legend_y - 2, display(copy["benchmark_match"]))
-            canvas.setStrokeColor(colors.HexColor(RED))
+            canvas.setStrokeColor(colors.HexColor("#E23B47"))
             canvas.line(cx + 5 * mm, legend_y, cx + 15 * mm, legend_y)
             canvas.drawString(cx + 18 * mm, legend_y - 2, display(copy["benchmark_average"]))
             canvas.restoreState()
@@ -797,12 +812,13 @@ def render_performance_pdf(report):
                 canvas.setLineWidth(5.5)
                 canvas.setLineCap(1)
                 canvas.arc(cx - radius, cy - radius, cx + radius, cy + radius, 90, -360 * progress)
+            rating = None if score is None else round(score / 10, 1)
             canvas.setFillColor(colors.HexColor(NAVY))
             canvas.setFont(font_name, 15)
-            canvas.drawCentredString(cx, cy + 1.5 * mm, "—" if score is None else str(round(score)))
+            canvas.drawCentredString(cx, cy + 1.5 * mm, "—" if rating is None else f"{rating:.1f}")
             canvas.setFillColor(colors.HexColor(MUTED))
             canvas.setFont(font_name, 6.2)
-            canvas.drawCentredString(cx, cy - 3.2 * mm, "MS / 100")
+            canvas.drawCentredString(cx, cy - 3.2 * mm, "MS / 10")
             canvas.restoreState()
 
     class IconBadge(Flowable):
@@ -947,8 +963,10 @@ def render_performance_pdf(report):
 
     def verdict_badge(verdict, width=169 * mm):
         accent, background = tone_colors(verdict.get("tone"))
-        score = verdict.get("score")
-        score_text = "—" if score is None else f"{score}/100"
+        rating = verdict.get("rating_10")
+        if rating is None and verdict.get("score") is not None:
+            rating = float(verdict["score"]) / 10
+        score_text = "—" if rating is None else f"{rating:.1f}/10"
         return Table(
             [[p(verdict.get("label") or "—", body_bold), p(score_text, card_value)]],
             colWidths=[width * 0.74, width * 0.26],
@@ -1280,7 +1298,7 @@ def render_performance_pdf(report):
                     info_card(copy["minutes"], player.get("minutes", "—"), "neutral", icon="clock"),
                     info_card(copy["reliability"], confidence.get("label") or "—", "warning" if confidence.get("score", 0) < 60 else "positive", icon="shield"),
                     info_card(copy["index"], player.get("index") if player.get("index") is not None else "—", "neutral", icon="index"),
-                    info_card(copy["mission_score"], "—" if player.get("ms_score") is None else f"{player.get('ms_score')}/100", verdict.get("tone", "neutral"), icon="target"),
+                    info_card(copy["mission_score"], "—" if player.get("rating_10") is None else f"{player.get('rating_10'):.1f}/10", verdict.get("tone", "neutral"), icon="target"),
                 ]],
                 colWidths=[42.25 * mm] * 4,
                 style=TableStyle(
@@ -1323,28 +1341,31 @@ def render_performance_pdf(report):
         row = [stamp_card(summary_dimensions[index])]
         row.append(stamp_card(summary_dimensions[index + 1]) if index + 1 < len(summary_dimensions) else "")
         stamp_rows.append(row)
-    story.append(
-        Table(
-            stamp_rows,
-            colWidths=[84.5 * mm, 84.5 * mm],
-            style=TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
-                    ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-                ]
-            ),
+    if stamp_rows:
+        story.append(
+            Table(
+                stamp_rows,
+                colWidths=[84.5 * mm, 84.5 * mm],
+                style=TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
+                        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                    ]
+                ),
+            )
         )
-    )
+    else:
+        story.append(p(copy["no_data"], small))
     story.append(PageBreak())
 
     score_breakdown = analysis.get("score_breakdown") or {}
     breakdown_dimensions = score_breakdown.get("dimensions") or []
     story.extend(
         [
-            section_title(copy["score_explained"], 2),
+            section_title(copy["score_explained"], 3),
             p(score_breakdown.get("formula") or copy["mission_note"], small),
             Spacer(1, 4 * mm),
         ]
@@ -1352,10 +1373,10 @@ def render_performance_pdf(report):
     decisive_adjustment = score_breakdown.get("decisive_adjustment", 0)
     context_adjustment = score_breakdown.get("context_adjustment", 0)
     score_cards = [
-        info_card(copy["mission_points"], f"{score_breakdown.get('rounded_score', 0)}/100", "positive", width=42.25 * mm),
-        info_card(copy["decisive_points"], f"{decisive_adjustment:+g}", "excellent" if decisive_adjustment > 0 else "danger" if decisive_adjustment < 0 else "neutral", width=42.25 * mm),
-        info_card(copy["ranking_points"], f"{context_adjustment:+g}", "neutral", width=42.25 * mm),
-        info_card(copy["open_scale"], f"{score_breakdown.get('total_points', 0)}/100", verdict.get("tone", "neutral"), width=42.25 * mm),
+        info_card(copy["mission_points"], f"{score_breakdown.get('rounded_score', 0) / 10:.1f}/10", "positive", width=42.25 * mm),
+        info_card(copy["decisive_points"], f"{decisive_adjustment / 10:+.1f}", "excellent" if decisive_adjustment > 0 else "danger" if decisive_adjustment < 0 else "neutral", width=42.25 * mm),
+        info_card(copy["ranking_points"], f"{context_adjustment / 10:+.1f}", "neutral", width=42.25 * mm),
+        info_card(copy["open_scale"], f"{score_breakdown.get('rating_10', 0):.1f}/10", verdict.get("tone", "neutral"), width=42.25 * mm),
     ]
     story.extend(
         [
@@ -1376,9 +1397,9 @@ def render_performance_pdf(report):
     dimension_rows = [[p(copy["role_missions"], table_head), p(copy["effective_weight"], table_head), p(copy["reading"], table_head), p(copy["contribution"], table_head), p(copy["score_reasons"], table_head)]]
     for item in breakdown_dimensions:
         score_value = (
-            f"50/100 · {copy['not_assessed']}"
+            f"5.0/10 · {copy['not_assessed']}"
             if item.get("score") is None
-            else f"{item.get('score')}/100"
+            else f"{item.get('score') / 10:.1f}/10"
         )
         used_criteria = sorted(
             [criterion for criterion in item.get("criteria") or [] if criterion.get("used")],
@@ -1398,7 +1419,7 @@ def render_performance_pdf(report):
                 ],
                 p(f"{item.get('configured_weight', 0)}%", body),
                 p(score_value, body),
-                p(f"{item.get('contribution', 0)}", body_bold),
+                p(f"{item.get('contribution', 0) / 10:.2f}", body_bold),
                 p(" · ".join(reason_lines) if reason_lines else copy["not_assessed"], tiny),
             ]
         )
@@ -1406,8 +1427,8 @@ def render_performance_pdf(report):
         [
             p(copy["weighted_total"], body_bold),
             p("100%", body_bold),
-            p(f"{score_breakdown.get('rounded_score', 0)}/100", body_bold),
-            p(f"{score_breakdown.get('position_score', 0)}", body_bold),
+            p(f"{score_breakdown.get('rounded_score', 0) / 10:.1f}/10", body_bold),
+            p(f"{score_breakdown.get('position_score', 0) / 10:.2f}", body_bold),
             p(copy["mission_note"], tiny),
         ]
     )
@@ -1433,7 +1454,7 @@ def render_performance_pdf(report):
                 tone = "positive" if effect in {"positive", "very_positive"} else "warning" if effect in {"negative", "very_negative"} else "neutral"
                 cells.append(
                     note_box(
-                        f"{driver.get('explanation') or ''}\n{driver.get('score_sentence') or ''}",
+                        f"{driver.get('explanation') or ''}\n{copy['contribution']} : {driver.get('ms_points', 0) / 10:.2f}",
                         tone,
                         width=82 * mm,
                     )
@@ -1469,7 +1490,7 @@ def render_performance_pdf(report):
                 [
                     p(event.get("label") or "—", body_bold),
                     p(event.get("calculation") or "—", body),
-                    p(f"{points:+g} pts", body_bold),
+                    p(f"{points / 10:+.2f} pts", body_bold),
                 ]
             )
         story.extend(
@@ -1480,8 +1501,15 @@ def render_performance_pdf(report):
         )
     rules = score_breakdown.get("decisive_rules") or []
     if rules:
+        def display_rule(rule):
+            return re.sub(
+                r"[+-]?\d+(?:\.\d+)?",
+                lambda match: f"{float(match.group()) / 10:+.1f}".replace("+0.0", "0.0"),
+                str(rule or ""),
+            )
+
         rule_text = " · ".join(
-            f"{item.get('label')}: {item.get('rule')}"
+            f"{item.get('label')}: {display_rule(item.get('rule'))}"
             for item in rules
         )
         story.extend([p(rule_text, tiny), Spacer(1, 2 * mm)])
@@ -1491,11 +1519,11 @@ def render_performance_pdf(report):
             note_box(
                 copy["score_total_note"].format(
                     base=50,
-                    mission=score_breakdown.get("rounded_score", 0),
-                    decisive=f"{score_breakdown.get('decisive_adjustment', 0):+g}",
-                    ranking=f"{score_breakdown.get('context_adjustment', 0):+g}",
+                    mission=f"{score_breakdown.get('rounded_score', 0) / 10:.1f}",
+                    decisive=f"{score_breakdown.get('decisive_adjustment', 0) / 10:+.1f}",
+                    ranking=f"{score_breakdown.get('context_adjustment', 0) / 10:+.1f}",
                     penalty=f"{score_breakdown.get('penalty_points', 0):+g}",
-                    score=score_breakdown.get("total_points", "—"),
+                    score=f"{score_breakdown.get('rating_10', 0):.1f}",
                 ),
                 "neutral",
                 True,
@@ -1503,7 +1531,7 @@ def render_performance_pdf(report):
         ]
     )
     benchmark = analysis.get("position_benchmark") or {}
-    section_number = 3
+    section_number = 4
     if benchmark.get("available"):
         benchmark_metrics = benchmark.get("comparable_metrics") or []
         story.extend(
@@ -1567,16 +1595,23 @@ def render_performance_pdf(report):
                 ]
             )
         story.append(standard_table(benchmark_rows, [62 * mm, 39 * mm, 39 * mm, 29 * mm]))
-        section_number += 1
+    else:
+        story.extend(
+            [
+                PageBreak(),
+                section_title(copy["position_benchmark"], 4),
+                note_box(copy["unavailable"], "neutral"),
+            ]
+        )
     story.extend(
         [
-            PageBreak() if benchmark.get("available") else CondPageBreak(92 * mm),
-            section_title(copy["performance_reading"], section_number),
+            PageBreak(),
+            section_title(copy["performance_reading"], 2),
             p(copy["performance_note"], small),
             Spacer(1, 3 * mm),
         ]
     )
-    section_number += 1
+    section_number = 5
     phase_priority = {
         "global": (
             "Actions", "Actions successful, %", "Passes", "Passes accurate, %",
@@ -1658,7 +1693,7 @@ def render_performance_pdf(report):
             [
                 Spacer(1, 3 * mm),
                 Table(
-                    [[p(lens.get("label"), h2), p(copy["not_assessed"] if score is None else f"{score}/100 · {lens.get('grade_label')}", body_bold)]],
+                    [[p(lens.get("label"), h2), p(copy["not_assessed"] if score is None else f"{score / 10:.1f}/10 · {lens.get('grade_label')}", body_bold)]],
                     colWidths=[124 * mm, 45 * mm],
                     style=TableStyle(
                         [
@@ -1680,7 +1715,7 @@ def render_performance_pdf(report):
         metric_rows = [[p(copy["indicator"], table_head), p(copy["real_value"], table_head), p(copy["reading"], table_head), p(copy["profile"], table_head)]]
         for item in visible_metrics:
             sample = item.get("sample") or {}
-            score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score')}/100"
+            score_value = copy["not_assessed"] if item.get("score") is None else f"{item.get('score') / 10:.1f}/10"
             indicator_cell = [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)]
             if item.get("radar_priority"):
                 indicator_cell.insert(1, p(copy["radar_priority_kpi"], tiny))
@@ -1705,9 +1740,9 @@ def render_performance_pdf(report):
             raw = bytes(binary)
             image = Image(io.BytesIO(raw), width=80 * mm, height=53 * mm)
             images.append((label, image, note))
+    story.extend([PageBreak(), section_title(copy["maps"], 5)])
+    section_number = 6
     if images:
-        story.extend([PageBreak(), section_title(copy["maps"], section_number)])
-        section_number += 1
         cells = []
         for label, image, note in images:
             cells.append(
@@ -1769,6 +1804,17 @@ def render_performance_pdf(report):
                 )
             )
             story.extend([Spacer(1, 3 * mm), p(territory.get("note"), tiny)])
+            story.extend(
+                [
+                    Spacer(1, 3 * mm),
+                    note_box(territory.get("direction_label") or copy["attack_direction"], "positive", True),
+                    Spacer(1, 3 * mm),
+                    p(copy["position_reading"], h2),
+                    p(territory.get("interpretation") or "", body),
+                ]
+            )
+    else:
+        story.append(note_box(copy["unavailable"], "neutral"))
 
     story.extend([PageBreak(), section_title(copy["strengths"], section_number)])
     section_number += 1
@@ -1779,6 +1825,7 @@ def render_performance_pdf(report):
     story.extend([Spacer(1, 3 * mm), section_title(copy["development"], section_number)])
     section_number += 1
     story.extend(bullet_list(narrative.get("development") or [], "excellent"))
+    story.extend([Spacer(1, 3 * mm), note_box(copy["analyst_contact"], "positive", True)])
     story.extend([Spacer(1, 3 * mm), note_box(f"{copy['video_check']}\n{narrative.get('video_limit') or ''}", "neutral")])
 
     story.extend([PageBreak(), section_title(copy["comparisons"], section_number), p(copy["comparison_note"], small), Spacer(1, 5 * mm), p(copy["matchups"], h2)])
@@ -1825,30 +1872,35 @@ def render_performance_pdf(report):
     )
 
     story.extend([Spacer(1, 4 * mm), p(copy["global_leaders"], h2), p(copy["global_note"], tiny), Spacer(1, 3 * mm)])
-    leader_rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(copy["target_rank"], table_head), p(copy["match_leader"], table_head)]]
+    home_team = context.get("home_team") or copy["team_one_leader"]
+    away_team = context.get("away_team") or copy["team_two_leader"]
+    leader_rows = [[p(copy["indicator"], table_head), p(copy["target"], table_head), p(home_team, table_head), p(away_team, table_head)]]
     for item in analysis.get("global_benchmarks") or []:
-        rank = item.get("target_rank") or {}
-        rank_value = rank_text(rank)
-        leaders = item.get("leaders") or []
-        leader_text = "\n".join(
-            f"{leader.get('name')} · {leader.get('team')} · {leader.get('position')} · "
-            f"{leader.get('display')} ({leader.get('minutes')} min)"
-            for leader in leaders
-        ) or "—"
+        team_leaders = item.get("team_leaders") or []
+        by_team = {str(leader.get("team") or ""): leader for leader in team_leaders}
+
+        def team_leader_text(team):
+            leader = by_team.get(str(team or ""))
+            if not leader:
+                return "—"
+            return (
+                f"{leader.get('name')} · {leader.get('position')} · "
+                f"{leader.get('display')} ({leader.get('minutes')} min)"
+            )
+
         leader_rows.append(
             [
                 [p(item.get("label"), body_bold), p(item.get("definition") or "", tiny)],
                 p(item.get("target_display") or "—", body_bold),
-                p(rank_value, body),
-                p(leader_text, small),
+                p(team_leader_text(home_team), small),
+                p(team_leader_text(away_team), small),
             ]
         )
     if len(leader_rows) == 1:
         leader_rows.append([p(copy["no_data"], body), p("—", body), p("—", body), p("—", body)])
-    story.append(standard_table(leader_rows, [55 * mm, 30 * mm, 23 * mm, 61 * mm]))
+    story.append(standard_table(leader_rows, [51 * mm, 25 * mm, 46.5 * mm, 46.5 * mm]))
 
-    story.extend([PageBreak(), section_title(copy["method"], section_number), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
-    section_number += 1
+    story.extend([PageBreak(), section_title(copy["method"], 11), note_box(copy["method_text"], "neutral"), Spacer(1, 4 * mm)])
     if confidence.get("explanation"):
         story.extend([note_box(confidence.get("explanation"), "warning", True), Spacer(1, 4 * mm)])
     story.extend([p(narrative.get("sample_caution") or "", body), Spacer(1, 3 * mm), p(narrative.get("video_limit") or "", body), Spacer(1, 6 * mm), p(copy["source"], h2)])
@@ -1861,7 +1913,7 @@ def render_performance_pdf(report):
     story.extend(
         [
             PageBreak(),
-            section_title(copy["appendix"], section_number),
+            section_title(copy["appendix"], 10),
             note_box(copy["full_data_note"], "neutral"),
             Spacer(1, 2 * mm),
             p(copy["columns_presented"].format(count=analysis.get("appendix_total_columns", 0)), small),
@@ -1907,6 +1959,56 @@ def render_performance_pdf(report):
             rows.append(cells)
         story.append(standard_table(rows, [54 * mm, 30.5 * mm, 54 * mm, 30.5 * mm], extra_style=extra_style))
         story.append(Spacer(1, 4 * mm))
+
+    # The blocks above are assembled independently so each remains easy to
+    # maintain.  Present them in the fixed player-facing editorial order:
+    # opinion, phases, score, championship reference, pitch footprint,
+    # strengths, improvements, action plan, comparisons, data, methodology.
+    def section_start(number, label):
+        prefix = f"{number:02d}"
+        for index, flowable in enumerate(story):
+            if not isinstance(flowable, Paragraph):
+                continue
+            plain = flowable.getPlainText().strip()
+            if plain.startswith(prefix) and label in plain:
+                if index and isinstance(story[index - 1], PageBreak):
+                    return index - 1
+                return index
+        return None
+
+    starts = {
+        "phase": section_start(2, copy["performance_reading"]),
+        "score": section_start(3, copy["score_explained"]),
+        "benchmark": section_start(4, copy["position_benchmark"]),
+        "maps": section_start(5, copy["maps"]),
+        "strengths": section_start(6, copy["strengths"]),
+        "comparisons": section_start(9, copy["comparisons"]),
+        "appendix": section_start(10, copy["appendix"]),
+        "method": section_start(11, copy["method"]),
+    }
+    if all(value is not None for value in starts.values()):
+        chunks = {
+            "prefix": story[: starts["score"]],
+            "score": story[starts["score"] : starts["benchmark"]],
+            "benchmark": story[starts["benchmark"] : starts["phase"]],
+            "phase": story[starts["phase"] : starts["maps"]],
+            "maps": story[starts["maps"] : starts["strengths"]],
+            "strengths": story[starts["strengths"] : starts["comparisons"]],
+            "comparisons": story[starts["comparisons"] : starts["method"]],
+            "method": story[starts["method"] : starts["appendix"]],
+            "appendix": story[starts["appendix"] :],
+        }
+        story[:] = (
+            chunks["prefix"]
+            + chunks["phase"]
+            + chunks["score"]
+            + chunks["benchmark"]
+            + chunks["maps"]
+            + chunks["strengths"]
+            + chunks["comparisons"]
+            + chunks["appendix"]
+            + chunks["method"]
+        )
 
     document.build(story, onFirstPage=first_page, onLaterPages=later_pages)
     return buffer.getvalue()

@@ -2,7 +2,11 @@ from django import forms
 
 from gestion_joueurs.models import Player
 
-from .models import PerformanceReport, SportsBaseSubscription
+from .models import (
+    PerformanceReport,
+    PerformanceSubscriptionPayment,
+    SportsBaseSubscription,
+)
 
 
 class SportsBaseSubscriptionForm(forms.ModelForm):
@@ -19,6 +23,9 @@ class SportsBaseSubscriptionForm(forms.ModelForm):
             "email_delivery_enabled",
             "youtube_delivery_enabled",
             "report_language",
+            "total_amount",
+            "currency",
+            "payment_url",
             "sync_interval_hours",
             "is_active",
         )
@@ -54,6 +61,35 @@ class SportsBaseSubscriptionForm(forms.ModelForm):
                 "Ajoutez d’abord le lien SportsBase dans la fiche de ce joueur.",
             )
         return cleaned
+
+
+class PerformanceSubscriptionPaymentForm(forms.ModelForm):
+    class Meta:
+        model = PerformanceSubscriptionPayment
+        fields = ("amount", "payment_date", "payment_method", "reference", "notes")
+        widgets = {
+            "payment_date": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, subscription=None, **kwargs):
+        self.subscription = subscription
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "form-control"
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if (
+            self.subscription
+            and self.subscription.total_amount > 0
+            and amount > self.subscription.remaining_balance
+        ):
+            raise forms.ValidationError(
+                f"Le montant dépasse le solde restant de "
+                f"{self.subscription.remaining_balance:.2f} {self.subscription.currency}."
+            )
+        return amount
 
 
 class PerformanceReportForm(forms.ModelForm):

@@ -22,6 +22,11 @@ urlpatterns = [
         name="subscription_edit",
     ),
     path(
+        "gestion/performances/<int:pk>/paiements/ajouter/",
+        views.subscription_payment_add,
+        name="subscription_payment_add",
+    ),
+    path(
         "gestion/performances/<int:pk>/statut/",
         views.subscription_toggle,
         name="subscription_toggle",

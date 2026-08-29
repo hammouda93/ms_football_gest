@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     PerformanceReport,
+    PerformanceSubscriptionPayment,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -22,6 +23,22 @@ class SportsBaseSubscriptionAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active", "last_sync_state", "season")
     search_fields = ("player__name", "player__club", "player__sportsbase_url")
+
+
+@admin.register(PerformanceSubscriptionPayment)
+class PerformanceSubscriptionPaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "subscription",
+        "amount",
+        "payment_date",
+        "payment_method",
+        "reference",
+    )
+    list_filter = ("payment_method", "payment_date")
+    search_fields = (
+        "subscription__player__name",
+        "reference",
+    )
 
 
 @admin.register(SportsBaseSeasonSnapshot)

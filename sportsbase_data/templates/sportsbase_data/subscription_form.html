@@ -5,7 +5,8 @@
 {% block content %}
 <div class="performance-form-page">
     <nav class="ui-breadcrumb"><a href="{% url 'performance:management' %}">Abonnements Performance</a><span>›</span><span>{% if subscription %}{{ subscription.player.name }}{% else %}Nouveau{% endif %}</span></nav>
-    <header><span class="eyebrow">Configuration de l’accès</span><h1>{% if subscription %}Modifier l’abonnement{% else %}Activer Performance{% endif %}</h1><p>Cette configuration ajoute un service au joueur sans modifier ses vidéos, paiements ou informations existantes.</p></header>
+    <header><span class="eyebrow">Configuration de l’accès</span><h1>{% if subscription %}Modifier l’abonnement{% else %}Activer Performance{% endif %}</h1><p>Cette configuration gère l’abonnement Performance indépendamment des productions vidéo et de leurs règlements.</p></header>
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
     <form method="post" class="performance-subscription-form">
         {% csrf_token %}
         {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
@@ -20,6 +21,22 @@
         </div>
         <div class="performance-form-actions"><a class="btn btn-outline-secondary" href="{% url 'performance:management' %}">Annuler</a><button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> Enregistrer</button></div>
     </form>
+    {% if subscription %}
+    <section class="performance-payment-panel">
+        <div class="panel-heading"><div><span class="eyebrow">Règlement de l’abonnement</span><h2>Suivi des paiements Performance</h2><p>Enregistrez chaque règlement sans le mélanger aux paiements des productions vidéo.</p></div><i class="fas fa-receipt"></i></div>
+        <div class="performance-payment-summary state-{{ subscription.payment_state }}">
+            <article><span>Prix</span><strong>{{ subscription.total_amount|floatformat:2 }} {{ subscription.currency }}</strong></article>
+            <article><span>Payé</span><strong>{{ subscription.amount_paid|floatformat:2 }} {{ subscription.currency }}</strong></article>
+            <article><span>Solde</span><strong>{{ subscription.remaining_balance|floatformat:2 }} {{ subscription.currency }}</strong></article>
+        </div>
+        <form class="performance-payment-form" method="post" action="{% url 'performance:subscription_payment_add' subscription.pk %}">
+            {% csrf_token %}
+            {% for field in payment_form %}<label><span>{{ field.label }}</span>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}</label>{% endfor %}
+            <button class="btn btn-success" type="submit"><i class="fas fa-plus"></i> Enregistrer le paiement</button>
+        </form>
+        <div class="table-responsive performance-payment-history"><table class="table"><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Référence</th><th>Enregistré par</th></tr></thead><tbody>{% for payment in payments %}<tr><td>{{ payment.payment_date|date:"d/m/Y" }}</td><td><strong>{{ payment.amount|floatformat:2 }} {{ subscription.currency }}</strong></td><td>{{ payment.get_payment_method_display }}</td><td>{{ payment.reference|default:"—" }}</td><td>{{ payment.created_by|default:"—" }}</td></tr>{% empty %}<tr><td colspan="5">Aucun paiement enregistré pour cet abonnement.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+    {% endif %}
 </div>
 {% endblock %}
 {% block extra_js %}<script>if(window.jQuery&&$.fn.select2){$('.searchable-player-select').select2({width:'100%',placeholder:'Rechercher un joueur'});}</script>{% endblock %}

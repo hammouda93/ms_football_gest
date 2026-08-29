@@ -19,8 +19,12 @@ from client_portal.decorators import (
 from client_portal.models import PlayerAccess, PortalProfile
 from client_portal.services import accessible_players_for
 
-from .analysis_engine import platform_index
-from .forms import PerformanceReportForm, SportsBaseSubscriptionForm
+from .analysis_engine import ms_rating, platform_index
+from .forms import (
+    PerformanceReportForm,
+    PerformanceSubscriptionPaymentForm,
+    SportsBaseSubscriptionForm,
+)
 from .models import (
     PerformanceReport,
     SportsBaseMatch,
@@ -208,6 +212,7 @@ def _build_match_headline(report):
         "assists": metric_value("Assists"),
         "key_passes": metric_value("Key passes"),
         "ms_score": score,
+        "rating_10": verdict.get("rating_10") or player.get("rating_10") or ms_rating(score),
         "verdict": str(verdict.get("label") or "—"),
         "tone": tone,
     }
@@ -406,8 +411,53 @@ def subscription_form(request, pk=None):
     return render(
         request,
         "sportsbase_data/subscription_form.html",
-        {"form": form, "subscription": subscription},
+        {
+            "form": form,
+            "subscription": subscription,
+            "payments": subscription.payments.all() if subscription else (),
+            "payment_form": PerformanceSubscriptionPaymentForm(
+                subscription=subscription,
+                initial={
+                    "amount": subscription.remaining_balance,
+                    "payment_date": timezone.localdate(),
+                }
+                if subscription and subscription.remaining_balance > 0
+                else {"payment_date": timezone.localdate()},
+            )
+            if subscription
+            else None,
+        },
     )
+
+
+@portal_admin_required
+@require_POST
+def subscription_payment_add(request, pk):
+    subscription = get_object_or_404(SportsBaseSubscription, pk=pk)
+    form = PerformanceSubscriptionPaymentForm(
+        request.POST,
+        subscription=subscription,
+    )
+    if form.is_valid():
+        payment = form.save(commit=False)
+        payment.subscription = subscription
+        payment.created_by = request.user
+        payment.save()
+        messages.success(
+            request,
+            f"Paiement de {payment.amount:.2f} {subscription.currency} enregistré.",
+        )
+    else:
+        messages.error(
+            request,
+            "Le paiement n’a pas été enregistré : "
+            + " ".join(
+                error
+                for errors in form.errors.values()
+                for error in errors
+            ),
+        )
+    return redirect("performance:subscription_edit", pk=subscription.pk)
 
 
 @portal_admin_required

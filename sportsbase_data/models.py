@@ -1,11 +1,19 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Sum
 from django.utils import timezone
 
 
 class SportsBaseSubscription(models.Model):
+    class Currency(models.TextChoices):
+        TND = "TND", "TND"
+        EUR = "EUR", "EUR"
+        USD = "USD", "USD"
+
     class ReportLanguage(models.TextChoices):
         FRENCH = "fr", "Français"
         ENGLISH = "en", "English"
@@ -63,6 +71,24 @@ class SportsBaseSubscription(models.Model):
         choices=ReportLanguage.choices,
         default=ReportLanguage.FRENCH,
     )
+    total_amount = models.DecimalField(
+        "Prix de l’abonnement",
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=(MinValueValidator(Decimal("0.00")),),
+    )
+    currency = models.CharField(
+        "Devise",
+        max_length=3,
+        choices=Currency.choices,
+        default=Currency.TND,
+    )
+    payment_url = models.URLField(
+        "Lien de paiement",
+        blank=True,
+        help_text="Facultatif : lien sécurisé affiché dans l’espace joueur pour régler l’abonnement.",
+    )
     sync_interval_hours = models.PositiveSmallIntegerField(
         "Intervalle de synchronisation (heures)",
         default=24,
@@ -117,6 +143,71 @@ class SportsBaseSubscription(models.Model):
             and self.starts_on <= today
             and (self.ends_on is None or self.ends_on >= today)
         )
+
+    @property
+    def amount_paid(self):
+        return self.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+
+    @property
+    def remaining_balance(self):
+        return max(Decimal("0.00"), self.total_amount - self.amount_paid)
+
+    @property
+    def payment_state(self):
+        if self.total_amount <= 0:
+            return "not_configured"
+        if self.remaining_balance <= 0:
+            return "paid"
+        if self.amount_paid > 0:
+            return "partial"
+        return "unpaid"
+
+
+class PerformanceSubscriptionPayment(models.Model):
+    class Method(models.TextChoices):
+        CASH = "cash", "Espèces"
+        BANK_TRANSFER = "bank_transfer", "Virement bancaire"
+        POST = "la_poste", "La Poste"
+        ONLINE = "online", "Paiement en ligne"
+        OTHER = "other", "Autre"
+
+    subscription = models.ForeignKey(
+        SportsBaseSubscription,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        verbose_name="Abonnement Performance",
+    )
+    amount = models.DecimalField(
+        "Montant",
+        max_digits=10,
+        decimal_places=2,
+        validators=(MinValueValidator(Decimal("0.01")),),
+    )
+    payment_date = models.DateField("Date du paiement", default=timezone.localdate)
+    payment_method = models.CharField(
+        "Mode de paiement",
+        max_length=24,
+        choices=Method.choices,
+        default=Method.BANK_TRANSFER,
+    )
+    reference = models.CharField("Référence", max_length=120, blank=True)
+    notes = models.TextField("Notes", blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_performance_subscription_payments",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-payment_date", "-created_at")
+        verbose_name = "Paiement d’abonnement Performance"
+        verbose_name_plural = "Paiements d’abonnements Performance"
+
+    def __str__(self):
+        return f"{self.subscription.player} — {self.amount} {self.subscription.currency}"
 
 
 class SportsBaseSeasonSnapshot(models.Model):

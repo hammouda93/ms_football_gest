@@ -8,7 +8,7 @@ appearance into a fictitious 90-minute performance.
 import math
 import re
 import unicodedata
-ANALYSIS_VERSION = "ms-position-score-duration-radar-v13-20260828"
+ANALYSIS_VERSION = "ms-rating-10-report-structure-v14-20260829"
 
 
 # The public InStat / Wyscout / SportsBase products do not publish a formula
@@ -1523,6 +1523,19 @@ def platform_index(value):
     return int(adjusted) if adjusted.is_integer() else round(adjusted, 2)
 
 
+def ms_rating(value):
+    """Expose the auditable 0-100 mission score as a universal 0-10 rating.
+
+    The position model remains untouched.  Dividing by ten changes only the
+    player-facing scale and therefore preserves every role weight, threshold,
+    decisive adjustment and ranking validation already approved.
+    """
+    number = _number(value)
+    if number is None:
+        return None
+    return round(max(0.0, min(100.0, number)) / 10, 1)
+
+
 def _rate(value):
     number = _number(value)
     if number is None:
@@ -2690,6 +2703,7 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None, group=
     return {
         "version": "ms-position-100-v2",
         "scale": "bounded_0_100",
+        "display_scale": "0_10",
         "formula": formula,
         "mission_quality_formula": formula,
         "dimensions": result,
@@ -2705,6 +2719,7 @@ def _score_breakdown(dimensions, language, *, target=None, rankings=None, group=
         "penalty_points": round(penalty_points, 2),
         "raw_total_points": round(score_before_clamp, 2),
         "total_points": total_points,
+        "rating_10": ms_rating(total_points),
         "band_code": band_code,
         "point_events": point_events,
         "decisive_rules": [
@@ -2842,6 +2857,7 @@ def _verdict(score, language, *, target=None, rankings=None, mission_quality_sco
         "label": copy[code],
         "score": score,
         "ms_score": score,
+        "rating_10": ms_rating(score),
         "mission_score": mission_quality_score,
         "mission_quality_score": mission_quality_score,
         "tone": tone,
@@ -3317,6 +3333,33 @@ def _global_benchmarks(target, rows, group, language):
             if metric == "__duels_won__"
             else _definition(metric, language)
         )
+        teams = list(
+            dict.fromkeys(str(row.get("Team") or "") for row, _value in candidates)
+        )
+        team_leaders = []
+        for team in teams:
+            team_candidates = [
+                (row, value)
+                for row, value in candidates
+                if str(row.get("Team") or "") == team
+            ]
+            if not team_candidates:
+                continue
+            team_best = max(value for _row, value in team_candidates)
+            row = next(
+                row
+                for row, value in team_candidates
+                if abs(value - team_best) < 1e-9
+            )
+            team_leaders.append(
+                {
+                    "name": str(row.get("Player") or ""),
+                    "team": team,
+                    "position": _position(row),
+                    "minutes": round(_minutes(row)),
+                    "display": _benchmark_display(row, metric, _group(row), language),
+                }
+            )
         results.append(
             {
                 "metric": metric,
@@ -3335,6 +3378,7 @@ def _global_benchmarks(target, rows, group, language):
                     }
                     for row in leaders[:2]
                 ],
+                "team_leaders": team_leaders[:2],
             }
         )
     return results
@@ -3379,7 +3423,7 @@ def _rankings(target, rows, dimensions, language):
     return result
 
 
-def _territorial_profile(points, language):
+def _territorial_profile(points, target, language):
     valid = []
     for point in points or []:
         x = _number(point.get("left_pct")) if isinstance(point, dict) else None
@@ -3401,21 +3445,68 @@ def _territorial_profile(points, language):
     total = len(valid)
     thirds_pct = {key: round(value / total * 100) for key, value in thirds.items()}
     lanes_pct = {key: round(value / total * 100) for key, value in lanes.items()}
-    note = {
-        "fr": "Les tiers gauche/droit suivent l’affichage de la carte source : le sens d’attaque n’est pas déduit sans donnée explicite.",
-        "en": "Left/right thirds follow the source-map display; attacking direction is not inferred without explicit data.",
-        "ar": "الثلثان الأيسر والأيمن يتبعان عرض خريطة المصدر ولا يتم افتراض اتجاه الهجوم دون بيانات صريحة.",
-    }[language]
+    group = _group(target or {})
+    defensive = thirds_pct["displayed_left"]
+    middle = thirds_pct["displayed_middle"]
+    attacking = thirds_pct["displayed_right"]
+    wide = lanes_pct["wide"]
+    central = lanes_pct["central"]
+    if language == "fr":
+        if group in {"full_back", "wing_back"}:
+            interpretation = (
+                f"Profil de couloir : {wide} % des contacts sont en largeur et {attacking} % dans le tiers offensif. "
+                "Cette répartition décrit le niveau de projection du latéral ou piston pendant cette rencontre."
+            )
+        elif group == "winger":
+            interpretation = (
+                f"Occupation offensive de couloir : {attacking} % des contacts sont dans le tiers offensif et "
+                f"{wide} % en largeur. La valeur technique de ces réceptions est lue avec les dribbles, centres et créations."
+            )
+        elif group == "forward":
+            interpretation = (
+                f"Occupation de la ligne d’attaque : {attacking} % des contacts sont dans le tiers offensif et "
+                f"{central} % dans l’axe. Les actions dans la surface et les tirs précisent ensuite la menace réelle."
+            )
+        elif group == "centre_back":
+            interpretation = (
+                f"Empreinte de première relance : {defensive} % des contacts sont dans le tiers défensif et "
+                f"{middle} % dans le tiers médian. La progression se juge ensuite par les passes vers l’avant."
+            )
+        else:
+            interpretation = (
+                f"Occupation entre les lignes : {middle} % des contacts sont dans le tiers médian et "
+                f"{attacking} % dans le tiers offensif. Les entrées dans le dernier tiers précisent la projection."
+            )
+        note = "Lecture normalisée de gauche à droite : Défense → Attaque."
+    elif language == "en":
+        interpretation = (
+            f"Position reading: {defensive}% of contacts were in the defensive third, {middle}% in the middle third "
+            f"and {attacking}% in the attacking third. Role KPIs qualify the value of that territory."
+        )
+        note = "Normalised left-to-right reading: Defence → Attack."
+    else:
+        interpretation = (
+            f"التمركز: {defensive}% من اللمسات في الثلث الدفاعي و{middle}% في الثلث الأوسط "
+            f"و{attacking}% في الثلث الهجومي، وتوضح مؤشرات المركز قيمة هذا التمركز."
+        )
+        note = "القراءة من اليسار إلى اليمين: دفاع ← هجوم."
     return {
         "available": True,
         "total_touches": total,
         "displayed_thirds": thirds_pct,
+        "phases": {
+            "defensive": defensive,
+            "middle": middle,
+            "attacking": attacking,
+        },
         "lanes": lanes_pct,
         "average_location": {
             "x": round(sum(x for x, _y in valid) / total, 1),
             "y": round(sum(y for _x, y in valid) / total, 1),
         },
-        "attack_direction_normalized": False,
+        "attack_direction_normalized": True,
+        "direction_label": note,
+        "interpretation": interpretation,
         "note": note,
     }
 
@@ -3435,7 +3526,7 @@ def _context_payload(target, context, language):
         "score": str(context.get("score") or ""),
         "match_date": str(context.get("match_date") or ""),
         "performance_context_analysis": False,
-        "territory": _territorial_profile(points, language),
+        "territory": _territorial_profile(points, target, language),
     }
 
 
@@ -3807,6 +3898,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
         group=group,
     )
     ms_score = score_breakdown.get("total_points")
+    rating_10 = ms_rating(ms_score)
     confidence = _confidence(_minutes(target), language)
     context_payload = _context_payload(target, context, language)
     key_metrics = _key_metrics(target, population, group, language)
@@ -3860,6 +3952,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "index": platform_index(target.get("Index")),
             "profile_score": profile_score,
             "ms_score": ms_score,
+            "rating_10": rating_10,
         },
         "verdict": verdict,
         "decisive_highlights": _decisive_highlights(target, language),
@@ -3902,6 +3995,7 @@ def analyse_match_dataset(rows, player_name, language="fr", context=None):
             "match_result_context_analysis": False,
             "index_usage": "display_offset_plus_20_with_unchanged_rank_validation",
             "score_calibration": "nine_matches_265_player_rows_same_match_same_position_comparisons",
+            "score_display_scale": "0_to_10_one_decimal_same_position_model",
             "position_benchmark_selection": "highest_stored_position_percentage",
             "position_benchmark_scale": "real_match_totals_vs_position_average_adjusted_to_exact_minutes",
             "position_benchmark_score_usage": "priority_axes_inside_existing_missions_only_70_role_30_position_reference_weight_1_35",

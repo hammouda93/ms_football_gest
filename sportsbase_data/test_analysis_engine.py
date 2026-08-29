@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from .analysis_engine import (
     SPORTSBASE_PLAYER_COLUMNS,
     analyse_match_dataset,
+    ms_rating,
     platform_index,
 )
 from .report_pdf import PDF_COPY, render_performance_pdf
@@ -63,6 +64,21 @@ class PlayersWorkbookReaderTests(unittest.TestCase):
 
 
 class PositionAnalysisTests(unittest.TestCase):
+    def test_ms_rating_is_a_display_scale_without_recalculating_the_score(self):
+        self.assertEqual(ms_rating(75), 7.5)
+        self.assertEqual(ms_rating(56), 5.6)
+        self.assertIsNone(ms_rating(None))
+        rows = [
+            _row("Target", "Team A", "RCM", 90),
+            _row("Opponent", "Team B", "RCM", 90),
+        ]
+        analysis = analyse_match_dataset(rows, "Target", "fr")
+        self.assertEqual(
+            analysis["player"]["rating_10"],
+            round(analysis["player"]["ms_score"] / 10, 1),
+        )
+        self.assertEqual(analysis["score_breakdown"]["display_scale"], "0_10")
+
     def test_ms_index_uses_fixed_display_offset_without_changing_missing_values(self):
         self.assertEqual(platform_index(180), 200)
         self.assertEqual(platform_index("201"), 221)
@@ -342,6 +358,47 @@ class PositionAnalysisTests(unittest.TestCase):
         self.assertFalse(rate["target_rank"]["available"])
         won = next(item for item in analysis["global_benchmarks"] if item["metric"] == "__duels_won__")
         self.assertEqual(won["leaders"][0]["name"], "A1")
+
+    def test_global_role_benchmarks_expose_the_best_player_of_each_team(self):
+        rows = [
+            _row("Target", "Team A", "RB", 90, **{"Final third entries": 6}),
+            _row("A Peer", "Team A", "LB", 90, **{"Final third entries": 3}),
+            _row("B Leader", "Team B", "RB", 90, **{"Final third entries": 8}),
+            _row("B Peer", "Team B", "LB", 90, **{"Final third entries": 2}),
+        ]
+        analysis = analyse_match_dataset(rows, "Target", "fr")
+        benchmark = next(
+            item
+            for item in analysis["global_benchmarks"]
+            if item["metric"] == "Final third entries"
+        )
+        self.assertEqual(
+            [(item["team"], item["name"]) for item in benchmark["team_leaders"]],
+            [("Team A", "Target"), ("Team B", "B Leader")],
+        )
+
+    def test_pitch_footprint_is_read_left_to_right_for_the_player_role(self):
+        points = [
+            {"left_pct": 10, "top_pct": 10},
+            {"left_pct": 50, "top_pct": 50},
+            {"left_pct": 80, "top_pct": 90},
+            {"left_pct": 90, "top_pct": 15},
+        ]
+        rows = [
+            _row("Target", "Team A", "RWB", 90),
+            _row("Opponent", "Team B", "RWB", 90),
+        ]
+        analysis = analyse_match_dataset(
+            rows,
+            "Target",
+            "fr",
+            context={"source_metadata": {"ball_touches_points": points}},
+        )
+        territory = analysis["context"]["territory"]
+        self.assertTrue(territory["attack_direction_normalized"])
+        self.assertEqual(territory["phases"]["attacking"], 50)
+        self.assertIn("Défense → Attaque", territory["direction_label"])
+        self.assertIn("couloir", territory["interpretation"])
 
     def test_only_exact_opposition_position_is_compared(self):
         rows = [
@@ -1037,6 +1094,8 @@ class PerformancePdfTests(unittest.TestCase):
         visible_copy = str(PDF_COPY).lower()
         self.assertNotIn("sportsbase", visible_copy)
         self.assertNotIn("سبورتس", visible_copy)
+        self.assertNotIn("moteur", visible_copy)
+        self.assertNotIn("automatic report", visible_copy)
 
     def test_professional_report_is_a_multipage_pdf(self):
         rows = [

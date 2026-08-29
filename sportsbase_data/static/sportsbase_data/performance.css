@@ -74,6 +74,8 @@
 .performance-profile-main { z-index: 1; min-width: 0; }
 .performance-position-list { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .performance-position-list span { padding: 4px 8px; color: #dffbf6; background: rgba(13, 148, 136, .2); border: 1px solid rgba(94, 234, 212, .22); border-radius: 999px; font-size: .59rem; font-weight: 750; }
+.performance-transfermarkt-link { display: inline-flex; width: fit-content; min-height: 32px; align-items: center; gap: 7px; margin: 9px 0 0; padding: 6px 10px; color: #fff; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; font-size: .62rem; font-weight: 800; text-decoration: none; }
+.performance-transfermarkt-link:hover { color: #fff; background: rgba(255, 255, 255, .18); text-decoration: none; }
 .performance-sync-copy { display: flex; z-index: 1; align-items: flex-end; flex-direction: column; gap: 10px; text-align: right; }
 .performance-sync-copy small { color: #b6c7d7; font-size: .68rem; line-height: 1.5; }
 
@@ -309,6 +311,20 @@
 .performance-checkbox > span { display: inline; margin: 0 !important; }
 .field-error { margin-top: 5px; color: var(--performance-red); font-size: .62rem; font-style: normal; }
 .performance-form-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--performance-border); }
+.performance-payment-panel, .performance-portal-payment { margin-top: 18px; padding: 20px; background: #fff; border: 1px solid var(--performance-border); border-radius: 20px; box-shadow: 0 12px 28px rgba(15, 38, 64, .07); }
+.performance-payment-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.performance-payment-summary article, .performance-payment-summary > div { display: flex; min-height: 72px; flex-direction: column; justify-content: center; gap: 5px; padding: 13px 15px; color: var(--performance-muted); background: var(--performance-soft); border: 1px solid var(--performance-border); border-radius: 14px; font-size: .65rem; }
+.performance-payment-summary strong { color: var(--performance-text); font-size: 1rem; }
+.performance-payment-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 12px; margin-top: 16px; padding: 16px; background: #f8fafc; border-radius: 15px; }
+.performance-payment-form label { display: flex; margin: 0; flex-direction: column; gap: 5px; color: #334155; font-size: .68rem; font-weight: 750; }
+.performance-payment-form label:has(textarea), .performance-payment-form button { grid-column: 1 / -1; }
+.performance-payment-history { margin-top: 16px; }
+.performance-payment-history table { width: 100%; }
+.performance-payment-button, .performance-payment-complete { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
+.performance-payment-complete { color: var(--performance-green); font-size: .75rem; font-weight: 800; }
+.payment-paid b, .state-paid .performance-payment-summary strong { color: var(--performance-green); }
+.payment-partial b, .state-partial .performance-payment-summary strong { color: #b7791f; }
+.payment-unpaid b, .state-unpaid .performance-payment-summary strong { color: var(--performance-red); }
 .report-editor-heading { display: flex; max-width: 920px !important; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .report-editor-context { display: flex; max-width: 920px; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .report-editor-context span { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; color: #415167; background: #fff; border: 1px solid var(--performance-border); border-radius: 999px; font-size: .64rem; font-weight: 750; }
@@ -359,6 +375,7 @@
     .performance-filter-bar, .performance-subscription-row { grid-template-columns: 1fr; }
     .performance-row-actions { justify-content: flex-start; }
     .performance-form-grid { grid-template-columns: 1fr; }
+    .performance-payment-summary, .performance-payment-form { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 440px) {
