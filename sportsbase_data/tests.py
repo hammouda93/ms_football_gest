@@ -465,11 +465,12 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(detail, "86%")
         self.assertContains(detail, "45")
         self.assertContains(detail, "performance-analysis-card")
-        self.assertContains(detail, "45%")
+        self.assertContains(detail, "90 min")
+        self.assertContains(detail, "Sur les matchs analysés")
         self.assertContains(detail, "--analysis-progress: 86.0%")
         html = detail.content.decode()
-        self.assertLess(html.index("Index"), html.index("Matchs joués"))
-        self.assertLess(html.index("Matchs joués"), html.index("Buts"))
+        self.assertLess(html.index("Index moyen"), html.index("Matchs analysés"))
+        self.assertLess(html.index("Matchs analysés"), html.index("Buts"))
         self.assertLess(html.index("Buts"), html.index("Passes décisives"))
         season_pairs = detail.context["season_analysis_pairs"]
         season_passes = next(
@@ -485,7 +486,7 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(match, "Volume et efficacité")
         self.assertContains(match, "Passes réussies")
         self.assertContains(match, "89%")
-        self.assertContains(match, "Autres repères du match")
+        self.assertNotContains(match, "Autres repères du match")
         self.assertContains(match, "Vue collective")
         self.assertContains(match, "All Actions")
         self.assertNotContains(match, "Analyse complète")
@@ -580,6 +581,163 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(response, "6.75")
         self.assertContains(response, "1.44")
         self.assertContains(response, "1.12")
+
+    def test_portal_season_aggregates_two_then_three_analysed_matches(self):
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=self.match,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 1",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 80,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Goals"}],
+                    }
+                ],
+            },
+        )
+        second = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772539",
+            season=self.subscription.season,
+            home_team="Stade Tunisien",
+            away_team="Club Africain",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=second,
+            team_name="Stade Tunisien",
+            index=181,
+            minutes_played=30,
+            detailed_statistics={
+                "Goals": "1",
+                "Assists": "1",
+                "Passes": "10",
+                "Challenges": "2",
+                "Challenges won": "1",
+                "Challenges won, %": "50%",
+                "Key passes": "1",
+            },
+        )
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=second,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 2",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 60,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Assists"}],
+                    }
+                ],
+            },
+        )
+        user = self.portal_user("tracked-season-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        summary = response.context["tracked_season_summary"]
+        self.assertEqual(summary["match_count"], 2)
+        self.assertEqual(summary["index_average"], 211)
+        self.assertEqual(summary["goals"], 2)
+        self.assertEqual(summary["assists"], 1)
+        self.assertEqual(summary["minutes_total"], 120)
+        self.assertEqual(summary["minutes_average"], 60)
+        challenges = next(
+            item
+            for item in response.context["tracked_season_pairs"]
+            if item["name"] == "Challenges"
+        )
+        self.assertEqual(challenges["total_value"], 10)
+        self.assertEqual(challenges["value"], 5)
+        self.assertEqual(challenges["rate_value"], "59.6%")
+        mission = response.context["tracked_season_missions"][0]
+        self.assertEqual(mission["label"], "Impact décisif")
+        self.assertEqual(mission["rating_10"], 7.0)
+        self.assertEqual(mission["match_count"], 2)
+        self.assertContains(response, "Saison MS Performance")
+        self.assertContains(response, "Statistiques générales de la saison")
+
+        third = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772540",
+            season=self.subscription.season,
+            home_team="Espérance Tunis",
+            away_team="Stade Tunisien",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=third,
+            team_name="Stade Tunisien",
+            index=161,
+            minutes_played=60,
+            detailed_statistics={
+                "Goals": "0",
+                "Assists": "0",
+                "Passes": "20",
+                "Challenges": "5",
+                "Challenges won, %": "80%",
+                "Key passes": "0",
+            },
+        )
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=third,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 3",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 90,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Key passes"}],
+                    }
+                ],
+            },
+        )
+
+        updated = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        updated_summary = updated.context["tracked_season_summary"]
+        self.assertEqual(updated_summary["match_count"], 3)
+        self.assertEqual(updated_summary["index_average"], 201)
+        self.assertEqual(updated_summary["goals"], 2)
+        self.assertEqual(updated_summary["minutes_total"], 180)
+        updated_challenges = next(
+            item
+            for item in updated.context["tracked_season_pairs"]
+            if item["name"] == "Challenges"
+        )
+        self.assertEqual(updated_challenges["total_value"], 15)
+        self.assertEqual(updated_challenges["value"], 5)
+        self.assertEqual(updated_challenges["rate_value"], "66.4%")
+        self.assertEqual(
+            updated.context["tracked_season_missions"][0]["rating_10"],
+            7.7,
+        )
 
 
 class ScraperNormalizationTests(TestCase):

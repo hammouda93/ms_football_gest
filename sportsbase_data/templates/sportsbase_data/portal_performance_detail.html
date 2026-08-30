@@ -29,14 +29,73 @@
 </section>
 {% endif %}
 
-{% if snapshot %}
+{% if tracked_season_summary.match_count %}
 <section class="performance-kpi-grid performance-season-kpis">
-    <article class="kpi-index"><i class="fas fa-gauge-high"></i><span>{{ copy.index }}</span><strong>{{ snapshot.season_statistics|dict_get:"Index"|ms_index }}</strong><small>{{ copy.global_indicator }}</small></article>
-    <article class="kpi-matches"><i class="fas fa-calendar-check"></i><span>{{ copy.matches_played }}</span><strong>{{ snapshot.season_statistics|dict_get:"Matches played"|stat_value }}</strong><small>{{ subscription.season }}</small></article>
-    <article class="kpi-goals"><i class="fas fa-futbol"></i><span>{{ "Goals"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Goals"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
-    <article class="kpi-assists"><i class="fas fa-wand-magic-sparkles"></i><span>{{ "Assists"|stat_label_for:portal_language }}</span><strong>{{ snapshot.season_statistics|dict_get:"Assists"|stat_value }}</strong><small>{{ copy.season_total }}</small></article>
-    <article class="kpi-time"><i class="fas fa-clock"></i><span>{{ copy.field_time }}</span><strong>{{ time_on_field_display }}</strong><small>{{ copy.first_team }}</small></article>
+    <article class="kpi-index"><i class="fas fa-gauge-high"></i><span>{{ copy.average_index }}</span><strong>{{ tracked_season_summary.index_average|stat_value }}</strong><small>{{ copy.analysed_matches_reference }}</small></article>
+    <article class="kpi-matches"><i class="fas fa-calendar-check"></i><span>{{ copy.matches_analysed }}</span><strong>{{ tracked_season_summary.match_count }}</strong><small>{{ subscription.season }}</small></article>
+    <article class="kpi-goals"><i class="fas fa-futbol"></i><span>{{ "Goals"|stat_label_for:portal_language }}</span><strong>{{ tracked_season_summary.goals|stat_value }}</strong><small>{{ copy.analysed_total }}</small></article>
+    <article class="kpi-assists"><i class="fas fa-wand-magic-sparkles"></i><span>{{ "Assists"|stat_label_for:portal_language }}</span><strong>{{ tracked_season_summary.assists|stat_value }}</strong><small>{{ copy.analysed_total }}</small></article>
+    <article class="kpi-time"><i class="fas fa-clock"></i><span>{{ copy.minutes_analysed }}</span><strong>{{ tracked_season_summary.minutes_total|stat_value }} min</strong><small>{{ tracked_season_summary.minutes_average|stat_value }} {{ copy.minutes_per_match }} · {{ tracked_season_summary.time_share }}</small></article>
 </section>
+{% endif %}
+
+{% if tracked_season_summary.match_count %}
+<section class="performance-panel performance-match-analysis performance-season-analysis tracked-season-analysis">
+    <div class="performance-panel-heading">
+        <div><span class="eyebrow">{{ copy.ms_season_analysis }} · {{ subscription.season }}</span><h2>{{ copy.season_volume_efficiency }}</h2><p>{{ copy.tracked_season_help }}</p></div>
+        <i class="fas fa-chart-simple"></i>
+    </div>
+    {% if tracked_season_pairs %}
+    <div class="performance-paired-grid">
+        {% for item in tracked_season_pairs %}
+        <article class="performance-analysis-card{% if not item.has_rate %} is-unrated{% endif %}" style="--analysis-progress: {{ item.chart_percent }}%;">
+            <header>
+                <span class="performance-analysis-icon"><i class="fas {{ item.icon }}"></i></span>
+                <div><small>{{ item.name|stat_label_for:portal_language }}</small><span class="performance-analysis-primary"><strong>{{ item.value|stat_value }}</strong><em>{{ copy.per_match }}</em></span></div>
+            </header>
+            {% if item.rate_name %}
+            <div class="performance-analysis-visual">
+                <div class="performance-analysis-ring" role="img" aria-label="{{ item.rate_name|stat_label_for:portal_language }} : {{ item.rate_value|stat_value }}"><span>{{ item.rate_value|stat_value }}</span></div>
+                <div class="performance-analysis-rate">
+                    <span>{{ item.rate_name|stat_label_for:portal_language }}</span>
+                    <div class="performance-analysis-track" aria-hidden="true"><i></i></div>
+                    <em class="performance-analysis-average"><b>{{ item.total_value|stat_value }}</b> {{ copy.analysed_total|lower }}</em>
+                </div>
+            </div>
+            {% else %}
+            <div class="performance-analysis-standalone"><i class="fas fa-chart-line"></i><span>{{ item.total_value|stat_value }} {{ copy.analysed_total|lower }}</span></div>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+{% if tracked_season_missions %}
+<details class="performance-panel performance-compact-details performance-season-missions">
+    <summary><span><small>{{ copy.position_reference }}</small>{{ copy.season_position_missions }}</span><b>{{ tracked_season_missions|length }}</b><i class="fas fa-chevron-down"></i></summary>
+    <div class="performance-season-mission-grid">
+        {% for mission in tracked_season_missions %}
+        <article style="--mission-progress: {{ mission.chart_percent }}%;">
+            <header><span>{{ mission.label }}</span><strong>{{ mission.rating_10|floatformat:1 }}/10</strong></header>
+            <div class="performance-mission-track" aria-hidden="true"><i></i></div>
+            <small>{{ mission.match_count }} {{ copy.match_samples }}{% if mission.weight %} · {{ copy.mission_weight }} {{ mission.weight }}%{% endif %}</small>
+            {% if mission.kpis %}<p>{% for kpi in mission.kpis %}<span>{{ kpi|stat_label_for:portal_language }}</span>{% endfor %}</p>{% endif %}
+        </article>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
+
+{% if tracked_season_other %}
+<details class="performance-panel performance-compact-details tracked-season-other">
+    <summary><span><small>{{ copy.analysed_matches_reference }}</small>{{ copy.all_tracked_kpis }}</span><b>{{ tracked_season_other|length }}</b><i class="fas fa-chevron-down"></i></summary>
+    <div class="performance-tracked-stat-table">
+        <div class="performance-tracked-stat-head"><span>{{ copy.indicator }}</span><span>{{ copy.analysed_total }}</span><span>{{ copy.per_match }}</span></div>
+        {% for item in tracked_season_other %}<div><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.total_value|stat_value }}</strong><strong>{{ item.average_value|stat_value }}</strong></div>{% endfor %}
+    </div>
+</details>
+{% endif %}
 {% endif %}
 
 <section class="performance-panel performance-matches-panel priority-panel" id="matches">
@@ -96,11 +155,10 @@
     </div>
 </details>
 
-<section class="performance-panel performance-match-analysis performance-season-analysis">
-    <div class="performance-panel-heading">
-        <div><span class="eyebrow">{{ copy.season_analysis }} · {{ subscription.season }}</span><h2>{{ copy.season_volume_efficiency }}</h2><p>{{ copy.season_efficiency_help }}</p></div>
-        <i class="fas fa-chart-simple"></i>
-    </div>
+<details class="performance-panel performance-compact-details source-season-statistics">
+    <summary><span><small>{{ copy.external_season_reference }} · {{ subscription.season }}</small>{{ copy.source_season_statistics }}</span><i class="fas fa-chevron-down"></i></summary>
+    <div class="performance-source-season-body">
+    <p class="performance-source-season-help">{{ copy.source_season_help }}</p>
     {% if season_analysis_pairs %}
     <div class="performance-paired-grid">
         {% for item in season_analysis_pairs %}
@@ -140,15 +198,17 @@
         <div class="performance-stat-list compact">{% for item in season_average_other %}<div><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.value|stat_value }}</strong></div>{% endfor %}</div>
     </div>
     {% endif %}
-</section>
-{% if season_match_rows %}
-<details class="performance-panel performance-season-table">
-    <summary><span><small>{{ copy.detailed_view }}</small>{{ copy.season_table }}</span><b>{{ season_match_rows|length }} {{ copy.rows }}</b><i class="fas fa-chevron-down"></i></summary>
-    <p>{{ copy.table_help }}</p>
-    <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label_for:portal_language }}</th>{% endfor %}</tr></thead><tbody>{% for row in season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+    {% if season_match_rows %}
+    <div class="performance-secondary-analysis source-season-table-wrap">
+        <h3>{{ copy.season_table }} · {{ season_match_rows|length }} {{ copy.rows }}</h3>
+        <p>{{ copy.table_help }}</p>
+        <div class="table-responsive"><table><thead><tr>{% for header in snapshot.season_table_headers %}<th>{{ header|stat_label_for:portal_language }}</th>{% endfor %}</tr></thead><tbody>{% for row in season_match_rows %}<tr>{% for value in row.values %}<td>{{ value|default:"—" }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+    </div>
+    {% endif %}
+    </div>
 </details>
 {% endif %}
-{% else %}
+{% if not snapshot and not tracked_season_summary.match_count %}
 <section class="portal-empty performance-empty"><i class="fas fa-chart-line"></i><strong>{{ copy.analysis_preparing }}</strong><span>{{ copy.subscription_waiting }}</span></section>
 {% endif %}
  </div>

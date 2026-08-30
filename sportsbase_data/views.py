@@ -1,4 +1,5 @@
 import json
+from collections import Counter, defaultdict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -92,6 +93,271 @@ SEASON_KPI_KEYS = {
     "assists",
     "time on the field, %",
 }
+
+
+SEASON_SUCCESS_COUNTS = {
+    "Passes accurate, %": "Passes accurate",
+    "Shots on target, %": "Shots on target",
+    "Crosses accurate, %": "Crosses accurate",
+    "Challenges won, %": "Challenges won",
+    "Aerial challenges won, %": "Aerial challenges won",
+    "Dribbles successful, %": "Dribbles successful",
+    "Tackles successful, %": "Tackles successful",
+}
+
+
+def _stat_number(value, *, dash_is_zero=False):
+    """Convert one collected statistic without confusing absence and zero."""
+    if value is None or isinstance(value, bool):
+        return 0.0 if dash_is_zero else None
+    if isinstance(value, (int, float)):
+        return float(value)
+    cleaned = str(value).strip().replace("%", "").replace(",", ".")
+    if cleaned.casefold() in {"", "-", "–", "—", "none", "null", "nan"}:
+        return 0.0 if dash_is_zero else None
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+
+def _display_number(value, digits=2):
+    if value is None:
+        return None
+    rounded = round(float(value), digits)
+    return int(rounded) if rounded.is_integer() else rounded
+
+
+def _display_percent(value):
+    number = _display_number(value, 1)
+    return None if number is None else f"{number}%"
+
+
+def _match_statistics_map(stats):
+    return _normalized_statistics(
+        stats.summary_statistics,
+        stats.success_rates,
+        stats.detailed_statistics,
+    )
+
+
+def _season_rate(match_values, metric_name, rate_name):
+    """Weight a season success rate by attempts, with a safe mean fallback."""
+    metric_key = metric_name.casefold()
+    rate_key = rate_name.casefold()
+    success_key = SEASON_SUCCESS_COUNTS.get(rate_name, "").casefold()
+    attempts_total = 0.0
+    successes_total = 0.0
+    simple_rates = []
+
+    for values in match_values:
+        attempts_item = values.get(metric_key)
+        rate_item = values.get(rate_key)
+        success_item = values.get(success_key) if success_key else None
+        attempts = (
+            _stat_number(attempts_item.get("value"), dash_is_zero=True)
+            if attempts_item is not None
+            else 0.0
+        )
+        rate = (
+            _stat_number(rate_item.get("value"), dash_is_zero=True)
+            if rate_item is not None
+            else None
+        )
+        if rate is not None:
+            if abs(rate) <= 1 and "%" not in str(rate_item.get("value")):
+                rate *= 100
+            simple_rates.append(rate)
+        successes = (
+            _stat_number(success_item.get("value"), dash_is_zero=True)
+            if success_item is not None
+            else None
+        )
+        if attempts > 0 and (successes is not None or rate is not None):
+            attempts_total += attempts
+            successes_total += successes if successes is not None else attempts * rate / 100
+
+    if attempts_total > 0:
+        return max(0.0, min(100.0, successes_total / attempts_total * 100))
+    if simple_rates:
+        return max(0.0, min(100.0, sum(simple_rates) / len(simple_rates)))
+    return None
+
+
+def _build_tracked_season(matches):
+    """Aggregate the season exclusively from matches analysed in this portal."""
+    analysed = [match for match in matches if getattr(match, "player_stats", None)]
+    match_values = [_match_statistics_map(match.player_stats) for match in analysed]
+    match_count = len(analysed)
+
+    if not match_count:
+        return {
+            "summary": {"match_count": 0},
+            "pairs": [],
+            "other": [],
+            "missions": [],
+        }
+
+    def metric_total(name):
+        key = name.casefold()
+        return sum(
+            _stat_number(values[key].get("value"), dash_is_zero=True)
+            if key in values
+            else 0.0
+            for values in match_values
+        )
+
+    indexes = [
+        _stat_number(platform_index(match.player_stats.index))
+        for match in analysed
+        if match.player_stats.index is not None
+    ]
+    minutes = [
+        float(match.player_stats.minutes_played or 0)
+        for match in analysed
+    ]
+    minutes_total = sum(minutes)
+    summary = {
+        "match_count": match_count,
+        "index_average": (
+            _display_number(sum(indexes) / len(indexes), 1)
+            if indexes
+            else None
+        ),
+        "goals": _display_number(metric_total("Goals")),
+        "assists": _display_number(metric_total("Assists")),
+        "minutes_total": _display_number(minutes_total),
+        "minutes_average": _display_number(minutes_total / match_count, 1),
+        "time_share": _display_percent(minutes_total / (match_count * 90) * 100),
+    }
+
+    pairs = []
+    consumed = set(SEASON_KPI_KEYS) | {"minutes played"}
+    for metric_name, rate_name, icon in SEASON_METRIC_PAIRS:
+        metric_key = metric_name.casefold()
+        if not any(metric_key in values for values in match_values):
+            continue
+        total = metric_total(metric_name)
+        rate = _season_rate(match_values, metric_name, rate_name) if rate_name else None
+        consumed.add(metric_key)
+        if rate_name:
+            consumed.add(rate_name.casefold())
+            success_name = SEASON_SUCCESS_COUNTS.get(rate_name)
+            if success_name:
+                consumed.add(success_name.casefold())
+        pairs.append(
+            {
+                "name": metric_name,
+                "value": _display_number(total / match_count),
+                "total_value": _display_number(total),
+                "rate_name": rate_name,
+                "rate_value": _display_percent(rate),
+                "chart_percent": round(rate, 1) if rate is not None else 0,
+                "has_rate": rate is not None,
+                "icon": icon,
+            }
+        )
+
+    all_names = {}
+    for values in match_values:
+        for key, item in values.items():
+            all_names.setdefault(key, item.get("name") or key)
+    other = []
+    for key, name in all_names.items():
+        if key in consumed or key.endswith(", %"):
+            continue
+        available = [values[key] for values in match_values if key in values]
+        if not available:
+            continue
+        numbers = []
+        for item in available:
+            raw_value = item.get("value")
+            number = _stat_number(raw_value)
+            if number is None and str(raw_value).strip() not in {"-", "–", "—"}:
+                continue
+            numbers.append(number or 0.0)
+        if not numbers:
+            continue
+        total = sum(numbers)
+        other.append(
+            {
+                "name": name,
+                "total_value": _display_number(total),
+                "average_value": _display_number(total / match_count),
+            }
+        )
+    other.sort(key=lambda item: str(item["name"]).casefold())
+
+    mission_buckets = defaultdict(
+        lambda: {
+            "labels": Counter(),
+            "scores": [],
+            "weights": [],
+            "kpis": Counter(),
+        }
+    )
+    for match in analysed:
+        report = getattr(match, "performance_report", None)
+        if report and (
+            report.status != PerformanceReport.Status.PUBLISHED
+            or report.report_type != PerformanceReport.ReportType.MATCH
+        ):
+            report = None
+        analysis = (
+            report.analysis_payload
+            if report and isinstance(report.analysis_payload, dict)
+            else {}
+        )
+        dimensions = (
+            analysis.get("dimensions")
+            or (analysis.get("score_breakdown") or {}).get("dimensions")
+            or []
+        )
+        for order, dimension in enumerate(dimensions):
+            if not isinstance(dimension, dict):
+                continue
+            key = str(
+                dimension.get("key")
+                or dimension.get("label")
+                or f"mission-{order}"
+            )
+            score = _stat_number(dimension.get("score"))
+            if score is None:
+                continue
+            bucket = mission_buckets[key]
+            bucket["labels"][str(dimension.get("label") or key)] += 1
+            bucket["scores"].append(score)
+            weight = _stat_number(
+                dimension.get("effective_weight") or dimension.get("weight")
+            )
+            if weight is not None:
+                bucket["weights"].append(weight)
+            evidence = dimension.get("headline_evidence") or dimension.get("evidence") or []
+            for item in evidence:
+                if isinstance(item, dict) and item.get("metric"):
+                    bucket["kpis"][str(item["metric"])] += 1
+
+    missions = []
+    for key, bucket in mission_buckets.items():
+        score = sum(bucket["scores"]) / len(bucket["scores"])
+        average_weight = (
+            sum(bucket["weights"]) / len(bucket["weights"])
+            if bucket["weights"]
+            else 0
+        )
+        missions.append(
+            {
+                "key": key,
+                "label": bucket["labels"].most_common(1)[0][0],
+                "rating_10": round(max(0.0, min(100.0, score)) / 10, 1),
+                "chart_percent": round(max(0.0, min(100.0, score)), 1),
+                "weight": _display_number(average_weight, 1),
+                "match_count": len(bucket["scores"]),
+                "kpis": [name for name, _ in bucket["kpis"].most_common(3)],
+            }
+        )
+    missions.sort(key=lambda item: (-float(item["weight"] or 0), item["label"]))
+    return {"summary": summary, "pairs": pairs, "other": other, "missions": missions}
 
 
 def _normalized_statistics(*collections):
@@ -640,9 +906,9 @@ def portal_performance_detail(request, player_id):
     snapshot = subscription.season_snapshots.filter(
         season=subscription.season
     ).first()
-    matches = subscription.matches.select_related("player_stats", "youtube_upload").order_by(
-        "-match_date", "-sportsbase_match_id"
-    )
+    matches = subscription.matches.select_related(
+        "player_stats", "youtube_upload", "performance_report"
+    ).order_by("-match_date", "-sportsbase_match_id")
     action_counts = {
         "available": matches.filter(
             youtube_upload__status=SportsBaseYouTubeUpload.Status.UPLOADED,
@@ -664,6 +930,10 @@ def portal_performance_detail(request, player_id):
     season_analysis_pairs, season_analysis_other, season_average_other = (
         _build_season_analysis(snapshot)
     )
+    matches = list(matches)
+    tracked_season = _build_tracked_season(
+        [match for match in matches if match.season == subscription.season]
+    )
     return render(
         request,
         "sportsbase_data/portal_performance_detail.html",
@@ -677,6 +947,10 @@ def portal_performance_detail(request, player_id):
             "season_analysis_pairs": season_analysis_pairs,
             "season_analysis_other": season_analysis_other,
             "season_average_other": season_average_other,
+            "tracked_season_summary": tracked_season["summary"],
+            "tracked_season_pairs": tracked_season["pairs"],
+            "tracked_season_other": tracked_season["other"],
+            "tracked_season_missions": tracked_season["missions"],
             "season_match_rows": _season_table_rows_with_ms_index(snapshot),
             "time_on_field_display": _time_on_field_display(snapshot),
             "portal_language": request.portal_profile.preferred_language,

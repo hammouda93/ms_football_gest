@@ -160,6 +160,7 @@
 .performance-compact-details > summary::-webkit-details-marker { display: none; }
 .performance-compact-details > summary > span { display: flex; flex: 1; color: var(--performance-text); flex-direction: column; font-size: .85rem; font-weight: 850; }
 .performance-compact-details > summary small { color: var(--performance-teal); font-size: .56rem; letter-spacing: .08em; text-transform: uppercase; }
+.performance-compact-details > summary > b { padding: 5px 9px; color: var(--performance-blue); background: #edf4ff; border-radius: 999px; font-size: .62rem; }
 .performance-compact-details > summary i { color: var(--performance-muted); transition: transform .2s ease; }
 .performance-compact-details[open] > summary { border-bottom: 1px solid #e7edf3; }
 .performance-compact-details[open] > summary i { transform: rotate(180deg); }
@@ -170,6 +171,28 @@
 .compact-radar .performance-radar-wrap { height: 220px; }
 .compact-radar .performance-radar-image { max-height: 220px; }
 .performance-season-maps > .performance-map-grid { margin: 0; padding: 16px; }
+.tracked-season-analysis { border-top-color: var(--performance-blue); }
+.performance-season-mission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px; }
+.performance-season-mission-grid article { min-width: 0; padding: 13px; background: linear-gradient(145deg, #f8fbff, #f3faf8); border: 1px solid #dce8ee; border-radius: 15px; }
+.performance-season-mission-grid header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.performance-season-mission-grid header span { overflow: hidden; color: var(--performance-text); font-size: .72rem; font-weight: 820; text-overflow: ellipsis; white-space: nowrap; }
+.performance-season-mission-grid header strong { color: var(--performance-blue); font-size: .9rem; }
+.performance-mission-track { overflow: hidden; height: 7px; margin: 10px 0 7px; background: #dfe8ee; border-radius: 999px; }
+.performance-mission-track i { display: block; width: var(--mission-progress); height: 100%; background: linear-gradient(90deg, var(--performance-teal), var(--performance-blue)); border-radius: inherit; }
+.performance-season-mission-grid article > small { color: var(--performance-muted); font-size: .58rem; }
+.performance-season-mission-grid article > p { display: flex; gap: 5px; flex-wrap: wrap; margin: 9px 0 0; }
+.performance-season-mission-grid article > p span { padding: 4px 7px; color: #31506a; background: #eaf2f7; border-radius: 999px; font-size: .55rem; font-weight: 700; }
+.performance-tracked-stat-table { display: grid; padding: 12px 16px 16px; }
+.performance-tracked-stat-table > div { display: grid; grid-template-columns: minmax(0, 1fr) 90px 90px; align-items: center; gap: 9px; padding: 8px 10px; border-bottom: 1px solid #edf1f5; }
+.performance-tracked-stat-table > div > span { overflow: hidden; color: var(--performance-muted); font-size: .64rem; text-overflow: ellipsis; white-space: nowrap; }
+.performance-tracked-stat-table > div > strong { color: var(--performance-text); font-size: .7rem; text-align: right; }
+.performance-tracked-stat-table .performance-tracked-stat-head { color: var(--performance-muted); background: #f6f9fb; border-radius: 10px; font-size: .58rem; font-weight: 820; text-transform: uppercase; }
+.performance-tracked-stat-table .performance-tracked-stat-head span:not(:first-child) { text-align: right; }
+.performance-source-season-body { padding: 16px; }
+.performance-source-season-help { margin: 0 0 14px; color: var(--performance-muted); font-size: .7rem; line-height: 1.55; }
+.source-season-table-wrap table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.source-season-table-wrap th, .source-season-table-wrap td { padding: 9px 12px; border-top: 1px solid #e7edf3; font-size: .66rem; white-space: nowrap; }
+.source-season-table-wrap th { color: var(--performance-muted); background: #f8fafc; font-size: .58rem; text-transform: uppercase; }
 .priority-panel { border-top: 3px solid var(--performance-teal); }
 
 .performance-matches-panel { margin-top: 16px; }
@@ -363,7 +386,7 @@
     .performance-lineup { align-items: flex-start; text-align: left; }
     .performance-scoreboard { order: -1; }
     .performance-stat-list.advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .performance-paired-grid, .performance-profile-details-body { grid-template-columns: 1fr; }
+    .performance-paired-grid, .performance-profile-details-body, .performance-season-mission-grid { grid-template-columns: 1fr; }
     .performance-stat-list.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .performance-map-card.compact-map img { max-height: 190px; }
     .all-actions-delivery { grid-template-columns: 50px minmax(0, 1fr); }
@@ -399,5 +422,6 @@
     .performance-analysis-visual { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; }
     .performance-analysis-ring { width: 58px; height: 58px; }
     .performance-analysis-ring::before { width: 44px; height: 44px; }
+    .performance-tracked-stat-table > div { grid-template-columns: minmax(0, 1fr) 62px 62px; padding: 8px 4px; }
     .performance-row-metrics { grid-template-columns: repeat(3, 1fr); }
 }
