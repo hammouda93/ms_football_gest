@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from .analysis_engine import (
     SPORTSBASE_PLAYER_COLUMNS,
     analyse_match_dataset,
+    build_match_analysis,
     ms_rating,
     platform_index,
 )
@@ -64,6 +65,75 @@ class PlayersWorkbookReaderTests(unittest.TestCase):
 
 
 class PositionAnalysisTests(unittest.TestCase):
+    @staticmethod
+    def _match_for_name_fallback(rows, local_name, sportsbase_name):
+        snapshot = SimpleNamespace(
+            season="2026/2027",
+            sportsbase_player_name=sportsbase_name,
+            positions=[],
+            radar_metrics=[],
+        )
+
+        class SnapshotQuery:
+            def filter(self, **_kwargs):
+                return self
+
+            def order_by(self, *_args):
+                return self
+
+            def first(self):
+                return snapshot
+
+        return SimpleNamespace(
+            player_stats=SimpleNamespace(
+                players_statistics_rows=rows,
+                source_metadata={},
+            ),
+            subscription=SimpleNamespace(
+                player=SimpleNamespace(name=local_name),
+                report_language="fr",
+                season_snapshots=SnapshotQuery(),
+            ),
+            season="2026/2027",
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            score="1–1",
+            match_date=date(2026, 8, 22),
+        )
+
+    def test_build_match_analysis_keeps_platform_name_as_primary_lookup(self):
+        rows = [
+            _row("Platform Player", "Stade Tunisien", "RAM", 64),
+            _row("Opponent", "CS Sfaxien", "RAM", 90),
+        ]
+        match = self._match_for_name_fallback(
+            rows,
+            local_name="Platform Player",
+            sportsbase_name="Different Profile Name",
+        )
+
+        analysis = build_match_analysis(match)
+
+        self.assertTrue(analysis["available"])
+        self.assertEqual(analysis["player"]["name"], "Platform Player")
+
+    def test_build_match_analysis_retries_saved_sportsbase_name_only_if_missing(self):
+        rows = [
+            _row("Boubacar Junior Camara", "Stade Tunisien", "RAM", 64),
+            _row("Opponent", "CS Sfaxien", "RAM", 90),
+        ]
+        match = self._match_for_name_fallback(
+            rows,
+            local_name="Boubacar Camara",
+            sportsbase_name="Boubacar Junior Camara",
+        )
+
+        analysis = build_match_analysis(match)
+
+        self.assertTrue(analysis["available"])
+        self.assertEqual(analysis["player"]["name"], "Boubacar Junior Camara")
+        self.assertEqual(analysis["player"]["minutes"], 64)
+
     def test_ms_rating_is_a_display_scale_without_recalculating_the_score(self):
         self.assertEqual(ms_rating(75), 7.5)
         self.assertEqual(ms_rating(56), 5.6)

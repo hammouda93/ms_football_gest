@@ -4031,6 +4031,7 @@ def build_match_analysis(match, language=None):
     }
     subscription = getattr(match, "subscription", None)
     snapshots = getattr(subscription, "season_snapshots", None)
+    snapshot = None
     if snapshots is not None and hasattr(snapshots, "filter"):
         snapshot = (
             snapshots.filter(season=getattr(match, "season", ""))
@@ -4043,9 +4044,30 @@ def build_match_analysis(match, language=None):
                 "positions": getattr(snapshot, "positions", None) or [],
                 "radar_metrics": getattr(snapshot, "radar_metrics", None) or [],
             }
+    platform_player_name = getattr(subscription.player, "name", "")
+    analysis = analyse_match_dataset(
+        rows,
+        platform_player_name,
+        language=language,
+        context=context,
+    )
+    if analysis.get("reason") != "player_not_found":
+        return analysis
+
+    # Preserve the historical lookup for every player.  The exact name captured
+    # from the SportsBase profile is only a second attempt when the local player
+    # name is genuinely absent from the downloaded match table.
+    sportsbase_player_name = str(
+        getattr(snapshot, "sportsbase_player_name", "") or ""
+    ).strip()
+    if (
+        not sportsbase_player_name
+        or _plain(sportsbase_player_name) == _plain(platform_player_name)
+    ):
+        return analysis
     return analyse_match_dataset(
         rows,
-        getattr(subscription.player, "name", ""),
+        sportsbase_player_name,
         language=language,
         context=context,
     )
