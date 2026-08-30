@@ -3858,11 +3858,42 @@ def _appendix_metrics(target, language):
     return {"items": items, "groups": groups, "total_columns": len(columns)}
 
 
-def analyse_match_dataset(rows, player_name, language="fr", context=None):
+def _explicit_player_aliases(player_name, player_aliases=None):
+    """Return distinct, normalized names that are known to identify one player.
+
+    These aliases come from our player record and the exact profile name captured
+    from the source.  Deliberately avoid fuzzy/partial matching: two teammates may
+    legitimately share a first or family name.
+    """
+    aliases = []
+    seen = set()
+    for value in (player_name, *(player_aliases or ())):
+        normalized = _plain(value)
+        if normalized and normalized not in seen:
+            aliases.append(normalized)
+            seen.add(normalized)
+    return aliases
+
+
+def analyse_match_dataset(
+    rows,
+    player_name,
+    language="fr",
+    context=None,
+    player_aliases=None,
+):
     """Build a complete JSON-safe player analysis for one match."""
     language = language if language in TEXT else "fr"
     rows = [dict(row) for row in rows if isinstance(row, dict)]
-    target = next((row for row in rows if _plain(row.get("Player")) == _plain(player_name)), None)
+    accepted_names = set(_explicit_player_aliases(player_name, player_aliases))
+    target = next(
+        (
+            row
+            for row in rows
+            if _plain(row.get("Player")) in accepted_names
+        ),
+        None,
+    )
     if target is None:
         return {
             "version": ANALYSIS_VERSION,
@@ -4031,21 +4062,29 @@ def build_match_analysis(match, language=None):
     }
     subscription = getattr(match, "subscription", None)
     snapshots = getattr(subscription, "season_snapshots", None)
+    snapshot = None
     if snapshots is not None and hasattr(snapshots, "filter"):
         snapshot = (
             snapshots.filter(season=getattr(match, "season", ""))
             .order_by("-synced_at")
             .first()
         )
+        if snapshot is None and hasattr(snapshots, "order_by"):
+            # A source profile name is not season-specific.  The latest captured
+            # name therefore remains a safe explicit alias for an older match.
+            snapshot = snapshots.order_by("-synced_at").first()
         if snapshot is not None:
             context["position_benchmark"] = {
                 "season": getattr(snapshot, "season", ""),
                 "positions": getattr(snapshot, "positions", None) or [],
                 "radar_metrics": getattr(snapshot, "radar_metrics", None) or [],
             }
+    profile_name = getattr(snapshot, "sportsbase_player_name", "") if snapshot else ""
+    local_name = getattr(subscription.player, "name", "")
     return analyse_match_dataset(
         rows,
-        getattr(subscription.player, "name", ""),
+        local_name,
         language=language,
         context=context,
+        player_aliases=(profile_name,),
     )

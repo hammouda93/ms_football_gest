@@ -263,6 +263,14 @@ def fail_sync_job(job, error_message):
 def _job_payload(job):
     subscription = job.subscription
     player = subscription.player
+    profile_name = _subscription_profile_player_name(subscription)
+    player_names = list(
+        dict.fromkeys(
+            name
+            for name in (profile_name, player.name)
+            if str(name or "").strip()
+        )
+    )
     known_matches = []
     for match in subscription.matches.select_related("player_stats").order_by(
         "-match_date", "-sportsbase_match_id"
@@ -310,6 +318,8 @@ def _job_payload(job):
         "player": {
             "id": player.pk,
             "name": player.name,
+            "profile_name": profile_name,
+            "name_aliases": player_names,
             "club": player.club,
             "email": player.email,
             "sportsbase_url": player.sportsbase_url,
@@ -317,6 +327,25 @@ def _job_payload(job):
         },
         "known_matches": known_matches,
     }
+
+
+def _subscription_profile_player_name(subscription):
+    """Prefer the exact captured profile name while keeping the local name stable."""
+    snapshots = getattr(subscription, "season_snapshots", None)
+    if snapshots is not None and hasattr(snapshots, "filter"):
+        snapshot = (
+            snapshots.filter(season=getattr(subscription, "season", ""))
+            .order_by("-synced_at")
+            .first()
+        )
+        if snapshot is None:
+            snapshot = snapshots.order_by("-synced_at").first()
+        profile_name = str(
+            getattr(snapshot, "sportsbase_player_name", "") or ""
+        ).strip()
+        if profile_name:
+            return profile_name
+    return str(getattr(getattr(subscription, "player", None), "name", "") or "").strip()
 
 
 @transaction.atomic
@@ -536,7 +565,7 @@ def _upsert_match(subscription, item):
 
 
 def _youtube_title(match):
-    player_name = match.subscription.player.name.strip()
+    player_name = _subscription_profile_player_name(match.subscription)
     fixture = f"{match.home_team.strip()} vs {match.away_team.strip()}".strip()
     match_date = match.match_date.strftime("%d-%m-%Y") if match.match_date else ""
     parts = [player_name, "All Actions", fixture, match_date]
@@ -544,9 +573,10 @@ def _youtube_title(match):
 
 
 def _youtube_description(match):
+    player_name = _subscription_profile_player_name(match.subscription)
     lines = [
         "MS Performance — All Actions",
-        f"Joueur : {match.subscription.player.name}",
+        f"Joueur : {player_name}",
         f"Rencontre : {match.home_team} {match.score} {match.away_team}",
     ]
     if match.match_date:
@@ -582,11 +612,12 @@ def ensure_youtube_upload_jobs():
 
 def _youtube_job_payload(upload):
     match = upload.match
+    player_name = _subscription_profile_player_name(match.subscription)
     return {
         "job_id": upload.pk,
         "player": {
             "id": match.subscription.player_id,
-            "name": match.subscription.player.name,
+            "name": player_name,
         },
         "match": {
             "id": match.pk,

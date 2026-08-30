@@ -30,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-profile-name-myvideos-v22-20260830"
+SCRAPER_BUILD = "sportsbase-player-name-aliases-v23-20260830"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -149,7 +149,9 @@ class SportsBaseSubscriptionScraper:
                 )
                 self._sportsbase_player_name = self._read_profile_player_name(
                     page,
-                    fallback=player.get("name", ""),
+                    fallback=(
+                        player.get("profile_name") or player.get("name", "")
+                    ),
                 )
                 if self._sportsbase_player_name != _clean_label(
                     player.get("name", "")
@@ -318,13 +320,21 @@ class SportsBaseSubscriptionScraper:
         )
         radar = self._capture_radar(
             page,
-            player_name=raw.get("name") or job["player"]["name"],
+            player_name=(
+                raw.get("name")
+                or job["player"].get("profile_name")
+                or job["player"]["name"]
+            ),
             position_label=(positions[0].get("name") if positions else ""),
         )
         return {
             "season": job["season"],
             "sportsbase_player_id": player_id.group(1) if player_id else "",
-            "sportsbase_player_name": raw.get("name") or job["player"]["name"],
+            "sportsbase_player_name": (
+                raw.get("name")
+                or job["player"].get("profile_name")
+                or job["player"]["name"]
+            ),
             "native_name": raw.get("nativeName", ""),
             "club_name": raw.get("club", ""),
             "club_sportsbase_id": club_id.group(1) if club_id else "",
@@ -1949,10 +1959,15 @@ class SportsBaseSubscriptionScraper:
             except Exception:
                 pass
             sportsbase_id = PLAYER_ID_RE.search(player["sportsbase_url"])
+            player_profile_name = (
+                self._sportsbase_player_name
+                or player.get("profile_name")
+                or player["name"]
+            )
             selector = (
                 f'a[href*="/players/{sportsbase_id.group(1)}"]'
                 if sportsbase_id
-                else f'a:has-text("{player["name"]}")'
+                else f'a:has-text("{player_profile_name}")'
             )
             player_link = page.locator(selector).first
             player_link.wait_for(timeout=15000)
@@ -1995,7 +2010,11 @@ class SportsBaseSubscriptionScraper:
                   const cells = row ? [...row.querySelectorAll('[role="bodycell"], [role="cell"]')].map(
                     (node) => node.textContent.replace(/\s+/g, ' ').trim()
                   ) : [];
-                  return {playerHref: link.getAttribute('href') || '', cells};
+                  return {
+                    playerName: text(link),
+                    playerHref: link.getAttribute('href') || '',
+                    cells,
+                  };
                 })
                 """
             )
@@ -2005,6 +2024,11 @@ class SportsBaseSubscriptionScraper:
                 sportsbase_id.group(1) if sportsbase_id else "",
                 team_name,
                 all_rows=all_rows,
+                player_names=(
+                    self._sportsbase_player_name,
+                    player.get("profile_name"),
+                    player.get("name"),
+                ),
             )
             result.update(metadata)
             if statistics_dir is not None:
@@ -2588,7 +2612,27 @@ class SportsBaseSubscriptionScraper:
         return ""
 
     @staticmethod
-    def _normalize_team_table(rows, player_id, team_name, all_rows=None):
+    def _normalize_team_table(
+        rows,
+        player_id,
+        team_name,
+        all_rows=None,
+        player_names=None,
+    ):
+        accepted_names = {
+            _clean_label(name).casefold()
+            for name in (player_names or ())
+            if _clean_label(name)
+        }
+
+        def is_current_player(row):
+            href_match = bool(
+                player_id
+                and f"/players/{player_id}" in row.get("playerHref", "")
+            )
+            name_match = _clean_label(row.get("playerName")).casefold() in accepted_names
+            return href_match or name_match
+
         headers = next((row["headers"] for row in rows if row.get("headers")), [])
         table = []
         current = None
@@ -2604,7 +2648,7 @@ class SportsBaseSubscriptionScraper:
                 "index": index_value,
                 "position": mapped.get("Pos") or mapped.get("Position") or (cells[2] if len(cells) > 2 else ""),
                 "minutes": _safe_int(mapped.get("Min") or mapped.get("Minutes") or (cells[3] if len(cells) > 3 else None)),
-                "is_current_player": f"/players/{player_id}" in row.get("playerHref", ""),
+                "is_current_player": is_current_player(row),
             }
             table.append(item)
             if item["is_current_player"]:
@@ -2636,7 +2680,7 @@ class SportsBaseSubscriptionScraper:
                 match_indexes.append(
                     {
                         "index": index_value,
-                        "is_current_player": f"/players/{player_id}" in row.get("playerHref", ""),
+                        "is_current_player": is_current_player(row),
                     }
                 )
         if not match_indexes:
@@ -2784,8 +2828,11 @@ class SportsBaseSubscriptionScraper:
         # download : on détecte donc le fichier terminé directement sur le disque.
         downloaded = self._download_generated_actions_once(
             page=page,
-            player_name=(
-                self._sportsbase_player_name or job["player"]["name"]
+            player_names=(
+                self._sportsbase_player_name,
+                job["player"].get("profile_name"),
+                *(job["player"].get("name_aliases") or ()),
+                job["player"]["name"],
             ),
             downloads_dir=downloads_dir,
             generated_matches=generated_matches,
@@ -2827,18 +2874,11 @@ class SportsBaseSubscriptionScraper:
             )
 
     def _download_generated_actions_once(
-        self, *, page, player_name, downloads_dir, generated_matches
+        self, *, page, player_names, downloads_dir, generated_matches
     ):
         """Download ready My Videos rows without ever repeating a click in this run."""
         self._open_my_videos(page)
-        targets = {
-            f"{player_name}, player actions".lower(),
-            f"{player_name}, all player actions".lower(),
-            f"{player_name}, player's actions".lower(),
-            f"{player_name}, all player's actions".lower(),
-            f"{player_name}, actions du joueur".lower(),
-            f"{player_name}, toutes les actions du joueur".lower(),
-        }
+        targets = self._my_videos_name_targets(player_names)
         candidate_indexes = self._wait_for_candidate_rows(
             page,
             targets=targets,
@@ -2905,6 +2945,23 @@ class SportsBaseSubscriptionScraper:
                     "aucun second clic ne sera effectué."
                 )
         return downloaded
+
+    @staticmethod
+    def _my_videos_name_targets(player_names):
+        suffixes = (
+            "player actions",
+            "all player actions",
+            "player's actions",
+            "all player's actions",
+            "actions du joueur",
+            "toutes les actions du joueur",
+        )
+        return {
+            f"{cleaned}, {suffix}".casefold()
+            for name in (player_names or ())
+            if (cleaned := _clean_label(name))
+            for suffix in suffixes
+        }
 
     @staticmethod
     def _configure_native_downloads(page, downloads_dir):

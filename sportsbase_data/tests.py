@@ -945,6 +945,43 @@ class ScraperNormalizationTests(TestCase):
         self.assertEqual(result["match_rank"], 2)
         self.assertTrue(result["team_table"][1]["is_current_player"])
 
+    def test_team_table_uses_exact_profile_alias_when_player_link_is_missing(self):
+        rows = [
+            {"headers": ["Player", "Index", "Pos", "Min"], "cells": []},
+            {
+                "headers": [],
+                "cells": ["First Player", "225", "CF", "90"],
+                "playerName": "First Player",
+                "playerHref": "/players/111",
+            },
+            {
+                "headers": [],
+                "cells": ["Boubacar Junior Camara", "160", "RAM", "64"],
+                "playerName": "Boubacar Junior Camara",
+                "playerHref": "",
+            },
+        ]
+        result = SportsBaseSubscriptionScraper._normalize_team_table(
+            rows,
+            "1696582",
+            "Stade Tunisien",
+            all_rows=rows[1:],
+            player_names=("Boubacar Camara", "Boubacar Junior Camara"),
+        )
+
+        self.assertEqual(result["index"], 160)
+        self.assertEqual(result["team_rank"], 2)
+        self.assertEqual(result["match_rank"], 2)
+        self.assertTrue(result["team_table"][1]["is_current_player"])
+
+    def test_my_videos_targets_accept_local_and_exact_profile_names(self):
+        targets = SportsBaseSubscriptionScraper._my_videos_name_targets(
+            ("Boubacar Camara", "Boubacar Junior Camara")
+        )
+
+        self.assertIn("boubacar camara, player actions", targets)
+        self.assertIn("boubacar junior camara, all player actions", targets)
+
     def test_direct_players_table_snapshot_preserves_values_and_teams(self):
         snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
             {
@@ -1079,6 +1116,22 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(upload.payload["youtube"]["visibility"], "unlisted")
         self.assertNotIn("sportsbase", str(upload.payload).casefold())
         self.assertEqual(SportsBaseYouTubeUpload.objects.count(), 1)
+
+    def test_upload_uses_exact_captured_profile_name(self):
+        self.player.name = "Boubacar Camara"
+        self.player.save(update_fields=("name",))
+        SportsBaseSeasonSnapshot.objects.create(
+            subscription=self.subscription,
+            season=self.subscription.season,
+            sportsbase_player_name="Boubacar Junior Camara",
+        )
+
+        self.assertEqual(ensure_youtube_upload_jobs(), 1)
+        upload = claim_next_youtube_upload()
+
+        self.assertEqual(upload.payload["player"]["name"], "Boubacar Junior Camara")
+        self.assertIn("Boubacar Junior Camara", upload.payload["youtube"]["title"])
+        self.assertIn("Boubacar Junior Camara", upload.payload["youtube"]["description"])
 
     def test_valid_result_links_video_to_match(self):
         upload = claim_next_youtube_upload()

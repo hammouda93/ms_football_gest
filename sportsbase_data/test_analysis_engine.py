@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from .analysis_engine import (
     SPORTSBASE_PLAYER_COLUMNS,
     analyse_match_dataset,
+    build_match_analysis,
     ms_rating,
     platform_index,
 )
@@ -64,6 +65,66 @@ class PlayersWorkbookReaderTests(unittest.TestCase):
 
 
 class PositionAnalysisTests(unittest.TestCase):
+    def test_explicit_profile_alias_matches_exact_workbook_player_name(self):
+        rows = [
+            _row("Boubacar Junior Camara", "Stade Tunisien", "RAM", 64),
+            _row("Opponent", "CS Sfaxien", "RAM", 90),
+        ]
+
+        analysis = analyse_match_dataset(
+            rows,
+            "Boubacar Camara",
+            "fr",
+            player_aliases=("Boubacar Junior Camara",),
+        )
+
+        self.assertTrue(analysis["available"])
+        self.assertEqual(analysis["player"]["name"], "Boubacar Junior Camara")
+
+    def test_build_match_analysis_uses_captured_profile_name_as_alias(self):
+        snapshot = SimpleNamespace(
+            season="2026/2027",
+            sportsbase_player_name="Boubacar Junior Camara",
+            positions=[],
+            radar_metrics=[],
+        )
+
+        class SnapshotQuery:
+            def filter(self, **_kwargs):
+                return self
+
+            def order_by(self, *_args):
+                return self
+
+            def first(self):
+                return snapshot
+
+        subscription = SimpleNamespace(
+            player=SimpleNamespace(name="Boubacar Camara"),
+            report_language="fr",
+            season_snapshots=SnapshotQuery(),
+        )
+        match = SimpleNamespace(
+            player_stats=SimpleNamespace(
+                players_statistics_rows=[
+                    _row("Boubacar Junior Camara", "Stade Tunisien", "RAM", 64),
+                    _row("Opponent", "CS Sfaxien", "RAM", 90),
+                ],
+                source_metadata={},
+            ),
+            subscription=subscription,
+            season="2026/2027",
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            score="1–1",
+            match_date=date(2026, 8, 22),
+        )
+
+        analysis = build_match_analysis(match)
+
+        self.assertTrue(analysis["available"])
+        self.assertEqual(analysis["player"]["name"], "Boubacar Junior Camara")
+
     def test_ms_rating_is_a_display_scale_without_recalculating_the_score(self):
         self.assertEqual(ms_rating(75), 7.5)
         self.assertEqual(ms_rating(56), 5.6)
