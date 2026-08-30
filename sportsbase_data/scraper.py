@@ -30,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "season-kpis-xlsx-actions-youtube-v21-20260828"
+SCRAPER_BUILD = "sportsbase-profile-name-myvideos-v22-20260830"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -91,6 +91,7 @@ class SportsBaseSubscriptionScraper:
         self.browser_channel = (
             os.getenv("SPORTSBASE_BROWSER_CHANNEL", "chrome").strip() or "chrome"
         )
+        self._sportsbase_player_name = ""
 
     def _launch_persistent_context(self, playwright, downloads_dir):
         """Open the same persistent Chrome profile used by the legacy agent."""
@@ -146,6 +147,18 @@ class SportsBaseSubscriptionScraper:
                 self.automation.ensure_logged_in_and_open_player(
                     page, player["sportsbase_url"]
                 )
+                self._sportsbase_player_name = self._read_profile_player_name(
+                    page,
+                    fallback=player.get("name", ""),
+                )
+                if self._sportsbase_player_name != _clean_label(
+                    player.get("name", "")
+                ):
+                    print(
+                        "[SPORTSBASE] Nom exact du profil : "
+                        f"{self._sportsbase_player_name} "
+                        f"(nom local : {player.get('name', '')})"
+                    )
                 if job["job_type"] in {"full", "profile"}:
                     result["profile"] = self._read_profile(page, job)
 
@@ -212,6 +225,19 @@ class SportsBaseSubscriptionScraper:
             ),
         }
         return result
+
+    @staticmethod
+    def _read_profile_player_name(page, fallback=""):
+        """Return the exact name displayed by SportsBase on the player profile."""
+        try:
+            title = page.locator('[class*="ProfileTitle"]').first
+            if title.count():
+                profile_name = _clean_label(title.inner_text())
+                if profile_name:
+                    return profile_name
+        except Exception:
+            pass
+        return _clean_label(fallback)
 
     def _read_profile(self, page, job):
         raw = page.evaluate(
@@ -2758,7 +2784,9 @@ class SportsBaseSubscriptionScraper:
         # download : on détecte donc le fichier terminé directement sur le disque.
         downloaded = self._download_generated_actions_once(
             page=page,
-            player_name=job["player"]["name"],
+            player_name=(
+                self._sportsbase_player_name or job["player"]["name"]
+            ),
             downloads_dir=downloads_dir,
             generated_matches=generated_matches,
         )

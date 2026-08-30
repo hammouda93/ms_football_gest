@@ -741,6 +741,53 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_my_videos_uses_exact_name_from_sportsbase_profile(self):
+        class FakeTitle:
+            def count(self):
+                return 1
+
+            def inner_text(self):
+                return "  Boubacar   Junior Camara  "
+
+        class FakeLocator:
+            first = FakeTitle()
+
+        class FakePage:
+            def locator(self, selector):
+                self.selector = selector
+                return FakeLocator()
+
+        page = FakePage()
+
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._read_profile_player_name(
+                page,
+                fallback="Boubacar Camara",
+            ),
+            "Boubacar Junior Camara",
+        )
+        self.assertEqual(page.selector, '[class*="ProfileTitle"]')
+
+    def test_profile_player_name_falls_back_to_local_name(self):
+        class MissingTitle:
+            def count(self):
+                return 0
+
+        class FakeLocator:
+            first = MissingTitle()
+
+        class FakePage:
+            def locator(self, _selector):
+                return FakeLocator()
+
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._read_profile_player_name(
+                FakePage(),
+                fallback="Boubacar Camara",
+            ),
+            "Boubacar Camara",
+        )
+
     def test_pitch_background_is_opaque_and_contains_pitch_lines(self):
         pitch = SportsBaseSubscriptionScraper._render_pitch_background(
             545, 360
