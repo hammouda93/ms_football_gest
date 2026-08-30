@@ -451,11 +451,26 @@ class YouTubeStudioUploader:
         )
 
     def _wait_upload_transfer_complete(self, page):
-        progress = self._first_visible(
-            page,
-            ("ytcp-video-upload-progress",),
-            timeout_ms=60000,
-        )
+        progress = page.locator("ytcp-video-upload-progress").first
+        appearance_deadline = time.monotonic() + 60
+        while time.monotonic() < appearance_deadline:
+            try:
+                if progress.count() and progress.is_visible():
+                    break
+            except Exception:
+                pass
+            if self._upload_completion_detected(page):
+                print(
+                    "[YOUTUBE] Transfert terminé avant la première "
+                    "lecture du pourcentage."
+                )
+                return
+            page.wait_for_timeout(250)
+        else:
+            raise YouTubeUploadError(
+                "YouTube n’a affiché ni progression ni confirmation de fin "
+                "de transfert."
+            )
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         last_status = ""
         consecutive_complete_checks = 0
@@ -531,17 +546,45 @@ class YouTubeStudioUploader:
                         "upload terminé."
                     )
                     return
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
 
         raise YouTubeUploadError(
             "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
         )
 
     @staticmethod
+    def _upload_completion_detected(page):
+        hosts = page.locator(
+            "ytcp-video-upload-progress, ytcp-uploads-dialog, "
+            "ytcp-video-upload-dialog"
+        )
+        try:
+            count = min(hosts.count(), 10)
+        except Exception:
+            return False
+        for index in range(count):
+            try:
+                text = hosts.nth(index).inner_text()
+            except Exception:
+                continue
+            if re.search(
+                r"(upload complete|uploaded|mise en ligne terminée|"
+                r"importation terminée|transfert terminé|"
+                r"processing will begin shortly|traitement va bientôt commencer)",
+                text or "",
+                re.IGNORECASE,
+            ):
+                return True
+        return False
+
+    @staticmethod
     def _wait_upload_dialog_closed(page, timeout_ms=45000):
         dialogs = page.locator(
             "ytcp-uploads-dialog, ytcp-video-upload-dialog, "
-            "ytcp-uploads-still-processing-dialog"
+            "ytcp-uploads-still-processing-dialog, "
+            "ytcp-prechecks-warning-dialog, "
+            "tp-yt-paper-dialog:has(button[aria-label=\"Publier quand même\"]), "
+            "tp-yt-paper-dialog:has(button[aria-label=\"Publish anyway\"])"
         )
         deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
@@ -556,6 +599,46 @@ class YouTubeStudioUploader:
                 return True
             page.wait_for_timeout(500)
         return False
+
+    def _publish_anyway_if_prechecks_pending(self, page):
+        """Confirm publication when YouTube checks are still running."""
+        selectors = (
+            "ytcp-prechecks-warning-dialog ytcp-button#secondary-action-button",
+            "ytcp-prechecks-warning-dialog button[aria-label=\"Publier quand même\"]",
+            "ytcp-prechecks-warning-dialog button[aria-label=\"Publish anyway\"]",
+            "tp-yt-paper-dialog button[aria-label=\"Publier quand même\"]",
+            "tp-yt-paper-dialog button[aria-label=\"Publish anyway\"]",
+        )
+        try:
+            publish_anyway = self._first_visible(
+                page,
+                selectors,
+                timeout_ms=10000,
+            )
+        except YouTubeUploadError:
+            return False
+
+        print(
+            "[YOUTUBE] Vérifications encore en cours : clic sur "
+            "Publier quand même…"
+        )
+        self._wait_button_enabled(page, publish_anyway, timeout_ms=30000)
+        try:
+            publish_anyway.click(timeout=15000)
+        except Exception:
+            publish_anyway.click(force=True, timeout=15000)
+
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                if not publish_anyway.is_visible():
+                    return True
+            except Exception:
+                return True
+            page.wait_for_timeout(250)
+        raise YouTubeUploadError(
+            "YouTube n’a pas fermé la confirmation Publier quand même."
+        )
 
     def _finish_still_processing_dialog(self, page):
         dialog = page.locator("ytcp-uploads-still-processing-dialog").first
@@ -728,6 +811,8 @@ class YouTubeStudioUploader:
                     )
                 print(f"[YOUTUBE] Lien attribué : {youtube_url}")
 
+                print("[YOUTUBE] Suivi immédiat du transfert avant Enregistrer…")
+                self._wait_upload_transfer_complete(page)
                 done_button = self._first_visible(
                     page,
                     (
@@ -738,8 +823,6 @@ class YouTubeStudioUploader:
                     ),
                     timeout_ms=30000,
                 )
-                print("[YOUTUBE] Attente du transfert complet avant Enregistrer…")
-                self._wait_upload_transfer_complete(page)
                 self._wait_button_enabled(page, done_button, self.upload_timeout_ms)
                 print("[YOUTUBE] Enregistrement de la vidéo…")
                 try:
@@ -747,7 +830,9 @@ class YouTubeStudioUploader:
                 except Exception:
                     done_button.click(force=True, timeout=15000)
 
-                self._finish_still_processing_dialog(page)
+                prechecks_confirmed = self._publish_anyway_if_prechecks_pending(page)
+                if not prechecks_confirmed:
+                    self._finish_still_processing_dialog(page)
                 dialog_closed = self._wait_upload_dialog_closed(
                     page,
                     timeout_ms=60000,

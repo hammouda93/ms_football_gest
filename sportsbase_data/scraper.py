@@ -30,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-profile-name-myvideos-v22-20260830"
+SCRAPER_BUILD = "sportsbase-multi-match-actions-v23-20260830"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -2897,8 +2897,24 @@ class SportsBaseSubscriptionScraper:
             )
 
             if source:
-                downloaded[match_data["sportsbase_match_id"]] = Path(source)
-                print(f"[SPORTSBASE] Fichier détecté après clic unique : {source}")
+                match_id = match_data["sportsbase_match_id"]
+                try:
+                    staged_source = self._stage_actions_download(
+                        source=source,
+                        downloads_dir=downloads_dir,
+                        match_id=match_id,
+                    )
+                except Exception as exc:
+                    print(
+                        "[SPORTSBASE][WARN] Impossible de réserver le fichier "
+                        f"All Actions au match {match_id} : {exc}"
+                    )
+                    continue
+                downloaded[match_id] = staged_source
+                print(
+                    "[SPORTSBASE] Fichier détecté et réservé au match "
+                    f"{match_id} : {staged_source}"
+                )
             else:
                 print(
                     "[SPORTSBASE][WARN] Aucun fichier confirmé après le clic; "
@@ -3233,6 +3249,24 @@ class SportsBaseSubscriptionScraper:
         if Path(source).resolve() != destination.resolve():
             shutil.move(str(source), str(destination))
         return destination
+
+    @classmethod
+    def _stage_actions_download(cls, *, source, downloads_dir, match_id):
+        """Give each downloaded match its own path before Chrome reuses a name."""
+        source = Path(source)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+
+        staging_dir = Path(downloads_dir)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        safe_match_id = cls._folder_component(match_id)
+        extension = source.suffix or ".mp4"
+        staged = cls._unique_path(
+            staging_dir / f"_All_Actions__match_{safe_match_id}{extension}"
+        )
+        if source.resolve() != staged.resolve():
+            shutil.move(str(source), str(staged))
+        return staged
 
     @staticmethod
     def _folder_component(value):

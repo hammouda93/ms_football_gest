@@ -748,6 +748,33 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_same_chrome_filename_is_staged_separately_for_each_match(self):
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            chrome_filename = (
+                downloads_dir / "Boubacar Junior Camara, Player actions.mp4"
+            )
+
+            chrome_filename.write_bytes(b"match-800076")
+            first = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=chrome_filename,
+                downloads_dir=downloads_dir,
+                match_id="800076",
+            )
+
+            chrome_filename.write_bytes(b"match-800068")
+            second = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=chrome_filename,
+                downloads_dir=downloads_dir,
+                match_id="800068",
+            )
+
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_bytes(), b"match-800076")
+            self.assertEqual(second.read_bytes(), b"match-800068")
+            self.assertIn("800076", first.name)
+            self.assertIn("800068", second.name)
+
     def test_my_videos_uses_exact_name_from_sportsbase_profile(self):
         class FakeTitle:
             def count(self):
@@ -1185,6 +1212,51 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class YouTubeUploaderPathTests(TestCase):
+    def test_fast_upload_completion_is_detected_from_studio_status(self):
+        class FakeHost:
+            def inner_text(self):
+                return "Upload complete ... Processing will begin shortly"
+
+        class FakeHosts:
+            def count(self):
+                return 1
+
+            def nth(self, _index):
+                return FakeHost()
+
+        class FakePage:
+            def locator(self, _selector):
+                return FakeHosts()
+
+        self.assertTrue(
+            YouTubeStudioUploader._upload_completion_detected(FakePage())
+        )
+
+    def test_prechecks_warning_clicks_publish_anyway(self):
+        class FakeButton:
+            def __init__(self):
+                self.clicked = False
+
+            def click(self, **_kwargs):
+                self.clicked = True
+
+            def is_visible(self):
+                return not self.clicked
+
+        class FakePage:
+            def wait_for_timeout(self, _milliseconds):
+                return None
+
+        uploader = object.__new__(YouTubeStudioUploader)
+        button = FakeButton()
+        uploader._first_visible = lambda *_args, **_kwargs: button
+        uploader._wait_button_enabled = lambda *_args, **_kwargs: None
+
+        self.assertTrue(
+            uploader._publish_anyway_if_prechecks_pending(FakePage())
+        )
+        self.assertTrue(button.clicked)
+
     def test_local_video_is_resolved_inside_subscription_storage(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
