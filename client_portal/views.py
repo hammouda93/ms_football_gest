@@ -914,10 +914,6 @@ def portal_dashboard(request):
         player.portal_action_count = sum(
             video.client_action_count for video in related_videos
         )
-        player.portal_balance = sum(
-            (video.payment_snapshot.balance for video in related_videos),
-            Decimal("0"),
-        )
     from sportsbase_data.services import active_subscriptions
 
     performance_subscriptions = list(
@@ -950,10 +946,6 @@ def portal_dashboard(request):
             ),
             "required_action_count": sum(
                 video.client_action_count for video in current_videos
-            ),
-            "balance": sum(
-                (video.payment_snapshot.balance for video in videos),
-                Decimal("0"),
             ),
             "performance_subscriptions": performance_subscriptions,
         },
@@ -1009,7 +1001,9 @@ def portal_video_detail(request, video_id):
     activities = list(
         video.portal_activities.filter(
             visibility=VideoActivity.Visibility.CLIENT
-        ).select_related("created_by")[:30]
+        )
+        .exclude(kind=VideoActivity.Kind.PAYMENT)
+        .select_related("created_by")[:30]
     )
     timeline_events = client_video_timeline(video, activities, language)
     return render(
@@ -1023,9 +1017,6 @@ def portal_video_detail(request, video_id):
             "media_submissions": video.media_submissions.select_related("submitted_by"),
             "activities": activities,
             "timeline_events": timeline_events,
-            "payment_requests": video.portal_payment_requests.exclude(
-                status__in={PaymentRequest.Status.CANCELLED, PaymentRequest.Status.EXPIRED}
-            ),
             "can_edit_video": editable_videos_for(request.user)
             .filter(pk=video.pk)
             .exists(),

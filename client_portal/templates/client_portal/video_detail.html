@@ -17,33 +17,6 @@
     <div class="progress-caption"><strong>{{ video.production_progress }}%</strong><span>{{ video.production_next_action }}</span></div>
 </section>
 
-<section class="portal-metrics three portal-finance-summary" aria-label="{{ pc.financial_summary }}">
-    <article class="portal-finance-card finance-total">
-        <i class="portal-finance-icon fas fa-receipt" aria-hidden="true"></i>
-        <div><span class="finance-label">{{ pc.total_amount }}</span><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong><small>{{ pc.full_order }}</small></div>
-    </article>
-    <article class="portal-finance-card finance-paid">
-        <i class="portal-finance-icon fas fa-circle-check" aria-hidden="true"></i>
-        <div><span class="finance-label">{{ pc.already_paid }}</span><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong><small>{{ pc.payments_received }}</small></div>
-    </article>
-    <article class="portal-finance-card finance-balance {% if video.payment_snapshot.balance %}needs-attention{% else %}is-settled{% endif %}">
-        <i class="portal-finance-icon fas {% if video.payment_snapshot.balance %}fa-hourglass-half{% else %}fa-check-double{% endif %}" aria-hidden="true"></i>
-        <div><span class="finance-label">{{ pc.order_balance }}</span><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong><small>{% if video.payment_snapshot.balance %}{{ pc.remaining_due }}{% else %}{{ pc.order_paid }}{% endif %}</small></div>
-    </article>
-</section>
-
-{% if payment_requests %}
-    <section class="portal-section">
-        <div class="portal-section-heading"><div><span class="eyebrow">{{ pc.payment }}</span><h2>{{ pc.requested_payments }}</h2><p>{{ pc.requested_payments_help }}</p></div><span class="portal-count">{{ payment_requests|length }}</span></div>
-        {% for payment in payment_requests %}
-            <article class="portal-payment-card">
-                <div><strong>{{ payment.label }}</strong><span>{{ payment.amount|floatformat:2 }}{% if payment.due_date %} · {{ pc.before_date }} {{ payment.due_date|date:"d/m/Y" }}{% endif %}</span></div>
-                <form method="post" action="{% url 'portal:payment_open' payment.pk %}">{% csrf_token %}<button class="portal-button primary small" type="submit">{{ pc.open_payment }}</button></form>
-            </article>
-        {% endfor %}
-    </section>
-{% endif %}
-
 {% if video.final_delivery_available %}
     {% with embed_url=video.video_link|youtube_embed_url %}
         <section class="portal-section portal-final-video-section">

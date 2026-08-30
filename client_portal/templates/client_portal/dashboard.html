@@ -33,7 +33,6 @@
     <article><span>{{ pc.followed_players }}</span><strong>{{ players|length }}</strong><small>{{ pc.in_your_space }}</small></article>
     <article><span>{{ pc.in_production }}</span><strong>{{ active_count }}</strong><small>{{ pc.active_orders }}</small></article>
     <article class="{% if required_action_count %}needs-attention{% endif %}"><span>{{ pc.to_validate }}</span><strong>{{ review_count }}</strong><small>{{ required_action_count }} {{ pc.required_actions_total }}</small></article>
-    <article class="{% if balance %}needs-attention{% endif %}"><span>{{ pc.balance_due }}</span><strong>{{ balance|floatformat:2 }}</strong><small>{{ pc.visible_on_orders }}</small></article>
 </section>
 
 <section class="portal-section" id="players">
@@ -52,7 +51,6 @@
                     <div class="player-relationship-stats">
                         <span><i class="fas fa-clapperboard" aria-hidden="true"></i> {{ player.portal_active_count }} {{ pc.active }}</span>
                         {% if player.portal_review_count %}<span class="attention"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ player.portal_review_count }} {{ pc.validation_short }}</span>{% endif %}
-                        <span class="{% if player.portal_balance %}attention{% endif %}"><i class="fas fa-wallet" aria-hidden="true"></i> {{ pc.balance }} {{ player.portal_balance|floatformat:2 }}</span>
                         {% if player.portal_performance_subscription %}<span class="performance-active"><i class="fas fa-chart-line" aria-hidden="true"></i> {{ pc.performance_active }}</span>{% endif %}
                     </div>
                 </div>

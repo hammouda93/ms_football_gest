@@ -22,7 +22,6 @@ from .models import (
     CommunicationLog,
     OrganizationMembership,
     OrganizationPlayer,
-    PaymentRequest,
     PlayerAccess,
     PortalAccessLink,
     PortalProfile,
@@ -33,8 +32,6 @@ from .models import (
 )
 from .portal_i18n import (
     CLIENT_ACTION_LABELS,
-    PAYMENT_EVENT_TITLES as PORTAL_PAYMENT_EVENT_TITLES,
-    PAYMENT_METHOD_LABELS as PORTAL_PAYMENT_METHOD_LABELS,
     VIDEO_STAGE_ACTIONS,
     VIDEO_STAGE_LABELS,
     VIDEO_STATUS_MESSAGES,
@@ -196,58 +193,9 @@ def client_video_timeline(video, activities=(), language="fr"):
             )
         )
 
-    for payment in video.payments.order_by("payment_date", "pk"):
-        occurred_at = payment.payment_date
-        payment_method = PORTAL_PAYMENT_METHOD_LABELS[language].get(
-            payment.payment_method
-        )
-        if language == "en":
-            method_text = f" via {payment_method}" if payment_method else ""
-            balance_text = (
-                f" Remaining balance after this payment: {payment.remaining_balance:.2f}."
-                if payment.remaining_balance > 0
-                else " The order is fully paid."
-                if payment.payment_type == "final"
-                else ""
-            )
-            payment_message = f"A payment of {payment.amount:.2f} was recorded{method_text}.{balance_text}"
-        elif language == "ar":
-            method_text = f" عبر {payment_method}" if payment_method else ""
-            balance_text = (
-                f" الرصيد المتبقي بعد هذه الدفعة: {payment.remaining_balance:.2f}."
-                if payment.remaining_balance > 0
-                else " تم دفع الطلب بالكامل."
-                if payment.payment_type == "final"
-                else ""
-            )
-            payment_message = f"تم تسجيل دفعة بقيمة {payment.amount:.2f}{method_text}.{balance_text}"
-        else:
-            method_text = f" via {payment_method}" if payment_method else ""
-            balance_text = (
-                f" Solde restant après ce règlement : {payment.remaining_balance:.2f}."
-                if payment.remaining_balance > 0
-                else " La commande est entièrement réglée."
-                if payment.payment_type == "final"
-                else ""
-            )
-            payment_message = f"Un paiement de {payment.amount:.2f} a été enregistré{method_text}.{balance_text}"
-        events.append(
-            ClientTimelineEvent(
-                kind="payment",
-                tone="payment",
-                icon="fa-wallet",
-                title=PORTAL_PAYMENT_EVENT_TITLES[language].get(
-                    payment.payment_type,
-                    PORTAL_PAYMENT_EVENT_TITLES[language]["default"],
-                ),
-                message=payment_message,
-                occurred_at=occurred_at,
-                has_time=False,
-                sort_at=_timeline_datetime(occurred_at),
-            )
-        )
-
     for activity in activities:
+        if activity.kind == VideoActivity.Kind.PAYMENT:
+            continue
         occurred_at = activity.created_at
         events.append(
             ClientTimelineEvent(
@@ -358,20 +306,11 @@ def decorate_client_video(video, language="fr"):
         )
     versions = list(video.portal_versions.all())
     submissions = list(video.media_submissions.all())
-    payment_requests = list(video.portal_payment_requests.all())
-
     pending_versions = [
         version
         for version in versions
         if version.status == VideoVersion.Status.PENDING
     ]
-    active_payment_requests = [
-        payment_request
-        for payment_request in payment_requests
-        if payment_request.status
-        in {PaymentRequest.Status.PENDING, PaymentRequest.Status.OPENED}
-    ]
-
     actions = []
     action_copy = CLIENT_ACTION_LABELS[language]
     if pending_versions:
@@ -396,18 +335,6 @@ def decorate_client_video(video, language="fr"):
                 "tone": "media",
                 "icon": "fa-cloud-arrow-up",
                 "label": action_copy["media"],
-            }
-        )
-    if video.payment_snapshot.balance > 0 and (
-        active_payment_requests
-        or video.production_stage == VideoWorkflow.Stage.AWAITING_BALANCE
-    ):
-        actions.append(
-            {
-                "key": "payment",
-                "tone": "payment",
-                "icon": "fa-wallet",
-                "label": action_copy["payment"],
             }
         )
     if video.production_stage == VideoWorkflow.Stage.BLOCKED:

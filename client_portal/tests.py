@@ -936,16 +936,17 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.player.refresh_from_db()
         self.assertEqual(self.player.name, "Alpha Player")
 
-    def test_dashboard_highlights_required_actions_and_order_finances(self):
+    def test_dashboard_highlights_required_actions_without_finances(self):
         self.client.force_login(self.portal_user)
 
         response = self.client.get(reverse("portal:dashboard"))
 
         self.assertContains(response, "Actions requises")
         self.assertContains(response, "1 version à valider")
-        self.assertContains(response, "Montant total")
-        self.assertContains(response, "Déjà payé")
-        self.assertContains(response, "Solde")
+        self.assertNotContains(response, "Montant total")
+        self.assertNotContains(response, "Déjà payé")
+        self.assertNotContains(response, "Solde")
+        self.assertNotContains(response, "portal-order-finance")
         self.assertContains(response, "Joueurs suivis")
         self.assertContains(response, "commandes actives")
 
@@ -1048,7 +1049,7 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.assertContains(video_page, "Vidéo livrée")
         self.assertContains(dashboard, "Historique des vidéos")
 
-    def test_video_timeline_combines_saved_statuses_payments_and_updates(self):
+    def test_video_timeline_hides_payments_and_keeps_production_updates(self):
         self.video.status = Video.StatusChoices.IN_PROGRESS
         self.video.save(update_fields=("status",))
         Payment.objects.create(
@@ -1068,6 +1069,13 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
             message="Une nouvelle prévisualisation est disponible.",
             created_by=self.admin,
         )
+        VideoActivity.objects.create(
+            video=self.video,
+            kind=VideoActivity.Kind.PAYMENT,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message="Information de paiement à masquer.",
+            created_by=self.admin,
+        )
         counts_before = (
             self.video.status_history.count(),
             self.video.payments.count(),
@@ -1078,11 +1086,12 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         response = self.client.get(reverse("portal:video", args=(self.video.pk,)))
 
         self.assertContains(response, "Production démarrée")
-        self.assertContains(response, "Paiement partiel enregistré")
-        self.assertContains(response, "150.00")
-        self.assertContains(response, "virement bancaire")
         self.assertContains(response, "Une nouvelle prévisualisation est disponible.")
-        self.assertContains(response, "portal-finance-card", count=3)
+        self.assertNotContains(response, "Paiement partiel enregistré")
+        self.assertNotContains(response, "Information de paiement à masquer.")
+        self.assertNotContains(response, "150.00")
+        self.assertNotContains(response, "virement bancaire")
+        self.assertNotContains(response, "portal-finance-card")
         self.assertEqual(
             (
                 self.video.status_history.count(),
@@ -1140,6 +1149,13 @@ class PortalCollaborationTests(PortalFixtureMixin, TestCase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
         self.assertEqual(self.invoice.amount_paid, Decimal("100"))
+
+        portal_response = self.client.get(
+            reverse("portal:video", args=(self.video.pk,))
+        )
+        self.assertContains(portal_response, "Finalisation en cours")
+        self.assertNotContains(portal_response, "Solde à payer")
+        self.assertNotContains(portal_response, "Règlement demandé")
 
     def test_payment_link_is_visible_only_to_authorized_player(self):
         payment_request = PaymentRequest.objects.create(

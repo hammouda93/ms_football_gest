@@ -14,20 +14,23 @@
 
 <nav class="player-service-tabs" aria-label="Services du joueur"><a href="{% url 'portal:player' player.pk %}"><i class="fas fa-clapperboard"></i> {{ copy.video_tracking }}</a><a class="active" href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> {{ copy.performance }}</a></nav>
 
-{% if subscription.total_amount > 0 %}
-<section class="performance-panel performance-portal-payment state-{{ subscription.payment_state }}">
-    <div class="performance-panel-heading">
-        <div><span class="eyebrow">{{ copy.annual_subscription }}</span><h2>{{ copy.subscription_payment }}</h2><p>{{ copy.subscription_payment_help }}</p></div>
-        <i class="fas fa-wallet"></i>
+<section class="performance-panel performance-matches-panel priority-panel" id="matches">
+    <div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.analyses }} · {{ subscription.season }}</span><h2>{{ copy.player_matches }}</h2><p>{{ copy.open_match }}</p></div><span class="performance-count">{{ matches|length }}</span></div>
+    <div class="performance-match-list">
+        {% for match in matches %}
+            <a class="performance-match-row" href="{% url 'performance:portal_match' player.pk match.sportsbase_match_id %}">
+                <time>{{ match.match_date|date:"d M"|default:"—" }}<small>{{ match.match_date|date:"Y" }}</small></time>
+                <div class="performance-fixture"><small>{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</small><strong><span>{{ match.home_team }}</span><b>{{ match.score }}</b><span>{{ match.away_team }}</span></strong></div>
+                <div class="performance-match-index"><small>{{ copy.index }}</small><strong>{{ match.player_stats.index|ms_index }}</strong></div>
+                {% if match.youtube_upload.status == "uploaded" %}<span class="performance-actions-state state-uploaded"><i class="fas fa-circle-play"></i> {{ copy.watch }}</span>
+                {% elif match.youtube_upload.status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
+                {% elif match.youtube_upload.status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
+                {% else %}<span class="performance-actions-state state-{{ match.actions_state }}"><i class="fas fa-film"></i> {{ match.actions_state|portal_action_label_for:portal_language }}</span>{% endif %}
+                <i class="fas fa-chevron-right row-arrow"></i>
+            </a>
+        {% empty %}<div class="performance-panel-empty"><i class="fas fa-calendar-xmark"></i><span>{{ copy.no_match }}</span></div>{% endfor %}
     </div>
-    <div class="performance-payment-summary">
-        <article><span>{{ copy.subscription_price }}</span><strong>{{ subscription.total_amount|floatformat:2 }} {{ subscription.currency }}</strong></article>
-        <article><span>{{ copy.amount_paid }}</span><strong>{{ subscription.amount_paid|floatformat:2 }} {{ subscription.currency }}</strong></article>
-        <article><span>{{ copy.remaining_balance }}</span><strong>{{ subscription.remaining_balance|floatformat:2 }} {{ subscription.currency }}</strong></article>
-    </div>
-    {% if subscription.remaining_balance > 0 and subscription.payment_url %}<a class="analyst-report-button performance-payment-button" href="{{ subscription.payment_url }}" target="_blank" rel="noopener"><i class="fas fa-lock"></i> {{ copy.pay_subscription }}</a>{% elif subscription.remaining_balance <= 0 %}<span class="performance-payment-complete"><i class="fas fa-circle-check"></i> {{ copy.payment_complete }}</span>{% endif %}
 </section>
-{% endif %}
 
 {% if tracked_season_summary.match_count %}
 <section class="performance-kpi-grid performance-season-kpis">
@@ -97,24 +100,6 @@
 </details>
 {% endif %}
 {% endif %}
-
-<section class="performance-panel performance-matches-panel priority-panel" id="matches">
-    <div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.analyses }} · {{ subscription.season }}</span><h2>{{ copy.player_matches }}</h2><p>{{ copy.open_match }}</p></div><span class="performance-count">{{ matches|length }}</span></div>
-    <div class="performance-match-list">
-        {% for match in matches %}
-            <a class="performance-match-row" href="{% url 'performance:portal_match' player.pk match.sportsbase_match_id %}">
-                <time>{{ match.match_date|date:"d M"|default:"—" }}<small>{{ match.match_date|date:"Y" }}</small></time>
-                <div class="performance-fixture"><small>{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</small><strong><span>{{ match.home_team }}</span><b>{{ match.score }}</b><span>{{ match.away_team }}</span></strong></div>
-                <div class="performance-match-index"><small>{{ copy.index }}</small><strong>{{ match.player_stats.index|ms_index }}</strong></div>
-                {% if match.youtube_upload.status == "uploaded" %}<span class="performance-actions-state state-uploaded"><i class="fas fa-circle-play"></i> {{ copy.watch }}</span>
-                {% elif match.youtube_upload.status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
-                {% elif match.youtube_upload.status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
-                {% else %}<span class="performance-actions-state state-{{ match.actions_state }}"><i class="fas fa-film"></i> {{ match.actions_state|portal_action_label_for:portal_language }}</span>{% endif %}
-                <i class="fas fa-chevron-right row-arrow"></i>
-            </a>
-        {% empty %}<div class="performance-panel-empty"><i class="fas fa-calendar-xmark"></i><span>{{ copy.no_match }}</span></div>{% endfor %}
-    </div>
-</section>
 
 {% if cycle_reports %}
 <section class="performance-panel cycle-reports-panel">

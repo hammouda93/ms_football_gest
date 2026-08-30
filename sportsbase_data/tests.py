@@ -469,6 +469,10 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(detail, "Sur les matchs analysés")
         self.assertContains(detail, "--analysis-progress: 86.0%")
         html = detail.content.decode()
+        self.assertLess(
+            html.index("Matchs du joueur"),
+            html.index("Saison MS Performance"),
+        )
         self.assertLess(html.index("Index moyen"), html.index("Matchs analysés"))
         self.assertLess(html.index("Matchs analysés"), html.index("Buts"))
         self.assertLess(html.index("Buts"), html.index("Passes décisives"))
@@ -481,6 +485,8 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(season_passes["rate_value"], "86%")
         self.assertEqual(season_passes["chart_percent"], 86.0)
         self.assertNotContains(detail, "SportsBase")
+        self.assertNotContains(detail, "Règlement de l’abonnement")
+        self.assertNotContains(detail, "performance-portal-payment")
         self.assertEqual(match.status_code, 200)
         self.assertContains(match, "Index du match")
         self.assertContains(match, "Volume et efficacité")
@@ -504,7 +510,7 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(match, "youtube-nocookie.com/embed/abcdefghijk")
         self.assertNotContains(match, "all-actions-open-link")
 
-    def test_player_profile_shows_transfermarkt_and_subscription_payment(self):
+    def test_player_profile_shows_transfermarkt_but_hides_subscription_payment(self):
         self.player.transfermarkt_url = "https://www.transfermarkt.com/example/profil/spieler/123"
         self.player.save(update_fields=("transfermarkt_url",))
         self.subscription.total_amount = 1200
@@ -528,10 +534,11 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Transfermarkt")
         self.assertContains(response, self.player.transfermarkt_url)
-        self.assertContains(response, "Règlement de l’abonnement")
-        self.assertContains(response, "400.00 TND")
-        self.assertContains(response, "800.00 TND")
-        self.assertContains(response, self.subscription.payment_url)
+        self.assertNotContains(response, "Règlement de l’abonnement")
+        self.assertNotContains(response, "400.00 TND")
+        self.assertNotContains(response, "800.00 TND")
+        self.assertNotContains(response, self.subscription.payment_url)
+        self.assertNotContains(response, "performance-portal-payment")
 
     def test_average_only_season_metrics_keep_source_order_and_values(self):
         self.snapshot.season_statistics = {

@@ -30,10 +30,5 @@
         <div class="portal-order-clear"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ pc.no_action_required }}</div>
     {% endif %}
 
-    <div class="portal-order-finance" aria-label="{{ pc.financial_summary }}">
-        <span><i class="fas fa-receipt" aria-hidden="true"></i><small>{{ pc.total_amount }}</small><strong>{{ video.payment_snapshot.total|floatformat:2 }}</strong></span>
-        <span class="paid"><i class="fas fa-circle-check" aria-hidden="true"></i><small>{{ pc.already_paid }}</small><strong>{{ video.payment_snapshot.paid|floatformat:2 }}</strong></span>
-        <span class="balance{% if video.payment_snapshot.balance %} due{% else %} settled{% endif %}"><i class="fas {% if video.payment_snapshot.balance %}fa-hourglass-half{% else %}fa-check-double{% endif %}" aria-hidden="true"></i><small>{{ pc.order_balance }}</small><strong>{{ video.payment_snapshot.balance|floatformat:2 }}</strong></span>
-    </div>
     <div class="portal-order-open">{{ pc.open_order_detail }} <i class="fas fa-arrow-right" aria-hidden="true"></i></div>
 </a>
