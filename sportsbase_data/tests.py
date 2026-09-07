@@ -40,7 +40,11 @@ from .reports import (
     render_report_pdf,
     send_ready_delivery_notification,
 )
-from .scraper import SportsBaseSubscriptionScraper
+from .scraper import (
+    _XLSX_BROWSER_RETRY_KEY,
+    _browser_target_was_closed,
+    SportsBaseSubscriptionScraper,
+)
 from .services import (
     apply_dailymotion_upload_result,
     apply_sync_result,
@@ -752,6 +756,79 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_target_closed_error_is_distinguished_from_normal_xlsx_failure(self):
+        self.assertTrue(
+            _browser_target_was_closed(
+                RuntimeError(
+                    "Download.save_as: Target page, context or browser has been closed"
+                )
+            )
+        )
+        self.assertFalse(
+            _browser_target_was_closed(RuntimeError("Download timed out after 30000ms"))
+        )
+
+    def test_xlsx_browser_closure_restarts_twice_then_returns_success(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            if len(attempts) < 3:
+                return {
+                    "status": "partial",
+                    "profile": {"season": "2026/2027"},
+                    "matches": [],
+                    "summary": {"matches_imported": 0},
+                    "error": "Chrome fermé",
+                    _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+                }
+            return {
+                "status": "success",
+                "profile": {"season": "2026/2027"},
+                "matches": [{"sportsbase_match_id": "800079"}],
+                "summary": {"matches_imported": 1},
+                "error": "",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["summary"]["matches_imported"], 1)
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
+    def test_xlsx_browser_retry_exhaustion_preserves_partial_result(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            return {
+                "status": "partial",
+                "profile": {"season": "2026/2027"},
+                "matches": [],
+                "summary": {"matches_imported": 0},
+                "error": "Chrome fermé",
+                _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["profile"]["season"], "2026/2027")
+        self.assertIn("Échec après 3 tentative(s)", result["error"])
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
     def test_same_chrome_filename_is_staged_separately_for_each_match(self):
         with TemporaryDirectory() as directory:
             downloads_dir = Path(directory)

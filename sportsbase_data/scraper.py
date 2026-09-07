@@ -30,7 +30,8 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-myvideos-name-alias-v24-20260907"
+SCRAPER_BUILD = "sportsbase-xlsx-browser-recovery-v25-20260907"
+_XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -70,6 +71,25 @@ def _iso_date(text):
 
 def _clean_label(value):
     return re.sub(r"\s+", " ", str(value or "")).strip(" :\n\t")
+
+
+class _RetryableXlsxBrowserClosed(RuntimeError):
+    """Signal that the whole Chrome context vanished during the XLSX download."""
+
+
+def _browser_target_was_closed(exc):
+    message = str(exc or "").casefold()
+    return any(
+        marker in message
+        for marker in (
+            "target page, context or browser has been closed",
+            "target closed",
+            "browser has been closed",
+            "browser closed",
+            "context has been closed",
+            "page has been closed",
+        )
+    )
 
 
 class SportsBaseSubscriptionScraper:
@@ -121,8 +141,59 @@ class SportsBaseSubscriptionScraper:
                 ) from exc
             raise
 
+    @staticmethod
+    def _xlsx_browser_max_attempts():
+        try:
+            configured = int(
+                os.getenv("SPORTSBASE_XLSX_BROWSER_MAX_ATTEMPTS", "3")
+            )
+        except (TypeError, ValueError):
+            configured = 3
+        return max(1, min(configured, 5))
+
+    @staticmethod
+    def _xlsx_browser_retry_delay():
+        try:
+            configured = float(
+                os.getenv("SPORTSBASE_XLSX_BROWSER_RETRY_DELAY_SECONDS", "3")
+            )
+        except (TypeError, ValueError):
+            configured = 3.0
+        return max(0.0, min(configured, 30.0))
+
     def run(self, job):
         print(f"[SPORTSBASE] Version scraper : {SCRAPER_BUILD}")
+        max_attempts = self._xlsx_browser_max_attempts()
+        last_result = None
+
+        for attempt in range(1, max_attempts + 1):
+            result = self._run_browser_attempt(job)
+            retry_reason = str(result.pop(_XLSX_BROWSER_RETRY_KEY, "") or "")
+            if not retry_reason:
+                return result
+
+            last_result = result
+            if attempt >= max_attempts:
+                result["error"] = (
+                    f"{retry_reason} Échec après {max_attempts} tentative(s) "
+                    "automatiques. Les fichiers et l’abonnement ont été conservés."
+                )
+                print(f"[SPORTSBASE][ERREUR REPRISE XLSX] {result['error']}")
+                return result
+
+            next_attempt = attempt + 1
+            print(
+                "[SPORTSBASE][REPRISE XLSX] Chrome s’est fermé pendant le "
+                f"téléchargement. Relance automatique {next_attempt}/{max_attempts} "
+                "— aucune donnée locale ne sera supprimée."
+            )
+            delay = self._xlsx_browser_retry_delay()
+            if delay:
+                time.sleep(delay)
+
+        return last_result
+
+    def _run_browser_attempt(self, job):
         player = job["player"]
         player_root = self.storage_root / player["storage_key"]
         downloads_dir = player_root / "_downloads"
@@ -203,6 +274,12 @@ class SportsBaseSubscriptionScraper:
                                 "Les statistiques sont enregistrées, mais au moins un "
                                 "fichier All Actions reste à télécharger."
                             )
+            except _RetryableXlsxBrowserClosed as exc:
+                result["status"] = (
+                    "partial" if result["profile"] or result["matches"] else "failed"
+                )
+                result["error"] = str(exc)
+                result[_XLSX_BROWSER_RETRY_KEY] = str(exc)
             except Exception as exc:
                 result["status"] = (
                     "partial" if result["profile"] or result["matches"] else "failed"
@@ -955,6 +1032,10 @@ class SportsBaseSubscriptionScraper:
                         player_root=player_root,
                     )
                     match_data["sync_state"] = "synced"
+                except _RetryableXlsxBrowserClosed:
+                    # The main player page belongs to the same dead context. Stop
+                    # before queuing/generating All Actions and restart Chrome.
+                    raise
                 except Exception as exc:
                     match_data["sync_state"] = "partial"
                     match_data.setdefault("source_metadata", {})["stats_error"] = str(exc)
@@ -2017,7 +2098,12 @@ class SportsBaseSubscriptionScraper:
                 )
             return result
         finally:
-            page.close()
+            try:
+                if not page.is_closed():
+                    page.close()
+            except Exception:
+                # Preserve the original TargetClosedError raised by save_as().
+                pass
 
     def _download_match_players_statistics(
         self, *, page, match_data, destination_dir
@@ -2127,6 +2213,11 @@ class SportsBaseSubscriptionScraper:
                 **parsed,
             }
         except Exception as exc:
+            if _browser_target_was_closed(exc):
+                raise _RetryableXlsxBrowserClosed(
+                    "Le navigateur SportsBase a disparu pendant l’enregistrement "
+                    f"du XLSX du match {match_id}."
+                ) from exc
             print(
                 "[SPORTSBASE][WARN] Téléchargement Players XLSX impossible — "
                 f"match {match_id} : {exc}"
