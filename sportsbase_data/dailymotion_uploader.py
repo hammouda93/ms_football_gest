@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v3-20260907"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v4-20260907"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
@@ -504,6 +504,70 @@ class DailymotionStudioUploader:
                 return selector
         return field
 
+    def _visible_select_option(self, page, option_pattern):
+        dropdown = self._visible(page.locator(".ant-select-dropdown"))
+        scopes = [dropdown] if dropdown is not None else []
+        scopes.append(page)
+        for scope in scopes:
+            option = self._visible(
+                scope.get_by_role("option", name=option_pattern)
+            ) or self._visible(
+                scope.locator(".ant-select-item-option").filter(
+                    has_text=option_pattern
+                )
+            )
+            if option is not None:
+                return option
+        return None
+
+    @staticmethod
+    def _active_option_matches(page, field, option_pattern):
+        try:
+            active_id = field.get_attribute("aria-activedescendant") or ""
+        except Exception:
+            return False
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,127}", active_id):
+            return False
+        active = page.locator(f'[id="{active_id}"]')
+        try:
+            if not active.count():
+                return False
+            active = active.first
+        except Exception:
+            return False
+        values = []
+        for getter in (
+            active.inner_text,
+            active.text_content,
+            lambda: active.get_attribute("aria-label"),
+            lambda: active.get_attribute("title"),
+        ):
+            try:
+                value = getter()
+            except Exception:
+                continue
+            if isinstance(value, str) and value.strip():
+                values.append(" ".join(value.split()))
+        return any(option_pattern.fullmatch(value) for value in values)
+
+    def _select_ant_option(self, page, field, option_pattern):
+        # Dailymotion virtualizes the category list. The requested item may
+        # therefore be absent from the visible DOM until keyboard navigation
+        # moves aria-activedescendant to it.
+        for _index in range(80):
+            option = self._visible_select_option(page, option_pattern)
+            if option is not None:
+                option.click()
+                return
+            if self._active_option_matches(page, field, option_pattern):
+                field.press("Enter")
+                return
+            field.press("ArrowDown")
+            page.wait_for_timeout(100)
+        raise DailymotionUploadError(
+            f"L’option « {option_pattern.pattern} » est introuvable dans la liste."
+        )
+
     def _select_option(self, page, label, selectors, values, option_pattern):
         field = self._wait_control(
             page, lambda: self._field(page, label, selectors), label.pattern
@@ -521,14 +585,7 @@ class DailymotionStudioUploader:
                         return
         else:
             self._select_click_target(field).click()
-            option = self._wait_control(
-                page,
-                lambda: self._visible(page.get_by_role("option", name=option_pattern))
-                or self._visible(page.get_by_text(option_pattern)),
-                option_pattern.pattern,
-                10000,
-            )
-            option.click()
+            self._select_ant_option(page, field, option_pattern)
             page.wait_for_timeout(300)
             if self._selection_confirmed(field, values, option_pattern):
                 return

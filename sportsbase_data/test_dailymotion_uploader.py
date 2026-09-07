@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_video_id
 from .dailymotion_uploader import (
@@ -286,16 +286,14 @@ class DailymotionRPATests(unittest.TestCase):
         field = Mock()
         field.evaluate.return_value = "input"
         visible_selector = Mock()
-        sport_option = Mock()
-        self.uploader._wait_control = Mock(
-            side_effect=[field, sport_option]
-        )
+        self.uploader._wait_control = Mock(return_value=field)
         self.uploader._selection_confirmed = Mock(
             side_effect=[False, True]
         )
         self.uploader._select_click_target = Mock(
             return_value=visible_selector
         )
+        self.uploader._select_ant_option = Mock()
 
         self.uploader._select_option(
             page,
@@ -307,7 +305,11 @@ class DailymotionRPATests(unittest.TestCase):
 
         visible_selector.click.assert_called_once_with()
         field.click.assert_not_called()
-        sport_option.click.assert_called_once_with()
+        self.uploader._select_ant_option.assert_called_once_with(
+            page,
+            field,
+            ANY,
+        )
 
     def test_ant_category_target_is_selector_ancestor(self):
         field = Mock()
@@ -320,6 +322,46 @@ class DailymotionRPATests(unittest.TestCase):
 
         self.assertIs(result, visible_selector)
         self.assertIn("ant-select-selector", field.locator.call_args.args[0])
+
+    def test_virtualized_category_reaches_sport_with_active_option(self):
+        page = Mock()
+        field = Mock()
+        option_pattern = re.compile(r"^sports?$", re.I)
+        self.uploader._visible_select_option = Mock(return_value=None)
+        self.uploader._active_option_matches = Mock(
+            side_effect=[False, False, True]
+        )
+
+        self.uploader._select_ant_option(page, field, option_pattern)
+
+        self.assertEqual(
+            [call.args[0] for call in field.press.call_args_list],
+            ["ArrowDown", "ArrowDown", "Enter"],
+        )
+
+    def test_hidden_active_option_is_matched_from_aria_label(self):
+        page = Mock()
+        field = Mock()
+        field.get_attribute.return_value = "channel_list_8"
+        active_locator = Mock()
+        active_locator.count.return_value = 1
+        active_option = Mock()
+        active_locator.first = active_option
+        active_option.inner_text.return_value = ""
+        active_option.text_content.return_value = ""
+        active_option.get_attribute.side_effect = lambda name: (
+            "Sport" if name == "aria-label" else None
+        )
+        page.locator.return_value = active_locator
+
+        self.assertTrue(
+            self.uploader._active_option_matches(
+                page,
+                field,
+                re.compile(r"^sports?$", re.I),
+            )
+        )
+        page.locator.assert_called_once_with('[id="channel_list_8"]')
 
     def test_completion_requires_explicit_transfer_evidence(self):
         for text in (
