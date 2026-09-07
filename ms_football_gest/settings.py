@@ -230,6 +230,12 @@ SPORTSBASE_SYNC_INTERVAL_HOURS = int(
 SPORTSBASE_JOB_TIMEOUT_HOURS = int(
     os.getenv('SPORTSBASE_JOB_TIMEOUT_HOURS', '4')
 )
+DAILYMOTION_UPLOAD_JOB_TIMEOUT_HOURS = int(
+    os.getenv('DAILYMOTION_UPLOAD_JOB_TIMEOUT_HOURS', '6')
+)
+# Facultatif : le lecteur créé dans Dailymotion Studio. Sans cet identifiant,
+# le portail utilise le lecteur d’intégration standard de Dailymotion.
+DAILYMOTION_PLAYER_ID = os.getenv('DAILYMOTION_PLAYER_ID', '').strip()
 
 CELERY_BROKER_URL = 'redis://localhost:6380/0' 
 CELERY_RESULT_BACKEND = 'redis://localhost:6380/0'

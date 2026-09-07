@@ -10,6 +10,7 @@ from django.utils import timezone
 from .analysis_engine import build_match_analysis
 from .models import (
     PerformanceReport,
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseSubscription,
     SportsBaseYouTubeUpload,
@@ -427,7 +428,9 @@ def render_report_pdf(report):
 
 def send_ready_delivery_notification(report):
     report = PerformanceReport.objects.select_related(
-        "subscription__player", "match__youtube_upload"
+        "subscription__player",
+        "match__youtube_upload",
+        "match__dailymotion_upload",
     ).get(pk=report.pk)
     if (
         report.notification_sent_at
@@ -445,15 +448,26 @@ def send_ready_delivery_notification(report):
         try:
             upload = report.match.youtube_upload
         except SportsBaseYouTubeUpload.DoesNotExist:
-            return False
-        if (
-            upload.status != SportsBaseYouTubeUpload.Status.UPLOADED
-            or not upload.youtube_url
-        ):
+            upload = None
+        try:
+            fallback_upload = report.match.dailymotion_upload
+        except SportsBaseDailymotionUpload.DoesNotExist:
+            fallback_upload = None
+        youtube_ready = bool(
+            upload
+            and upload.status == SportsBaseYouTubeUpload.Status.UPLOADED
+            and upload.youtube_url
+        )
+        dailymotion_ready = bool(
+            fallback_upload
+            and fallback_upload.status == SportsBaseDailymotionUpload.Status.UPLOADED
+            and fallback_upload.dailymotion_url
+        )
+        if not youtube_ready and not dailymotion_ready:
             return False
         # Les notifications envoyées avant cette migration étaient enregistrées
         # sur l'upload YouTube. On recopie ce marqueur pour éviter un doublon.
-        if upload.notification_sent_at:
+        if upload and upload.notification_sent_at:
             report.notification_sent_at = upload.notification_sent_at
             report.notification_error = upload.notification_error
             report.save(

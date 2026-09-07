@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Sum
@@ -350,6 +350,44 @@ class SportsBaseMatch(models.Model):
             self.ActionsState.EMAILED,
         }
 
+    def _related_video_upload(self, relation_name):
+        try:
+            return getattr(self, relation_name)
+        except ObjectDoesNotExist:
+            return None
+
+    @property
+    def available_video_url(self):
+        """Prefer the manually requested fallback once it is available."""
+        providers = (
+            ("dailymotion_upload", "dailymotion_url"),
+            ("youtube_upload", "youtube_url"),
+        )
+        for relation_name, url_field in providers:
+            upload = self._related_video_upload(relation_name)
+            if upload and upload.status == "uploaded":
+                url = str(getattr(upload, url_field, "") or "").strip()
+                if url:
+                    return url
+        return ""
+
+    @property
+    def video_delivery_status(self):
+        if self.available_video_url:
+            return "uploaded"
+        uploads = tuple(
+            upload
+            for upload in (
+                self._related_video_upload("dailymotion_upload"),
+                self._related_video_upload("youtube_upload"),
+            )
+            if upload is not None
+        )
+        for status in ("running", "pending", "failed"):
+            if any(upload.status == status for upload in uploads):
+                return status
+        return ""
+
 
 class SportsBaseMatchStats(models.Model):
     match = models.OneToOneField(
@@ -472,6 +510,49 @@ class SportsBaseYouTubeUpload(models.Model):
         ordering = ("-match__match_date", "created_at")
         verbose_name = "Publication YouTube All Actions"
         verbose_name_plural = "Publications YouTube All Actions"
+
+    def __str__(self):
+        return f"{self.match.subscription.player} — {self.match} — {self.get_status_display()}"
+
+
+class SportsBaseDailymotionUpload(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "En attente"
+        RUNNING = "running", "Upload Dailymotion en cours"
+        UPLOADED = "uploaded", "Vidéo disponible"
+        FAILED = "failed", "Échec"
+
+    match = models.OneToOneField(
+        SportsBaseMatch,
+        on_delete=models.CASCADE,
+        related_name="dailymotion_upload",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    upload_title = models.CharField(max_length=255, blank=True)
+    dailymotion_url = models.URLField(blank=True)
+    dailymotion_video_id = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+    )
+    content_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    file_size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-match__match_date", "created_at")
+        verbose_name = "Publication Dailymotion All Actions"
+        verbose_name_plural = "Publications Dailymotion All Actions"
 
     def __str__(self):
         return f"{self.match.subscription.player} — {self.match} — {self.get_status_display()}"

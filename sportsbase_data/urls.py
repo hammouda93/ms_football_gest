@@ -42,6 +42,11 @@ urlpatterns = [
         name="youtube_upload_retry",
     ),
     path(
+        "gestion/performances/dailymotion/match/<int:match_pk>/publier/",
+        views.dailymotion_upload_request,
+        name="dailymotion_upload_request",
+    ),
+    path(
         "gestion/performances/rapports/<int:pk>/modifier/",
         views.report_edit,
         name="report_edit",
@@ -105,5 +110,15 @@ urlpatterns = [
         "sportsbase/automation/youtube/jobs/<int:job_id>/result/",
         views.api_youtube_job_result,
         name="api_youtube_job_result",
+    ),
+    path(
+        "sportsbase/automation/dailymotion/jobs/next/",
+        views.api_next_dailymotion_job,
+        name="api_next_dailymotion_job",
+    ),
+    path(
+        "sportsbase/automation/dailymotion/jobs/<int:job_id>/result/",
+        views.api_dailymotion_job_result,
+        name="api_dailymotion_job_result",
     ),
 ]

@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     PerformanceReport,
     PerformanceSubscriptionPayment,
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -95,6 +96,32 @@ class SportsBaseYouTubeUploadAdmin(admin.ModelAdmin):
         "match__home_team",
         "match__away_team",
         "youtube_video_id",
+    )
+    readonly_fields = (
+        "content_sha256",
+        "file_size_bytes",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "updated_at",
+    )
+
+
+@admin.register(SportsBaseDailymotionUpload)
+class SportsBaseDailymotionUploadAdmin(admin.ModelAdmin):
+    list_display = (
+        "match",
+        "status",
+        "attempts",
+        "dailymotion_video_id",
+        "finished_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "match__subscription__player__name",
+        "match__home_team",
+        "match__away_team",
+        "dailymotion_video_id",
     )
     readonly_fields = (
         "content_sha256",

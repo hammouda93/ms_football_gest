@@ -321,6 +321,12 @@
 .performance-row-actions { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .performance-row-actions form { margin: 0; }
 .performance-jobs-panel { margin-top: 18px; padding: 18px; background: #fff; border: 1px solid var(--performance-border); border-radius: 18px; }
+.performance-delivery-table td { min-width: 185px; vertical-align: top; }
+.performance-delivery-table td:first-child, .performance-delivery-table td:nth-child(2) { min-width: 150px; }
+.video-provider-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.video-provider-actions form { margin: 0; }
+.performance-delivery-table td > small { display: block; margin-top: 6px; color: var(--performance-muted); font-size: .58rem; }
+.delivery-provider-error { display: block; max-width: 320px; margin-top: 6px; font-size: .61rem; line-height: 1.35; }
 .performance-subscription-form { max-width: 920px; margin-top: 20px; padding: 24px; background: #fff; border: 1px solid var(--performance-border); border-radius: 20px; box-shadow: 0 14px 32px rgba(15, 38, 64, .08); }
 .performance-form-page > header { max-width: 900px; }
 .performance-form-page h1 { color: var(--performance-text); }

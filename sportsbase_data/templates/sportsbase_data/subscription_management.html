@@ -44,8 +44,47 @@
     </section>
 
     <section class="performance-jobs-panel">
-        <div class="panel-heading"><div><h2>Livraison All Actions</h2><small>Publications non répertoriées traitées par l’agent local</small></div></div>
-        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Match</th><th>État</th><th>Tentatives</th><th>Résultat</th><th></th></tr></thead><tbody>{% for upload in youtube_jobs %}<tr><td>{{ upload.match.subscription.player.name }}</td><td>{{ upload.match.home_team }} – {{ upload.match.away_team }}</td><td><span class="job-status status-{{ upload.status }}">{{ upload.get_status_display }}</span></td><td>{{ upload.attempts }}</td><td>{% if upload.youtube_url %}<a href="{{ upload.youtube_url }}" target="_blank" rel="noopener"><i class="fab fa-youtube"></i> Voir</a>{% elif upload.error_message %}<span class="text-danger">{{ upload.error_message|truncatechars:90 }}</span>{% else %}—{% endif %}</td><td>{% if upload.status == "failed" %}<form method="post" action="{% url 'performance:youtube_upload_retry' upload.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Reprendre</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6">Aucune publication planifiée. Activez YouTube dans un abonnement.</td></tr>{% endfor %}</tbody></table></div>
+        <div class="panel-heading"><div><h2>Livraison All Actions</h2><small>YouTube reste prioritaire. Lancez Dailymotion seulement comme solution de secours.</small></div></div>
+        <div class="table-responsive">
+            <table class="table performance-delivery-table">
+                <thead><tr><th>Joueur</th><th>Match</th><th>YouTube</th><th>Dailymotion</th></tr></thead>
+                <tbody>
+                    {% for upload in youtube_jobs %}
+                    <tr>
+                        <td>{{ upload.match.subscription.player.name }}</td>
+                        <td>{{ upload.match.home_team }} – {{ upload.match.away_team }}</td>
+                        <td>
+                            <div class="video-provider-actions">
+                                <span class="job-status status-{{ upload.status }}">{{ upload.get_status_display }}</span>
+                                {% if upload.youtube_url %}<a class="btn btn-sm btn-outline-primary" href="{{ upload.youtube_url }}" target="_blank" rel="noopener"><i class="fab fa-youtube"></i> Voir</a>{% endif %}
+                                {% if upload.status == "failed" %}<form method="post" action="{% url 'performance:youtube_upload_retry' upload.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Réessayer</button></form>{% endif %}
+                            </div>
+                            <small>{{ upload.attempts }} tentative{{ upload.attempts|pluralize }}</small>
+                            {% if upload.error_message %}<span class="delivery-provider-error text-danger">{{ upload.error_message|truncatechars:90 }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% with fallback=upload.match.dailymotion_upload %}
+                            <div class="video-provider-actions">
+                                {% if fallback.status %}<span class="job-status status-{{ fallback.status }}">{{ fallback.get_status_display }}</span>{% endif %}
+                                {% if fallback.status == "uploaded" and fallback.dailymotion_url %}
+                                    <a class="btn btn-sm btn-outline-primary" href="{{ fallback.dailymotion_url }}" target="_blank" rel="noopener"><i class="fas fa-circle-play"></i> Voir</a>
+                                {% elif fallback.status == "failed" %}
+                                    <form method="post" action="{% url 'performance:dailymotion_upload_request' upload.match.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Réessayer</button></form>
+                                {% elif fallback.status == "pending" or fallback.status == "running" %}
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" disabled><i class="fas fa-clock"></i> En cours</button>
+                                {% else %}
+                                    <form method="post" action="{% url 'performance:dailymotion_upload_request' upload.match.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-cloud-arrow-up"></i> Essayer Dailymotion</button></form>
+                                {% endif %}
+                            </div>
+                            {% if fallback.status %}<small>{{ fallback.attempts }} tentative{{ fallback.attempts|pluralize }}</small>{% endif %}
+                            {% if fallback.error_message %}<span class="delivery-provider-error text-danger">{{ fallback.error_message|truncatechars:90 }}</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="4">Aucune publication planifiée. Activez YouTube dans un abonnement.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <section class="performance-jobs-panel">

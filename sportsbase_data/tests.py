@@ -21,11 +21,12 @@ from client_portal.models import (
 )
 from gestion_joueurs.models import Player
 
-from .forms import SportsBaseSubscriptionForm
 from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS
+from .forms import SportsBaseSubscriptionForm
 from .models import (
     PerformanceReport,
     PerformanceSubscriptionPayment,
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -41,13 +42,16 @@ from .reports import (
 )
 from .scraper import SportsBaseSubscriptionScraper
 from .services import (
+    apply_dailymotion_upload_result,
     apply_sync_result,
     apply_youtube_upload_result,
+    claim_next_dailymotion_upload,
     claim_next_job,
     claim_next_youtube_upload,
     ensure_youtube_upload_jobs,
     queue_sync,
     reconcile_subscription_delivery_settings,
+    request_dailymotion_upload,
 )
 from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
@@ -1211,6 +1215,219 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertTrue(result["sync_queued"])
 
 
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
+class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="880002",
+            season=self.subscription.season,
+            match_date=timezone.localdate(),
+            home_team="Stade Tunisien",
+            away_team="Club Africain",
+            home_score=2,
+            away_score=1,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="player_1/season/match_880002",
+            all_actions_filename="all-actions.mp4",
+        )
+        SportsBaseMatchStats.objects.create(match=self.match, minutes_played=90)
+        self.youtube_upload = SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée pour droits d’auteur.",
+        )
+
+    def test_manual_fallback_preserves_youtube_and_reuses_download_metadata(self):
+        fallback, created = request_dailymotion_upload(self.match)
+
+        self.assertTrue(created)
+        self.youtube_upload.refresh_from_db()
+        self.assertEqual(self.youtube_upload.status, SportsBaseYouTubeUpload.Status.FAILED)
+        self.assertEqual(
+            self.youtube_upload.error_message,
+            "Vidéo bloquée pour droits d’auteur.",
+        )
+
+        claimed = claim_next_dailymotion_upload()
+        self.assertEqual(claimed.pk, fallback.pk)
+        self.assertEqual(claimed.payload["match"]["filename"], "all-actions.mp4")
+        self.assertEqual(
+            claimed.payload["match"]["local_folder_key"],
+            "player_1/season/match_880002",
+        )
+        self.assertEqual(claimed.payload["dailymotion"]["visibility"], "private")
+        self.assertEqual(claimed.payload["dailymotion"]["category"], "sport")
+        self.assertNotIn("api_secret", str(claimed.payload).casefold())
+
+    def test_fallback_cannot_be_requested_before_all_actions_is_local(self):
+        self.match.actions_state = SportsBaseMatch.ActionsState.GENERATING
+        self.match.save(update_fields=("actions_state", "updated_at"))
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Le fichier All Actions doit être téléchargé",
+        ):
+            request_dailymotion_upload(self.match)
+
+        self.assertFalse(SportsBaseDailymotionUpload.objects.exists())
+
+    def test_valid_result_links_fallback_and_it_becomes_preferred_video(self):
+        request_dailymotion_upload(self.match)
+        upload = claim_next_dailymotion_upload()
+        finished = apply_dailymotion_upload_result(
+            upload,
+            {
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9fallback",
+                "dailymotion_video_id": "x9fallback",
+                "content_sha256": "b" * 64,
+                "file_size_bytes": 28_000_000,
+            },
+        )
+
+        self.assertEqual(finished.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(finished.dailymotion_video_id, "x9fallback")
+        self.assertEqual(self.match.available_video_url, finished.dailymotion_url)
+
+    def test_agent_api_claims_and_completes_the_manual_fallback(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+
+        overview = self.client.get(reverse("performance:api_pending_jobs"))
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(
+            overview.json()["dailymotion_jobs"][0]["job_id"],
+            fallback.pk,
+        )
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+        self.assertEqual(claimed.json()["job"]["job_id"], fallback.pk)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9apiresult",
+                "dailymotion_video_id": "x9apiresult",
+                "content_sha256": "c" * 64,
+                "file_size_bytes": 42,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(fallback.dailymotion_video_id, "x9apiresult")
+
+    def test_internal_management_exposes_try_retry_and_view_actions(self):
+        self.client.force_login(self.admin)
+        management_url = reverse("performance:management")
+
+        initial = self.client.get(management_url)
+        self.assertContains(initial, "Essayer Dailymotion")
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_upload_request",
+                args=(self.match.pk,),
+            )
+        )
+        self.assertRedirects(response, management_url, fetch_redirect_response=False)
+        fallback = SportsBaseDailymotionUpload.objects.get(match=self.match)
+
+        fallback.status = SportsBaseDailymotionUpload.Status.FAILED
+        fallback.error_message = "Publication refusée."
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        failed = self.client.get(management_url)
+        self.assertContains(failed, "Réessayer")
+
+        fallback.status = SportsBaseDailymotionUpload.Status.UPLOADED
+        fallback.dailymotion_url = "https://www.dailymotion.com/video/x9fallback"
+        fallback.dailymotion_video_id = "x9fallback"
+        fallback.error_message = ""
+        fallback.save(
+            update_fields=(
+                "status",
+                "dailymotion_url",
+                "dailymotion_video_id",
+                "error_message",
+                "updated_at",
+            )
+        )
+        uploaded = self.client.get(management_url)
+        self.assertContains(uploaded, "https://www.dailymotion.com/video/x9fallback")
+        self.assertContains(uploaded, "Voir")
+
+    def test_portal_uses_fallback_without_exposing_management_controls(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+        user = self.portal_user("fallback-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+
+        self.assertContains(response, "dailymotion.com/embed/video/x9fallback")
+        self.assertNotContains(response, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertNotContains(response, "Essayer Dailymotion")
+        self.assertNotContains(response, "Réessayer")
+
+    def test_youtube_remains_visible_while_fallback_is_pending(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(match=self.match)
+        self.match.refresh_from_db()
+
+        self.assertEqual(
+            self.match.available_video_url,
+            "https://www.youtube.com/watch?v=abcdefghijk",
+        )
+        self.assertEqual(self.match.video_delivery_status, "uploaded")
+
+
 class YouTubeUploaderPathTests(TestCase):
     def test_fast_upload_completion_is_detected_from_studio_status(self):
         class FakeHost:
@@ -1416,6 +1633,29 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertNotIn("https://", mail.outbox[0].body)
         self.assertFalse(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_email_accepts_dailymotion_when_youtube_upload_failed(self):
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=("youtube_delivery_enabled", "updated_at")
+        )
+        match = self._create_match(3)
+        report = generate_match_report(match)
+        SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée.",
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+
+        self.assertTrue(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertFalse(send_ready_delivery_notification(report))
 
     def test_email_option_suppresses_notification(self):
         match = self._create_match(2)
