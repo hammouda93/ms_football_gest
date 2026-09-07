@@ -5,6 +5,8 @@ import html
 import json
 import os
 import re
+import shutil
+import subprocess
 import time
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
@@ -66,7 +68,7 @@ def _sha256(path):
 
 
 class DailymotionStudioUploader:
-    def __init__(self, storage_root):
+    def __init__(self, storage_root, profile_dir=None):
         self.storage_root = Path(storage_root)
         self.profile_id = (
             os.getenv("DAILYMOTION_STUDIO_PROFILE_ID") or DEFAULT_PROFILE_ID
@@ -74,10 +76,11 @@ class DailymotionStudioUploader:
         if not re.fullmatch(r"[A-Za-z0-9]{4,64}", self.profile_id):
             raise DailymotionUploadError("DAILYMOTION_STUDIO_PROFILE_ID est invalide.")
         self.profile_dir = Path(
-            os.getenv(
-                "DAILYMOTION_CHROME_PROFILE_DIR",
-                r"D:\Dailymotion_MSPerformance_Profile",
-            )
+            profile_dir
+            or os.getenv("DAILYMOTION_CHROME_PROFILE_DIR", "").strip()
+            or os.getenv("SPORTSBASE_SUBSCRIPTION_PROFILE_DIR", "").strip()
+            or os.getenv("SPORTSBASE_PROFILE_DIR", "").strip()
+            or r"D:\SportsBase_Playwright_Profile"
         )
         self.browser_channel = os.getenv("DAILYMOTION_BROWSER_CHANNEL", "chrome").strip()
         self.headless = _env_bool("DAILYMOTION_HEADLESS", False)
@@ -161,6 +164,52 @@ class DailymotionStudioUploader:
                 "Le fichier All Actions est vide ou son format est invalide."
             )
         return candidate
+
+    @staticmethod
+    def _chrome_executable():
+        configured = os.getenv("DAILYMOTION_CHROME_EXECUTABLE", "").strip()
+        candidates = [Path(configured)] if configured else []
+        for environment_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            root = os.getenv(environment_name, "").strip()
+            if root:
+                candidates.append(
+                    Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe"
+                )
+        for command in ("chrome.exe", "chrome", "google-chrome", "google-chrome-stable"):
+            discovered = shutil.which(command)
+            if discovered:
+                candidates.append(Path(discovered))
+        return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+    def _open_manual_login(self):
+        """Open regular Chrome so Google sign-in is not performed by Playwright."""
+        executable = self._chrome_executable()
+        if executable is None:
+            raise DailymotionUploadError(
+                "Google Chrome est introuvable. Définissez "
+                "DAILYMOTION_CHROME_EXECUTABLE dans le .env."
+            )
+        print(
+            "[DAILYMOTION] Connexion initiale dans Chrome normal — profil partagé : "
+            f"{self.profile_dir}"
+        )
+        try:
+            subprocess.Popen(
+                [
+                    str(executable),
+                    f"--user-data-dir={self.profile_dir}",
+                    "--new-window",
+                    self.content_url,
+                ]
+            )
+        except OSError as exc:
+            raise DailymotionUploadError(
+                f"Impossible d’ouvrir Google Chrome : {exc}"
+            ) from exc
+        input(
+            "[DAILYMOTION] Connectez-vous, ouvrez Studio, fermez complètement "
+            "Chrome puis appuyez sur Entrée : "
+        )
 
     def _launch_context(self, playwright):
         self.profile_dir.mkdir(parents=True, exist_ok=True)
@@ -251,8 +300,9 @@ class DailymotionStudioUploader:
 
     def check_access(self):
         with sync_playwright() as playwright:
-            context = self._launch_context(playwright)
+            context = None
             try:
+                context = self._launch_context(playwright)
                 page = context.pages[0] if context.pages else context.new_page()
                 self._goto_studio(page)
                 if self._authentication_required(page):
@@ -260,18 +310,11 @@ class DailymotionStudioUploader:
                         raise DailymotionAuthenticationRequired(
                             "La première connexion nécessite DAILYMOTION_HEADLESS=false."
                         )
-                    print(
-                        "[DAILYMOTION] Connectez-vous manuellement dans Chrome "
-                        "au profil attendu."
-                    )
-                    print(
-                        "[DAILYMOTION] Terminez également toute validation du "
-                        "compte dans Chrome."
-                    )
-                    input(
-                        "[DAILYMOTION] Studio visible ? Revenez ici et appuyez "
-                        "sur Entrée : "
-                    )
+                    context.close()
+                    context = None
+                    self._open_manual_login()
+                    context = self._launch_context(playwright)
+                    page = context.pages[0] if context.pages else context.new_page()
                     self._goto_studio(page)
                 self._assert_studio(page)
                 self._wait_control(
@@ -286,7 +329,8 @@ class DailymotionStudioUploader:
                 )
                 return True
             finally:
-                context.close()
+                if context is not None:
+                    context.close()
 
     def _wait_control(self, page, find, label, timeout_ms=30000):
         deadline = time.monotonic() + timeout_ms / 1000

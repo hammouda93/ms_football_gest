@@ -53,7 +53,10 @@ class SportsBaseAgentClient:
         self.youtube_uploader = YouTubeStudioUploader(self.storage_root)
         self.dailymotion_enabled = dailymotion_upload_enabled()
         self.dailymotion_uploader = (
-            DailymotionStudioUploader(self.storage_root)
+            DailymotionStudioUploader(
+                self.storage_root,
+                profile_dir=self.scraper.profile_dir,
+            )
             if self.dailymotion_enabled
             else None
         )
@@ -376,7 +379,8 @@ def main():
         return
     if args.check_dailymotion:
         uploader = client.dailymotion_uploader or DailymotionStudioUploader(
-            client.storage_root
+            client.storage_root,
+            profile_dir=client.scraper.profile_dir,
         )
         uploader.check_access()
         return

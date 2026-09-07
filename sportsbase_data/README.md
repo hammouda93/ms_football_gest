@@ -26,6 +26,7 @@ SPORTSBASE_LOGIN_URL=...
 SPORTSBASE_EMAIL=...
 SPORTSBASE_PASSWORD=...
 SPORTSBASE_HEADLESS=false
+SPORTSBASE_SUBSCRIPTION_PROFILE_DIR=D:\SportsBase_Playwright_Profile
 SPORTSBASE_SUBSCRIPTION_STORAGE_DIR=D:\Django_Projects\ms_football_gest\gestion_joueurs\sportsbase_subscriptions
 SPORTSBASE_AGENT_POLL_INTERVAL=60
 ```
@@ -88,7 +89,6 @@ Ajoutez au `.env` local du PC qui exécute l’agent :
 ```text
 DAILYMOTION_UPLOAD_ENABLED=true
 DAILYMOTION_STUDIO_PROFILE_ID=x6445ea
-DAILYMOTION_CHROME_PROFILE_DIR=D:\Dailymotion_MSPerformance_Profile
 DAILYMOTION_BROWSER_CHANNEL=chrome
 DAILYMOTION_HEADLESS=false
 DAILYMOTION_VIDEO_LANGUAGE=fr
@@ -101,10 +101,13 @@ Première connexion, sans envoyer de vidéo :
 python -m sportsbase_data.local_agent --check-dailymotion
 ```
 
-Connectez-vous manuellement dans la fenêtre Chrome. Une fois le Studio du profil `x6445ea`
-visible, revenez dans PowerShell et appuyez sur Entrée. La session reste dans ce profil
-Chrome, distinct de YouTube et de SportsBase. En cas d’expiration de session ou de validation
-supplémentaire, relancez cette commande : le RPA ne contourne pas la connexion ni les CAPTCHA.
+La commande réutilise `D:\SportsBase_Playwright_Profile`. Si la session Dailymotion manque,
+elle ferme le navigateur automatisé et ouvre **Chrome normal** sur ce même profil afin que la
+connexion Google ne soit pas refusée comme « navigateur non sécurisé ». Connectez-vous,
+ouvrez le Studio du profil `x6445ea`, fermez complètement Chrome, puis appuyez sur Entrée dans
+PowerShell. Le RPA rouvre alors ce profil et vérifie Studio sans envoyer de vidéo. SportsBase
+et Dailymotion utilisent ce profil l’un après l’autre, jamais simultanément ; YouTube conserve
+son profil séparé. En cas d’expiration de session, relancez la même commande.
 
 Relancez ensuite `python -m sportsbase_data.local_agent`. L’ordre existant reste inchangé :
 synchronisations, YouTube, puis les essais Dailymotion demandés dans l’application interne.

@@ -81,10 +81,10 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._read_video_url = Mock(return_value=self.url)
         return page, context
 
-    def test_uses_dedicated_chrome_profile_without_api_credentials(self):
+    def test_uses_sportsbase_chrome_profile_without_api_credentials(self):
         self.assertEqual(self.uploader.profile_id, "x6445ea")
         self.assertEqual(self.uploader.content_url, "https://www.dailymotion.com/partner/x6445ea/media/video")
-        self.assertEqual(str(self.uploader.profile_dir), r"D:\Dailymotion_MSPerformance_Profile")
+        self.assertEqual(str(self.uploader.profile_dir), r"D:\SportsBase_Playwright_Profile")
         self.assertEqual(self.uploader.browser_channel, "chrome")
         self.assertFalse(self.uploader.headless)
         self.assertFalse(hasattr(self.uploader, "api_key"))
@@ -167,16 +167,43 @@ class DailymotionRPATests(unittest.TestCase):
         page.screenshot.assert_not_called()
         context.close.assert_called_once()
 
-    def test_first_connection_is_manual_and_never_uploads(self):
-        _page, context = self.browser_mock()
-        self.uploader._authentication_required = Mock(return_value=True)
+    def test_first_connection_uses_regular_chrome_and_never_uploads(self):
+        _page, first_context = self.browser_mock()
+        second_context = MagicMock()
+        second_context.pages = [Mock(url=self.uploader.content_url)]
+        self.uploader._launch_context = Mock(
+            side_effect=[first_context, second_context]
+        )
+        self.uploader._authentication_required = Mock(side_effect=[True, False])
+        self.uploader._open_manual_login = Mock()
         self.uploader._wait_control = Mock()
-        with patch("builtins.input", return_value="") as prompt:
-            self.assertTrue(self.uploader.check_access())
-        prompt.assert_called_once()
+        self.assertTrue(self.uploader.check_access())
+        self.uploader._open_manual_login.assert_called_once_with()
         self.assertEqual(self.uploader._goto_studio.call_count, 2)
         self.uploader._open_upload_dialog.assert_not_called()
-        context.close.assert_called_once()
+        first_context.close.assert_called_once()
+        second_context.close.assert_called_once()
+
+    def test_manual_login_launches_regular_chrome_with_shared_profile(self):
+        chrome = self.root / "chrome.exe"
+        chrome.write_bytes(b"")
+        self.uploader.profile_dir = self.root / "sportsbase-profile"
+        with patch.dict(
+            os.environ,
+            {"DAILYMOTION_CHROME_EXECUTABLE": str(chrome)},
+        ), patch("sportsbase_data.dailymotion_uploader.subprocess.Popen") as launch, patch(
+            "builtins.input", return_value=""
+        ):
+            self.uploader._open_manual_login()
+
+        launch.assert_called_once_with(
+            [
+                str(chrome),
+                f"--user-data-dir={self.uploader.profile_dir}",
+                "--new-window",
+                self.uploader.content_url,
+            ]
+        )
 
     def test_headless_first_connection_requires_user_to_enable_chrome(self):
         self.browser_mock()
@@ -292,6 +319,36 @@ class DailymotionRPATests(unittest.TestCase):
 
 
 class DailymotionAgentOrderTests(unittest.TestCase):
+    @patch.dict(
+        os.environ,
+        {
+            "DJANGO_AUTOMATION_USERNAME": "agent",
+            "DJANGO_AUTOMATION_PASSWORD": "secret",
+            "DAILYMOTION_UPLOAD_ENABLED": "true",
+        },
+        clear=True,
+    )
+    @patch("sportsbase_data.local_agent.DailymotionStudioUploader")
+    @patch("sportsbase_data.local_agent.YouTubeStudioUploader")
+    @patch("sportsbase_data.local_agent.SportsBaseSubscriptionScraper")
+    def test_enabled_fallback_reuses_sportsbase_chrome_profile(
+        self,
+        scraper,
+        _youtube_uploader,
+        dailymotion_uploader,
+    ):
+        from .local_agent import SportsBaseAgentClient
+
+        shared_profile = Path(r"D:\SportsBase_Playwright_Profile")
+        scraper.return_value.profile_dir = shared_profile
+
+        client = SportsBaseAgentClient()
+
+        dailymotion_uploader.assert_called_once_with(
+            client.storage_root,
+            profile_dir=shared_profile,
+        )
+
     @patch.dict(
         os.environ,
         {
