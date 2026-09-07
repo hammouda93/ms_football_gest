@@ -223,6 +223,7 @@ class DailymotionRPATests(unittest.TestCase):
 
     def test_exact_uploaded_title_is_opened_before_reading_share_link(self):
         page = Mock()
+        self.uploader._goto_studio = Mock()
         self.uploader._raise_if_blocked = Mock()
         self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
         self.uploader._title_field = Mock(return_value=None)
@@ -236,6 +237,7 @@ class DailymotionRPATests(unittest.TestCase):
         )
 
         self.assertEqual(result, self.url)
+        self.uploader._goto_studio.assert_called_once_with(page)
         self.uploader._open_uploaded_title.assert_called_once_with(
             page,
             "Player — All Actions",
@@ -243,6 +245,7 @@ class DailymotionRPATests(unittest.TestCase):
 
     def test_editor_share_panel_is_revealed_before_reading_link(self):
         page = Mock()
+        self.uploader._goto_studio = Mock()
         self.uploader._raise_if_blocked = Mock()
         self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
         self.uploader._title_field = Mock(return_value=Mock())
@@ -262,6 +265,7 @@ class DailymotionRPATests(unittest.TestCase):
     def test_library_embed_action_is_scoped_to_exact_uploaded_row(self):
         page = Mock()
         row = Mock()
+        self.uploader._goto_studio = Mock()
         self.uploader._raise_if_blocked = Mock()
         self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
         self.uploader._title_field = Mock(return_value=None)

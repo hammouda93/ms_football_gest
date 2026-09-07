@@ -695,6 +695,9 @@ class DailymotionStudioUploader:
         return True
 
     def _read_video_url(self, page, *, previous_urls, title):
+        # Studio documents link/embed retrieval from Media > Videos. Return to
+        # that library after Save so the exact uploaded row can be targeted.
+        self._goto_studio(page)
         deadline = time.monotonic() + 60
         opened_title = False
         share_attempted = False
