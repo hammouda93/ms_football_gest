@@ -826,6 +826,16 @@ class ScraperNormalizationTests(TestCase):
             "Boubacar Camara",
         )
 
+    def test_my_videos_accepts_name_shortened_by_sportsbase(self):
+        targets = SportsBaseSubscriptionScraper._my_videos_targets(
+            "Mohamed Amine Ben Ammar"
+        )
+
+        self.assertIn("mohamed amine ben ammar, player actions", targets)
+        self.assertIn("amine ben ammar, player actions", targets)
+        self.assertNotIn("ben ammar, player actions", targets)
+        self.assertNotIn("ammar, player actions", targets)
+
     def test_pitch_background_is_opaque_and_contains_pitch_lines(self):
         pitch = SportsBaseSubscriptionScraper._render_pitch_background(
             545, 360

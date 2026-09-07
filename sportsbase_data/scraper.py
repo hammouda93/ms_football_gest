@@ -30,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-multi-match-actions-v23-20260830"
+SCRAPER_BUILD = "sportsbase-myvideos-name-alias-v24-20260907"
 
 
 # The table settings may expose more metrics after "Select all".  The scraper
@@ -2831,14 +2831,7 @@ class SportsBaseSubscriptionScraper:
     ):
         """Download ready My Videos rows without ever repeating a click in this run."""
         self._open_my_videos(page)
-        targets = {
-            f"{player_name}, player actions".lower(),
-            f"{player_name}, all player actions".lower(),
-            f"{player_name}, player's actions".lower(),
-            f"{player_name}, all player's actions".lower(),
-            f"{player_name}, actions du joueur".lower(),
-            f"{player_name}, toutes les actions du joueur".lower(),
-        }
+        targets = self._my_videos_targets(player_name)
         candidate_indexes = self._wait_for_candidate_rows(
             page,
             targets=targets,
@@ -2967,6 +2960,35 @@ class SportsBaseSubscriptionScraper:
     def _video_rows(page):
         groups = page.locator('div[role="rowgroup"]')
         return groups.nth(1).locator('div[role="row"]') if groups.count() > 1 else page.locator('div[role="row"]')
+
+    @staticmethod
+    def _my_videos_targets(player_name):
+        """Return SportsBase title variants, including its shortened player name."""
+        normalized_name = _clean_label(player_name).casefold()
+        name_parts = normalized_name.split()
+        aliases = {normalized_name}
+
+        # The player profile can display the complete name while My Videos drops
+        # the leading given name. Example observed in production:
+        # "Mohamed Amine Ben Ammar" -> "Amine Ben Ammar, Player actions".
+        # Keep the remaining full suffix; never fall back to a bare surname.
+        if len(name_parts) >= 3:
+            aliases.add(" ".join(name_parts[1:]))
+
+        action_labels = {
+            "player actions",
+            "all player actions",
+            "player's actions",
+            "all player's actions",
+            "actions du joueur",
+            "toutes les actions du joueur",
+        }
+        return {
+            f"{alias}, {action_label}"
+            for alias in aliases
+            for action_label in action_labels
+            if alias
+        }
 
     def _candidate_video_indexes(self, page, targets):
         rows = self._video_rows(page)
