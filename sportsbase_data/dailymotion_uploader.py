@@ -17,10 +17,21 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v2-20260907"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
-    r"^(upload(?: a)? video(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
+    r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
     r"importer(?: des vid[eé]os)?|envoyer une vid[eé]o)$", re.I
+)
+CREATE_CONTENT_LABEL = re.compile(
+    r"^(create (?:your )?content|cr[eé]er (?:votre )?contenu|nouveau contenu)$",
+    re.I,
+)
+NEXT_LABEL = re.compile(r"^(next|suivant)$", re.I)
+AUDIENCE_HEADING = re.compile(r"^(audience|public(?: cible)?)$", re.I)
+VISIBILITY_HEADING = re.compile(
+    r"^(visibility|privacy|visibilit[eé]|confidentialit[eé])$",
+    re.I,
 )
 SAVE_LABEL = re.compile(
     r"^(save(?: all| changes| video)?|enregistrer(?: tout| les modifications| "
@@ -319,8 +330,9 @@ class DailymotionStudioUploader:
                 self._assert_studio(page)
                 self._wait_control(
                     page,
-                    lambda: self._upload_button(page),
-                    "bouton Upload video",
+                    lambda: self._create_content_button(page)
+                    or self._upload_button(page),
+                    "bouton Créer votre contenu",
                     30000,
                 )
                 print(
@@ -350,28 +362,68 @@ class DailymotionStudioUploader:
             page.get_by_role("link", name=UPLOAD_LABEL)
         )
 
-    def _open_upload_dialog(self, page):
-        inputs = page.locator('input[type="file"]')
-        if not inputs.count():
-            button = self._wait_control(
-                page,
-                lambda: self._upload_button(page),
-                "Upload video",
+    def _create_content_button(self, page):
+        return self._visible(
+            page.get_by_role("button", name=CREATE_CONTENT_LABEL)
+        ) or self._visible(
+            page.locator(
+                'button[class*="createContentMenuButton"], '
+                'button:has(svg[aria-label="Créer votre contenu"]), '
+                'button:has(svg[aria-label="Create your content"])'
             )
-            button.click()
-        inputs.first.wait_for(state="attached", timeout=30000)
-        for index in range(inputs.count()):
+        )
+
+    @staticmethod
+    def _video_file_input(page):
+        inputs = page.locator('input[type="file"]')
+        try:
+            count = inputs.count()
+        except Exception:
+            return None
+        for index in range(count):
             field = inputs.nth(index)
-            accept = (field.get_attribute("accept") or "").lower()
-            if (
-                not accept
-                or "video" in accept
-                or any(ext in accept for ext in ALLOWED_VIDEO_EXTENSIONS)
+            try:
+                accept = (field.get_attribute("accept") or "").casefold()
+            except Exception:
+                continue
+            if "video" in accept or any(
+                extension in accept for extension in ALLOWED_VIDEO_EXTENSIONS
             ):
                 return field
-        raise DailymotionUploadError(
-            "Le sélecteur de fichier vidéo Dailymotion est introuvable."
-        )
+        return None
+
+    def _open_upload_dialog(self, page):
+        field = self._video_file_input(page)
+        if field is None:
+            create_content = self._create_content_button(page)
+            if create_content is not None:
+                create_content.click()
+                upload_action = self._wait_control(
+                    page,
+                    lambda: self._upload_button(page),
+                    "Upload vidéo",
+                    10000,
+                )
+                upload_action.click()
+                print(
+                    "[DAILYMOTION] Créer votre contenu → Upload vidéo."
+                )
+            else:
+                # Compatibility with the previous Studio layout where Upload
+                # was directly available in the page header.
+                upload_action = self._wait_control(
+                    page,
+                    lambda: self._upload_button(page),
+                    "Upload vidéo",
+                )
+                upload_action.click()
+            field = self._wait_control(
+                page,
+                lambda: self._video_file_input(page),
+                "sélecteur de fichier vidéo",
+                30000,
+            )
+        return field
 
     def _field(self, page, label, selectors):
         return self._visible(page.get_by_label(label)) or self._visible(
@@ -385,10 +437,54 @@ class DailymotionStudioUploader:
             'input[name="title"], textarea[name="title"], input[id="title"]',
         )
 
+    @staticmethod
+    def _selected_option_texts(field):
+        texts = []
+
+        def remember(value):
+            if isinstance(value, str) and value.strip():
+                texts.append(value.strip())
+
+        try:
+            remember(field.inner_text())
+        except Exception:
+            pass
+        try:
+            remember(field.input_value(timeout=500))
+        except Exception:
+            pass
+        try:
+            container = field.locator(
+                "xpath=ancestor-or-self::*[contains(concat(' ', "
+                "normalize-space(@class), ' '), ' ant-select ')][1]"
+            )
+            if container.count():
+                remember(container.inner_text())
+                selections = container.locator(
+                    ".ant-select-selection-item, [class*='selection-item']"
+                )
+                for item in selections.all():
+                    remember(item.inner_text())
+                    remember(item.get_attribute("title"))
+        except Exception:
+            pass
+        return texts
+
+    @classmethod
+    def _selection_confirmed(cls, field, values, option_pattern):
+        normalized_values = {str(value).casefold() for value in values}
+        return any(
+            option_pattern.fullmatch(text)
+            or text.casefold() in normalized_values
+            for text in cls._selected_option_texts(field)
+        )
+
     def _select_option(self, page, label, selectors, values, option_pattern):
         field = self._wait_control(
             page, lambda: self._field(page, label, selectors), label.pattern
         )
+        if self._selection_confirmed(field, values, option_pattern):
+            return
         if field.evaluate("node => node.tagName.toLowerCase()") == "select":
             for option in field.locator("option").all():
                 value = option.get_attribute("value") or ""
@@ -409,22 +505,18 @@ class DailymotionStudioUploader:
             )
             option.click()
             page.wait_for_timeout(300)
-            selected_text = field.inner_text().strip()
-            try:
-                input_text = field.input_value(timeout=500)
-            except Exception:
-                input_text = ""
-            if any(
-                option_pattern.fullmatch(text) or text in values
-                for text in (selected_text, input_text)
-            ):
+            if self._selection_confirmed(field, values, option_pattern):
                 return
         raise DailymotionUploadError(
             f"La sélection « {label.pattern} » n’a pas été confirmée."
         )
 
     def _select_private(self, page):
-        radio = self._visible(page.get_by_role("radio", name=PRIVATE_LABEL))
+        radio = self._visible(
+            page.get_by_role("radio", name=PRIVATE_LABEL)
+        ) or self._visible(
+            page.locator('input[type="radio"][name="visibility"][value="private"]')
+        )
         if radio is not None:
             radio.check()
             if radio.is_checked():
@@ -470,6 +562,10 @@ class DailymotionStudioUploader:
                         re.I,
                     ),
                 )
+            ) or self._visible(
+                page.locator(
+                    'input[type="radio"][name="is_created_for_kids"][value="false"]'
+                )
             )
         if radio is not None:
             radio.check()
@@ -505,7 +601,8 @@ class DailymotionStudioUploader:
         self._select_option(
             page,
             re.compile(r"^(category|cat[eé]gorie)(?:\s*\*)?$", re.I),
-            'select[name="category"], [role="combobox"][name="category"]',
+            'select[name="category"], [role="combobox"][name="category"], '
+            '[name="channel"] [role="combobox"], [role="combobox"][id="channel"]',
             {"sport", "sports"},
             re.compile(r"^sports?$", re.I),
         )
@@ -518,25 +615,97 @@ class DailymotionStudioUploader:
         self._select_option(
             page,
             re.compile(r"^(language|langue)(?:\s*\*)?$", re.I),
-            'select[name="language"], [role="combobox"][name="language"]',
+            'select[name="language"], [role="combobox"][name="language"], '
+            '[name="language"] [role="combobox"], '
+            '[role="combobox"][id="language"]',
             {self.language},
             re.compile(f"^(?:{language_pattern})$", re.I),
         )
-        self._select_not_for_kids(page)
+        print("[DAILYMOTION] Informations remplies — catégorie Sport, langue validée.")
+
+    def _next_button(self, page):
+        button = self._visible(page.get_by_role("button", name=NEXT_LABEL))
+        if (
+            button is not None
+            and button.is_enabled()
+            and button.get_attribute("aria-disabled") != "true"
+        ):
+            return button
+        return None
+
+    def _wizard_stage(self, page):
+        if self._visible(
+            page.get_by_role("heading", name=AUDIENCE_HEADING)
+        ) is not None:
+            return "audience"
+        if self._visible(
+            page.get_by_role("heading", name=VISIBILITY_HEADING)
+        ) is not None:
+            return "visibility"
+        return None
+
+    def _advance_upload_wizard(self, page):
+        first_next = self._wait_control(
+            page,
+            lambda: self._next_button(page),
+            "Suivant",
+            60000,
+        )
+        first_next.click()
+        stage = self._wait_control(
+            page,
+            lambda: self._wizard_stage(page),
+            "étape Audience ou Visibilité",
+            60000,
+        )
+        if stage == "audience":
+            self._select_not_for_kids(page)
+            print("[DAILYMOTION] Audience — Non créé pour les enfants.")
+            second_next = self._wait_control(
+                page,
+                lambda: self._next_button(page),
+                "Suivant après Audience",
+                60000,
+            )
+            second_next.click()
+            self._wait_control(
+                page,
+                lambda: (
+                    "visibility"
+                    if self._wizard_stage(page) == "visibility"
+                    else None
+                ),
+                "étape Visibilité",
+                60000,
+            )
         self._select_private(page)
-        print("[DAILYMOTION] Informations remplies — Sport, visibilité Privée.")
+        print("[DAILYMOTION] Visibilité — Privée.")
 
     @staticmethod
     def _transfer_complete(text, percentages=()):
         return bool(
             re.search(
-                r"^(upload complete|uploaded|upload finished|optimizing|optimisation|"
-                r"mise en ligne termin[eé]e|transfert termin[eé]|importation termin[eé]e)[.!]?$",
+                r"^(upload complete|uploaded|upload finished|upload termin[eé]e?|"
+                r"upload r[eé]ussi|optimizing|optimisation|processing|"
+                r"traitement en cours|encodage en cours|mise en ligne termin[eé]e|"
+                r"transfert termin[eé]|importation termin[eé]e)[.!]?$",
                 text,
                 re.I | re.M,
             )
             or any(value >= 100 for value in percentages)
         )
+
+    @staticmethod
+    def _text_percentages(text):
+        percentages = []
+        for raw in re.findall(r"(?<!\d)(\d{1,3}(?:[.,]\d+)?)\s*%", text or ""):
+            try:
+                value = float(raw.replace(",", "."))
+            except ValueError:
+                continue
+            if 0 <= value <= 100:
+                percentages.append(value)
+        return percentages
 
     def _raise_if_blocked(self, page):
         if self._authentication_required(page):
@@ -566,7 +735,16 @@ class DailymotionStudioUploader:
         if error is not None:
             raise DailymotionUploadError(error.inner_text()[:500])
 
-    def _upload_scope(self, page):
+    def _upload_summary_scope(self, page, title=""):
+        summaries = page.locator('[class*="itemSummaryContainer"]')
+        if title:
+            summaries = summaries.filter(has_text=title)
+        return self._visible(summaries)
+
+    def _upload_scope(self, page, title=""):
+        summary = self._upload_summary_scope(page, title)
+        if summary is not None:
+            return summary
         title = self._title_field(page)
         if title is not None:
             dialog = self._visible(page.get_by_role("dialog").filter(has=title))
@@ -578,16 +756,20 @@ class DailymotionStudioUploader:
         main = self._visible(page.get_by_role("main"))
         if main is not None:
             return main
+        body = self._visible(page.locator("body"))
+        if body is not None:
+            return body
         raise DailymotionUploadError(
             "Le panneau de progression Dailymotion n’est pas identifiable."
         )
 
-    def _wait_upload_transfer_complete(self, page):
+    def _wait_upload_transfer_complete(self, page, title=""):
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         stable_complete = 0
+        last_progress = None
         while time.monotonic() < deadline:
             self._raise_if_blocked(page)
-            scope = self._upload_scope(page)
+            scope = self._upload_scope(page, title)
             percentages = []
             for bar in scope.get_by_role("progressbar").all():
                 if bar.is_visible():
@@ -598,6 +780,12 @@ class DailymotionStudioUploader:
                     except ValueError:
                         pass
             text = scope.inner_text()
+            percentages.extend(self._text_percentages(text))
+            if percentages:
+                progress = max(percentages)
+                if progress != last_progress and progress < 100:
+                    print(f"[DAILYMOTION] Upload en cours : {progress:g} %")
+                    last_progress = progress
             stable_complete = (
                 stable_complete + 1
                 if self._transfer_complete(text, percentages)
@@ -644,7 +832,7 @@ class DailymotionStudioUploader:
                     urls.add(url)
         return urls
 
-    def _wait_saved(self, page):
+    def _wait_saved(self, page, title=""):
         confirmation = re.compile(
             r"^(?:video |vid[eé]o |changes |modifications )?(?:successfully |bien )?"
             r"(?:saved|published|enregistr[eé]e?s?|publi[eé]e?s?)"
@@ -656,13 +844,27 @@ class DailymotionStudioUploader:
             self._raise_if_blocked(page)
             if self._visible(page.get_by_text(confirmation)) is not None:
                 return
+            summary = self._upload_summary_scope(page, title)
+            if summary is not None and re.search(
+                r"upload\s+(?:en cours|in progress|termin[eé]|complete|finished)|"
+                r"traitement en cours|processing",
+                summary.inner_text(),
+                re.I,
+            ):
+                print(
+                    "[DAILYMOTION] Sauvegarde confirmée — suivi de l’upload."
+                )
+                return
             # Some Studio variants close the editor after Save. Only accept
             # this once it has returned to this profile's video library.
             if (
                 page.url.split("?", 1)[0].rstrip("/") == self.content_url
                 and self._title_field(page) is None
             ):
-                if self._upload_button(page) is not None:
+                if (
+                    self._create_content_button(page) is not None
+                    or self._upload_button(page) is not None
+                ):
                     return
             page.wait_for_timeout(500)
         raise DailymotionUploadError(
@@ -806,6 +1008,7 @@ class DailymotionStudioUploader:
         options = job.get("dailymotion") or {}
         title = str(options.get("title") or video_path.stem).strip()[:255]
         description = str(options.get("description") or "").strip()[:3000]
+        print(f"[DAILYMOTION] Version RPA : {DAILYMOTION_RPA_BUILD}")
         print(
             f"[DAILYMOTION] Préparation : {video_path.name} "
             f"({file_size / (1024 * 1024):.1f} Mo)"
@@ -822,7 +1025,7 @@ class DailymotionStudioUploader:
                 file_input.set_input_files(str(video_path))
                 print("[DAILYMOTION] Fichier transmis à Studio.")
                 self._fill_details(page, title, description)
-                self._wait_upload_transfer_complete(page)
+                self._advance_upload_wizard(page)
                 button = self._wait_save_button(page)
                 # If the browser dies after Save, block an uncertain duplicate
                 # on the next retry. A confirmed receipt replaces this marker.
@@ -836,7 +1039,8 @@ class DailymotionStudioUploader:
                     },
                 )
                 button.click()
-                self._wait_saved(page)
+                self._wait_saved(page, title)
+                self._wait_upload_transfer_complete(page, title)
                 url = self._read_video_url(page, previous_urls=previous_urls, title=title)
                 result = {
                     "status": "uploaded",

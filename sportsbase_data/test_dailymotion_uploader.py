@@ -10,9 +10,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_video_id
 from .dailymotion_uploader import (
+    CREATE_CONTENT_LABEL,
     DailymotionAuthenticationRequired,
     DailymotionStudioUploader,
     DailymotionUploadError,
+    UPLOAD_LABEL,
 )
 
 
@@ -75,6 +77,7 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._video_urls = Mock(return_value=set())
         self.uploader._open_upload_dialog = Mock()
         self.uploader._fill_details = Mock()
+        self.uploader._advance_upload_wizard = Mock()
         self.uploader._wait_upload_transfer_complete = Mock()
         self.uploader._wait_save_button = Mock()
         self.uploader._wait_saved = Mock()
@@ -113,23 +116,73 @@ class DailymotionRPATests(unittest.TestCase):
                 with self.assertRaises(DailymotionUploadError):
                     self.uploader.resolve_video_path({"match": {"local_folder_key": folder, "filename": filename}})
 
-    def test_upload_uses_file_input_then_waits_before_save(self):
+    def test_upload_follows_current_studio_wizard_before_tracking_transfer(self):
         page, context = self.browser_mock()
         order = []
         self.uploader._open_upload_dialog.return_value.set_input_files.side_effect = lambda *_: order.append("file")
         self.uploader._fill_details.side_effect = lambda *_: order.append("details")
+        self.uploader._advance_upload_wizard.side_effect = lambda *_: order.append("wizard")
         self.uploader._wait_upload_transfer_complete.side_effect = lambda *_: order.append("transfer")
         self.uploader._wait_save_button.return_value.click.side_effect = lambda: order.append("save")
         self.uploader._wait_saved.side_effect = lambda *_: order.append("confirmed")
 
         result = self.uploader.upload(self.job)
 
-        self.assertEqual(order, ["file", "details", "transfer", "save", "confirmed"])
+        self.assertEqual(
+            order,
+            ["file", "details", "wizard", "save", "confirmed", "transfer"],
+        )
         self.uploader._open_upload_dialog.return_value.set_input_files.assert_called_once_with(str(self.video.resolve()))
         self.uploader._fill_details.assert_called_once_with(page, "Player — All Actions", "MS Performance")
         self.assertEqual(result["dailymotion_video_id"], "kPrivate123")
         self.assertEqual(result["content_sha256"], self.digest)
         context.close.assert_called_once()
+
+    def test_new_studio_menu_opens_create_content_then_upload_video(self):
+        page = Mock()
+        create_content = Mock()
+        upload_video = Mock()
+        file_input = Mock()
+        self.uploader._create_content_button = Mock(return_value=create_content)
+        self.uploader._upload_button = Mock(return_value=upload_video)
+        self.uploader._video_file_input = Mock(
+            side_effect=[None, file_input]
+        )
+
+        result = self.uploader._open_upload_dialog(page)
+
+        self.assertIs(result, file_input)
+        create_content.click.assert_called_once_with()
+        upload_video.click.assert_called_once_with()
+        self.assertTrue(CREATE_CONTENT_LABEL.fullmatch("Créer votre contenu"))
+        self.assertTrue(UPLOAD_LABEL.fullmatch("Upload vidéo"))
+
+    def test_wizard_processes_audience_before_private_visibility(self):
+        page = Mock()
+        first_next = Mock()
+        second_next = Mock()
+        order = []
+        first_next.click.side_effect = lambda: order.append("next-details")
+        second_next.click.side_effect = lambda: order.append("next-audience")
+        self.uploader._next_button = Mock(
+            side_effect=[first_next, second_next]
+        )
+        self.uploader._wizard_stage = Mock(
+            side_effect=["audience", "visibility"]
+        )
+        self.uploader._select_not_for_kids = Mock(
+            side_effect=lambda *_: order.append("not-for-kids")
+        )
+        self.uploader._select_private = Mock(
+            side_effect=lambda *_: order.append("private")
+        )
+
+        self.uploader._advance_upload_wizard(page)
+
+        self.assertEqual(
+            order,
+            ["next-details", "not-for-kids", "next-audience", "private"],
+        )
 
     def test_receipt_reuses_video_without_reopening_chrome(self):
         self.browser_mock()
@@ -217,6 +270,9 @@ class DailymotionRPATests(unittest.TestCase):
     def test_native_category_select_is_verified(self):
         field = Mock()
         field.evaluate.return_value = "select"
+        field.inner_text.return_value = ""
+        field.input_value.side_effect = ["", "sport"]
+        field.locator.return_value.count.return_value = 0
         option = Mock()
         option.get_attribute.return_value = "sport"
         field.locator.return_value.all.return_value = [option]
@@ -226,12 +282,45 @@ class DailymotionRPATests(unittest.TestCase):
         field.select_option.assert_called_once_with(value="sport")
 
     def test_completion_requires_explicit_transfer_evidence(self):
-        for text in ("Upload complete", "Optimizing", "Transfert terminé"):
+        for text in (
+            "Upload complete",
+            "Upload terminé",
+            "Optimizing",
+            "Traitement en cours",
+            "Transfert terminé",
+        ):
             self.assertTrue(self.uploader._transfer_complete(text))
-        for text in ("Upload in progress", "Uploaded on Monday", "No video uploaded", "Upload complete: false"):
+        for text in (
+            "Upload in progress",
+            "Upload en cours 28 %",
+            "Uploaded on Monday",
+            "No video uploaded",
+            "Upload complete: false",
+        ):
             self.assertFalse(self.uploader._transfer_complete(text))
         self.assertFalse(self.uploader._transfer_complete("", [99]))
         self.assertTrue(self.uploader._transfer_complete("", [100]))
+        self.assertEqual(
+            self.uploader._text_percentages("Upload en cours 28 %"),
+            [28.0],
+        )
+
+    def test_upload_summary_confirms_save_while_transfer_is_in_progress(self):
+        page = Mock()
+        summary = Mock()
+        summary.inner_text.return_value = (
+            "Privée\nPlayer — All Actions\nUpload en cours 28 %"
+        )
+        self.uploader._raise_if_blocked = Mock()
+        self.uploader._upload_summary_scope = Mock(return_value=summary)
+        self.uploader._visible = Mock(return_value=None)
+
+        self.uploader._wait_saved(page, "Player — All Actions")
+
+        self.uploader._upload_summary_scope.assert_called_once_with(
+            page,
+            "Player — All Actions",
+        )
 
     def test_old_video_link_is_excluded_and_private_link_is_preserved(self):
         old = "https://www.dailymotion.com/video/xExisting123"
