@@ -281,6 +281,46 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._select_option(Mock(), re.compile("Category"), 'select[name="category"]', {"sport"}, re.compile("Sports"))
         field.select_option.assert_called_once_with(value="sport")
 
+    def test_ant_category_clicks_visible_selector_then_sport(self):
+        page = Mock()
+        field = Mock()
+        field.evaluate.return_value = "input"
+        visible_selector = Mock()
+        sport_option = Mock()
+        self.uploader._wait_control = Mock(
+            side_effect=[field, sport_option]
+        )
+        self.uploader._selection_confirmed = Mock(
+            side_effect=[False, True]
+        )
+        self.uploader._select_click_target = Mock(
+            return_value=visible_selector
+        )
+
+        self.uploader._select_option(
+            page,
+            re.compile(r"^Catégorie$", re.I),
+            '[role="combobox"][id="channel"]',
+            {"sport", "sports"},
+            re.compile(r"^sports?$", re.I),
+        )
+
+        visible_selector.click.assert_called_once_with()
+        field.click.assert_not_called()
+        sport_option.click.assert_called_once_with()
+
+    def test_ant_category_target_is_selector_ancestor(self):
+        field = Mock()
+        selector_locator = Mock()
+        visible_selector = Mock()
+        field.locator.return_value = selector_locator
+        self.uploader._visible = Mock(return_value=visible_selector)
+
+        result = self.uploader._select_click_target(field)
+
+        self.assertIs(result, visible_selector)
+        self.assertIn("ant-select-selector", field.locator.call_args.args[0])
+
     def test_completion_requires_explicit_transfer_evidence(self):
         for text in (
             "Upload complete",

@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v2-20260907"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v3-20260907"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
@@ -479,6 +479,31 @@ class DailymotionStudioUploader:
             for text in cls._selected_option_texts(field)
         )
 
+    def _select_click_target(self, field):
+        # Ant Design makes the combobox input transparent/read-only. Clicking
+        # that input is intercepted by .ant-select-selection-item; the visible
+        # selector container is the actual control that opens the option list.
+        selector = self._visible(
+            field.locator(
+                "xpath=ancestor-or-self::*[contains(concat(' ', "
+                "normalize-space(@class), ' '), ' ant-select-selector ')][1]"
+            )
+        )
+        if selector is not None:
+            return selector
+
+        ant_select = self._visible(
+            field.locator(
+                "xpath=ancestor-or-self::*[contains(concat(' ', "
+                "normalize-space(@class), ' '), ' ant-select ')][1]"
+            )
+        )
+        if ant_select is not None:
+            selector = self._visible(ant_select.locator(".ant-select-selector"))
+            if selector is not None:
+                return selector
+        return field
+
     def _select_option(self, page, label, selectors, values, option_pattern):
         field = self._wait_control(
             page, lambda: self._field(page, label, selectors), label.pattern
@@ -495,7 +520,7 @@ class DailymotionStudioUploader:
                     if field.input_value() == value:
                         return
         else:
-            field.click()
+            self._select_click_target(field).click()
             option = self._wait_control(
                 page,
                 lambda: self._visible(page.get_by_role("option", name=option_pattern))
