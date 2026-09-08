@@ -54,6 +54,7 @@ from .services import (
     queue_sync,
     request_dailymotion_upload,
     retry_youtube_upload,
+    save_dailymotion_link,
 )
 
 
@@ -813,6 +814,35 @@ def dailymotion_upload_request(request, match_pk):
                 if created
                 else "L’upload Dailymotion sera repris par l’agent local.",
             )
+    return redirect("performance:management")
+
+
+@portal_admin_required
+@require_POST
+def dailymotion_link_save(request, match_pk):
+    match = get_object_or_404(
+        SportsBaseMatch.objects.select_related("subscription__player"),
+        pk=match_pk,
+    )
+    try:
+        upload = save_dailymotion_link(
+            match,
+            request.POST.get("dailymotion_url", ""),
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            "Le lien Dailymotion a été enregistré. La vidéo est maintenant "
+            "disponible dans l’espace client.",
+        )
+        try:
+            report = upload.match.performance_report
+        except PerformanceReport.DoesNotExist:
+            pass
+        else:
+            send_ready_delivery_notification(report)
     return redirect("performance:management")
 
 

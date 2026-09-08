@@ -47,6 +47,11 @@ urlpatterns = [
         name="dailymotion_upload_request",
     ),
     path(
+        "gestion/performances/dailymotion/match/<int:match_pk>/lien/",
+        views.dailymotion_link_save,
+        name="dailymotion_link_save",
+    ),
+    path(
         "gestion/performances/rapports/<int:pk>/modifier/",
         views.report_edit,
         name="report_edit",

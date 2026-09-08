@@ -81,6 +81,7 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._wait_upload_transfer_complete = Mock()
         self.uploader._wait_save_button = Mock()
         self.uploader._wait_saved = Mock()
+        self.uploader._close_upload_dialog = Mock()
         self.uploader._read_video_url = Mock(return_value=self.url)
         return page, context
 
@@ -125,18 +126,35 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._wait_upload_transfer_complete.side_effect = lambda *_: order.append("transfer")
         self.uploader._wait_save_button.return_value.click.side_effect = lambda: order.append("save")
         self.uploader._wait_saved.side_effect = lambda *_: order.append("confirmed")
+        self.uploader._close_upload_dialog.side_effect = lambda *_: order.append("close")
 
         result = self.uploader.upload(self.job)
 
         self.assertEqual(
             order,
-            ["file", "details", "wizard", "save", "confirmed", "transfer"],
+            ["file", "details", "wizard", "save", "confirmed", "transfer", "close"],
         )
         self.uploader._open_upload_dialog.return_value.set_input_files.assert_called_once_with(str(self.video.resolve()))
         self.uploader._fill_details.assert_called_once_with(page, "Player — All Actions", "MS Performance")
         self.assertEqual(result["dailymotion_video_id"], "kPrivate123")
         self.assertEqual(result["content_sha256"], self.digest)
         context.close.assert_called_once()
+
+    def test_completed_transfer_without_preview_link_is_not_uploaded_twice(self):
+        _page, context = self.browser_mock()
+        self.uploader._read_video_url.side_effect = DailymotionUploadError(
+            "Optimisation en cours"
+        )
+
+        result = self.uploader.upload(self.job)
+
+        self.assertEqual(result["status"], "link_pending")
+        self.assertEqual(result["dailymotion_url"], "")
+        context.close.assert_called_once()
+        self.uploader._launch_context.reset_mock()
+        cached = self.uploader.upload(self.job)
+        self.assertEqual(cached["status"], "link_pending")
+        self.uploader._launch_context.assert_not_called()
 
     def test_new_studio_menu_opens_create_content_then_upload_video(self):
         page = Mock()
@@ -368,6 +386,7 @@ class DailymotionRPATests(unittest.TestCase):
             "Upload complete",
             "Upload terminé",
             "Optimizing",
+            "Optimisation en cours 12 %",
             "Traitement en cours",
             "Transfert terminé",
         ):
@@ -404,76 +423,33 @@ class DailymotionRPATests(unittest.TestCase):
             "Player — All Actions",
         )
 
-    def test_old_video_link_is_excluded_and_private_link_is_preserved(self):
-        old = "https://www.dailymotion.com/video/xExisting123"
-        self.uploader._video_urls = Mock(return_value={old, self.url})
-        self.uploader._raise_if_blocked = Mock()
-        self.assertEqual(self.uploader._read_video_url(Mock(), previous_urls={old}, title="Player"), self.url)
+    def test_ready_row_uses_monetized_icon_and_unlabelled_ellipsis(self):
+        row = Mock()
+        icon = Mock()
+        actions = Mock()
+        row.locator.side_effect = [Mock(), Mock()]
+        self.uploader._visible = Mock(side_effect=[icon, actions])
 
-    def test_ambiguous_new_links_are_rejected(self):
-        self.uploader._video_urls = Mock(return_value={
-            "https://www.dailymotion.com/video/xCandidate1",
-            "https://www.dailymotion.com/video/xCandidate2",
-        })
-        self.uploader._raise_if_blocked = Mock()
-        with self.assertRaisesRegex(DailymotionUploadError, "Plusieurs liens"):
-            self.uploader._read_video_url(Mock(), previous_urls=set(), title="Player")
+        self.assertTrue(self.uploader._row_ready_for_preview(row))
+        self.assertIs(self.uploader._row_actions_button(row), actions)
+        selectors = [call.args[0] for call in row.locator.call_args_list]
+        self.assertIn('svg[aria-label="Monétisée"]', selectors[0])
+        self.assertIn("button.ant-dropdown-trigger", selectors[1])
 
-    def test_exact_uploaded_title_is_opened_before_reading_share_link(self):
-        page = Mock()
-        self.uploader._goto_studio = Mock()
-        self.uploader._raise_if_blocked = Mock()
-        self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
-        self.uploader._title_field = Mock(return_value=None)
-        self.uploader._open_uploaded_title = Mock(return_value=True)
-        self.uploader._reveal_share_panel = Mock(return_value=False)
-
-        result = self.uploader._read_video_url(
-            page,
-            previous_urls=set(),
-            title="Player — All Actions",
-        )
-
-        self.assertEqual(result, self.url)
-        self.uploader._goto_studio.assert_called_once_with(page)
-        self.uploader._open_uploaded_title.assert_called_once_with(
-            page,
-            "Player — All Actions",
-        )
-
-    def test_editor_share_panel_is_revealed_before_reading_link(self):
-        page = Mock()
-        self.uploader._goto_studio = Mock()
-        self.uploader._raise_if_blocked = Mock()
-        self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
-        self.uploader._title_field = Mock(return_value=Mock())
-        self.uploader._reveal_share_panel = Mock(return_value=True)
-        self.uploader._open_uploaded_title = Mock(return_value=False)
-
-        result = self.uploader._read_video_url(
-            page,
-            previous_urls=set(),
-            title="Player — All Actions",
-        )
-
-        self.assertEqual(result, self.url)
-        self.uploader._reveal_share_panel.assert_called_once_with(page)
-        self.uploader._open_uploaded_title.assert_not_called()
-
-    def test_library_embed_action_is_scoped_to_exact_uploaded_row(self):
+    def test_library_preview_is_scoped_to_exact_uploaded_row(self):
         page = Mock()
         row = Mock()
-        self.uploader._goto_studio = Mock()
+        actions = Mock()
         self.uploader._raise_if_blocked = Mock()
-        self.uploader._video_urls = Mock(side_effect=[set(), {self.url}])
-        self.uploader._title_field = Mock(return_value=None)
         self.uploader._uploaded_row = Mock(return_value=row)
-        self.uploader._reveal_share_panel = Mock(return_value=True)
-        self.uploader._open_uploaded_title = Mock(return_value=False)
+        self.uploader._row_processing_progress = Mock(return_value=12)
+        self.uploader._row_ready_for_preview = Mock(return_value=True)
+        self.uploader._row_actions_button = Mock(return_value=actions)
+        self.uploader._preview_url = Mock(side_effect=["", self.url])
+        self.uploader._visible = Mock(return_value=None)
 
         result = self.uploader._read_video_url(
             page,
-            previous_urls=set(),
             title="Player — All Actions",
         )
 
@@ -482,11 +458,30 @@ class DailymotionRPATests(unittest.TestCase):
             page,
             "Player — All Actions",
         )
-        self.uploader._reveal_share_panel.assert_called_once_with(
-            page,
-            scope=row,
+        actions.click.assert_called_once_with()
+
+    def test_preview_short_link_is_canonicalized_without_opening_new_tab(self):
+        page = Mock()
+        link = Mock()
+        link.get_attribute.return_value = "https://dai.ly/k6dRv0e0ZEC5WCJBlxc"
+        self.uploader._only_visible = Mock(return_value=link)
+
+        result = self.uploader._preview_url(page)
+
+        self.assertEqual(
+            result,
+            "https://www.dailymotion.com/video/k6dRv0e0ZEC5WCJBlxc",
         )
-        self.uploader._open_uploaded_title.assert_not_called()
+        link.click.assert_not_called()
+
+    def test_preview_timeout_keeps_manual_link_path_available(self):
+        page = Mock()
+        self.uploader.link_wait_seconds = 0
+        self.uploader._raise_if_blocked = Mock()
+        self.uploader._uploaded_row = Mock(return_value=None)
+
+        with self.assertRaisesRegex(DailymotionUploadError, "optimisation continue"):
+            self.uploader._read_video_url(page, title="Player — All Actions")
 
 
 class DailymotionAgentOrderTests(unittest.TestCase):

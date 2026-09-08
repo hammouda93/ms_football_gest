@@ -76,13 +76,18 @@ mauvais moment, l’agent renvoie l’URL existante au lieu de publier un doublo
 YouTube reste le canal principal et son fonctionnement ne change pas. Si une vidéo All
 Actions est bloquée, l’équipe peut lancer manuellement Dailymotion dans « Abonnements
 Performance », sur la même ligne que YouTube. Le bouton devient « Réessayer » après un
-échec et « Voir » après la publication. Aucun bouton Dailymotion n’est ajouté à l’espace
-client : la page du match utilise automatiquement la vidéo de secours lorsqu’elle est prête.
+échec. Lorsque le fichier est transféré mais que Dailymotion optimise encore la vidéo,
+l’état devient « Upload effectué — lien à ajouter » et permet de coller le lien « Aperçu ».
+Le bouton devient « Voir » dès que ce lien est enregistré. Aucun bouton de gestion
+Dailymotion n’est ajouté à l’espace client : la page du match utilise automatiquement la
+vidéo de secours lorsqu’elle est prête.
 
 Comme YouTube, la publication est pilotée dans **Chrome par Playwright** : ouverture de
 Studio, sélection du fichier, titre/description, catégorie Sport, langue, « non créé pour
-les enfants », visibilité Privée, attente du transfert, puis Enregistrer. Aucun appel à
-l’API Dailymotion, aucune clé API et aucun mot de passe Dailymotion dans le code.
+les enfants », visibilité Privée, Enregistrer, attente de la fin du transfert, puis
+« Fermer ». Dans la liste Vidéos, le RPA cible ensuite le titre exact et récupère le lien
+privé « Aperçu » depuis son menu. Aucun appel à l’API Dailymotion, aucune clé API et aucun
+mot de passe Dailymotion dans le code.
 
 Ajoutez au `.env` local du PC qui exécute l’agent :
 
@@ -93,6 +98,7 @@ DAILYMOTION_BROWSER_CHANNEL=chrome
 DAILYMOTION_HEADLESS=false
 DAILYMOTION_VIDEO_LANGUAGE=fr
 DAILYMOTION_UPLOAD_TIMEOUT_MINUTES=180
+DAILYMOTION_LINK_WAIT_SECONDS=120
 ```
 
 Première connexion, sans envoyer de vidéo :
@@ -123,10 +129,14 @@ applicables sur Dailymotion.
 Un reçu local est conservé dans `_dailymotion_receipts` afin d’éviter un second upload si
 le retour vers Heroku est interrompu. Si Chrome s’arrête après le clic Enregistrer sans
 confirmation, un reçu `needs_review` bloque un nouvel upload incertain : vérifiez le match
-dans Studio. S’il est déjà publié, renseignez son lien privé et l’état « Vidéo disponible »
-dans l’administration Django ; sinon, après vérification de l’absence de vidéo publiée,
-renommez le reçu indiqué dans l’erreur et cliquez Réessayer. Une capture locale dans
-`_dailymotion_diagnostics` aide à diagnostiquer un changement d’interface.
+dans Studio. Dès que le transfert est confirmé, le reçu passe à `link_pending` : fermer
+Chrome ou arrêter l’agent ne provoque alors aucun doublon. Le RPA attend par défaut deux
+minutes que l’optimisation rende le menu « Aperçu » disponible. Si elle dure davantage,
+copiez ce lien dans « Abonnements Performance » ; il est contrôlé puis transformé en URL
+Dailymotion canonique avant d’être proposé au lecteur client. Réglez
+`DAILYMOTION_LINK_WAIT_SECONDS=0` pour quitter juste après le transfert et toujours saisir
+le lien manuellement. Une capture locale dans `_dailymotion_diagnostics` aide à
+diagnostiquer un changement d’interface.
 
 Pour utiliser un lecteur Dailymotion personnalisé, configurez facultativement
 `DAILYMOTION_PLAYER_ID` sur l’application Django. Appliquez la migration au déploiement :

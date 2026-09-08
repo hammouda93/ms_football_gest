@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-wizard-v4-20260907"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-library-v5-20260908"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
@@ -53,6 +53,8 @@ MORE_LABEL = re.compile(
     r"ouvrir le menu)$",
     re.I,
 )
+CLOSE_LABEL = re.compile(r"^(close|fermer)$", re.I)
+PREVIEW_LABEL = re.compile(r"^(preview|aper[çc]u)$", re.I)
 
 
 class DailymotionUploadError(RuntimeError):
@@ -104,6 +106,10 @@ class DailymotionStudioUploader:
             int(os.getenv("DAILYMOTION_NAVIGATION_TIMEOUT_SECONDS", "90"))
             * 1000
         )
+        self.link_wait_seconds = max(
+            0,
+            int(os.getenv("DAILYMOTION_LINK_WAIT_SECONDS", "120")),
+        )
         self.language = os.getenv("DAILYMOTION_VIDEO_LANGUAGE", "fr").strip()
         self.content_url = (
             f"https://www.dailymotion.com/partner/{self.profile_id}/media/video"
@@ -130,6 +136,14 @@ class DailymotionStudioUploader:
                 "Vérifiez la vidéo dans Studio avant de réessayer pour éviter un doublon. "
                 f"Reçu local à vérifier : {self._receipt_path(job)}"
             )
+        if receipt.get("status") == "link_pending":
+            receipt["dailymotion_url"] = ""
+            receipt["dailymotion_video_id"] = ""
+            print(
+                "[DAILYMOTION] Transfert déjà terminé : ajoutez le lien "
+                "Aperçu dans la gestion interne."
+            )
+            return receipt
         url = canonical_dailymotion_url(receipt.get("dailymotion_url"))
         if receipt.get("status") != "uploaded" or not url:
             return None
@@ -768,8 +782,12 @@ class DailymotionStudioUploader:
         return bool(
             re.search(
                 r"^(upload complete|uploaded|upload finished|upload termin[eé]e?|"
-                r"upload r[eé]ussi|optimizing|optimisation|processing|"
-                r"traitement en cours|encodage en cours|mise en ligne termin[eé]e|"
+                r"upload r[eé]ussi|optimizing(?:\s+\d+(?:[.,]\d+)?\s*%)?|"
+                r"optimisation(?: en cours)?(?:\s+\d+(?:[.,]\d+)?\s*%)?|"
+                r"processing(?:\s+\d+(?:[.,]\d+)?\s*%)?|"
+                r"traitement en cours(?:\s+\d+(?:[.,]\d+)?\s*%)?|"
+                r"encodage en cours(?:\s+\d+(?:[.,]\d+)?\s*%)?|"
+                r"mise en ligne termin[eé]e|"
                 r"transfert termin[eé]|importation termin[eé]e)[.!]?$",
                 text,
                 re.I | re.M,
@@ -845,6 +863,16 @@ class DailymotionStudioUploader:
             "Le panneau de progression Dailymotion n’est pas identifiable."
         )
 
+    def _close_button(self, page):
+        button = self._visible(page.get_by_role("button", name=CLOSE_LABEL))
+        if (
+            button is not None
+            and button.is_enabled()
+            and button.get_attribute("aria-disabled") != "true"
+        ):
+            return button
+        return None
+
     def _wait_upload_transfer_complete(self, page, title=""):
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         stable_complete = 0
@@ -868,11 +896,11 @@ class DailymotionStudioUploader:
                 if progress != last_progress and progress < 100:
                     print(f"[DAILYMOTION] Upload en cours : {progress:g} %")
                     last_progress = progress
-            stable_complete = (
-                stable_complete + 1
-                if self._transfer_complete(text, percentages)
-                else 0
+            complete = self._close_button(page) is not None or self._transfer_complete(
+                text,
+                percentages,
             )
+            stable_complete = stable_complete + 1 if complete else 0
             if stable_complete >= 2:
                 print("[DAILYMOTION] Transfert terminé.")
                 return
@@ -880,6 +908,22 @@ class DailymotionStudioUploader:
         raise DailymotionUploadError(
             "Dailymotion n’a pas confirmé la fin du transfert dans le délai prévu."
         )
+
+    def _close_upload_dialog(self, page, title):
+        button = self._wait_control(
+            page,
+            lambda: self._close_button(page),
+            "Fermer après le transfert",
+            60000,
+        )
+        button.click()
+        self._wait_control(
+            page,
+            lambda: self._uploaded_title_control(page, title),
+            f"vidéo publiée « {title} »",
+            60000,
+        )
+        print("[DAILYMOTION] Fenêtre d’upload fermée — vidéo retrouvée dans Médias.")
 
     def _wait_save_button(self, page):
         def find():
@@ -976,6 +1020,49 @@ class DailymotionStudioUploader:
         )
         return self._only_visible(row)
 
+    def _row_actions_button(self, row):
+        return self._visible(
+            row.locator(
+                "button.ant-dropdown-trigger, "
+                "[class*='dropdownActions'] button, "
+                "button[class*='toolbar']"
+            )
+        )
+
+    def _preview_url(self, page):
+        candidates = (
+            page.get_by_role("link", name=PREVIEW_LABEL),
+            page.locator(
+                'a[title="Aperçu"], a[title="Apercu"], a[title="Preview"]'
+            ),
+        )
+        for candidate in candidates:
+            link = self._only_visible(candidate)
+            if link is None:
+                continue
+            url = canonical_dailymotion_url(link.get_attribute("href"))
+            if url:
+                return url
+        return ""
+
+    def _row_processing_progress(self, row):
+        try:
+            text = row.inner_text()
+        except Exception:
+            return None
+        if not re.search(r"optimis|process|traitement|encodage", text, re.I):
+            return None
+        percentages = self._text_percentages(text)
+        return max(percentages) if percentages else 0.0
+
+    def _row_ready_for_preview(self, row):
+        return self._visible(
+            row.locator(
+                'svg[aria-label="Monétisée"], svg[aria-label="Monetized"], '
+                'svg[aria-label="Monétisé"], svg[aria-label="Monetised"]'
+            )
+        ) is not None
+
     def _open_uploaded_title(self, page, title):
         """Open only the uniquely matching title created by this upload."""
         control = self._uploaded_title_control(page, title)
@@ -1022,62 +1109,59 @@ class DailymotionStudioUploader:
         action.click()
         return True
 
-    def _read_video_url(self, page, *, previous_urls, title):
-        # Studio documents link/embed retrieval from Media > Videos. Return to
-        # that library after Save so the exact uploaded row can be targeted.
-        self._goto_studio(page)
-        deadline = time.monotonic() + 60
-        opened_title = False
-        share_attempted = False
-        while time.monotonic() < deadline:
+    def _read_video_url(self, page, *, previous_urls=None, title):
+        # The private k... identifier is exposed by the visible "Aperçu" link
+        # in the exact uploaded row's ellipsis menu. Never derive it from the
+        # public x... Studio details identifier.
+        deadline = time.monotonic() + self.link_wait_seconds
+        last_progress = None
+        next_menu_attempt = 0.0
+        ready_logged = False
+        first_pass = True
+        print(
+            "[DAILYMOTION] Recherche du lien Aperçu "
+            f"({self.link_wait_seconds} s maximum)."
+        )
+        while first_pass or time.monotonic() < deadline:
+            first_pass = False
             self._raise_if_blocked(page)
-            urls = self._video_urls(page) - previous_urls
-            # Keep the private share identifier provided by Studio. Never
-            # synthesize a link from /partner/.../media/video/<id>.
-            private_urls = {
-                url
-                for url in urls
-                if extract_dailymotion_video_id(url).casefold().startswith("k")
-            }
-            if len(private_urls) == 1:
-                return private_urls.pop()
-            if len(urls) == 1:
-                return urls.pop()
-            if len(urls) > 1:
-                raise DailymotionUploadError(
-                    "Plusieurs liens vidéo détectés : impossible d’identifier "
-                    "le match avec certitude."
-                )
+            row = self._uploaded_row(page, title)
+            if row is not None:
+                progress = self._row_processing_progress(row)
+                if progress is not None and progress != last_progress:
+                    print(f"[DAILYMOTION] Optimisation en cours : {progress:g} %")
+                    last_progress = progress
 
-            # The editor can expose Share immediately after Save. If Studio
-            # returned to the library, open only the exact uploaded title,
-            # then reveal that video's Share panel.
-            in_editor = self._title_field(page) is not None
-            if not share_attempted and (in_editor or opened_title):
-                share_attempted = self._reveal_share_panel(page)
-                if share_attempted:
-                    page.wait_for_timeout(500)
-                    continue
-            if not share_attempted and not in_editor and not opened_title:
-                uploaded_row = self._uploaded_row(page, title)
-                if uploaded_row is not None:
-                    share_attempted = self._reveal_share_panel(
-                        page,
-                        scope=uploaded_row,
+                url = self._preview_url(page)
+                if url:
+                    return url
+
+                ready = self._row_ready_for_preview(row)
+                if ready and not ready_logged:
+                    print("[DAILYMOTION] Vidéo optimisée — lien Aperçu disponible.")
+                    ready_logged = True
+
+                now = time.monotonic()
+                if ready or now >= next_menu_attempt:
+                    # Refresh the exact row's menu periodically: Studio may add
+                    # the Preview action only after optimization finishes.
+                    open_menu = self._visible(
+                        page.locator("ul.ant-dropdown-menu[role='menu']")
                     )
-                    if share_attempted:
-                        page.wait_for_timeout(500)
-                        continue
-            # On return to the library, open only the exact freshly uploaded
-            # title. Do not select the first existing video in the account.
-            if not opened_title and self._open_uploaded_title(page, title):
-                opened_title = True
-                share_attempted = False
-                page.wait_for_timeout(1000)
-            else:
-                page.wait_for_timeout(500)
+                    if open_menu is not None:
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(100)
+                    actions = self._row_actions_button(row)
+                    if actions is not None:
+                        actions.click()
+                        page.wait_for_timeout(300)
+                        url = self._preview_url(page)
+                        if url:
+                            return url
+                    next_menu_attempt = now + 10
+            page.wait_for_timeout(1000)
         raise DailymotionUploadError(
-            "Le lien de partage Dailymotion n’a pas été trouvé dans Studio."
+            "L’optimisation continue et le lien Aperçu n’est pas encore disponible."
         )
 
     def upload(self, job):
@@ -1123,7 +1207,31 @@ class DailymotionStudioUploader:
                 button.click()
                 self._wait_saved(page, title)
                 self._wait_upload_transfer_complete(page, title)
-                url = self._read_video_url(page, previous_urls=previous_urls, title=title)
+                link_pending_result = {
+                    "status": "link_pending",
+                    "dailymotion_url": "",
+                    "dailymotion_video_id": "",
+                    "studio_url": page.url,
+                    "content_sha256": digest,
+                    "file_size_bytes": file_size,
+                }
+                # From this point the file is safely on Dailymotion. Persist
+                # that fact before waiting for the slower optimization/link.
+                self._save_receipt(job, link_pending_result)
+                try:
+                    self._close_upload_dialog(page, title)
+                    url = self._read_video_url(
+                        page,
+                        previous_urls=previous_urls,
+                        title=title,
+                    )
+                except Exception as link_error:
+                    print(
+                        "[DAILYMOTION] Upload réussi — lien Aperçu à ajouter "
+                        "dans la gestion interne."
+                    )
+                    print(f"[DAILYMOTION] Détail : {link_error}")
+                    return link_pending_result
                 result = {
                     "status": "uploaded",
                     "dailymotion_url": url,
@@ -1151,4 +1259,7 @@ class DailymotionStudioUploader:
                     f"RPA Dailymotion interrompu : {exc}"
                 ) from exc
             finally:
-                context.close()
+                try:
+                    context.close()
+                except Exception:
+                    pass

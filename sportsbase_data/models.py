@@ -519,6 +519,7 @@ class SportsBaseDailymotionUpload(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "En attente"
         RUNNING = "running", "Upload Dailymotion en cours"
+        LINK_PENDING = "link_pending", "Upload effectué — lien à ajouter"
         UPLOADED = "uploaded", "Vidéo disponible"
         FAILED = "failed", "Échec"
 

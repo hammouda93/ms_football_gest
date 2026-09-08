@@ -56,6 +56,7 @@ from .services import (
     queue_sync,
     reconcile_subscription_delivery_settings,
     request_dailymotion_upload,
+    save_dailymotion_link,
 )
 from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
@@ -1417,6 +1418,39 @@ class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
         self.assertEqual(fallback.dailymotion_video_id, "x9apiresult")
 
+    def test_agent_api_records_completed_transfer_while_preview_link_is_pending(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "link_pending",
+                "dailymotion_url": "",
+                "dailymotion_video_id": "",
+                "content_sha256": "d" * 64,
+                "file_size_bytes": 136_900_000,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], "link_pending")
+        fallback.refresh_from_db()
+        self.assertEqual(
+            fallback.status,
+            SportsBaseDailymotionUpload.Status.LINK_PENDING,
+        )
+        self.assertEqual(fallback.dailymotion_url, "")
+        self.assertEqual(fallback.content_sha256, "d" * 64)
+        with self.assertRaisesMessage(ValueError, "Ajoutez son lien Aperçu"):
+            request_dailymotion_upload(self.match)
+
     def test_internal_management_exposes_try_retry_and_view_actions(self):
         self.client.force_login(self.admin)
         management_url = reverse("performance:management")
@@ -1431,6 +1465,20 @@ class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         )
         self.assertRedirects(response, management_url, fetch_redirect_response=False)
         fallback = SportsBaseDailymotionUpload.objects.get(match=self.match)
+
+        fallback.status = SportsBaseDailymotionUpload.Status.LINK_PENDING
+        fallback.error_message = ""
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        link_pending = self.client.get(management_url)
+        self.assertContains(link_pending, "Upload effectué — lien à ajouter")
+        self.assertContains(link_pending, "Ajouter le lien")
+        self.assertContains(
+            link_pending,
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+        )
 
         fallback.status = SportsBaseDailymotionUpload.Status.FAILED
         fallback.error_message = "Publication refusée."
@@ -1454,6 +1502,87 @@ class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         uploaded = self.client.get(management_url)
         self.assertContains(uploaded, "https://www.dailymotion.com/video/x9fallback")
         self.assertContains(uploaded, "Voir")
+
+    def test_manual_preview_link_is_canonicalized_and_embedded_for_client(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.LINK_PENDING,
+            upload_title="Performance Player — All Actions",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dai.ly/k6dRv0e0ZEC5WCJBlxc"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("performance:management"),
+            fetch_redirect_response=False,
+        )
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(
+            fallback.dailymotion_url,
+            "https://www.dailymotion.com/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertEqual(fallback.dailymotion_video_id, "k6dRv0e0ZEC5WCJBlxc")
+
+        management = self.client.get(reverse("performance:management"))
+        self.assertContains(management, "Voir")
+        self.assertNotContains(management, "Ajouter le lien")
+
+        user = self.portal_user("manual-dailymotion-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        portal = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(
+            portal,
+            "dailymotion.com/embed/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertNotContains(portal, "Ajouter le lien")
+
+    def test_manual_preview_link_rejects_external_urls(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.FAILED,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dailymotion.com.evil.test/video/kBad"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Saisissez un lien Dailymotion valide")
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.FAILED)
+        self.assertEqual(fallback.dailymotion_url, "")
+
+    def test_manual_link_service_rejects_a_transfer_still_running(self):
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.RUNNING,
+        )
+
+        with self.assertRaisesMessage(ValueError, "travaille encore"):
+            save_dailymotion_link(
+                self.match,
+                "https://dai.ly/k6dRv0e0ZEC5WCJBlxc",
+            )
 
     def test_portal_uses_fallback_without_exposing_management_controls(self):
         self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED

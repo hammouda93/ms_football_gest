@@ -68,8 +68,11 @@
                                 {% if fallback.status %}<span class="job-status status-{{ fallback.status }}">{{ fallback.get_status_display }}</span>{% endif %}
                                 {% if fallback.status == "uploaded" and fallback.dailymotion_url %}
                                     <a class="btn btn-sm btn-outline-primary" href="{{ fallback.dailymotion_url }}" target="_blank" rel="noopener"><i class="fas fa-circle-play"></i> Voir</a>
+                                {% elif fallback.status == "link_pending" %}
+                                    <form class="dailymotion-link-form" method="post" action="{% url 'performance:dailymotion_link_save' upload.match.pk %}">{% csrf_token %}<input class="form-control form-control-sm" type="url" name="dailymotion_url" required autocomplete="url" placeholder="https://dai.ly/k..."><button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-link"></i> Ajouter le lien</button></form>
                                 {% elif fallback.status == "failed" %}
                                     <form method="post" action="{% url 'performance:dailymotion_upload_request' upload.match.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Réessayer</button></form>
+                                    <form class="dailymotion-link-form" method="post" action="{% url 'performance:dailymotion_link_save' upload.match.pk %}">{% csrf_token %}<input class="form-control form-control-sm" type="url" name="dailymotion_url" required autocomplete="url" placeholder="https://dai.ly/k..."><button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-link"></i> Lien manuel</button></form>
                                 {% elif fallback.status == "pending" or fallback.status == "running" %}
                                     <button class="btn btn-sm btn-outline-secondary" type="button" disabled><i class="fas fa-clock"></i> En cours</button>
                                 {% else %}
