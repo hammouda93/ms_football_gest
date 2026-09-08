@@ -401,10 +401,39 @@ class DailymotionRPATests(unittest.TestCase):
             self.assertFalse(self.uploader._transfer_complete(text))
         self.assertFalse(self.uploader._transfer_complete("", [99]))
         self.assertTrue(self.uploader._transfer_complete("", [100]))
+        self.assertFalse(
+            self.uploader._transfer_complete("Upload en cours 46 %", [46, 100])
+        )
         self.assertEqual(
             self.uploader._text_percentages("Upload en cours 28 %"),
             [28.0],
         )
+
+    def test_enabled_close_button_never_ends_an_active_upload(self):
+        page = Mock()
+        scope = Mock()
+        progressbar = Mock()
+        progressbar.is_visible.return_value = True
+        progressbar.get_attribute.side_effect = ["1", "46", "100", "100"]
+        scope.get_by_role.return_value.all.return_value = [progressbar]
+        scope.inner_text.side_effect = [
+            "Upload en cours 1 %",
+            "Upload en cours 46 %",
+            "Upload en cours 100 %",
+            "Upload en cours 100 %",
+        ]
+        self.uploader._raise_if_blocked = Mock()
+        self.uploader._upload_scope = Mock(return_value=scope)
+        self.uploader._close_button = Mock(return_value=Mock())
+
+        self.uploader._wait_upload_transfer_complete(
+            page,
+            "Player — All Actions",
+        )
+
+        self.assertEqual(progressbar.get_attribute.call_count, 4)
+        self.assertEqual(page.wait_for_timeout.call_count, 3)
+        self.uploader._close_button.assert_not_called()
 
     def test_upload_summary_confirms_save_while_transfer_is_in_progress(self):
         page = Mock()

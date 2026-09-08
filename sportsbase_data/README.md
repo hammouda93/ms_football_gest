@@ -89,6 +89,10 @@ les enfants », visibilité Privée, Enregistrer, attente de la fin du transfert
 privé « Aperçu » depuis son menu. Aucun appel à l’API Dailymotion, aucune clé API et aucun
 mot de passe Dailymotion dans le code.
 
+Le bouton « Fermer » peut être actif pendant que Studio affiche encore « Upload en cours
+X % » : il n’est donc jamais utilisé comme preuve de fin. Le RPA attend obligatoirement
+100 % ou un statut explicite de transfert terminé avant de fermer la fenêtre.
+
 Ajoutez au `.env` local du PC qui exécute l’agent :
 
 ```text

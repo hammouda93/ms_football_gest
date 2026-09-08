@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-library-v5-20260908"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-verified-transfer-v6-20260908"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
@@ -779,6 +779,23 @@ class DailymotionStudioUploader:
 
     @staticmethod
     def _transfer_complete(text, percentages=()):
+        active_upload_percentages = []
+        for raw in re.findall(
+            r"(?:upload|transfert|importation)\s+"
+            r"(?:en cours|in progress)\s*[:\-]?\s*"
+            r"(\d{1,3}(?:[.,]\d+)?)\s*%",
+            text or "",
+            re.I,
+        ):
+            try:
+                active_upload_percentages.append(float(raw.replace(",", ".")))
+            except ValueError:
+                continue
+        # An enabled "Fermer" button and other 100% indicators can already be
+        # present while the actual video transfer is still running. The exact
+        # upload status therefore has priority over every completion signal.
+        if any(value < 100 for value in active_upload_percentages):
+            return False
         return bool(
             re.search(
                 r"^(upload complete|uploaded|upload finished|upload termin[eé]e?|"
@@ -896,10 +913,10 @@ class DailymotionStudioUploader:
                 if progress != last_progress and progress < 100:
                     print(f"[DAILYMOTION] Upload en cours : {progress:g} %")
                     last_progress = progress
-            complete = self._close_button(page) is not None or self._transfer_complete(
-                text,
-                percentages,
-            )
+            # Studio exposes an enabled "Fermer" button before the file has
+            # finished uploading. Only progress/status evidence may complete
+            # this wait; the button is used afterwards, never as confirmation.
+            complete = self._transfer_complete(text, percentages)
             stable_complete = stable_complete + 1 if complete else 0
             if stable_complete >= 2:
                 print("[DAILYMOTION] Transfert terminé.")
