@@ -91,6 +91,7 @@ class DailymotionRPATests(unittest.TestCase):
         self.assertEqual(str(self.uploader.profile_dir), r"D:\SportsBase_Playwright_Profile")
         self.assertEqual(self.uploader.browser_channel, "chrome")
         self.assertFalse(self.uploader.headless)
+        self.assertEqual(self.uploader.link_wait_seconds, 0)
         self.assertFalse(hasattr(self.uploader, "api_key"))
         self.assertFalse(hasattr(self.uploader, "api_secret"))
 
@@ -476,6 +477,7 @@ class DailymotionRPATests(unittest.TestCase):
         self.uploader._row_actions_button = Mock(return_value=actions)
         self.uploader._preview_url = Mock(side_effect=["", self.url])
         self.uploader._visible = Mock(return_value=None)
+        self.uploader._keyboard_exit_requested = Mock(return_value=False)
 
         result = self.uploader._read_video_url(
             page,
@@ -488,6 +490,35 @@ class DailymotionRPATests(unittest.TestCase):
             "Player — All Actions",
         )
         actions.click.assert_called_once_with()
+
+    def test_unlimited_preview_wait_reports_every_new_optimization_percentage(self):
+        page = Mock()
+        row = Mock()
+        self.uploader._raise_if_blocked = Mock()
+        self.uploader._uploaded_row = Mock(return_value=row)
+        self.uploader._row_processing_progress = Mock(
+            side_effect=[7, 12, 14, 14]
+        )
+        self.uploader._row_ready_for_preview = Mock(return_value=False)
+        self.uploader._row_actions_button = Mock(return_value=None)
+        self.uploader._preview_url = Mock(
+            side_effect=["", "", "", self.url]
+        )
+        self.uploader._visible = Mock(return_value=None)
+        self.uploader._keyboard_exit_requested = Mock(return_value=False)
+
+        with patch("builtins.print") as output:
+            result = self.uploader._read_video_url(
+                page,
+                title="Player — All Actions",
+            )
+
+        self.assertEqual(result, self.url)
+        for progress in (7, 12, 14):
+            output.assert_any_call(
+                f"[DAILYMOTION] Optimisation en cours : {progress} %"
+            )
+        self.assertEqual(page.wait_for_timeout.call_count, 3)
 
     def test_preview_short_link_is_canonicalized_without_opening_new_tab(self):
         page = Mock()
@@ -503,14 +534,38 @@ class DailymotionRPATests(unittest.TestCase):
         )
         link.click.assert_not_called()
 
-    def test_preview_timeout_keeps_manual_link_path_available(self):
+    def test_preview_keyboard_exit_keeps_manual_link_path_available(self):
         page = Mock()
-        self.uploader.link_wait_seconds = 0
         self.uploader._raise_if_blocked = Mock()
         self.uploader._uploaded_row = Mock(return_value=None)
+        self.uploader._keyboard_exit_requested = Mock(
+            side_effect=[False, True]
+        )
 
-        with self.assertRaisesRegex(DailymotionUploadError, "optimisation continue"):
+        with self.assertRaisesRegex(DailymotionUploadError, "interrompue"):
             self.uploader._read_video_url(page, title="Player — All Actions")
+
+        page.wait_for_timeout.assert_called_once_with(1000)
+
+    def test_optional_positive_preview_timeout_remains_available(self):
+        page = Mock()
+        self.uploader.link_wait_seconds = 1
+        self.uploader._raise_if_blocked = Mock()
+        self.uploader._uploaded_row = Mock(return_value=None)
+        self.uploader._keyboard_exit_requested = Mock(return_value=False)
+
+        with patch(
+            "sportsbase_data.dailymotion_uploader.time.monotonic",
+            side_effect=[10, 10, 12],
+        ):
+            with self.assertRaisesRegex(
+                DailymotionUploadError,
+                "optimisation continue",
+            ):
+                self.uploader._read_video_url(
+                    page,
+                    title="Player — All Actions",
+                )
 
 
 class DailymotionAgentOrderTests(unittest.TestCase):

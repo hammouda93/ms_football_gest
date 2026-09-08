@@ -16,6 +16,12 @@ L’agent traite tous les abonnements actifs, un joueur après l’autre. Un mat
 n’est pas régénéré. Un match partiel ou dont la vidéo est encore en cours est repris au
 passage suivant.
 
+Le bouton XLSX de SportsBase reste la source des statistiques Players : l’agent conserve
+le classeur original octet pour octet, sans reconstruire son contenu depuis la page. Pour
+éviter la déconnexion observée avec la copie Playwright sur le profil Chrome persistant, le
+fichier original est intercepté avant le gestionnaire natif de téléchargement, puis enregistré
+dans le même dossier de match. La session Chrome reste ainsi disponible pour All Actions.
+
 Variables locales attendues :
 
 ```text
@@ -102,7 +108,7 @@ DAILYMOTION_BROWSER_CHANNEL=chrome
 DAILYMOTION_HEADLESS=false
 DAILYMOTION_VIDEO_LANGUAGE=fr
 DAILYMOTION_UPLOAD_TIMEOUT_MINUTES=180
-DAILYMOTION_LINK_WAIT_SECONDS=120
+DAILYMOTION_LINK_WAIT_SECONDS=0
 ```
 
 Première connexion, sans envoyer de vidéo :
@@ -134,12 +140,15 @@ Un reçu local est conservé dans `_dailymotion_receipts` afin d’éviter un se
 le retour vers Heroku est interrompu. Si Chrome s’arrête après le clic Enregistrer sans
 confirmation, un reçu `needs_review` bloque un nouvel upload incertain : vérifiez le match
 dans Studio. Dès que le transfert est confirmé, le reçu passe à `link_pending` : fermer
-Chrome ou arrêter l’agent ne provoque alors aucun doublon. Le RPA attend par défaut deux
-minutes que l’optimisation rende le menu « Aperçu » disponible. Si elle dure davantage,
-copiez ce lien dans « Abonnements Performance » ; il est contrôlé puis transformé en URL
-Dailymotion canonique avant d’être proposé au lecteur client. Réglez
-`DAILYMOTION_LINK_WAIT_SECONDS=0` pour quitter juste après le transfert et toujours saisir
-le lien manuellement. Une capture locale dans `_dailymotion_diagnostics` aide à
+Chrome ou arrêter l’agent ne provoque alors aucun doublon. Par défaut, le RPA attend sans
+limite que l’optimisation rende le menu « Aperçu » disponible et affiche sa progression.
+Appuyez sur une touche dans PowerShell pour quitter cette attente : le transfert reste alors
+en état `link_pending` et le lien peut être saisi dans « Abonnements Performance ». Lorsqu’il
+est trouvé avant l’interruption, le lien est envoyé automatiquement à l’application. La valeur
+`DAILYMOTION_LINK_WAIT_SECONDS=0` active cette attente sans limite ; une valeur positive fixe
+facultativement une limite pour une exécution sans surveillance. Le lien est contrôlé puis
+transformé en URL Dailymotion canonique avant d’être proposé au lecteur client. Une capture
+locale dans `_dailymotion_diagnostics` aide à
 diagnostiquer un changement d’interface.
 
 Pour utiliser un lecteur Dailymotion personnalisé, configurez facultativement

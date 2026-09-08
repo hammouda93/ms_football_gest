@@ -3,6 +3,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import Mock
 
 from PIL import Image, ImageDraw
 
@@ -757,6 +758,79 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_original_xlsx_blob_is_captured_byte_for_byte_without_native_save(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        page.context.cookies.return_value = []
+        page.evaluate.return_value = "Chrome test"
+        download_button = Mock()
+        original = b"PK\x03\x04sportsbase-original-xlsx"
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={
+                "status": "captured",
+                "data": base64.b64encode(original).decode("ascii"),
+            }
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(captured, original)
+        download_button.click.assert_called_once_with(
+            timeout=10_000,
+            no_wait_after=True,
+        )
+        scraper._restore_xlsx_blob_capture.assert_called_once_with(page)
+        page.unroute.assert_called_once()
+
+    def test_original_xlsx_network_response_is_captured_before_chrome_download(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        download_button = Mock()
+        route = Mock()
+        route.request.url = (
+            "https://api-football.sportsbase.world/exports/players.xlsx"
+        )
+        response = Mock()
+        response.body.return_value = b"PK\x03\x04sportsbase-original-xlsx"
+        response.all_headers.return_value = {
+            "content-type": (
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            )
+        }
+        route.fetch.return_value = response
+        handlers = {}
+        page.route.side_effect = lambda pattern, handler: handlers.__setitem__(
+            pattern,
+            handler,
+        )
+        download_button.click.side_effect = lambda **_kwargs: handlers[
+            "**/*"
+        ](route)
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={"status": "waiting"}
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(
+            captured,
+            b"PK\x03\x04sportsbase-original-xlsx",
+        )
+        route.abort.assert_called_once_with()
+        route.fulfill.assert_not_called()
+        page.unroute.assert_called_once()
+
     def test_target_closed_error_is_distinguished_from_normal_xlsx_failure(self):
         self.assertTrue(
             _browser_target_was_closed(

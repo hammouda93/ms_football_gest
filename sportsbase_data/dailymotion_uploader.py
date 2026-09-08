@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-upload-verified-transfer-v6-20260908"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-unlimited-preview-wait-v7-20260908"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
@@ -108,7 +108,7 @@ class DailymotionStudioUploader:
         )
         self.link_wait_seconds = max(
             0,
-            int(os.getenv("DAILYMOTION_LINK_WAIT_SECONDS", "120")),
+            int(os.getenv("DAILYMOTION_LINK_WAIT_SECONDS", "0")),
         )
         self.language = os.getenv("DAILYMOTION_VIDEO_LANGUAGE", "fr").strip()
         self.content_url = (
@@ -1130,17 +1130,33 @@ class DailymotionStudioUploader:
         # The private k... identifier is exposed by the visible "Aperçu" link
         # in the exact uploaded row's ellipsis menu. Never derive it from the
         # public x... Studio details identifier.
-        deadline = time.monotonic() + self.link_wait_seconds
+        deadline = (
+            time.monotonic() + self.link_wait_seconds
+            if self.link_wait_seconds
+            else None
+        )
         last_progress = None
         next_menu_attempt = 0.0
         ready_logged = False
         first_pass = True
-        print(
-            "[DAILYMOTION] Recherche du lien Aperçu "
-            f"({self.link_wait_seconds} s maximum)."
-        )
-        while first_pass or time.monotonic() < deadline:
+        if deadline is None:
+            print(
+                "[DAILYMOTION] Recherche du lien Aperçu "
+                "(appuyer sur une touche pour quitter)."
+            )
+        else:
+            print(
+                "[DAILYMOTION] Recherche du lien Aperçu "
+                f"({self.link_wait_seconds} s maximum; appuyer sur une touche "
+                "pour quitter)."
+            )
+        while first_pass or deadline is None or time.monotonic() < deadline:
             first_pass = False
+            if self._keyboard_exit_requested():
+                raise DailymotionUploadError(
+                    "Attente interrompue par l’utilisateur; le transfert est "
+                    "conservé et le lien peut être ajouté manuellement."
+                )
             self._raise_if_blocked(page)
             row = self._uploaded_row(page, title)
             if row is not None:
@@ -1180,6 +1196,25 @@ class DailymotionStudioUploader:
         raise DailymotionUploadError(
             "L’optimisation continue et le lien Aperçu n’est pas encore disponible."
         )
+
+    @staticmethod
+    def _keyboard_exit_requested():
+        """Consume one console key on Windows without blocking Playwright."""
+        if os.name != "nt":
+            return False
+        try:
+            import msvcrt
+
+            if not msvcrt.kbhit():
+                return False
+            key = msvcrt.getwch()
+            # Extended keys emit a two-character sequence. Consume the second
+            # character so it cannot stop a later Dailymotion job unexpectedly.
+            if key in {"\x00", "\xe0"} and msvcrt.kbhit():
+                msvcrt.getwch()
+            return True
+        except (ImportError, OSError):
+            return False
 
     def upload(self, job):
         video_path = self.resolve_video_path(job)

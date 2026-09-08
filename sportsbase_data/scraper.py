@@ -30,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-xlsx-browser-recovery-v25-20260907"
+SCRAPER_BUILD = "sportsbase-original-xlsx-capture-v26-20260908"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
@@ -2102,7 +2102,299 @@ class SportsBaseSubscriptionScraper:
                 if not page.is_closed():
                     page.close()
             except Exception:
-                # Preserve the original TargetClosedError raised by save_as().
+                # Preserve the original browser error raised by the XLSX step.
+                pass
+
+    @staticmethod
+    def _install_xlsx_blob_capture(page):
+        """Intercept the exact XLSX blob before Chrome's download manager sees it."""
+        page.evaluate(
+            r"""
+            () => {
+              const key = '__sportsbasePlayersXlsxCapture';
+              const previous = window[key];
+              if (previous && typeof previous.restore === 'function') {
+                previous.restore();
+              }
+
+              const state = {
+                status: 'waiting',
+                filename: '',
+                data: '',
+                error: '',
+                href: '',
+              };
+              const encode = (buffer) => {
+                const bytes = new Uint8Array(buffer);
+                const chunks = [];
+                for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+                  chunks.push(
+                    String.fromCharCode.apply(
+                      null,
+                      bytes.subarray(offset, offset + 0x8000)
+                    )
+                  );
+                }
+                return btoa(chunks.join(''));
+              };
+              state.captureBlob = (blob, href, filename) => {
+                if (state.status !== 'waiting') return;
+                state.status = 'reading';
+                state.href = String(href || '');
+                state.filename = String(filename || '');
+                Promise.resolve(blob.arrayBuffer()).then((buffer) => {
+                  const bytes = new Uint8Array(buffer);
+                  if (bytes.length < 2 || bytes[0] !== 80 || bytes[1] !== 75) {
+                    state.status = 'waiting';
+                    state.href = '';
+                    state.filename = '';
+                    return;
+                  }
+                  state.data = encode(buffer);
+                  state.status = 'captured';
+                }).catch((error) => {
+                  state.error = String(error && error.message || error);
+                  state.status = 'error';
+                });
+              };
+              state.captureUrl = (href, filename) => {
+                if (state.status !== 'waiting') return;
+                state.status = 'reading';
+                state.href = String(href || '');
+                state.filename = String(filename || '');
+                fetch(state.href, {credentials: 'include'}).then((response) => {
+                  if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                  }
+                  return response.arrayBuffer();
+                }).then((buffer) => {
+                  state.data = encode(buffer);
+                  state.status = 'captured';
+                }).catch((error) => {
+                  state.error = String(error && error.message || error);
+                  state.status = 'error';
+                });
+              };
+              state.qualifies = (href, filename) => {
+                const url = String(href || '');
+                const name = String(filename || '');
+                return Boolean(
+                  name ||
+                  url.startsWith('blob:') ||
+                  /\.xlsx(?:$|[?#])/i.test(url)
+                );
+              };
+
+              state.originalCreateObjectURL = URL.createObjectURL;
+              state.patchedCreateObjectURL = function(object) {
+                const href = state.originalCreateObjectURL.apply(this, arguments);
+                const mime = object instanceof Blob
+                  ? String(object.type || '').toLowerCase()
+                  : '';
+                if (
+                  object instanceof Blob &&
+                  (
+                    !mime ||
+                    /spreadsheet|excel|officedocument|zip|octet-stream/.test(mime)
+                  )
+                ) {
+                  state.captureBlob(object, href, '');
+                }
+                return href;
+              };
+              URL.createObjectURL = state.patchedCreateObjectURL;
+
+              state.originalAnchorClick = HTMLAnchorElement.prototype.click;
+              state.patchedAnchorClick = function() {
+                const href = this.href || '';
+                const filename = this.download || '';
+                if (state.qualifies(href, filename)) {
+                  state.captureUrl(href, filename);
+                  return;
+                }
+                return state.originalAnchorClick.apply(this, arguments);
+              };
+              HTMLAnchorElement.prototype.click = state.patchedAnchorClick;
+
+              state.clickListener = (event) => {
+                const target = event.target;
+                const anchor = target && target.closest
+                  ? target.closest('a')
+                  : null;
+                if (!anchor || !state.qualifies(anchor.href, anchor.download)) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                state.captureUrl(anchor.href, anchor.download);
+              };
+              document.addEventListener('click', state.clickListener, true);
+
+              state.originalOpen = window.open;
+              state.patchedOpen = function(href) {
+                if (state.qualifies(href, '')) {
+                  state.captureUrl(href, '');
+                  return null;
+                }
+                return state.originalOpen.apply(this, arguments);
+              };
+              window.open = state.patchedOpen;
+
+              state.restore = () => {
+                if (URL.createObjectURL === state.patchedCreateObjectURL) {
+                  URL.createObjectURL = state.originalCreateObjectURL;
+                }
+                if (
+                  HTMLAnchorElement.prototype.click === state.patchedAnchorClick
+                ) {
+                  HTMLAnchorElement.prototype.click = state.originalAnchorClick;
+                }
+                if (window.open === state.patchedOpen) {
+                  window.open = state.originalOpen;
+                }
+                document.removeEventListener(
+                  'click',
+                  state.clickListener,
+                  true
+                );
+              };
+              window[key] = state;
+            }
+            """
+        )
+
+    @staticmethod
+    def _xlsx_blob_capture_state(page):
+        return page.evaluate(
+            r"""
+            () => {
+              const state = window.__sportsbasePlayersXlsxCapture;
+              if (!state) return null;
+              return {
+                status: state.status,
+                filename: state.filename,
+                data: state.data,
+                error: state.error,
+                href: state.href,
+              };
+            }
+            """
+        )
+
+    @staticmethod
+    def _restore_xlsx_blob_capture(page):
+        page.evaluate(
+            r"""
+            () => {
+              const state = window.__sportsbasePlayersXlsxCapture;
+              if (state && typeof state.restore === 'function') {
+                state.restore();
+              }
+              delete window.__sportsbasePlayersXlsxCapture;
+            }
+            """
+        )
+
+    @staticmethod
+    def _is_xlsx_response(content, headers, url):
+        if not content.startswith(b"PK"):
+            return False
+        lowered_headers = {
+            str(name).casefold(): str(value).casefold()
+            for name, value in (headers or {}).items()
+        }
+        signature = " ".join(
+            (
+                lowered_headers.get("content-type", ""),
+                lowered_headers.get("content-disposition", ""),
+                str(url or "").casefold(),
+            )
+        )
+        return any(
+            marker in signature
+            for marker in (
+                "spreadsheet",
+                "excel",
+                "officedocument",
+                ".xlsx",
+                "download",
+                "export",
+            )
+        ) or content.startswith(b"PK\x03\x04")
+
+    def _capture_original_players_xlsx(self, page, download_button):
+        """Keep the SportsBase response byte-for-byte and bypass Chrome downloads."""
+        captured_responses = []
+
+        def capture_response(route):
+            response = None
+            try:
+                response = route.fetch(timeout=120_000)
+                content = response.body()
+                headers = response.all_headers()
+                if self._is_xlsx_response(
+                    content,
+                    headers,
+                    route.request.url,
+                ):
+                    captured_responses.append(bytes(content))
+                    route.abort()
+                    return
+                route.fulfill(response=response)
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        page.route("**/*", capture_response)
+        self._install_xlsx_blob_capture(page)
+        try:
+            download_button.click(timeout=10_000, no_wait_after=True)
+            deadline = time.monotonic() + 120
+            capture_error = ""
+            while time.monotonic() < deadline:
+                if captured_responses:
+                    return captured_responses[0]
+
+                state = self._xlsx_blob_capture_state(page) or {}
+                status = state.get("status")
+                if status == "captured":
+                    try:
+                        content = base64.b64decode(
+                            state.get("data") or "",
+                            validate=True,
+                        )
+                    except (TypeError, ValueError) as exc:
+                        raise RuntimeError(
+                            "Le XLSX original capturé est illisible."
+                        ) from exc
+                    if self._is_xlsx_response(
+                        content,
+                        {"content-type": "application/vnd.openxmlformats"},
+                        state.get("filename") or state.get("href") or "",
+                    ):
+                        return content
+                    raise RuntimeError(
+                        "Le contenu capturé par SportsBase n’est pas un XLSX."
+                    )
+                if status == "error":
+                    capture_error = str(state.get("error") or "")
+                page.wait_for_timeout(100)
+
+            detail = f" Détail navigateur : {capture_error}" if capture_error else ""
+            raise RuntimeError(
+                "SportsBase n’a pas fourni le XLSX original dans les 120 secondes."
+                + detail
+            )
+        finally:
+            try:
+                self._restore_xlsx_blob_capture(page)
+            except Exception:
+                pass
+            try:
+                page.unroute("**/*", capture_response)
+            except Exception:
                 pass
 
     def _download_match_players_statistics(
@@ -2180,19 +2472,33 @@ class SportsBaseSubscriptionScraper:
                 "[SPORTSBASE] Téléchargement des statistiques Players XLSX — "
                 f"match {match_id}"
             )
-            with page.expect_download(timeout=30_000) as download_info:
-                download_button.click(timeout=10_000)
-            download = download_info.value
+            content = self._capture_original_players_xlsx(
+                page,
+                download_button,
+            )
             if destination.exists():
                 destination = self._unique_path(destination)
-            download.save_as(str(destination))
-            failure = download.failure()
-            if failure:
-                raise RuntimeError(failure)
+            temporary = destination.with_name(f"{destination.name}.part")
+            try:
+                temporary.write_bytes(content)
+                if not self._valid_xlsx(temporary):
+                    raise RuntimeError(
+                        "Le fichier reçu n’est pas un classeur XLSX valide."
+                    )
+                temporary.replace(destination)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
             if not self._valid_xlsx(destination):
                 raise RuntimeError(
                     "Le fichier reçu n’est pas un classeur XLSX valide."
                 )
+            print(
+                "[SPORTSBASE] XLSX original capturé sans fermer Chrome — "
+                f"match {match_id}"
+            )
 
             parsed = self._parse_players_statistics(destination)
             missing = self._missing_xlsx_analysis_headers(
