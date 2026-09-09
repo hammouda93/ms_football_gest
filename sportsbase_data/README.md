@@ -21,6 +21,10 @@ le classeur original octet pour octet, sans reconstruire son contenu depuis la p
 éviter la déconnexion observée avec la copie Playwright sur le profil Chrome persistant, le
 fichier original est intercepté avant le gestionnaire natif de téléchargement, puis enregistré
 dans le même dossier de match. La session Chrome reste ainsi disponible pour All Actions.
+Le dernier téléchargement MP4 depuis « My Videos » suit le même principe : l’agent clique
+toujours la ligne SportsBase sélectionnée, capture uniquement son URL signée, bloque le
+gestionnaire natif qui fermait Chrome, puis écrit le MP4 original en flux dans le dossier
+local existant. La génération, l’association au match et le classement final ne changent pas.
 
 Variables locales attendues :
 

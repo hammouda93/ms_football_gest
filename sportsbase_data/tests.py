@@ -3,7 +3,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -758,6 +758,111 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_all_actions_signed_request_is_aborted_before_native_chrome_download(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        page.is_closed.return_value = False
+        download_icon = Mock()
+        route = Mock()
+        route.request.url = (
+            "https://api-football.sportsbase.world/video/downloads/abc123"
+            "?filename=Player%20actions.mp4&token=signed"
+        )
+        route.request.all_headers.return_value = {
+            "authorization": "Bearer test-token",
+            "referer": "https://football.sportsbase.world/profile/myvideo",
+        }
+        handlers = {}
+        page.context.route.side_effect = (
+            lambda pattern, handler: handlers.__setitem__(pattern, handler)
+        )
+        download_icon.click.side_effect = lambda **_kwargs: handlers["**/*"](
+            route
+        )
+
+        captured = scraper._capture_actions_download_request(
+            page,
+            download_icon,
+        )
+
+        self.assertEqual(captured["url"], route.request.url)
+        self.assertEqual(
+            captured["headers"]["authorization"],
+            "Bearer test-token",
+        )
+        route.abort.assert_called_once_with()
+        route.continue_.assert_not_called()
+        download_icon.click.assert_called_once_with(
+            timeout=5_000,
+            no_wait_after=True,
+        )
+        page.context.unroute.assert_called_once()
+
+    def test_all_actions_original_mp4_is_streamed_byte_for_byte(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        page.context.cookies.return_value = [
+            {
+                "name": "sportsbase_session",
+                "value": "cookie-value",
+                "domain": ".sportsbase.world",
+                "path": "/",
+            }
+        ]
+        response = Mock()
+        original = b"\x00\x00\x00\x18ftypmp42sportsbase-original-video"
+        response.headers = {
+            "Content-Type": "video/mp4",
+            "Content-Length": str(len(original)),
+        }
+        response.iter_content.return_value = [original[:12], original[12:]]
+        session = Mock()
+        session.get.return_value = response
+        signed_url = (
+            "https://api-football.sportsbase.world/video/downloads/abc123"
+            "?filename=Player%20actions.mp4&token=signed"
+        )
+
+        with TemporaryDirectory() as directory:
+            with patch(
+                "sportsbase_data.scraper.requests.Session",
+                return_value=session,
+            ):
+                destination = scraper._stream_original_actions_video(
+                    page=page,
+                    request={
+                        "url": signed_url,
+                        "headers": {
+                            "Authorization": "Bearer test-token",
+                            "Cookie": "must-not-be-forwarded-directly",
+                            "Host": "api-football.sportsbase.world",
+                        },
+                    },
+                    downloads_dir=directory,
+                    match_id="800074",
+                )
+
+            self.assertEqual(destination.read_bytes(), original)
+            self.assertEqual(destination.name, "_All_Actions__match_800074.mp4")
+            self.assertFalse(
+                Path(f"{destination}.part").exists()
+            )
+
+        page.context.cookies.assert_called_once_with([signed_url])
+        request_headers = session.get.call_args.kwargs["headers"]
+        self.assertEqual(request_headers["Authorization"], "Bearer test-token")
+        self.assertNotIn("Cookie", request_headers)
+        self.assertNotIn("Host", request_headers)
+        session.cookies.set.assert_called_once_with(
+            "sportsbase_session",
+            "cookie-value",
+            path="/",
+            domain=".sportsbase.world",
+        )
+        response.raise_for_status.assert_called_once_with()
+        response.close.assert_called_once_with()
+        session.close.assert_called_once_with()
+
     def test_original_xlsx_blob_is_captured_byte_for_byte_without_native_save(self):
         scraper = object.__new__(SportsBaseSubscriptionScraper)
         page = Mock()
