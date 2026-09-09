@@ -1,8 +1,10 @@
 from urllib.parse import parse_qs, urlparse
 
 from django import template
+from django.conf import settings
 
 from client_portal.portal_i18n import get_portal_copy, translated_choice
+from sportsbase_data.dailymotion_links import extract_dailymotion_video_id
 
 
 register = template.Library()
@@ -67,3 +69,24 @@ def youtube_embed_url(value):
     if not video_id or not all(character.isalnum() or character in "-_" for character in video_id):
         return ""
     return f"https://www.youtube-nocookie.com/embed/{video_id}"
+
+
+@register.filter
+def dailymotion_embed_url(value):
+    """Keep the actual private share ID supplied by Dailymotion Studio."""
+    video_id = extract_dailymotion_video_id(value)
+    if not video_id:
+        return ""
+
+    player_id = str(getattr(settings, "DAILYMOTION_PLAYER_ID", "") or "").strip()
+    if player_id and all(
+        character.isalnum() or character in "-_" for character in player_id
+    ):
+        return f"https://geo.dailymotion.com/player/{player_id}.html?video={video_id}"
+    return f"https://www.dailymotion.com/embed/video/{video_id}"
+
+
+@register.filter
+def video_embed_url(value):
+    """Resolve the supported provider without exposing provider controls in the portal."""
+    return dailymotion_embed_url(value) or youtube_embed_url(value)

@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from .agent_config import youtube_upload_enabled
+from .agent_config import dailymotion_upload_enabled, youtube_upload_enabled
 
 
 class YouTubeLocalAgentConfigurationTests(unittest.TestCase):
@@ -29,6 +29,28 @@ class YouTubeLocalAgentConfigurationTests(unittest.TestCase):
             clear=True,
         ):
             self.assertTrue(youtube_upload_enabled())
+
+
+class DailymotionLocalAgentConfigurationTests(unittest.TestCase):
+    def test_fallback_is_disabled_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(dailymotion_upload_enabled())
+
+    def test_fallback_requires_an_explicit_true_value(self):
+        with patch.dict(
+            os.environ,
+            {"DAILYMOTION_UPLOAD_ENABLED": "true"},
+            clear=True,
+        ):
+            self.assertTrue(dailymotion_upload_enabled())
+
+    def test_blank_value_keeps_fallback_disabled(self):
+        with patch.dict(
+            os.environ,
+            {"DAILYMOTION_UPLOAD_ENABLED": ""},
+            clear=True,
+        ):
+            self.assertFalse(dailymotion_upload_enabled())
 
 
 if __name__ == "__main__":

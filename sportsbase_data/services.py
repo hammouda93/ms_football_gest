@@ -10,7 +10,9 @@ from django.db.models import Q
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 
+from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_video_id
 from .models import (
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -211,6 +213,16 @@ def pending_jobs_overview():
         )
         .order_by("created_at", "pk")
     )
+    dailymotion_jobs = (
+        SportsBaseDailymotionUpload.objects.select_related(
+            "match__subscription__player"
+        )
+        .filter(
+            status=SportsBaseDailymotionUpload.Status.PENDING,
+            match__subscription__in=subscriptions,
+        )
+        .order_by("created_at", "pk")
+    )
     return {
         "sportsbase_jobs": [
             {
@@ -236,6 +248,19 @@ def pending_jobs_overview():
                 },
             }
             for upload in youtube_jobs
+        ],
+        "dailymotion_jobs": [
+            {
+                "job_id": upload.pk,
+                "match_id": upload.match.sportsbase_match_id,
+                "fixture": str(upload.match),
+                "created_at": upload.created_at.isoformat(),
+                "player": {
+                    "id": upload.match.subscription.player_id,
+                    "name": upload.match.subscription.player.name,
+                },
+            }
+            for upload in dailymotion_jobs
         ],
     }
 
@@ -747,6 +772,254 @@ def retry_youtube_upload(upload):
             "started_at",
             "finished_at",
             "error_message",
+            "updated_at",
+        )
+    )
+    return upload
+
+
+def _dailymotion_job_payload(upload):
+    match = upload.match
+    return {
+        "job_id": upload.pk,
+        "player": {
+            "id": match.subscription.player_id,
+            "name": match.subscription.player.name,
+        },
+        "match": {
+            "id": match.pk,
+            "match_id": match.sportsbase_match_id,
+            "date": match.match_date.isoformat() if match.match_date else None,
+            "competition": match.competition,
+            "home_team": match.home_team,
+            "away_team": match.away_team,
+            "score": match.score,
+            "local_folder_key": match.local_folder_key,
+            "filename": match.all_actions_filename,
+        },
+        "dailymotion": {
+            "title": upload.upload_title or _youtube_title(match),
+            "description": _youtube_description(match),
+            "category": "sport",
+            "visibility": "private",
+            "language": "fr",
+            "is_for_kids": False,
+        },
+    }
+
+
+@transaction.atomic
+def request_dailymotion_upload(match):
+    """Create or retry the optional fallback without touching the YouTube job."""
+    match = (
+        SportsBaseMatch.objects.select_for_update()
+        .select_related("subscription__player")
+        .get(pk=match.pk)
+    )
+    if not match.subscription.access_enabled:
+        raise ValueError(
+            "Activez l’abonnement avant de demander l’upload Dailymotion."
+        )
+    if (
+        match.actions_state
+        not in {
+            SportsBaseMatch.ActionsState.DOWNLOADED,
+            SportsBaseMatch.ActionsState.EMAILED,
+        }
+        or not match.local_folder_key
+        or not match.all_actions_filename
+    ):
+        raise ValueError(
+            "Le fichier All Actions doit être téléchargé avant l’essai Dailymotion."
+        )
+
+    upload, created = SportsBaseDailymotionUpload.objects.get_or_create(
+        match=match,
+        defaults={"upload_title": _youtube_title(match)},
+    )
+    if created or upload.status == SportsBaseDailymotionUpload.Status.PENDING:
+        return upload, created
+    if upload.status == SportsBaseDailymotionUpload.Status.RUNNING:
+        raise ValueError("L’upload Dailymotion est déjà en cours.")
+    if (
+        upload.status == SportsBaseDailymotionUpload.Status.UPLOADED
+        and upload.dailymotion_url
+    ):
+        raise ValueError("Cette vidéo est déjà disponible sur Dailymotion.")
+    if upload.status == SportsBaseDailymotionUpload.Status.LINK_PENDING:
+        raise ValueError(
+            "L’upload Dailymotion est terminé. Ajoutez son lien Aperçu au lieu "
+            "de relancer un second upload."
+        )
+
+    upload.status = SportsBaseDailymotionUpload.Status.PENDING
+    upload.started_at = None
+    upload.finished_at = None
+    upload.error_message = ""
+    upload.save(
+        update_fields=(
+            "status",
+            "started_at",
+            "finished_at",
+            "error_message",
+            "updated_at",
+        )
+    )
+    return upload, False
+
+
+@transaction.atomic
+def claim_next_dailymotion_upload():
+    stale_before = timezone.now() - timedelta(
+        hours=getattr(settings, "DAILYMOTION_UPLOAD_JOB_TIMEOUT_HOURS", 6)
+    )
+    SportsBaseDailymotionUpload.objects.filter(
+        status=SportsBaseDailymotionUpload.Status.RUNNING,
+        started_at__lt=stale_before,
+    ).update(
+        status=SportsBaseDailymotionUpload.Status.FAILED,
+        error_message="L’agent local n’a pas terminé l’upload dans le délai prévu.",
+        finished_at=timezone.now(),
+    )
+    upload = (
+        SportsBaseDailymotionUpload.objects.select_for_update()
+        .select_related("match__subscription__player")
+        .filter(
+            status=SportsBaseDailymotionUpload.Status.PENDING,
+            match__subscription__in=active_subscriptions(),
+        )
+        .order_by("-match__match_date", "created_at")
+        .first()
+    )
+    if upload is None:
+        return None
+    upload.status = SportsBaseDailymotionUpload.Status.RUNNING
+    upload.started_at = timezone.now()
+    upload.finished_at = None
+    upload.attempts += 1
+    upload.error_message = ""
+    if not upload.upload_title:
+        upload.upload_title = _youtube_title(upload.match)
+    upload.save(
+        update_fields=(
+            "status",
+            "started_at",
+            "finished_at",
+            "attempts",
+            "error_message",
+            "upload_title",
+            "updated_at",
+        )
+    )
+    upload.payload = _dailymotion_job_payload(upload)
+    return upload
+
+
+@transaction.atomic
+def apply_dailymotion_upload_result(upload, result):
+    upload = SportsBaseDailymotionUpload.objects.select_for_update().get(pk=upload.pk)
+    if upload.status != SportsBaseDailymotionUpload.Status.RUNNING:
+        raise ValueError("Cette tâche Dailymotion n’est plus en cours.")
+    if not isinstance(result, dict):
+        raise ValueError("Le résultat Dailymotion doit être un objet JSON.")
+
+    status = str(result.get("status") or "").strip()
+    if status not in {
+        SportsBaseDailymotionUpload.Status.LINK_PENDING,
+        SportsBaseDailymotionUpload.Status.UPLOADED,
+        SportsBaseDailymotionUpload.Status.FAILED,
+    }:
+        raise ValueError("État final Dailymotion invalide.")
+
+    upload.status = status
+    upload.finished_at = timezone.now()
+    upload.error_message = str(result.get("error") or "")
+    if status in {
+        SportsBaseDailymotionUpload.Status.LINK_PENDING,
+        SportsBaseDailymotionUpload.Status.UPLOADED,
+    }:
+        content_sha256 = str(result.get("content_sha256") or "").strip().lower()
+        if content_sha256 and not re.fullmatch(r"[0-9a-f]{64}", content_sha256):
+            raise ValueError("L’empreinte du fichier vidéo est invalide.")
+        try:
+            file_size = int(result.get("file_size_bytes") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("La taille du fichier vidéo est invalide.") from exc
+        if file_size < 0:
+            raise ValueError("La taille du fichier vidéo est invalide.")
+        upload.content_sha256 = content_sha256
+        upload.file_size_bytes = file_size or None
+        upload.error_message = ""
+        if status == SportsBaseDailymotionUpload.Status.LINK_PENDING:
+            upload.dailymotion_url = ""
+            upload.dailymotion_video_id = ""
+        else:
+            dailymotion_url = canonical_dailymotion_url(result.get("dailymotion_url"))
+            video_id = extract_dailymotion_video_id(dailymotion_url)
+            if not video_id:
+                raise ValueError("L’agent n’a pas fourni de lien Dailymotion valide.")
+            supplied_video_id = str(result.get("dailymotion_video_id") or "").strip()
+            if supplied_video_id and supplied_video_id != video_id:
+                raise ValueError(
+                    "L’identifiant et le lien Dailymotion ne correspondent pas."
+                )
+            upload.dailymotion_url = dailymotion_url
+            upload.dailymotion_video_id = video_id
+
+    upload.save(
+        update_fields=(
+            "status",
+            "dailymotion_url",
+            "dailymotion_video_id",
+            "content_sha256",
+            "file_size_bytes",
+            "error_message",
+            "finished_at",
+            "updated_at",
+        )
+    )
+    return upload
+
+
+@transaction.atomic
+def save_dailymotion_link(match, value):
+    """Attach the private Preview URL after Studio finishes optimization."""
+    dailymotion_url = canonical_dailymotion_url(value)
+    video_id = extract_dailymotion_video_id(dailymotion_url)
+    if not video_id:
+        raise ValueError(
+            "Saisissez un lien Dailymotion valide, par exemple https://dai.ly/k..."
+        )
+
+    match = (
+        SportsBaseMatch.objects.select_for_update()
+        .select_related("subscription__player")
+        .get(pk=match.pk)
+    )
+    upload, _created = SportsBaseDailymotionUpload.objects.get_or_create(
+        match=match,
+        defaults={"upload_title": _youtube_title(match)},
+    )
+    if upload.status == SportsBaseDailymotionUpload.Status.RUNNING:
+        raise ValueError(
+            "L’agent Dailymotion travaille encore sur cette vidéo. Attendez la "
+            "fin du transfert avant d’ajouter le lien."
+        )
+    upload.status = SportsBaseDailymotionUpload.Status.UPLOADED
+    upload.dailymotion_url = dailymotion_url
+    upload.dailymotion_video_id = video_id
+    upload.error_message = ""
+    upload.finished_at = timezone.now()
+    if not upload.upload_title:
+        upload.upload_title = _youtube_title(match)
+    upload.save(
+        update_fields=(
+            "status",
+            "dailymotion_url",
+            "dailymotion_video_id",
+            "error_message",
+            "finished_at",
+            "upload_title",
             "updated_at",
         )
     )

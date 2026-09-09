@@ -3,6 +3,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -21,11 +22,12 @@ from client_portal.models import (
 )
 from gestion_joueurs.models import Player
 
-from .forms import SportsBaseSubscriptionForm
 from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS
+from .forms import SportsBaseSubscriptionForm
 from .models import (
     PerformanceReport,
     PerformanceSubscriptionPayment,
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -39,15 +41,23 @@ from .reports import (
     render_report_pdf,
     send_ready_delivery_notification,
 )
-from .scraper import SportsBaseSubscriptionScraper
+from .scraper import (
+    _XLSX_BROWSER_RETRY_KEY,
+    _browser_target_was_closed,
+    SportsBaseSubscriptionScraper,
+)
 from .services import (
+    apply_dailymotion_upload_result,
     apply_sync_result,
     apply_youtube_upload_result,
+    claim_next_dailymotion_upload,
     claim_next_job,
     claim_next_youtube_upload,
     ensure_youtube_upload_jobs,
     queue_sync,
     reconcile_subscription_delivery_settings,
+    request_dailymotion_upload,
+    save_dailymotion_link,
 )
 from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
@@ -748,6 +758,342 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_windows_installed_chrome_uses_cdp_port_by_default(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.browser_channel = "chrome"
+
+        with patch.dict(
+            "sportsbase_data.scraper.os.environ",
+            {},
+            clear=True,
+        ), patch("sportsbase_data.scraper.os.name", "nt"):
+            self.assertTrue(scraper._uses_cdp_port_transport())
+
+    def test_cdp_port_launch_keeps_installed_chrome_and_persistent_profile(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.profile_dir = Path("persistent-profile")
+        scraper.browser_channel = "chrome"
+        scraper.automation = Mock(headless=False)
+        scraper._cdp_browser = None
+        scraper._cdp_process = None
+        scraper._cdp_port = None
+        scraper._browser_executable = Mock(
+            return_value=Path("Google/Chrome/Application/chrome.exe")
+        )
+        scraper._reserve_cdp_port = Mock(return_value=9333)
+        scraper._wait_for_cdp_endpoint = Mock(
+            return_value="http://127.0.0.1:9333"
+        )
+
+        context = Mock()
+        browser = Mock()
+        browser.contexts = [context]
+        browser.version = "152.0.7977.76"
+        playwright = Mock()
+        playwright.chromium.connect_over_cdp.return_value = browser
+        process = Mock()
+
+        with patch(
+            "sportsbase_data.scraper.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            launched_context = scraper._launch_context_over_cdp_port(
+                playwright,
+                Path("downloads"),
+            )
+
+        self.assertIs(launched_context, context)
+        command = popen.call_args.args[0]
+        self.assertIn("--remote-debugging-port=9333", command)
+        self.assertIn("--remote-debugging-address=127.0.0.1", command)
+        self.assertTrue(
+            any(argument.startswith("--user-data-dir=") for argument in command)
+        )
+        self.assertNotIn("--remote-debugging-pipe", command)
+        playwright.chromium.connect_over_cdp.assert_called_once_with(
+            "http://127.0.0.1:9333",
+            timeout=30_000,
+            is_local=True,
+            no_defaults=False,
+        )
+        self.assertIs(scraper._cdp_browser, browser)
+        self.assertIs(scraper._cdp_process, process)
+
+    def test_cdp_port_context_cleanup_closes_external_chrome_gracefully(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        process = Mock()
+        process.wait.return_value = 0
+        scraper._cdp_browser = browser
+        scraper._cdp_process = process
+        scraper._cdp_port = 9333
+        context = Mock()
+
+        scraper._close_browser_context(context)
+
+        session.send.assert_called_once_with("Browser.close")
+        browser.close.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=10)
+        context.close.assert_not_called()
+        self.assertIsNone(scraper._cdp_browser)
+        self.assertIsNone(scraper._cdp_process)
+        self.assertIsNone(scraper._cdp_port)
+
+    def test_all_actions_uses_single_chrome_click_and_disk_confirmation(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        download_icon = Mock()
+        original = b"\x00\x00\x00\x18ftypmp42sportsbase-original-video"
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "Player actions.mp4"
+            source.write_bytes(original)
+            watch_dirs = [downloads_dir]
+            before = {"existing": (1, 1)}
+            scraper._download_watch_directories = Mock(return_value=watch_dirs)
+            scraper._configure_native_downloads = Mock(return_value=True)
+            scraper._snapshot_download_files = Mock(return_value=before)
+            scraper._wait_for_new_download = Mock(return_value=source)
+
+            destination = scraper._download_actions_with_chrome(
+                page=page,
+                download_icon=download_icon,
+                downloads_dir=downloads_dir,
+                match_id="800074",
+            )
+
+            self.assertEqual(destination.read_bytes(), original)
+            self.assertEqual(destination.name, "_All_Actions__match_800074.mp4")
+
+        scraper._configure_native_downloads.assert_called_once_with(
+            page,
+            downloads_dir,
+        )
+        scraper._snapshot_download_files.assert_called_once_with(watch_dirs)
+        download_icon.click.assert_called_once_with(
+            timeout=5_000,
+            no_wait_after=True,
+        )
+        scraper._wait_for_new_download.assert_called_once_with(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        page.expect_download.assert_not_called()
+
+    def test_cdp_port_sets_native_chrome_download_directory(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        scraper._cdp_browser = browser
+        page = Mock()
+
+        with TemporaryDirectory() as directory:
+            configured = scraper._configure_native_downloads(page, directory)
+
+            self.assertTrue(configured)
+            session.send.assert_called_once_with(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(directory).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+        page.context.new_cdp_session.assert_not_called()
+
+    def test_chrome_download_without_extension_is_staged_as_mp4(self):
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "playwright-download-guid"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42video")
+
+            staged = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=source,
+                downloads_dir=downloads_dir,
+                match_id="800074",
+            )
+
+            self.assertEqual(staged.suffix, ".mp4")
+            self.assertEqual(staged.read_bytes(), b"\x00\x00\x00\x18ftypmp42video")
+
+    def test_disk_confirmation_ignores_crdownload_until_mp4_is_finished(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            partial = downloads_dir / "Player actions.mp4.crdownload"
+            finished = downloads_dir / "Player actions.mp4"
+
+            def advance_download(_seconds):
+                if not partial.exists() and not finished.exists():
+                    partial.write_bytes(b"partial")
+                elif partial.exists():
+                    partial.replace(finished)
+
+            with patch(
+                "sportsbase_data.scraper.time.sleep",
+                side_effect=advance_download,
+            ):
+                detected = scraper._wait_for_new_download(
+                    [downloads_dir],
+                    before={},
+                    timeout_seconds=1,
+                )
+
+            self.assertEqual(detected, finished)
+            self.assertEqual(detected.read_bytes(), b"partial")
+
+    def test_original_xlsx_blob_is_captured_byte_for_byte_without_native_save(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        page.context.cookies.return_value = []
+        page.evaluate.return_value = "Chrome test"
+        download_button = Mock()
+        original = b"PK\x03\x04sportsbase-original-xlsx"
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={
+                "status": "captured",
+                "data": base64.b64encode(original).decode("ascii"),
+            }
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(captured, original)
+        download_button.click.assert_called_once_with(
+            timeout=10_000,
+            no_wait_after=True,
+        )
+        scraper._restore_xlsx_blob_capture.assert_called_once_with(page)
+        page.unroute.assert_called_once()
+
+    def test_original_xlsx_network_response_is_captured_before_chrome_download(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        download_button = Mock()
+        route = Mock()
+        route.request.url = (
+            "https://api-football.sportsbase.world/exports/players.xlsx"
+        )
+        response = Mock()
+        response.body.return_value = b"PK\x03\x04sportsbase-original-xlsx"
+        response.all_headers.return_value = {
+            "content-type": (
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            )
+        }
+        route.fetch.return_value = response
+        handlers = {}
+        page.route.side_effect = lambda pattern, handler: handlers.__setitem__(
+            pattern,
+            handler,
+        )
+        download_button.click.side_effect = lambda **_kwargs: handlers[
+            "**/*"
+        ](route)
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={"status": "waiting"}
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(
+            captured,
+            b"PK\x03\x04sportsbase-original-xlsx",
+        )
+        route.abort.assert_called_once_with()
+        route.fulfill.assert_not_called()
+        page.unroute.assert_called_once()
+
+    def test_target_closed_error_is_distinguished_from_normal_xlsx_failure(self):
+        self.assertTrue(
+            _browser_target_was_closed(
+                RuntimeError(
+                    "Download.save_as: Target page, context or browser has been closed"
+                )
+            )
+        )
+        self.assertFalse(
+            _browser_target_was_closed(RuntimeError("Download timed out after 30000ms"))
+        )
+
+    def test_xlsx_browser_closure_restarts_twice_then_returns_success(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            if len(attempts) < 3:
+                return {
+                    "status": "partial",
+                    "profile": {"season": "2026/2027"},
+                    "matches": [],
+                    "summary": {"matches_imported": 0},
+                    "error": "Chrome fermé",
+                    _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+                }
+            return {
+                "status": "success",
+                "profile": {"season": "2026/2027"},
+                "matches": [{"sportsbase_match_id": "800079"}],
+                "summary": {"matches_imported": 1},
+                "error": "",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["summary"]["matches_imported"], 1)
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
+    def test_xlsx_browser_retry_exhaustion_preserves_partial_result(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            return {
+                "status": "partial",
+                "profile": {"season": "2026/2027"},
+                "matches": [],
+                "summary": {"matches_imported": 0},
+                "error": "Chrome fermé",
+                _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["profile"]["season"], "2026/2027")
+        self.assertIn("Échec après 3 tentative(s)", result["error"])
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
     def test_same_chrome_filename_is_staged_separately_for_each_match(self):
         with TemporaryDirectory() as directory:
             downloads_dir = Path(directory)
@@ -821,6 +1167,16 @@ class ScraperNormalizationTests(TestCase):
             ),
             "Boubacar Camara",
         )
+
+    def test_my_videos_accepts_name_shortened_by_sportsbase(self):
+        targets = SportsBaseSubscriptionScraper._my_videos_targets(
+            "Mohamed Amine Ben Ammar"
+        )
+
+        self.assertIn("mohamed amine ben ammar, player actions", targets)
+        self.assertIn("amine ben ammar, player actions", targets)
+        self.assertNotIn("ben ammar, player actions", targets)
+        self.assertNotIn("ammar, player actions", targets)
 
     def test_pitch_background_is_opaque_and_contains_pitch_lines(self):
         pitch = SportsBaseSubscriptionScraper._render_pitch_background(
@@ -1211,6 +1567,347 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertTrue(result["sync_queued"])
 
 
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
+class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="880002",
+            season=self.subscription.season,
+            match_date=timezone.localdate(),
+            home_team="Stade Tunisien",
+            away_team="Club Africain",
+            home_score=2,
+            away_score=1,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="player_1/season/match_880002",
+            all_actions_filename="all-actions.mp4",
+        )
+        SportsBaseMatchStats.objects.create(match=self.match, minutes_played=90)
+        self.youtube_upload = SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée pour droits d’auteur.",
+        )
+
+    def test_manual_fallback_preserves_youtube_and_reuses_download_metadata(self):
+        fallback, created = request_dailymotion_upload(self.match)
+
+        self.assertTrue(created)
+        self.youtube_upload.refresh_from_db()
+        self.assertEqual(self.youtube_upload.status, SportsBaseYouTubeUpload.Status.FAILED)
+        self.assertEqual(
+            self.youtube_upload.error_message,
+            "Vidéo bloquée pour droits d’auteur.",
+        )
+
+        claimed = claim_next_dailymotion_upload()
+        self.assertEqual(claimed.pk, fallback.pk)
+        self.assertEqual(claimed.payload["match"]["filename"], "all-actions.mp4")
+        self.assertEqual(
+            claimed.payload["match"]["local_folder_key"],
+            "player_1/season/match_880002",
+        )
+        self.assertEqual(claimed.payload["dailymotion"]["visibility"], "private")
+        self.assertEqual(claimed.payload["dailymotion"]["category"], "sport")
+        self.assertNotIn("api_secret", str(claimed.payload).casefold())
+
+    def test_fallback_cannot_be_requested_before_all_actions_is_local(self):
+        self.match.actions_state = SportsBaseMatch.ActionsState.GENERATING
+        self.match.save(update_fields=("actions_state", "updated_at"))
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Le fichier All Actions doit être téléchargé",
+        ):
+            request_dailymotion_upload(self.match)
+
+        self.assertFalse(SportsBaseDailymotionUpload.objects.exists())
+
+    def test_valid_result_links_fallback_and_it_becomes_preferred_video(self):
+        request_dailymotion_upload(self.match)
+        upload = claim_next_dailymotion_upload()
+        finished = apply_dailymotion_upload_result(
+            upload,
+            {
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9fallback",
+                "dailymotion_video_id": "x9fallback",
+                "content_sha256": "b" * 64,
+                "file_size_bytes": 28_000_000,
+            },
+        )
+
+        self.assertEqual(finished.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(finished.dailymotion_video_id, "x9fallback")
+        self.assertEqual(self.match.available_video_url, finished.dailymotion_url)
+
+    def test_agent_api_claims_and_completes_the_manual_fallback(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+
+        overview = self.client.get(reverse("performance:api_pending_jobs"))
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(
+            overview.json()["dailymotion_jobs"][0]["job_id"],
+            fallback.pk,
+        )
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+        self.assertEqual(claimed.json()["job"]["job_id"], fallback.pk)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9apiresult",
+                "dailymotion_video_id": "x9apiresult",
+                "content_sha256": "c" * 64,
+                "file_size_bytes": 42,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(fallback.dailymotion_video_id, "x9apiresult")
+
+    def test_agent_api_records_completed_transfer_while_preview_link_is_pending(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "link_pending",
+                "dailymotion_url": "",
+                "dailymotion_video_id": "",
+                "content_sha256": "d" * 64,
+                "file_size_bytes": 136_900_000,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], "link_pending")
+        fallback.refresh_from_db()
+        self.assertEqual(
+            fallback.status,
+            SportsBaseDailymotionUpload.Status.LINK_PENDING,
+        )
+        self.assertEqual(fallback.dailymotion_url, "")
+        self.assertEqual(fallback.content_sha256, "d" * 64)
+        with self.assertRaisesMessage(ValueError, "Ajoutez son lien Aperçu"):
+            request_dailymotion_upload(self.match)
+
+    def test_internal_management_exposes_try_retry_and_view_actions(self):
+        self.client.force_login(self.admin)
+        management_url = reverse("performance:management")
+
+        initial = self.client.get(management_url)
+        self.assertContains(initial, "Essayer Dailymotion")
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_upload_request",
+                args=(self.match.pk,),
+            )
+        )
+        self.assertRedirects(response, management_url, fetch_redirect_response=False)
+        fallback = SportsBaseDailymotionUpload.objects.get(match=self.match)
+
+        fallback.status = SportsBaseDailymotionUpload.Status.LINK_PENDING
+        fallback.error_message = ""
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        link_pending = self.client.get(management_url)
+        self.assertContains(link_pending, "Upload effectué — lien à ajouter")
+        self.assertContains(link_pending, "Ajouter le lien")
+        self.assertContains(
+            link_pending,
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+        )
+
+        fallback.status = SportsBaseDailymotionUpload.Status.FAILED
+        fallback.error_message = "Publication refusée."
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        failed = self.client.get(management_url)
+        self.assertContains(failed, "Réessayer")
+
+        fallback.status = SportsBaseDailymotionUpload.Status.UPLOADED
+        fallback.dailymotion_url = "https://www.dailymotion.com/video/x9fallback"
+        fallback.dailymotion_video_id = "x9fallback"
+        fallback.error_message = ""
+        fallback.save(
+            update_fields=(
+                "status",
+                "dailymotion_url",
+                "dailymotion_video_id",
+                "error_message",
+                "updated_at",
+            )
+        )
+        uploaded = self.client.get(management_url)
+        self.assertContains(uploaded, "https://www.dailymotion.com/video/x9fallback")
+        self.assertContains(uploaded, "Voir")
+
+    def test_manual_preview_link_is_canonicalized_and_embedded_for_client(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.LINK_PENDING,
+            upload_title="Performance Player — All Actions",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dai.ly/k6dRv0e0ZEC5WCJBlxc"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("performance:management"),
+            fetch_redirect_response=False,
+        )
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(
+            fallback.dailymotion_url,
+            "https://www.dailymotion.com/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertEqual(fallback.dailymotion_video_id, "k6dRv0e0ZEC5WCJBlxc")
+
+        management = self.client.get(reverse("performance:management"))
+        self.assertContains(management, "Voir")
+        self.assertNotContains(management, "Ajouter le lien")
+
+        user = self.portal_user("manual-dailymotion-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        portal = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(
+            portal,
+            "dailymotion.com/embed/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertNotContains(portal, "Ajouter le lien")
+
+    def test_manual_preview_link_rejects_external_urls(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.FAILED,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dailymotion.com.evil.test/video/kBad"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Saisissez un lien Dailymotion valide")
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.FAILED)
+        self.assertEqual(fallback.dailymotion_url, "")
+
+    def test_manual_link_service_rejects_a_transfer_still_running(self):
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.RUNNING,
+        )
+
+        with self.assertRaisesMessage(ValueError, "travaille encore"):
+            save_dailymotion_link(
+                self.match,
+                "https://dai.ly/k6dRv0e0ZEC5WCJBlxc",
+            )
+
+    def test_portal_uses_fallback_without_exposing_management_controls(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+        user = self.portal_user("fallback-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+
+        self.assertContains(response, "dailymotion.com/embed/video/x9fallback")
+        self.assertNotContains(response, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertNotContains(response, "Essayer Dailymotion")
+        self.assertNotContains(response, "Réessayer")
+
+    def test_youtube_remains_visible_while_fallback_is_pending(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(match=self.match)
+        self.match.refresh_from_db()
+
+        self.assertEqual(
+            self.match.available_video_url,
+            "https://www.youtube.com/watch?v=abcdefghijk",
+        )
+        self.assertEqual(self.match.video_delivery_status, "uploaded")
+
+
 class YouTubeUploaderPathTests(TestCase):
     def test_fast_upload_completion_is_detected_from_studio_status(self):
         class FakeHost:
@@ -1416,6 +2113,29 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertNotIn("https://", mail.outbox[0].body)
         self.assertFalse(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_email_accepts_dailymotion_when_youtube_upload_failed(self):
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=("youtube_delivery_enabled", "updated_at")
+        )
+        match = self._create_match(3)
+        report = generate_match_report(match)
+        SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée.",
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+
+        self.assertTrue(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertFalse(send_ready_delivery_notification(report))
 
     def test_email_option_suppresses_notification(self):
         match = self._create_match(2)

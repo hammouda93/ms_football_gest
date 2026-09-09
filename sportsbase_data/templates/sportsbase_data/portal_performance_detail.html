@@ -22,9 +22,9 @@
                 <time>{{ match.match_date|date:"d M"|default:"—" }}<small>{{ match.match_date|date:"Y" }}</small></time>
                 <div class="performance-fixture"><small>{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</small><strong><span>{{ match.home_team }}</span><b>{{ match.score }}</b><span>{{ match.away_team }}</span></strong></div>
                 <div class="performance-match-index"><small>{{ copy.index }}</small><strong>{{ match.player_stats.index|ms_index }}</strong></div>
-                {% if match.youtube_upload.status == "uploaded" %}<span class="performance-actions-state state-uploaded"><i class="fas fa-circle-play"></i> {{ copy.watch }}</span>
-                {% elif match.youtube_upload.status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
-                {% elif match.youtube_upload.status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
+                {% if match.video_delivery_status == "uploaded" %}<span class="performance-actions-state state-uploaded"><i class="fas fa-circle-play"></i> {{ copy.watch }}</span>
+                {% elif match.video_delivery_status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
+                {% elif match.video_delivery_status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
                 {% else %}<span class="performance-actions-state state-{{ match.actions_state }}"><i class="fas fa-film"></i> {{ match.actions_state|portal_action_label_for:portal_language }}</span>{% endif %}
                 <i class="fas fa-chevron-right row-arrow"></i>
             </a>

@@ -3,6 +3,7 @@
 Run from the project root with:
     python -m sportsbase_data.local_agent
     python -m sportsbase_data.local_agent --check-youtube
+    python -m sportsbase_data.local_agent --check-dailymotion
 """
 
 import argparse
@@ -14,7 +15,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from .agent_config import youtube_upload_enabled
+from .agent_config import dailymotion_upload_enabled, youtube_upload_enabled
+from .dailymotion_uploader import DailymotionStudioUploader
 from .scraper import SportsBaseSubscriptionScraper
 from .youtube_uploader import YouTubeStudioUploader
 
@@ -49,6 +51,15 @@ class SportsBaseAgentClient:
         self.scraper = SportsBaseSubscriptionScraper(self.storage_root)
         self.youtube_enabled = youtube_upload_enabled()
         self.youtube_uploader = YouTubeStudioUploader(self.storage_root)
+        self.dailymotion_enabled = dailymotion_upload_enabled()
+        self.dailymotion_uploader = (
+            DailymotionStudioUploader(
+                self.storage_root,
+                profile_dir=self.scraper.profile_dir,
+            )
+            if self.dailymotion_enabled
+            else None
+        )
         if not self.username or not self.password:
             raise ValueError(
                 "DJANGO_AUTOMATION_USERNAME et DJANGO_AUTOMATION_PASSWORD sont obligatoires."
@@ -147,6 +158,28 @@ class SportsBaseAgentClient:
         else:
             print("[YOUTUBE] File initiale — aucune vidéo en attente.")
 
+        dailymotion_jobs = overview.get("dailymotion_jobs") or []
+        if not self.dailymotion_enabled:
+            if dailymotion_jobs:
+                print(
+                    "[DAILYMOTION] File initiale ignorée — "
+                    "DAILYMOTION_UPLOAD_ENABLED est désactivé."
+                )
+        elif dailymotion_jobs:
+            print(
+                f"[DAILYMOTION] File de secours — "
+                f"{len(dailymotion_jobs)} vidéo(s)"
+            )
+            for position, job in enumerate(dailymotion_jobs, start=1):
+                player = job.get("player") or {}
+                fixture = job.get("fixture") or f"match {job.get('match_id') or '—'}"
+                print(
+                    f"[DAILYMOTION]   {position}. "
+                    f"{player.get('name') or 'Joueur inconnu'} — {fixture}"
+                )
+        else:
+            print("[DAILYMOTION] File de secours — aucune vidéo en attente.")
+
     def next_job(self):
         return self._get("/sportsbase/automation/jobs/next/").json().get("job")
 
@@ -208,6 +241,17 @@ class SportsBaseAgentClient:
             result,
         ).json()
 
+    def next_dailymotion_job(self):
+        return self._get(
+            "/sportsbase/automation/dailymotion/jobs/next/"
+        ).json().get("job")
+
+    def submit_dailymotion_result(self, job_id, result):
+        return self._post_json(
+            f"/sportsbase/automation/dailymotion/jobs/{job_id}/result/",
+            result,
+        ).json()
+
     def process_once(self):
         job = self.next_job()
         if job:
@@ -243,25 +287,46 @@ class SportsBaseAgentClient:
             )
             return True
 
-        if not self.youtube_enabled:
+        if self.youtube_enabled:
+            youtube_job = self.next_youtube_job()
+            if youtube_job:
+                print(
+                    f"[YOUTUBE] Tâche {youtube_job['job_id']} — "
+                    f"{youtube_job['player']['name']} — match "
+                    f"{youtube_job['match']['match_id']}"
+                )
+                try:
+                    result = self.youtube_uploader.upload(youtube_job)
+                except Exception as exc:
+                    print(f"[YOUTUBE][ERREUR] {exc}")
+                    traceback.print_exc()
+                    result = {"status": "failed", "error": str(exc)}
+                self.submit_youtube_result(youtube_job["job_id"], result)
+                print(
+                    f"[YOUTUBE] Tâche {youtube_job['job_id']} terminée — "
+                    f"{result['status']}"
+                )
+                return True
+
+        if not self.dailymotion_enabled:
             return False
-        youtube_job = self.next_youtube_job()
-        if not youtube_job:
+        dailymotion_job = self.next_dailymotion_job()
+        if not dailymotion_job:
             return False
         print(
-            f"[YOUTUBE] Tâche {youtube_job['job_id']} — "
-            f"{youtube_job['player']['name']} — match "
-            f"{youtube_job['match']['match_id']}"
+            f"[DAILYMOTION] Tâche {dailymotion_job['job_id']} — "
+            f"{dailymotion_job['player']['name']} — match "
+            f"{dailymotion_job['match']['match_id']}"
         )
         try:
-            result = self.youtube_uploader.upload(youtube_job)
+            result = self.dailymotion_uploader.upload(dailymotion_job)
         except Exception as exc:
-            print(f"[YOUTUBE][ERREUR] {exc}")
+            print(f"[DAILYMOTION][ERREUR] {exc}")
             traceback.print_exc()
             result = {"status": "failed", "error": str(exc)}
-        self.submit_youtube_result(youtube_job["job_id"], result)
+        self.submit_dailymotion_result(dailymotion_job["job_id"], result)
         print(
-            f"[YOUTUBE] Tâche {youtube_job['job_id']} terminée — "
+            f"[DAILYMOTION] Tâche {dailymotion_job['job_id']} terminée — "
             f"{result['status']}"
         )
         return True
@@ -272,6 +337,10 @@ class SportsBaseAgentClient:
         print(
             "[YOUTUBE] Upload automatique : "
             f"{'actif — piloté par chaque abonnement' if self.youtube_enabled else 'désactivé par YOUTUBE_UPLOAD_ENABLED'}"
+        )
+        print(
+            "[DAILYMOTION] Solution de secours : "
+            f"{'active — déclenchée manuellement' if self.dailymotion_enabled else 'désactivée par DAILYMOTION_UPLOAD_ENABLED'}"
         )
         self.print_initial_queue()
         while True:
@@ -294,6 +363,11 @@ def main():
         help="Ouvre le profil Chrome YouTube sans publier de vidéo.",
     )
     parser.add_argument(
+        "--check-dailymotion",
+        action="store_true",
+        help="Ouvre le profil Chrome Dailymotion pour la connexion initiale, sans publier.",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Traite au maximum une tâche puis s’arrête.",
@@ -302,6 +376,13 @@ def main():
     client = SportsBaseAgentClient()
     if args.check_youtube:
         client.youtube_uploader.check_access()
+        return
+    if args.check_dailymotion:
+        uploader = client.dailymotion_uploader or DailymotionStudioUploader(
+            client.storage_root,
+            profile_dir=client.scraper.profile_dir,
+        )
+        uploader.check_access()
         return
     if args.once:
         client.login()

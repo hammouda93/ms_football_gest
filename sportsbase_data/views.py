@@ -28,6 +28,7 @@ from .forms import (
 )
 from .models import (
     PerformanceReport,
+    SportsBaseDailymotionUpload,
     SportsBaseMatch,
     SportsBaseMatchStats,
     SportsBaseSeasonSnapshot,
@@ -42,14 +43,18 @@ from .reports import (
 )
 from .services import (
     active_subscriptions,
+    apply_dailymotion_upload_result,
     apply_sync_result,
     apply_youtube_upload_result,
+    claim_next_dailymotion_upload,
     claim_next_job,
     claim_next_youtube_upload,
     fail_sync_job,
     pending_jobs_overview,
     queue_sync,
+    request_dailymotion_upload,
     retry_youtube_upload,
+    save_dailymotion_link,
 )
 
 
@@ -635,7 +640,7 @@ def subscription_management(request):
         state = ""
     jobs = SportsBaseSyncJob.objects.select_related("subscription__player")[:30]
     youtube_jobs = SportsBaseYouTubeUpload.objects.select_related(
-        "match__subscription__player"
+        "match__subscription__player", "match__dailymotion_upload"
     )[:30]
     reports = PerformanceReport.objects.select_related(
         "subscription__player", "match"
@@ -790,6 +795,58 @@ def youtube_upload_retry(request, pk):
 
 
 @portal_admin_required
+@require_POST
+def dailymotion_upload_request(request, match_pk):
+    match = get_object_or_404(
+        SportsBaseMatch.objects.select_related("subscription__player"),
+        pk=match_pk,
+    )
+    try:
+        upload, created = request_dailymotion_upload(match)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        if upload.status == SportsBaseDailymotionUpload.Status.PENDING:
+            messages.success(
+                request,
+                "L’essai Dailymotion sera traité par l’agent local avec le fichier "
+                "All Actions déjà téléchargé."
+                if created
+                else "L’upload Dailymotion sera repris par l’agent local.",
+            )
+    return redirect("performance:management")
+
+
+@portal_admin_required
+@require_POST
+def dailymotion_link_save(request, match_pk):
+    match = get_object_or_404(
+        SportsBaseMatch.objects.select_related("subscription__player"),
+        pk=match_pk,
+    )
+    try:
+        upload = save_dailymotion_link(
+            match,
+            request.POST.get("dailymotion_url", ""),
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            "Le lien Dailymotion a été enregistré. La vidéo est maintenant "
+            "disponible dans l’espace client.",
+        )
+        try:
+            report = upload.match.performance_report
+        except PerformanceReport.DoesNotExist:
+            pass
+        else:
+            send_ready_delivery_notification(report)
+    return redirect("performance:management")
+
+
+@portal_admin_required
 def report_edit(request, pk):
     report = get_object_or_404(
         PerformanceReport.objects.select_related(
@@ -907,12 +964,22 @@ def portal_performance_detail(request, player_id):
         season=subscription.season
     ).first()
     matches = subscription.matches.select_related(
-        "player_stats", "youtube_upload", "performance_report"
+        "player_stats",
+        "youtube_upload",
+        "dailymotion_upload",
+        "performance_report",
     ).order_by("-match_date", "-sportsbase_match_id")
     action_counts = {
         "available": matches.filter(
-            youtube_upload__status=SportsBaseYouTubeUpload.Status.UPLOADED,
-        ).count(),
+            Q(
+                youtube_upload__status=SportsBaseYouTubeUpload.Status.UPLOADED,
+                youtube_upload__youtube_url__gt="",
+            )
+            | Q(
+                dailymotion_upload__status=SportsBaseDailymotionUpload.Status.UPLOADED,
+                dailymotion_upload__dailymotion_url__gt="",
+            )
+        ).distinct().count(),
         "emailed": matches.filter(
             actions_state=SportsBaseMatch.ActionsState.EMAILED
         ).count(),
@@ -963,7 +1030,9 @@ def portal_performance_detail(request, player_id):
 def portal_match_detail(request, player_id, match_id):
     subscription = _portal_subscription_or_404(request.user, player_id)
     match = get_object_or_404(
-        subscription.matches.select_related("player_stats", "youtube_upload"),
+        subscription.matches.select_related(
+            "player_stats", "youtube_upload", "dailymotion_upload"
+        ),
         sportsbase_match_id=str(match_id),
     )
     try:
@@ -1141,6 +1210,50 @@ def api_youtube_job_result(request, job_id):
             "job_id": finished_upload.pk,
             "status": finished_upload.status,
             "youtube_url": finished_upload.youtube_url,
+            "finished_at": finished_upload.finished_at.isoformat(),
+        }
+    )
+
+
+@production_required
+@require_GET
+def api_next_dailymotion_job(request):
+    upload = claim_next_dailymotion_upload()
+    if upload is None:
+        return JsonResponse({"job": None})
+    return JsonResponse({"job": upload.payload})
+
+
+@production_required
+@require_POST
+def api_dailymotion_job_result(request, job_id):
+    upload = get_object_or_404(SportsBaseDailymotionUpload, pk=job_id)
+    try:
+        result = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"success": False, "error": "JSON invalide."}, status=400)
+    try:
+        finished_upload = apply_dailymotion_upload_result(upload, result)
+    except ValueError as exc:
+        if upload.status == SportsBaseDailymotionUpload.Status.RUNNING:
+            apply_dailymotion_upload_result(
+                upload,
+                {"status": SportsBaseDailymotionUpload.Status.FAILED, "error": str(exc)},
+            )
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    if finished_upload.status == SportsBaseDailymotionUpload.Status.UPLOADED:
+        try:
+            report = finished_upload.match.performance_report
+        except PerformanceReport.DoesNotExist:
+            pass
+        else:
+            send_ready_delivery_notification(report)
+    return JsonResponse(
+        {
+            "success": True,
+            "job_id": finished_upload.pk,
+            "status": finished_upload.status,
+            "dailymotion_url": finished_upload.dailymotion_url,
             "finished_at": finished_upload.finished_at.isoformat(),
         }
     )

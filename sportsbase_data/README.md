@@ -16,6 +16,25 @@ L’agent traite tous les abonnements actifs, un joueur après l’autre. Un mat
 n’est pas régénéré. Un match partiel ou dont la vidéo est encore en cours est repris au
 passage suivant.
 
+Le bouton XLSX de SportsBase reste la source des statistiques Players : l’agent conserve
+le classeur original octet pour octet, sans reconstruire son contenu depuis la page. Pour
+éviter la déconnexion observée avec la copie Playwright sur le profil Chrome persistant, le
+fichier original est intercepté avant le gestionnaire natif de téléchargement, puis enregistré
+dans le même dossier de match. La session Chrome reste ainsi disponible pour All Actions.
+Le dernier téléchargement MP4 depuis « My Videos » reprend le flux stable antérieur à
+Dailymotion : l’agent fixe le dossier de téléchargement Chrome, effectue un seul clic puis
+surveille directement le fichier jusqu’à la disparition de son suffixe temporaire. Il ne
+dépend donc pas de l’événement `download`, que Playwright ne remonte pas toujours après une
+connexion par port CDP. Le MP4 original est ensuite associé au bon match, sans rejouer son
+URL signée. La génération et le classement final ne changent pas.
+
+Sous Windows, l’agent lance désormais ce même Chrome et ce même profil persistant avec un
+port CDP local, puis Playwright s’y connecte. Ce mode contourne le crash natif observé dans
+Chrome/Edge 152 lors de la finalisation d’un téléchargement sur le transport CDP par pipe.
+Le port écoute uniquement sur `127.0.0.1`. Pour un diagnostic ponctuel, le comportement peut
+être forcé avec `SPORTSBASE_CHROME_TRANSPORT=cdp-port` ou rétabli avec
+`SPORTSBASE_CHROME_TRANSPORT=pipe`.
+
 Variables locales attendues :
 
 ```text
@@ -26,6 +45,7 @@ SPORTSBASE_LOGIN_URL=...
 SPORTSBASE_EMAIL=...
 SPORTSBASE_PASSWORD=...
 SPORTSBASE_HEADLESS=false
+SPORTSBASE_SUBSCRIPTION_PROFILE_DIR=D:\SportsBase_Playwright_Profile
 SPORTSBASE_SUBSCRIPTION_STORAGE_DIR=D:\Django_Projects\ms_football_gest\gestion_joueurs\sportsbase_subscriptions
 SPORTSBASE_AGENT_POLL_INTERVAL=60
 ```
@@ -70,6 +90,90 @@ nouveau la vidéo et sans resynchroniser le match. Après une publication réuss
 technique est conservé dans `_youtube_receipts` : si la connexion avec Heroku est coupée au
 mauvais moment, l’agent renvoie l’URL existante au lieu de publier un doublon.
 
+## Solution de secours Dailymotion — RPA Chrome
+
+YouTube reste le canal principal et son fonctionnement ne change pas. Si une vidéo All
+Actions est bloquée, l’équipe peut lancer manuellement Dailymotion dans « Abonnements
+Performance », sur la même ligne que YouTube. Le bouton devient « Réessayer » après un
+échec. Lorsque le fichier est transféré mais que Dailymotion optimise encore la vidéo,
+l’état devient « Upload effectué — lien à ajouter » et permet de coller le lien « Aperçu ».
+Le bouton devient « Voir » dès que ce lien est enregistré. Aucun bouton de gestion
+Dailymotion n’est ajouté à l’espace client : la page du match utilise automatiquement la
+vidéo de secours lorsqu’elle est prête.
+
+Comme YouTube, la publication est pilotée dans **Chrome par Playwright** : ouverture de
+Studio, sélection du fichier, titre/description, catégorie Sport, langue, « non créé pour
+les enfants », visibilité Privée, Enregistrer, attente de la fin du transfert, puis
+« Fermer ». Dans la liste Vidéos, le RPA cible ensuite le titre exact et récupère le lien
+privé « Aperçu » depuis son menu. Aucun appel à l’API Dailymotion, aucune clé API et aucun
+mot de passe Dailymotion dans le code.
+
+Le bouton « Fermer » peut être actif pendant que Studio affiche encore « Upload en cours
+X % » : il n’est donc jamais utilisé comme preuve de fin. Le RPA attend obligatoirement
+100 % ou un statut explicite de transfert terminé avant de fermer la fenêtre.
+
+Ajoutez au `.env` local du PC qui exécute l’agent :
+
+```text
+DAILYMOTION_UPLOAD_ENABLED=true
+DAILYMOTION_STUDIO_PROFILE_ID=x6445ea
+DAILYMOTION_BROWSER_CHANNEL=chrome
+DAILYMOTION_HEADLESS=false
+DAILYMOTION_VIDEO_LANGUAGE=fr
+DAILYMOTION_UPLOAD_TIMEOUT_MINUTES=180
+DAILYMOTION_LINK_WAIT_SECONDS=0
+```
+
+Première connexion, sans envoyer de vidéo :
+
+```powershell
+python -m sportsbase_data.local_agent --check-dailymotion
+```
+
+La commande réutilise `D:\SportsBase_Playwright_Profile`. Si la session Dailymotion manque,
+elle ferme le navigateur automatisé et ouvre **Chrome normal** sur ce même profil afin que la
+connexion Google ne soit pas refusée comme « navigateur non sécurisé ». Connectez-vous,
+ouvrez le Studio du profil `x6445ea`, fermez complètement Chrome, puis appuyez sur Entrée dans
+PowerShell. Le RPA rouvre alors ce profil et vérifie Studio sans envoyer de vidéo. SportsBase
+et Dailymotion utilisent ce profil l’un après l’autre, jamais simultanément ; YouTube conserve
+son profil séparé. En cas d’expiration de session, relancez la même commande.
+
+Relancez ensuite `python -m sportsbase_data.local_agent`. L’ordre existant reste inchangé :
+synchronisations, YouTube, puis les essais Dailymotion demandés dans l’application interne.
+Il n’y a pas de détection automatique des blocages YouTube : le bouton permet aussi de
+secourir une vidéo marquée « disponible » dont le lecteur YouTube est devenu bloqué.
+
+La visibilité Dailymotion **Privée** correspond à un accès par lien, sans apparition dans
+les recherches, comme l’usage des vidéos YouTube non répertoriées. Le RPA conserve le vrai
+lien de partage fourni par Studio (y compris les identifiants privés), pas l’adresse
+d’édition. Ne publiez que des contenus autorisés : les règles de droits d’auteur restent
+applicables sur Dailymotion.
+
+Un reçu local est conservé dans `_dailymotion_receipts` afin d’éviter un second upload si
+le retour vers Heroku est interrompu. Si Chrome s’arrête après le clic Enregistrer sans
+confirmation, un reçu `needs_review` bloque un nouvel upload incertain : vérifiez le match
+dans Studio. Dès que le transfert est confirmé, le reçu passe à `link_pending` : fermer
+Chrome ou arrêter l’agent ne provoque alors aucun doublon. Par défaut, le RPA attend sans
+limite que l’optimisation rende le menu « Aperçu » disponible et affiche sa progression.
+Appuyez sur une touche dans PowerShell pour quitter cette attente : le transfert reste alors
+en état `link_pending` et le lien peut être saisi dans « Abonnements Performance ». Lorsqu’il
+est trouvé avant l’interruption, le lien est envoyé automatiquement à l’application. La valeur
+`DAILYMOTION_LINK_WAIT_SECONDS=0` active cette attente sans limite ; une valeur positive fixe
+facultativement une limite pour une exécution sans surveillance. Le lien est contrôlé puis
+transformé en URL Dailymotion canonique avant d’être proposé au lecteur client. Une capture
+locale dans `_dailymotion_diagnostics` aide à
+diagnostiquer un changement d’interface.
+
+Pour utiliser un lecteur Dailymotion personnalisé, configurez facultativement
+`DAILYMOTION_PLAYER_ID` sur l’application Django. Appliquez la migration au déploiement :
+
+```powershell
+python manage.py migrate
+```
+
+Références officielles : [upload Studio](https://faq.dailymotion.com/hc/en-us/articles/115009030368-Upload-videos-from-your-Dailymotion-Studio),
+[visibilité privée](https://faq.dailymotion.com/hc/en-us/articles/115009030028-Content-visibility).
+
 ## Rapports Performance
 
 - Un rapport de match est créé et publié après chaque synchronisation complète.
@@ -78,8 +182,8 @@ mauvais moment, l’agent renvoie l’URL existante au lieu de publier un doublo
 - L’équipe peut modifier le texte et le remettre en brouillon depuis l’application interne.
 - Le PDF n’est pas stocké : il est régénéré depuis la dernière version enregistrée à chaque
   ouverture.
-- L’e-mail de livraison part une seule fois lorsque le rapport est publié et que la vidéo
-  YouTube non répertoriée est disponible.
+- L’e-mail de livraison part une seule fois lorsque le rapport est publié et qu’une vidéo
+  YouTube ou Dailymotion est disponible.
 
 Sur Heroku, configurez également :
 
@@ -100,8 +204,9 @@ l’API ni enregistrés dans la base Django.
 4. Les données structurées et les cartes PNG sont envoyées vers Django.
 5. Le fichier All Actions reste sur le PC, dans `player_.../match_.../`, puis une tâche de
    publication non répertoriée est créée si l’option YouTube est active.
-6. L’agent local publie la vidéo, renvoie uniquement son URL et conserve l’empreinte du
-   fichier pour la traçabilité.
+6. L’agent local publie d’abord sur YouTube. Si l’équipe demande le secours Dailymotion,
+   il réutilise exactement le même fichier local, renvoie uniquement l’URL obtenue et
+   conserve l’empreinte du fichier pour la traçabilité.
 7. Le rapport du match et, tous les cinq matchs, le rapport de cycle sont générés dans la
    langue de l’abonnement.
 8. Le joueur ou son agent consulte la vidéo, les données et le PDF selon les droits déjà gérés par

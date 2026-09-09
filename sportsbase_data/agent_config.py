@@ -16,3 +16,8 @@ def youtube_upload_enabled():
     if value is None or not value.strip():
         return True
     return _enabled("YOUTUBE_UPLOAD_ENABLED", True)
+
+
+def dailymotion_upload_enabled():
+    """Keep the optional Dailymotion fallback behind an explicit local switch."""
+    return _enabled("DAILYMOTION_UPLOAD_ENABLED", False)
