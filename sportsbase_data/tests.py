@@ -3,7 +3,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -758,6 +758,89 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_windows_installed_chrome_uses_cdp_port_by_default(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.browser_channel = "chrome"
+
+        with patch.dict(
+            "sportsbase_data.scraper.os.environ",
+            {},
+            clear=True,
+        ), patch("sportsbase_data.scraper.os.name", "nt"):
+            self.assertTrue(scraper._uses_cdp_port_transport())
+
+    def test_cdp_port_launch_keeps_installed_chrome_and_persistent_profile(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.profile_dir = Path("persistent-profile")
+        scraper.browser_channel = "chrome"
+        scraper.automation = Mock(headless=False)
+        scraper._cdp_browser = None
+        scraper._cdp_process = None
+        scraper._cdp_port = None
+        scraper._browser_executable = Mock(
+            return_value=Path("Google/Chrome/Application/chrome.exe")
+        )
+        scraper._reserve_cdp_port = Mock(return_value=9333)
+        scraper._wait_for_cdp_endpoint = Mock(
+            return_value="http://127.0.0.1:9333"
+        )
+
+        context = Mock()
+        browser = Mock()
+        browser.contexts = [context]
+        browser.version = "152.0.7977.76"
+        playwright = Mock()
+        playwright.chromium.connect_over_cdp.return_value = browser
+        process = Mock()
+
+        with patch(
+            "sportsbase_data.scraper.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            launched_context = scraper._launch_context_over_cdp_port(
+                playwright,
+                Path("downloads"),
+            )
+
+        self.assertIs(launched_context, context)
+        command = popen.call_args.args[0]
+        self.assertIn("--remote-debugging-port=9333", command)
+        self.assertIn("--remote-debugging-address=127.0.0.1", command)
+        self.assertTrue(
+            any(argument.startswith("--user-data-dir=") for argument in command)
+        )
+        self.assertNotIn("--remote-debugging-pipe", command)
+        playwright.chromium.connect_over_cdp.assert_called_once_with(
+            "http://127.0.0.1:9333",
+            timeout=30_000,
+            is_local=True,
+            no_defaults=False,
+        )
+        self.assertIs(scraper._cdp_browser, browser)
+        self.assertIs(scraper._cdp_process, process)
+
+    def test_cdp_port_context_cleanup_closes_external_chrome_gracefully(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        process = Mock()
+        process.wait.return_value = 0
+        scraper._cdp_browser = browser
+        scraper._cdp_process = process
+        scraper._cdp_port = 9333
+        context = Mock()
+
+        scraper._close_browser_context(context)
+
+        session.send.assert_called_once_with("Browser.close")
+        browser.close.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=10)
+        context.close.assert_not_called()
+        self.assertIsNone(scraper._cdp_browser)
+        self.assertIsNone(scraper._cdp_process)
+        self.assertIsNone(scraper._cdp_port)
+
     def test_all_actions_uses_single_native_chrome_download_event(self):
         scraper = object.__new__(SportsBaseSubscriptionScraper)
         page = Mock()

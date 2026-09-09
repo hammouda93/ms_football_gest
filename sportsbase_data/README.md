@@ -27,6 +27,13 @@ effectue un seul clic, attend la fin du fichier original puis l’associe au bon
 rejoue pas l’URL signée et ne modifie plus la politique de téléchargement Chrome via CDP.
 La génération, l’association au match et le classement final ne changent pas.
 
+Sous Windows, l’agent lance désormais ce même Chrome et ce même profil persistant avec un
+port CDP local, puis Playwright s’y connecte. Ce mode contourne le crash natif observé dans
+Chrome/Edge 152 lors de la finalisation d’un téléchargement sur le transport CDP par pipe.
+Le port écoute uniquement sur `127.0.0.1`. Pour un diagnostic ponctuel, le comportement peut
+être forcé avec `SPORTSBASE_CHROME_TRANSPORT=cdp-port` ou rétabli avec
+`SPORTSBASE_CHROME_TRANSPORT=pipe`.
+
 Variables locales attendues :
 
 ```text

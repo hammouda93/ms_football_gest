@@ -4,10 +4,13 @@ import math
 import os
 import re
 import shutil
+import socket
+import subprocess
 import textwrap
 import time
 import traceback
 from datetime import datetime, timezone
+from http.client import HTTPConnection
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urljoin
@@ -30,7 +33,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-chrome-download-event-v28-20260909"
+SCRAPER_BUILD = "sportsbase-chrome-cdp-port-v29-20260909"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
@@ -112,6 +115,227 @@ class SportsBaseSubscriptionScraper:
             os.getenv("SPORTSBASE_BROWSER_CHANNEL", "chrome").strip() or "chrome"
         )
         self._sportsbase_player_name = ""
+        self._cdp_browser = None
+        self._cdp_process = None
+        self._cdp_port = None
+
+    def _uses_cdp_port_transport(self):
+        configured = os.getenv("SPORTSBASE_CHROME_TRANSPORT", "").strip().lower()
+        if configured in {"pipe", "playwright"}:
+            return False
+        if configured in {"cdp", "port", "cdp-port"}:
+            return True
+        return os.name == "nt" and self.browser_channel.startswith(
+            ("chrome", "msedge")
+        )
+
+    def _browser_executable(self):
+        override = (
+            os.getenv("SPORTSBASE_BROWSER_EXECUTABLE", "").strip()
+            or os.getenv("SPORTSBASE_CHROME_EXECUTABLE", "").strip()
+        )
+        candidates = [Path(override)] if override else []
+
+        if os.name == "nt":
+            executable_name = (
+                "msedge.exe"
+                if self.browser_channel.startswith("msedge")
+                else "chrome.exe"
+            )
+            try:
+                import winreg
+
+                registry_path = (
+                    "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\"
+                    + executable_name
+                )
+                for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                    try:
+                        with winreg.OpenKey(hive, registry_path) as key:
+                            candidates.append(Path(winreg.QueryValue(key, None)))
+                    except OSError:
+                        continue
+            except ImportError:
+                pass
+
+            local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+            program_files = os.getenv("PROGRAMFILES", "").strip()
+            program_files_x86 = os.getenv("PROGRAMFILES(X86)", "").strip()
+            if self.browser_channel.startswith("msedge"):
+                relative_paths = (
+                    Path("Microsoft/Edge/Application/msedge.exe"),
+                )
+            else:
+                relative_paths = (
+                    Path("Google/Chrome/Application/chrome.exe"),
+                    Path("Google/Chrome Beta/Application/chrome.exe"),
+                    Path("Google/Chrome Dev/Application/chrome.exe"),
+                    Path("Google/Chrome SxS/Application/chrome.exe"),
+                )
+            for root in (program_files, program_files_x86, local_app_data):
+                if root:
+                    candidates.extend(Path(root) / item for item in relative_paths)
+        else:
+            executable_names = (
+                ("microsoft-edge", "microsoft-edge-stable")
+                if self.browser_channel.startswith("msedge")
+                else ("google-chrome", "google-chrome-stable", "chrome")
+            )
+            for executable_name in executable_names:
+                resolved = shutil.which(executable_name)
+                if resolved:
+                    candidates.append(Path(resolved))
+
+        for candidate in candidates:
+            try:
+                if candidate.is_file():
+                    return candidate.resolve()
+            except OSError:
+                continue
+        raise RuntimeError(
+            "Google Chrome est introuvable. Définissez "
+            "SPORTSBASE_BROWSER_EXECUTABLE avec le chemin de chrome.exe."
+        )
+
+    @staticmethod
+    def _reserve_cdp_port():
+        configured = os.getenv("SPORTSBASE_CDP_PORT", "").strip()
+        if configured:
+            try:
+                port = int(configured)
+            except ValueError as exc:
+                raise RuntimeError("SPORTSBASE_CDP_PORT doit être un nombre.") from exc
+            if not 1024 <= port <= 65535:
+                raise RuntimeError(
+                    "SPORTSBASE_CDP_PORT doit être compris entre 1024 et 65535."
+                )
+            return port
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _wait_for_cdp_endpoint(process, port, timeout_seconds=30):
+        deadline = time.monotonic() + timeout_seconds
+        last_error = ""
+        while time.monotonic() < deadline:
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise RuntimeError(
+                    "Chrome s’est arrêté avant la connexion CDP "
+                    f"(code {exit_code}). Vérifiez que le profil n’est pas déjà ouvert."
+                )
+            connection = None
+            try:
+                connection = HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/json/version")
+                response = connection.getresponse()
+                payload = response.read()
+                if response.status == 200:
+                    metadata = json.loads(payload.decode("utf-8"))
+                    if metadata.get("webSocketDebuggerUrl"):
+                        return f"http://127.0.0.1:{port}"
+            except Exception as exc:
+                last_error = str(exc)
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+            time.sleep(0.2)
+        raise RuntimeError(
+            "Chrome n’a pas ouvert son port CDP dans les "
+            f"{timeout_seconds} secondes. {last_error}".strip()
+        )
+
+    def _launch_context_over_cdp_port(self, playwright, _downloads_dir):
+        """Launch the installed browser directly and attach without a CDP pipe."""
+        executable = self._browser_executable()
+        port = self._reserve_cdp_port()
+        command = [
+            str(executable),
+            f"--remote-debugging-port={port}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={self.profile_dir.resolve()}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-mode",
+            "--start-maximized",
+            "about:blank",
+        ]
+        if self.automation.headless:
+            command.insert(-1, "--headless=new")
+
+        print(
+            "[SPORTSBASE] Transport navigateur : port CDP local "
+            "(correctif Chrome 152)"
+        )
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._cdp_process = process
+        self._cdp_port = port
+        try:
+            endpoint = self._wait_for_cdp_endpoint(process, port)
+            browser = playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=30_000,
+                is_local=True,
+                no_defaults=False,
+            )
+            if not browser.contexts:
+                raise RuntimeError("Chrome n’a exposé aucun contexte navigateur.")
+            self._cdp_browser = browser
+            print(f"[SPORTSBASE] Chrome connecté par CDP : {browser.version}")
+            return browser.contexts[0]
+        except Exception:
+            self._stop_cdp_browser()
+            raise
+
+    def _stop_cdp_browser(self):
+        browser = self._cdp_browser
+        process = self._cdp_process
+        self._cdp_browser = None
+        self._cdp_process = None
+        self._cdp_port = None
+
+        if browser is not None:
+            try:
+                session = browser.new_browser_cdp_session()
+                session.send("Browser.close")
+            except Exception:
+                pass
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+        if process is None:
+            return
+        try:
+            process.wait(timeout=10)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+    def _close_browser_context(self, context):
+        if self._cdp_process is not None or self._cdp_browser is not None:
+            self._stop_cdp_browser()
+            return
+        if context is not None:
+            context.close()
 
     def _launch_persistent_context(self, playwright, downloads_dir):
         """Open the same persistent Chrome profile used by the legacy agent."""
@@ -123,6 +347,11 @@ class SportsBaseSubscriptionScraper:
         )
         print(f"[SPORTSBASE] Canal navigateur : {self.browser_channel}")
         try:
+            if self._uses_cdp_port_transport():
+                return self._launch_context_over_cdp_port(
+                    playwright,
+                    downloads_dir,
+                )
             return playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.profile_dir),
                 channel=self.browser_channel,
@@ -290,7 +519,7 @@ class SportsBaseSubscriptionScraper:
             finally:
                 if context is not None:
                     try:
-                        context.close()
+                        self._close_browser_context(context)
                     except Exception:
                         pass
 
