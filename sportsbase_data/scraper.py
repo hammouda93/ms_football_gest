@@ -10,9 +10,8 @@ import traceback
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
-import requests
 from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
@@ -31,7 +30,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-safe-original-downloads-v27-20260909"
+SCRAPER_BUILD = "sportsbase-chrome-download-event-v28-20260909"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
@@ -3177,9 +3176,9 @@ class SportsBaseSubscriptionScraper:
         if not generated_matches:
             return
 
-        # Keep the exact SportsBase MP4, but do not let Chrome's native download
-        # manager receive it: on the persistent profile it can close the whole
-        # browser. The signed request is captured and streamed to disk instead.
+        # Keep the exact SportsBase MP4 and let the authenticated Chrome request
+        # it once. The Playwright download event replaces the former browser-wide
+        # CDP policy and the unreliable disk polling loop.
         downloaded = self._download_generated_actions_once(
             page=page,
             player_name=(
@@ -3269,24 +3268,11 @@ class SportsBaseSubscriptionScraper:
             page.wait_for_timeout(300)
 
             print(f"[SPORTSBASE] Clic download unique : {row_key}")
-            try:
-                download_request = self._capture_actions_download_request(
-                    page,
-                    download_icon,
-                )
-            except Exception as exc:
-                print(f"[SPORTSBASE][WARN] Clic My Videos : {exc}")
-                continue
-
-            print(
-                "[SPORTSBASE] URL sécurisée interceptée; téléchargement du MP4 "
-                "original sans le gestionnaire Chrome…"
-            )
             match_id = match_data["sportsbase_match_id"]
             try:
-                staged_source = self._stream_original_actions_video(
+                staged_source = self._download_actions_with_chrome(
                     page=page,
-                    request=download_request,
+                    download_icon=download_icon,
                     downloads_dir=downloads_dir,
                     match_id=match_id,
                 )
@@ -3304,249 +3290,78 @@ class SportsBaseSubscriptionScraper:
             )
         return downloaded
 
-    @staticmethod
-    def _is_actions_download_url(value):
-        """Accept only the signed SportsBase All Actions endpoint."""
-        try:
-            parsed = urlparse(str(value or ""))
-        except (TypeError, ValueError):
-            return False
-        return bool(
-            parsed.scheme == "https"
-            and parsed.hostname == "api-football.sportsbase.world"
-            and parsed.path.startswith("/video/downloads/")
-        )
-
-    def _capture_actions_download_request(
+    def _download_actions_with_chrome(
         self,
+        *,
         page,
         download_icon,
-        *,
-        timeout_seconds=20,
-    ):
-        """Capture the signed MP4 request and abort only its native download."""
-        captured = {}
-
-        def intercept(route):
-            request = route.request
-            if not captured and self._is_actions_download_url(request.url):
-                try:
-                    headers = request.all_headers()
-                except Exception:
-                    headers = {}
-                captured.update(
-                    {
-                        "url": request.url,
-                        "headers": headers,
-                    }
-                )
-                route.abort()
-                return
-            route.continue_()
-
-        context = page.context
-        context.route("**/*", intercept)
-        try:
-            download_icon.click(timeout=5_000, no_wait_after=True)
-            deadline = time.monotonic() + max(1, timeout_seconds)
-            while not captured and time.monotonic() < deadline:
-                if page.is_closed():
-                    raise RuntimeError(
-                        "Chrome s’est fermé avant l’interception du MP4."
-                    )
-                page.wait_for_timeout(100)
-        finally:
-            try:
-                context.unroute("**/*", intercept)
-            except Exception:
-                pass
-
-        if not captured:
-            raise RuntimeError(
-                "SportsBase n’a pas fourni l’URL sécurisée du MP4."
-            )
-        return captured
-
-    @staticmethod
-    def _video_download_timeout_seconds():
-        try:
-            configured = int(
-                os.getenv("SPORTSBASE_VIDEO_DOWNLOAD_TIMEOUT_SECONDS", "3600")
-            )
-        except (TypeError, ValueError):
-            configured = 3600
-        return max(60, min(configured, 14_400))
-
-    @staticmethod
-    def _safe_download_headers(headers):
-        excluded = {
-            "accept-encoding",
-            "connection",
-            "content-length",
-            "cookie",
-            "host",
-            "if-modified-since",
-            "if-none-match",
-            "if-range",
-            "proxy-authorization",
-            "range",
-            "transfer-encoding",
-        }
-        return {
-            str(name): str(value)
-            for name, value in (headers or {}).items()
-            if str(name).casefold() not in excluded
-            and not str(name).startswith(":")
-        }
-
-    def _stream_original_actions_video(
-        self,
-        *,
-        page,
-        request,
         downloads_dir,
         match_id,
     ):
-        """Stream the original signed SportsBase MP4 without loading it in RAM."""
-        url = str((request or {}).get("url") or "")
-        if not self._is_actions_download_url(url):
-            raise RuntimeError("URL de téléchargement All Actions invalide.")
-
+        """Use Chrome's original authenticated download event exactly once."""
         downloads_dir = Path(downloads_dir)
         downloads_dir.mkdir(parents=True, exist_ok=True)
-        safe_match_id = self._folder_component(match_id)
-        destination = self._unique_path(
-            downloads_dir / f"_All_Actions__match_{safe_match_id}.mp4"
-        )
-        partial = destination.with_name(f"{destination.name}.part")
-        timeout_seconds = self._video_download_timeout_seconds()
-        deadline = time.monotonic() + timeout_seconds
-        session = requests.Session()
-        response = None
+        destination = None
 
         try:
-            try:
-                browser_cookies = page.context.cookies([url])
-            except Exception:
-                browser_cookies = []
-            for cookie in browser_cookies:
-                name = str(cookie.get("name") or "")
-                value = str(cookie.get("value") or "")
-                if not name:
-                    continue
-                options = {"path": cookie.get("path") or "/"}
-                if cookie.get("domain"):
-                    options["domain"] = cookie["domain"]
-                session.cookies.set(name, value, **options)
+            # Do not install Browser.setDownloadBehavior here. The persistent
+            # context already has accept_downloads=True and downloads_path set;
+            # changing the browser-wide CDP policy was the unstable part of the
+            # former implementation.
+            with page.expect_download(timeout=30_000) as download_info:
+                download_icon.click(timeout=5_000)
+            download = download_info.value
 
-            headers = self._safe_download_headers(
-                (request or {}).get("headers") or {}
+            suggested = str(download.suggested_filename or "")
+            extension = Path(suggested).suffix.lower()
+            if extension not in {
+                ".avi",
+                ".m4v",
+                ".mkv",
+                ".mov",
+                ".mp4",
+                ".webm",
+            }:
+                extension = ".mp4"
+            safe_match_id = self._folder_component(match_id)
+            destination = self._unique_path(
+                downloads_dir
+                / f"_All_Actions__match_{safe_match_id}{extension}"
             )
-            headers["Accept-Encoding"] = "identity"
-            response = session.get(
-                url,
-                headers=headers,
-                stream=True,
-                allow_redirects=True,
-                timeout=(30, 180),
+
+            print(
+                "[SPORTSBASE] Téléchargement Chrome détecté; attente de la fin "
+                "du fichier…"
             )
-            response.raise_for_status()
+            download.save_as(str(destination))
+            failure = download.failure()
+            if failure:
+                raise RuntimeError(failure)
+            if not destination.is_file() or destination.stat().st_size <= 0:
+                raise RuntimeError("Le fichier vidéo téléchargé est vide.")
 
-            content_type = str(
-                response.headers.get("Content-Type") or ""
-            ).casefold()
-            if "text/html" in content_type or "application/json" in content_type:
-                raise RuntimeError(
-                    "SportsBase a renvoyé une page d’erreur au lieu du MP4."
-                )
-            try:
-                expected_size = int(response.headers.get("Content-Length") or 0)
-            except (TypeError, ValueError):
-                expected_size = 0
-
-            written = 0
-            next_percent = 10
-            next_size_report = 50 * 1024 * 1024
-            with partial.open("wb") as output:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError(
-                            "Le téléchargement du MP4 a dépassé "
-                            f"{timeout_seconds} secondes."
-                        )
-                    output.write(chunk)
-                    written += len(chunk)
-
-                    if expected_size:
-                        percent = min(100, int(written * 100 / expected_size))
-                        if percent >= next_percent:
-                            print(
-                                "[SPORTSBASE] Téléchargement All Actions : "
-                                f"{percent} %"
-                            )
-                            next_percent = ((percent // 10) + 1) * 10
-                    elif written >= next_size_report:
-                        print(
-                            "[SPORTSBASE] Téléchargement All Actions : "
-                            f"{written / (1024 * 1024):.0f} Mo"
-                        )
-                        next_size_report += 50 * 1024 * 1024
-
-            if written <= 0:
-                raise RuntimeError("Le fichier MP4 reçu est vide.")
-            if expected_size and written != expected_size:
-                raise RuntimeError(
-                    "Téléchargement MP4 incomplet : "
-                    f"{written} octets reçus sur {expected_size}."
-                )
-            with partial.open("rb") as downloaded_file:
+            with destination.open("rb") as downloaded_file:
                 prefix = downloaded_file.read(256).lstrip()
             if prefix.startswith((b"<", b"{", b"[")):
                 raise RuntimeError(
                     "SportsBase a renvoyé du texte au lieu du fichier MP4."
                 )
 
-            partial.replace(destination)
             print(
-                "[SPORTSBASE] MP4 original téléchargé sans fermer Chrome — "
-                f"{written / (1024 * 1024):.1f} Mo"
+                "[SPORTSBASE] MP4 original téléchargé par Chrome — "
+                f"{destination.stat().st_size / (1024 * 1024):.1f} Mo"
             )
             return destination
-        finally:
-            if response is not None:
-                try:
-                    response.close()
-                except Exception:
-                    pass
+        except Exception:
+            # A failed save must never be mistaken for a completed download on
+            # the next pass. The signed URL is not replayed and the button is not
+            # clicked a second time.
             try:
-                session.close()
-            except Exception:
-                pass
-            try:
-                partial.unlink()
+                if destination is not None:
+                    destination.unlink()
             except OSError:
                 pass
-
-    @staticmethod
-    def _configure_native_downloads(page, downloads_dir):
-        try:
-            session = page.context.new_cdp_session(page)
-            session.send(
-                "Browser.setDownloadBehavior",
-                {
-                    "behavior": "allow",
-                    "downloadPath": str(Path(downloads_dir).resolve()),
-                    "eventsEnabled": True,
-                },
-            )
-            return
-        except Exception as exc:
-            print(
-                "[SPORTSBASE][INFO] Dossier Chrome contrôlé par le profil "
-                f"persistant : {exc}"
-            )
+            raise
 
     @staticmethod
     def _generated_match_label(match_data):
