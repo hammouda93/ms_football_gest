@@ -33,7 +33,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-chrome-cdp-port-v29-20260909"
+SCRAPER_BUILD = "sportsbase-cdp-port-disk-download-v30-20260909"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
@@ -3405,9 +3405,9 @@ class SportsBaseSubscriptionScraper:
         if not generated_matches:
             return
 
-        # Keep the exact SportsBase MP4 and let the authenticated Chrome request
-        # it once. The Playwright download event replaces the former browser-wide
-        # CDP policy and the unreliable disk polling loop.
+        # Le clic natif de Chrome possède exactement le contexte d'authentification
+        # attendu par SportsBase. Comme dans la version stable v23, la confirmation
+        # se fait sur le fichier terminé et non sur l'événement Playwright download.
         downloaded = self._download_generated_actions_once(
             page=page,
             player_name=(
@@ -3527,70 +3527,75 @@ class SportsBaseSubscriptionScraper:
         downloads_dir,
         match_id,
     ):
-        """Use Chrome's original authenticated download event exactly once."""
+        """Click once in Chrome and confirm the original MP4 directly on disk."""
         downloads_dir = Path(downloads_dir)
         downloads_dir.mkdir(parents=True, exist_ok=True)
-        destination = None
+        watch_dirs = self._download_watch_directories(downloads_dir)
+        self._configure_native_downloads(page, downloads_dir)
+        before = self._snapshot_download_files(watch_dirs)
 
-        try:
-            # Do not install Browser.setDownloadBehavior here. The persistent
-            # context already has accept_downloads=True and downloads_path set;
-            # changing the browser-wide CDP policy was the unstable part of the
-            # former implementation.
-            with page.expect_download(timeout=30_000) as download_info:
-                download_icon.click(timeout=5_000)
-            download = download_info.value
-
-            suggested = str(download.suggested_filename or "")
-            extension = Path(suggested).suffix.lower()
-            if extension not in {
-                ".avi",
-                ".m4v",
-                ".mkv",
-                ".mov",
-                ".mp4",
-                ".webm",
-            }:
-                extension = ".mp4"
-            safe_match_id = self._folder_component(match_id)
-            destination = self._unique_path(
-                downloads_dir
-                / f"_All_Actions__match_{safe_match_id}{extension}"
+        download_icon.click(timeout=5_000, no_wait_after=True)
+        print(
+            "[SPORTSBASE] Téléchargement Chrome lancé; attente du fichier "
+            "MP4 terminé…"
+        )
+        source = self._wait_for_new_download(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        if source is None:
+            raise TimeoutError(
+                "Aucun fichier All Actions terminé détecté après 300 secondes."
             )
 
-            print(
-                "[SPORTSBASE] Téléchargement Chrome détecté; attente de la fin "
-                "du fichier…"
-            )
-            download.save_as(str(destination))
-            failure = download.failure()
-            if failure:
-                raise RuntimeError(failure)
-            if not destination.is_file() or destination.stat().st_size <= 0:
-                raise RuntimeError("Le fichier vidéo téléchargé est vide.")
-
-            with destination.open("rb") as downloaded_file:
-                prefix = downloaded_file.read(256).lstrip()
-            if prefix.startswith((b"<", b"{", b"[")):
-                raise RuntimeError(
-                    "SportsBase a renvoyé du texte au lieu du fichier MP4."
-                )
-
-            print(
-                "[SPORTSBASE] MP4 original téléchargé par Chrome — "
-                f"{destination.stat().st_size / (1024 * 1024):.1f} Mo"
-            )
-            return destination
-        except Exception:
-            # A failed save must never be mistaken for a completed download on
-            # the next pass. The signed URL is not replayed and the button is not
-            # clicked a second time.
+        staged = self._stage_actions_download(
+            source=source,
+            downloads_dir=downloads_dir,
+            match_id=match_id,
+        )
+        if not staged.is_file() or staged.stat().st_size <= 0:
+            raise RuntimeError("Le fichier vidéo téléchargé est vide.")
+        with staged.open("rb") as downloaded_file:
+            prefix = downloaded_file.read(256).lstrip()
+        if prefix.startswith((b"<", b"{", b"[")):
             try:
-                if destination is not None:
-                    destination.unlink()
+                staged.unlink()
             except OSError:
                 pass
-            raise
+            raise RuntimeError(
+                "SportsBase a renvoyé du texte au lieu du fichier MP4."
+            )
+
+        print(
+            "[SPORTSBASE] MP4 original détecté sur le disque — "
+            f"{staged.stat().st_size / (1024 * 1024):.1f} Mo"
+        )
+        return staged
+
+    def _configure_native_downloads(self, page, downloads_dir):
+        """Restore the stable v23 Chrome download name and destination."""
+        try:
+            browser = getattr(self, "_cdp_browser", None)
+            if browser is not None:
+                session = browser.new_browser_cdp_session()
+            else:
+                session = page.context.new_cdp_session(page)
+            session.send(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(downloads_dir).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+            return True
+        except Exception as exc:
+            print(
+                "[SPORTSBASE][INFO] Dossier Chrome contrôlé par le profil "
+                f"persistant : {exc}"
+            )
+            return False
 
     @staticmethod
     def _generated_match_label(match_data):

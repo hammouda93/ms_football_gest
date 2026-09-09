@@ -3,7 +3,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -841,39 +841,112 @@ class ScraperNormalizationTests(TestCase):
         self.assertIsNone(scraper._cdp_process)
         self.assertIsNone(scraper._cdp_port)
 
-    def test_all_actions_uses_single_native_chrome_download_event(self):
+    def test_all_actions_uses_single_chrome_click_and_disk_confirmation(self):
         scraper = object.__new__(SportsBaseSubscriptionScraper)
         page = Mock()
         download_icon = Mock()
         original = b"\x00\x00\x00\x18ftypmp42sportsbase-original-video"
-        download = Mock()
-        download.suggested_filename = "Player actions.mp4"
-        download.failure.return_value = None
-        download.save_as.side_effect = lambda value: Path(value).write_bytes(
-            original
-        )
-        event_info = Mock()
-        event_info.value = download
-        event_context = MagicMock()
-        event_context.__enter__.return_value = event_info
-        page.expect_download.return_value = event_context
 
         with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "Player actions.mp4"
+            source.write_bytes(original)
+            watch_dirs = [downloads_dir]
+            before = {"existing": (1, 1)}
+            scraper._download_watch_directories = Mock(return_value=watch_dirs)
+            scraper._configure_native_downloads = Mock(return_value=True)
+            scraper._snapshot_download_files = Mock(return_value=before)
+            scraper._wait_for_new_download = Mock(return_value=source)
+
             destination = scraper._download_actions_with_chrome(
                 page=page,
                 download_icon=download_icon,
-                downloads_dir=directory,
+                downloads_dir=downloads_dir,
                 match_id="800074",
             )
 
             self.assertEqual(destination.read_bytes(), original)
             self.assertEqual(destination.name, "_All_Actions__match_800074.mp4")
 
-        page.expect_download.assert_called_once_with(timeout=30_000)
-        download_icon.click.assert_called_once_with(timeout=5_000)
-        download.save_as.assert_called_once_with(str(destination))
-        download.failure.assert_called_once_with()
+        scraper._configure_native_downloads.assert_called_once_with(
+            page,
+            downloads_dir,
+        )
+        scraper._snapshot_download_files.assert_called_once_with(watch_dirs)
+        download_icon.click.assert_called_once_with(
+            timeout=5_000,
+            no_wait_after=True,
+        )
+        scraper._wait_for_new_download.assert_called_once_with(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        page.expect_download.assert_not_called()
+
+    def test_cdp_port_sets_native_chrome_download_directory(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        scraper._cdp_browser = browser
+        page = Mock()
+
+        with TemporaryDirectory() as directory:
+            configured = scraper._configure_native_downloads(page, directory)
+
+            self.assertTrue(configured)
+            session.send.assert_called_once_with(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(directory).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
         page.context.new_cdp_session.assert_not_called()
+
+    def test_chrome_download_without_extension_is_staged_as_mp4(self):
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "playwright-download-guid"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42video")
+
+            staged = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=source,
+                downloads_dir=downloads_dir,
+                match_id="800074",
+            )
+
+            self.assertEqual(staged.suffix, ".mp4")
+            self.assertEqual(staged.read_bytes(), b"\x00\x00\x00\x18ftypmp42video")
+
+    def test_disk_confirmation_ignores_crdownload_until_mp4_is_finished(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            partial = downloads_dir / "Player actions.mp4.crdownload"
+            finished = downloads_dir / "Player actions.mp4"
+
+            def advance_download(_seconds):
+                if not partial.exists() and not finished.exists():
+                    partial.write_bytes(b"partial")
+                elif partial.exists():
+                    partial.replace(finished)
+
+            with patch(
+                "sportsbase_data.scraper.time.sleep",
+                side_effect=advance_download,
+            ):
+                detected = scraper._wait_for_new_download(
+                    [downloads_dir],
+                    before={},
+                    timeout_seconds=1,
+                )
+
+            self.assertEqual(detected, finished)
+            self.assertEqual(detected.read_bytes(), b"partial")
 
     def test_original_xlsx_blob_is_captured_byte_for_byte_without_native_save(self):
         scraper = object.__new__(SportsBaseSubscriptionScraper)

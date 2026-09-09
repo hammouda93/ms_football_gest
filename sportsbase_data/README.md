@@ -21,11 +21,12 @@ le classeur original octet pour octet, sans reconstruire son contenu depuis la p
 éviter la déconnexion observée avec la copie Playwright sur le profil Chrome persistant, le
 fichier original est intercepté avant le gestionnaire natif de téléchargement, puis enregistré
 dans le même dossier de match. La session Chrome reste ainsi disponible pour All Actions.
-Le dernier téléchargement MP4 depuis « My Videos » utilise l’événement de téléchargement
-Playwright du Chrome authentifié, comme dans le flux historique qui fonctionnait. L’agent
-effectue un seul clic, attend la fin du fichier original puis l’associe au bon match. Il ne
-rejoue pas l’URL signée et ne modifie plus la politique de téléchargement Chrome via CDP.
-La génération, l’association au match et le classement final ne changent pas.
+Le dernier téléchargement MP4 depuis « My Videos » reprend le flux stable antérieur à
+Dailymotion : l’agent fixe le dossier de téléchargement Chrome, effectue un seul clic puis
+surveille directement le fichier jusqu’à la disparition de son suffixe temporaire. Il ne
+dépend donc pas de l’événement `download`, que Playwright ne remonte pas toujours après une
+connexion par port CDP. Le MP4 original est ensuite associé au bon match, sans rejouer son
+URL signée. La génération et le classement final ne changent pas.
 
 Sous Windows, l’agent lance désormais ce même Chrome et ce même profil persistant avec un
 port CDP local, puis Playwright s’y connecte. Ce mode contourne le crash natif observé dans
