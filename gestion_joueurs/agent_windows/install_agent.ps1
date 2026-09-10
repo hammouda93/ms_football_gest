@@ -7,21 +7,23 @@ $RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path $AgentDirectory '..\..')
 $ConfiguredPython = [Environment]::GetEnvironmentVariable('MS_FOOTBALL_PYTHON', 'User')
 $PathPython = Get-Command python.exe -ErrorAction SilentlyContinue
 $PythonCandidates = @(
-    $ConfiguredPython,
-    (Join-Path $RepositoryRoot '.venv\Scripts\python.exe'),
-    (Join-Path $RepositoryRoot 'venv\Scripts\python.exe'),
-    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python39\python.exe'),
-    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310\python.exe'),
-    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'),
-    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'),
-    $(if ($PathPython) { $PathPython.Source } else { $null })
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -Unique
+    @(
+        $ConfiguredPython,
+        (Join-Path $RepositoryRoot '.venv\Scripts\python.exe'),
+        (Join-Path $RepositoryRoot 'venv\Scripts\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python39\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'),
+        $(if ($PathPython) { $PathPython.Source } else { $null })
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -Unique
+)
 
 if (-not $PythonCandidates) {
     throw 'Python introuvable. Installez Python ou définissez MS_FOOTBALL_PYTHON.'
 }
 
-$PythonExecutable = $PythonCandidates[0]
+$PythonExecutable = [string]$PythonCandidates[0]
 [Environment]::SetEnvironmentVariable('MS_FOOTBALL_PYTHON', $PythonExecutable, 'User')
 
 $ActionArguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $RunnerPath + '"'
