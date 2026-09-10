@@ -8,6 +8,8 @@ from django.utils import timezone
 
 from .models import AutomationEvent, AutomationRun, Video
 
+MAX_EVENTS_PER_RUN = 12
+
 
 PIPELINE_STAGE_PERCENT = {
     AutomationRun.PipelineChoices.INTRO: {
@@ -51,15 +53,24 @@ def _bounded_percent(value) -> int:
         return 0
 
 
-def _latest_event_matches(run, *, stage, state, progress_percent, message):
-    latest = run.events.order_by('-created_at', '-pk').first()
-    return bool(
-        latest
-        and latest.stage == stage
-        and latest.state == state
-        and latest.progress_percent == progress_percent
-        and latest.message == message
+def _event_already_recorded(run, *, stage, state, progress_percent, message):
+    """Avoid recording the same polling state again and again."""
+    return run.events.filter(
+        stage=stage,
+        state=state,
+        progress_percent=progress_percent,
+        message=message,
+    ).exists()
+
+
+def _prune_events(run, *, keep=MAX_EVENTS_PER_RUN):
+    """Keep a short operational timeline; the current state lives on the run."""
+    stale_ids = list(
+        run.events.order_by('-created_at', '-pk')
+        .values_list('pk', flat=True)[keep:]
     )
+    if stale_ids:
+        run.events.filter(pk__in=stale_ids).delete()
 
 
 def get_or_create_active_run(video, pipeline):
@@ -159,7 +170,7 @@ def report_progress(
         run.finished_at = None
 
     run.save()
-    if force_event or not _latest_event_matches(
+    if force_event or not _event_already_recorded(
         run,
         stage=stage,
         state=state,
@@ -174,6 +185,7 @@ def report_progress(
             message=run.message,
             details=details or {},
         )
+    _prune_events(run)
     return run
 
 
@@ -217,7 +229,7 @@ def serialize_run(run, *, include_events=False):
                 'details': event.details or {},
                 'created_at': event.created_at.isoformat(),
             }
-            for event in run.events.all()[:100]
+            for event in run.events.all()[:MAX_EVENTS_PER_RUN]
         ]
     return payload
 
@@ -228,7 +240,7 @@ def attach_progress_to_videos(videos):
     runs = AutomationRun.objects.filter(
         video_id__in=video_ids,
         is_active=True,
-    ).prefetch_related('events')
+    )
     grouped = {video_id: [] for video_id in video_ids}
     for run in runs:
         grouped.setdefault(run.video_id, []).append(run)
@@ -358,7 +370,6 @@ def claim_next_job(
             and run.last_heartbeat_at
             and run.last_heartbeat_at >= stale_before
             and run.claimed_by
-            and run.claimed_by != worker_id
         )
         waiting_for_whatsapp = (
             pipeline == AutomationRun.PipelineChoices.DELIVERY
@@ -388,7 +399,16 @@ def claim_next_job(
         if previous_state != AutomationRun.StateChoices.WAITING_EXTERNAL:
             run.attempt_count += 1
         run.save()
-        if previous_state != AutomationRun.StateChoices.WAITING_EXTERNAL:
+        if (
+            previous_state != AutomationRun.StateChoices.WAITING_EXTERNAL
+            and not _event_already_recorded(
+                run,
+                stage=run.current_stage,
+                state=run.state,
+                progress_percent=run.progress_percent,
+                message=f"Tâche prise en charge par {worker_id}",
+            )
+        ):
             AutomationEvent.objects.create(
                 run=run,
                 stage=run.current_stage,
@@ -396,6 +416,7 @@ def claim_next_job(
                 progress_percent=run.progress_percent,
                 message=f"Tâche prise en charge par {worker_id}",
             )
+        _prune_events(run)
         return video, run
     return None, None
 
@@ -420,5 +441,5 @@ def retry_run(run):
         progress_percent=run.progress_percent,
         message=run.message,
     )
+    _prune_events(run)
     return run
-

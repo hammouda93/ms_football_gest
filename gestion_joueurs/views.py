@@ -2312,7 +2312,7 @@ def claim_automation_job(request):
 @login_required
 def automation_progress_detail(request, video_id):
     video = get_object_or_404(Video, pk=video_id)
-    runs = video.automation_runs.filter(is_active=True).prefetch_related('events')
+    runs = video.automation_runs.filter(is_active=True)
     return JsonResponse({
         'success': True,
         'video_id': video.pk,

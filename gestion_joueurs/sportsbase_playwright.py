@@ -13,6 +13,11 @@ from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
+PLAYER_ACTIONS_BUTTON_RE = re.compile(
+    r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
+    re.IGNORECASE,
+)
+
 
 class SportsBaseAutomation:
     def __init__(self, base_download_dir: Optional[str] = None, progress_callback=None):
@@ -468,7 +473,13 @@ class SportsBaseAutomation:
 
         match_item.wait_for(state="visible", timeout=10000)
 
-        action_button = match_item.locator("button", has_text=re.compile(r"All player actions", re.I)).first
+        # SportsBase currently uses both "Player actions" and the older
+        # "All player actions" label. Keep the selector used by the proven
+        # subscription scraper so a UI wording change does not hide the button.
+        action_button = match_item.get_by_role(
+            "button",
+            name=PLAYER_ACTIONS_BUTTON_RE,
+        ).first
         action_button.wait_for(state="visible", timeout=10000)
         action_button.scroll_into_view_if_needed()
 
@@ -1053,4 +1064,3 @@ class SportsBaseAutomation:
                 global_rounds = 0
 
         return downloaded_files
-

@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from .deadline_planning import ACTIVE_PLANNING_STATUSES
 from .forms import VideoForm
-from .models import AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
+from .models import AutomationEvent, AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
 from .utils import set_current_user
 from .video_status_whatsapp import (
     NOTIFICATION_PAYMENT_MODES,
@@ -79,6 +79,10 @@ class AutomationProgressTests(TestCase):
             "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
             "worker_id": "desktop-a",
         })
+        same_worker = self._json_post(url, {
+            "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+            "worker_id": "desktop-a",
+        })
         second = self._json_post(url, {
             "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
             "worker_id": "desktop-b",
@@ -87,7 +91,45 @@ class AutomationProgressTests(TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(first.json()["job"]["video_id"], self.video.pk)
         self.assertTrue(first.json()["job"]["claim_token"])
+        self.assertIsNone(same_worker.json()["job"])
         self.assertIsNone(second.json()["job"])
+
+    def test_repeated_polling_states_are_deduplicated_and_capped(self):
+        report_url = reverse("report_automation_progress", args=(self.video.pk,))
+        states = (
+            {
+                "pipeline": AutomationRun.PipelineChoices.INTRO,
+                "stage": AutomationRun.StageChoices.TRANSFERMARKT,
+                "state": AutomationRun.StateChoices.RUNNING,
+                "message": "Vérification des données et visuels Transfermarkt",
+            },
+            {
+                "pipeline": AutomationRun.PipelineChoices.INTRO,
+                "stage": AutomationRun.StageChoices.CHATGPT_IMAGE,
+                "state": AutomationRun.StateChoices.WAITING_EXTERNAL,
+                "message": "Photo du joueur attendue avant la génération ChatGPT",
+            },
+        )
+        for _attempt in range(4):
+            for payload in states:
+                self.assertEqual(self._json_post(report_url, payload).status_code, 200)
+
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.INTRO,
+        )
+        self.assertEqual(run.events.count(), 2)
+
+        for index in range(20):
+            AutomationEvent.objects.create(
+                run=run,
+                stage=AutomationRun.StageChoices.CHATGPT_IMAGE,
+                state=AutomationRun.StateChoices.RUNNING,
+                progress_percent=index,
+                message=f"Événement {index}",
+            )
+        self._json_post(report_url, states[-1])
+        self.assertEqual(run.events.count(), 12)
 
     def test_progress_from_an_obsolete_worker_claim_is_rejected(self):
         claim = self._json_post(reverse("claim_automation_job"), {

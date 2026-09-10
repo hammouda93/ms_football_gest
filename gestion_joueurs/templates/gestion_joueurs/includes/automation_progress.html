@@ -64,9 +64,9 @@
                     <p class="automation-artifact"><strong>MP4 :</strong> {{ run.artifacts.export_path }}</p>
                 {% endif %}
                 <details class="automation-timeline">
-                    <summary>Afficher l’historique</summary>
+                    <summary>Historique récent</summary>
                     <ol>
-                        {% for event in run.events.all %}
+                        {% for event in run.events.all|slice:":12" %}
                             <li>
                                 <time>{{ event.created_at|date:"d/m/Y H:i:s" }}</time>
                                 <strong>{{ event.get_stage_display }}</strong>
