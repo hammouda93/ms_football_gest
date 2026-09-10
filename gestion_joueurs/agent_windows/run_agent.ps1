@@ -8,8 +8,12 @@ $PythonCandidates = @(
     $ConfiguredPython,
     (Join-Path $RepositoryRoot '.venv\Scripts\python.exe'),
     (Join-Path $RepositoryRoot 'venv\Scripts\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python39\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'),
     $(if ($PathPython) { $PathPython.Source } else { $null })
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -Unique
 
 if (-not $PythonCandidates) {
     throw 'Python introuvable. Définissez MS_FOOTBALL_PYTHON ou créez .venv dans le projet.'

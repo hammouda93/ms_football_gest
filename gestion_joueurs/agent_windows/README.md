@@ -3,8 +3,8 @@
 L’application met les vidéos dans une file. Cet agent local, démarré avec Windows,
 les récupère automatiquement sans VS Code ni terminal à laisser ouvert.
 
-Installation unique : clic droit sur `install_agent.ps1`, puis **Exécuter avec
-PowerShell**. Le tableau de bord affiche ensuite **Agent connecté**.
+Installation unique : double-cliquer sur `Installer_Agent_MS_Football.cmd`.
+Le tableau de bord affiche ensuite **Agent connecté**.
 
 Pré-requis : le Python du projet doit exister dans `.venv`, `venv`, ou être indiqué
 par la variable utilisateur `MS_FOOTBALL_PYTHON`. Les identifiants et chemins restent

@@ -642,6 +642,7 @@ def update_video_status(request, video_id):
             old_status = video.status
             status_changed = old_status != new_status
             old_processing_mode = video.processing_mode
+            old_delivery_mode = video.delivery_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
 
             # validation : SportsBase obligatoire seulement si mode Automation vidéo
@@ -726,6 +727,11 @@ def update_video_status(request, video_id):
                 and (
                     old_status != Video.StatusChoices.IN_PROGRESS
                     or old_processing_mode != Video.AutomationModeChoices.AUTOMATION
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+                        is_active=True,
+                    ).exists()
                 )
             ):
                 report_progress(
@@ -742,6 +748,11 @@ def update_video_status(request, video_id):
                 and (
                     old_status != Video.StatusChoices.IN_PROGRESS
                     or not old_intro_enabled
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.INTRO,
+                        is_active=True,
+                    ).exists()
                 )
             ):
                 report_progress(
@@ -755,6 +766,15 @@ def update_video_status(request, video_id):
             if (
                 new_status == Video.StatusChoices.COMPLETED
                 and delivery_mode == Video.AutomationModeChoices.AUTOMATION
+                and (
+                    old_status != Video.StatusChoices.COMPLETED
+                    or old_delivery_mode != Video.AutomationModeChoices.AUTOMATION
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+                        is_active=True,
+                    ).exists()
+                )
             ):
                 report_progress(
                     video,

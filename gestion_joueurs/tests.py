@@ -173,6 +173,32 @@ class AutomationProgressTests(TestCase):
             AutomationRun.StateChoices.QUEUED,
         )
 
+    def test_existing_automation_settings_queue_when_progress_is_missing(self):
+        response = self.client.post(
+            reverse("update_video_status", args=(self.video.pk,)),
+            {
+                "status": Video.StatusChoices.IN_PROGRESS,
+                "processing_mode": Video.AutomationModeChoices.AUTOMATION,
+                "delivery_mode": Video.AutomationModeChoices.AUTOMATION,
+                "sportsbase_url": self.player.sportsbase_url,
+                "transfermarkt_url": self.player.transfermarkt_url,
+                "intro_automation_enabled": "on",
+                "notification_action": "skip",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(AutomationRun.objects.filter(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+            state=AutomationRun.StateChoices.QUEUED,
+        ).exists())
+        self.assertTrue(AutomationRun.objects.filter(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.INTRO,
+            state=AutomationRun.StateChoices.QUEUED,
+        ).exists())
+
     def test_progress_report_is_durable_and_visible(self):
         report_url = reverse("report_automation_progress", args=(self.video.pk,))
         response = self._json_post(report_url, {
