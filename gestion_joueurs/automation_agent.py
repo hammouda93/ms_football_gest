@@ -450,14 +450,6 @@ def process_intro_video(video_data):
     intro_folder = folder / "intro"
     if not intro_started:
         mark_intro_started(video_id)
-    report_video_progress(
-        video_data,
-        "intro",
-        "transfermarkt",
-        state="running",
-        message="Vérification des données et visuels Transfermarkt",
-        artifacts={"local_folder": str(folder)},
-    )
 
     if not transfermarkt_url:
         raise ValueError("Le lien Transfermarkt du joueur est absent.")
@@ -472,9 +464,22 @@ def process_intro_video(video_data):
             "chatgpt_image",
             state="waiting_external",
             message="Photo du joueur attendue avant la génération ChatGPT",
-            artifacts={"local_folder": str(folder)},
+            artifacts={
+                "local_folder": str(folder),
+                "intro_folder": str(intro_folder),
+            },
         )
+        print(f"[INFO] Photo intro attendue dans {intro_folder}")
         return
+
+    report_video_progress(
+        video_data,
+        "intro",
+        "transfermarkt",
+        state="running",
+        message="Vérification des données et visuels Transfermarkt",
+        artifacts={"local_folder": str(folder)},
+    )
 
     tm_assets = existing_transfermarkt_assets(intro_folder)
     if not tm_assets:
@@ -1091,4 +1096,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -22,6 +22,8 @@ MY_VIDEOS_ACTION_LABELS = (
     "all player actions",
     "player's actions",
     "all player's actions",
+    "actions joueur",
+    "actions joueurs",
     "actions du joueur",
     "toutes les actions du joueur",
 )

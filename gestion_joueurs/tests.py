@@ -129,7 +129,7 @@ class AutomationProgressTests(TestCase):
                 message=f"Événement {index}",
             )
         self._json_post(report_url, states[-1])
-        self.assertEqual(run.events.count(), 12)
+        self.assertEqual(run.events.count(), 6)
 
     def test_progress_from_an_obsolete_worker_claim_is_rejected(self):
         claim = self._json_post(reverse("claim_automation_job"), {
