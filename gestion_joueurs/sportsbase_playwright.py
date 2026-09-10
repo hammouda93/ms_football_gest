@@ -1,5 +1,10 @@
+import json
 import os
 import re
+import socket
+import subprocess
+import time
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +24,15 @@ class SportsBaseAutomation:
             "SPORTSBASE_DOWNLOAD_DIR",
             "D:/Django_Projects/ms_football_gest/gestion_joueurs/automated_players"
         )
+        self.profile_dir = Path(
+            os.getenv(
+                "SPORTSBASE_PROFILE_DIR",
+                r"D:\SportsBase_Playwright_Profile",
+            )
+        )
         self.progress_callback = progress_callback
+        self._cdp_browser = None
+        self._cdp_process = None
 
         if not self.login_url:
             raise ValueError("SPORTSBASE_LOGIN_URL manquant dans .env")
@@ -70,6 +83,110 @@ class SportsBaseAutomation:
                 return str(Path(candidate))
         return ""
 
+    @staticmethod
+    def reserve_cdp_port() -> int:
+        configured = os.getenv("SPORTSBASE_CDP_PORT", "").strip()
+        if configured:
+            return int(configured)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def wait_for_cdp_endpoint(process, port: int, timeout_seconds: int = 30) -> str:
+        deadline = time.monotonic() + timeout_seconds
+        last_error = ""
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(
+                    "Chrome s'est arrêté avant la connexion. Fermez toute autre "
+                    "fenêtre utilisant le profil SportsBase puis réessayez."
+                )
+            connection = None
+            try:
+                connection = HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/json/version")
+                response = connection.getresponse()
+                payload = response.read()
+                if response.status == 200:
+                    metadata = json.loads(payload.decode("utf-8"))
+                    if metadata.get("webSocketDebuggerUrl"):
+                        return f"http://127.0.0.1:{port}"
+            except Exception as exc:
+                last_error = str(exc)
+            finally:
+                if connection is not None:
+                    connection.close()
+            time.sleep(0.2)
+        raise RuntimeError(
+            f"Chrome n'a pas ouvert son port local dans les délais. {last_error}".strip()
+        )
+
+    def launch_profile_context(self, playwright, browser_executable: str):
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        port = self.reserve_cdp_port()
+        command = [
+            browser_executable,
+            f"--remote-debugging-port={port}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={self.profile_dir.resolve()}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-mode",
+            "--start-maximized",
+            "about:blank",
+        ]
+        if self.headless:
+            command.insert(-1, "--headless=new")
+        print(f"[DEBUG] Profil Chrome SportsBase: {self.profile_dir}")
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._cdp_process = process
+        try:
+            endpoint = self.wait_for_cdp_endpoint(process, port)
+            browser = playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=30_000,
+                is_local=True,
+                no_defaults=False,
+            )
+            if not browser.contexts:
+                raise RuntimeError("Chrome n'a exposé aucun profil navigateur.")
+            self._cdp_browser = browser
+            return browser.contexts[0]
+        except Exception:
+            self.close_profile_browser()
+            raise
+
+    def close_profile_browser(self):
+        browser = self._cdp_browser
+        process = self._cdp_process
+        self._cdp_browser = None
+        self._cdp_process = None
+        if browser is not None:
+            try:
+                session = browser.new_browser_cdp_session()
+                session.send("Browser.close")
+            except Exception:
+                pass
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if process is None:
+            return
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
     def run_for_player(self, player_name: str, player_url: str, target_dir: str, seasons_to_process: int = 1) -> dict:
         target_path = Path(target_dir)
         raw_clips_dir = target_path / "raw_clips"
@@ -93,16 +210,7 @@ class SportsBaseAutomation:
                     "définissez SPORTSBASE_BROWSER_EXECUTABLE."
                 )
             print(f"[DEBUG] Navigateur SportsBase: {browser_executable}")
-            browser = p.chromium.launch(
-                headless=self.headless,
-                args=["--start-maximized"],
-                executable_path=browser_executable,
-            )
-
-            context = browser.new_context(
-                accept_downloads=True,
-                no_viewport=True
-            )
+            context = self.launch_profile_context(p, browser_executable)
 
             page = context.new_page()
 
@@ -155,8 +263,7 @@ class SportsBaseAutomation:
                 result["downloaded_files"] = downloaded
 
             finally:
-                context.close()
-                browser.close()
+                self.close_profile_browser()
 
         return result
 
