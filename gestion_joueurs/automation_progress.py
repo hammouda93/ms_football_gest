@@ -345,9 +345,12 @@ def claim_next_job(
     external_recheck_before = timezone.now() - timedelta(
         seconds=external_recheck_seconds
     )
-    candidates = _candidate_queryset(pipeline).select_for_update().order_by(
-        'deadline', 'video_creation_date', 'pk'
-    )
+    # Lock only the Video row. ``editor__user`` is nullable and PostgreSQL
+    # rejects FOR UPDATE when it is applied to the nullable side of the
+    # select_related outer join.
+    candidates = _candidate_queryset(pipeline).select_for_update(
+        of=('self',),
+    ).order_by('deadline', 'video_creation_date', 'pk')
     for video in candidates[:100]:
         run, _created = get_or_create_active_run(video, pipeline)
         busy = (
@@ -418,3 +421,4 @@ def retry_run(run):
         message=run.message,
     )
     return run
+
