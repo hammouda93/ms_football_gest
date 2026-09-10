@@ -2,3 +2,6 @@ gestion_joueurs/automated_players/
 gestion_joueurs/sportsbase_subscriptions/
 **/__pycache__/
 *.py[cod]
+.test-venv/
+test_*.sqlite3
+gestion_joueurs/agent_logs/

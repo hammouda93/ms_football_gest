@@ -15,6 +15,9 @@
                 <span class="badge badge-primary">Deadline: {{ video.deadline }}</span>
             </div>
 
+            <h4 class="mb-3">Avancement de l’automatisation</h4>
+            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=automation_progress_runs %}
+
             <h4 class="mb-3">Historique des Statuts</h4>
             <table class="table table-bordered small-table">
                 <thead>

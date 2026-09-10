@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import unquote
@@ -10,7 +11,7 @@ from django.utils import timezone
 
 from .deadline_planning import ACTIVE_PLANNING_STATUSES
 from .forms import VideoForm
-from .models import Invoice, Notification, Player, Video, VideoEditor
+from .models import AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
 from .utils import set_current_user
 from .video_status_whatsapp import (
     NOTIFICATION_PAYMENT_MODES,
@@ -20,6 +21,260 @@ from .video_status_whatsapp import (
 )
 
 from client_portal.models import PlayerAccess, PortalAccessLink, PortalProfile
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class AutomationProgressTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="automation-progress-admin",
+            email="automation@example.com",
+            password="test-password",
+        )
+        editor_user = User.objects.create_user(
+            username="automation-progress-editor",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=editor_user)
+        self.player = Player.objects.create(
+            name="Joueur Automation",
+            club="Club Automation",
+            sportsbase_url="https://example.com/sportsbase/player",
+            transfermarkt_url="https://example.com/transfermarkt/player",
+        )
+        self.video = Video.objects.create(
+            player=self.player,
+            editor=self.editor,
+            status=Video.StatusChoices.IN_PROGRESS,
+            advance_payment=Decimal("0.00"),
+            total_payment=Decimal("100.00"),
+            deadline=timezone.localdate() + timedelta(days=4),
+            season="2025/2026",
+            club=self.player.club,
+            processing_mode=Video.AutomationModeChoices.AUTOMATION,
+            intro_automation_enabled=True,
+        )
+        Invoice.objects.create(
+            video=self.video,
+            total_amount=Decimal("100.00"),
+            amount_paid=Decimal("0.00"),
+            status="unpaid",
+            created_by=self.admin,
+        )
+        self.client.force_login(self.admin)
+
+    def _json_post(self, url, payload):
+        return self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_atomic_claim_prevents_two_workers_from_receiving_same_video(self):
+        url = reverse("claim_automation_job")
+        first = self._json_post(url, {
+            "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+            "worker_id": "desktop-a",
+        })
+        second = self._json_post(url, {
+            "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+            "worker_id": "desktop-b",
+        })
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["job"]["video_id"], self.video.pk)
+        self.assertTrue(first.json()["job"]["claim_token"])
+        self.assertIsNone(second.json()["job"])
+
+    def test_progress_from_an_obsolete_worker_claim_is_rejected(self):
+        claim = self._json_post(reverse("claim_automation_job"), {
+            "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+            "worker_id": "desktop-a",
+        }).json()["job"]
+
+        response = self._json_post(
+            reverse("report_automation_progress", args=(self.video.pk,)),
+            {
+                "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+                "stage": AutomationRun.StageChoices.SPORTSBASE_DOWNLOAD,
+                "state": AutomationRun.StateChoices.RUNNING,
+                "claim_token": claim["claim_token"] + "-obsolete",
+                "message": "Cette mise à jour ne doit pas être acceptée",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        )
+        self.assertNotEqual(run.message, "Cette mise à jour ne doit pas être acceptée")
+
+    def test_waiting_external_recheck_does_not_create_fake_attempts(self):
+        report_url = reverse("report_automation_progress", args=(self.video.pk,))
+        self._json_post(report_url, {
+            "pipeline": AutomationRun.PipelineChoices.INTRO,
+            "stage": AutomationRun.StageChoices.CHATGPT_IMAGE,
+            "state": AutomationRun.StateChoices.WAITING_EXTERNAL,
+            "message": "Image ChatGPT attendue",
+        })
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.INTRO,
+        )
+        AutomationRun.objects.filter(pk=run.pk).update(
+            last_heartbeat_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        claim = self._json_post(reverse("claim_automation_job"), {
+            "pipeline": AutomationRun.PipelineChoices.INTRO,
+            "worker_id": "desktop-a",
+        })
+
+        self.assertEqual(claim.status_code, 200)
+        self.assertEqual(claim.json()["job"]["video_id"], self.video.pk)
+        run.refresh_from_db()
+        self.assertEqual(run.attempt_count, 0)
+        self.assertEqual(run.events.count(), 1)
+
+    def test_app_status_change_queues_intro_and_highlights(self):
+        Video.objects.filter(pk=self.video.pk).update(
+            status=Video.StatusChoices.PENDING,
+            processing_mode=Video.AutomationModeChoices.NORMAL,
+            intro_automation_enabled=False,
+        )
+        response = self.client.post(
+            reverse("update_video_status", args=(self.video.pk,)),
+            {
+                "status": Video.StatusChoices.IN_PROGRESS,
+                "processing_mode": Video.AutomationModeChoices.AUTOMATION,
+                "delivery_mode": Video.AutomationModeChoices.AUTOMATION,
+                "sportsbase_url": self.player.sportsbase_url,
+                "transfermarkt_url": self.player.transfermarkt_url,
+                "intro_automation_enabled": "on",
+                "notification_action": "skip",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        runs = {
+            run.pipeline: run
+            for run in AutomationRun.objects.filter(video=self.video)
+        }
+        self.assertEqual(
+            runs[AutomationRun.PipelineChoices.INTRO].state,
+            AutomationRun.StateChoices.QUEUED,
+        )
+        self.assertEqual(
+            runs[AutomationRun.PipelineChoices.HIGHLIGHTS].state,
+            AutomationRun.StateChoices.QUEUED,
+        )
+
+    def test_progress_report_is_durable_and_visible(self):
+        report_url = reverse("report_automation_progress", args=(self.video.pk,))
+        response = self._json_post(report_url, {
+            "pipeline": AutomationRun.PipelineChoices.HIGHLIGHTS,
+            "stage": AutomationRun.StageChoices.SPORTSBASE_DOWNLOAD,
+            "state": AutomationRun.StateChoices.RUNNING,
+            "progress_current": 4,
+            "progress_total": 10,
+            "progress_percent": 59,
+            "message": "4 matchs téléchargés sur 10",
+            "artifacts": {"local_folder": "123_Joueur_Automation"},
+        })
+
+        self.assertEqual(response.status_code, 200)
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        )
+        self.assertEqual(run.progress_current, 4)
+        self.assertEqual(run.progress_total, 10)
+        self.assertEqual(run.progress_percent, 59)
+        self.assertEqual(run.events.count(), 1)
+
+        page = self.client.get(reverse("update_video_status", args=(self.video.pk,)))
+        self.assertContains(page, "4 matchs téléchargés sur 10")
+        self.assertContains(page, "59%")
+        self.assertContains(page, "Aucun terminal ni VS Code n’est nécessaire")
+
+    def test_failed_run_can_be_requeued_from_management_app(self):
+        report_url = reverse("report_automation_progress", args=(self.video.pk,))
+        self._json_post(report_url, {
+            "pipeline": AutomationRun.PipelineChoices.INTRO,
+            "stage": AutomationRun.StageChoices.KLING_VIDEO,
+            "state": AutomationRun.StateChoices.FAILED,
+            "message": "Kling indisponible",
+            "error_code": "KLING_UNAVAILABLE",
+            "error_detail": "La génération n’a pas répondu.",
+        })
+        retry_url = reverse(
+            "retry_automation_progress",
+            args=(self.video.pk, AutomationRun.PipelineChoices.INTRO),
+        )
+        response = self.client.post(retry_url)
+
+        self.assertRedirects(
+            response,
+            reverse("update_video_status", args=(self.video.pk,)),
+        )
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.INTRO,
+        )
+        self.assertEqual(run.state, AutomationRun.StateChoices.QUEUED)
+        self.assertEqual(run.error_detail, "")
+
+    def test_worker_heartbeat_is_visible_without_a_terminal(self):
+        response = self._json_post(reverse("automation_worker_heartbeat"), {
+            "worker_id": "office-pc-highlights",
+            "display_name": "Agent vidéo Bureau",
+            "state": AutomationWorker.StateChoices.IDLE,
+            "capabilities": {"premiere": True},
+        })
+
+        self.assertEqual(response.status_code, 200)
+        status_response = self.client.get(reverse("automation_worker_status"))
+        worker = status_response.json()["workers"][0]
+        self.assertTrue(worker["is_online"])
+        self.assertEqual(worker["state_label"], "Connecté")
+
+    def test_highlights_cannot_complete_without_validated_export(self):
+        response = self._json_post(
+            reverse("mark_automation_completed", args=(self.video.pk,)),
+            {},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.video.refresh_from_db()
+        self.assertFalse(self.video.automation_completed)
+        self.assertEqual(self.video.status, Video.StatusChoices.IN_PROGRESS)
+
+    def test_youtube_delivery_sets_link_before_waiting_for_whatsapp(self):
+        self.video.delivery_mode = Video.AutomationModeChoices.AUTOMATION
+        self.video.status = Video.StatusChoices.COMPLETED
+        self.video.save(update_fields=("delivery_mode", "status"))
+        response = self._json_post(
+            reverse("complete_automation_delivery", args=(self.video.pk,)),
+            {
+                "youtube_url": "https://youtu.be/dQw4w9WgXcQ",
+                "validation": {"content_sha256": "a" * 64},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.DELIVERED)
+        self.assertEqual(self.video.video_link, "https://youtu.be/dQw4w9WgXcQ")
+        run = AutomationRun.objects.get(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+        )
+        self.assertEqual(run.current_stage, AutomationRun.StageChoices.WHATSAPP)
+        self.assertEqual(run.state, AutomationRun.StateChoices.WAITING_EXTERNAL)
 
 
 class VideoStatusWhatsappTests(TestCase):

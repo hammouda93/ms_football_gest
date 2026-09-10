@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice,Expense,Salary,FinancialReport, NonVideoIncome, Notification
+from .models import AutomationRun, AutomationWorker, Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice,Expense,Salary,FinancialReport, NonVideoIncome, Notification
 from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm, InvoiceForm,ExpenseForm, NonVideoIncomeForm,NotificationForm
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
@@ -32,6 +32,7 @@ from .tasks import (
 )
 
 import requests
+import json
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
@@ -54,6 +55,16 @@ from client_portal.services import (
     issue_reusable_portal_access_link,
     portal_access_states_for_players,
 )
+from .automation_progress import (
+    attach_progress_to_videos,
+    claim_next_job,
+    get_or_create_active_run,
+    report_progress,
+    retry_run,
+    serialize_run,
+    video_payload,
+)
+from .whatsapp_delivery import send_whatsapp_text
 
 
 def _prepare_player_portal_access(request, player):
@@ -357,6 +368,7 @@ def dashboard(request):
     portal_states = portal_access_states_for_players(
         video.player_id for video in page_obj.object_list
     )
+    attach_progress_to_videos(page_obj.object_list)
     for video in page_obj.object_list:
         video.client_portal_state = portal_states.get(video.player_id, 'none')
 
@@ -390,6 +402,9 @@ def dashboard(request):
         status='delivered',
         invoices__status__in=['unpaid', 'partially_paid']
     ).count()
+    automation_worker = AutomationWorker.objects.select_related(
+        'current_video__player'
+    ).first()
 
 
 
@@ -418,6 +433,7 @@ def dashboard(request):
         'unread_notifications': unread_notifications,
         'completed_videos_not_paid_count': completed_videos_not_paid_count,
         'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
+        'automation_worker': automation_worker,
     })
 
 @login_required
@@ -549,11 +565,19 @@ def view_profile(request):
 @login_required
 def video_status(request, video_id):
     video = get_object_or_404(Video, id=video_id)
-    return render(request, 'gestion_joueurs/video_status.html', {'video': video})
+    attach_progress_to_videos([video])
+    return render(request, 'gestion_joueurs/video_status.html', {
+        'video': video,
+        'automation_progress_runs': video.automation_progress_runs,
+    })
 
 
 def _render_update_video_status(request, video):
-    context = {'video': video}
+    attach_progress_to_videos([video])
+    context = {
+        'video': video,
+        'automation_progress_runs': video.automation_progress_runs,
+    }
     context.update(build_status_notification_context(video))
     return render(request, 'gestion_joueurs/update_video_status.html', context)
 
@@ -668,6 +692,7 @@ def update_video_status(request, video_id):
 
             if new_status == 'in_progress':
                 video.processing_mode = processing_mode
+                video.delivery_mode = delivery_mode
 
                 if old_status != 'in_progress':
                     video.automation_started = False
@@ -687,13 +712,57 @@ def update_video_status(request, video_id):
                     video.intro_automation_started = False
                     video.intro_automation_completed = False
 
-            if new_status == 'delivered':
+            if new_status in {'completed', 'delivered'}:
                 video.delivery_mode = delivery_mode
 
             if new_status != 'in_progress' and old_status == 'in_progress':
                 video.automation_started = False
 
             video.save()
+
+            if (
+                new_status == Video.StatusChoices.IN_PROGRESS
+                and processing_mode == Video.AutomationModeChoices.AUTOMATION
+                and (
+                    old_status != Video.StatusChoices.IN_PROGRESS
+                    or old_processing_mode != Video.AutomationModeChoices.AUTOMATION
+                )
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Vidéo ajoutée à la file Highlights',
+                )
+
+            if (
+                new_status == Video.StatusChoices.IN_PROGRESS
+                and intro_automation_enabled
+                and (
+                    old_status != Video.StatusChoices.IN_PROGRESS
+                    or not old_intro_enabled
+                )
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.INTRO,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Présentation ajoutée à la file',
+                )
+
+            if (
+                new_status == Video.StatusChoices.COMPLETED
+                and delivery_mode == Video.AutomationModeChoices.AUTOMATION
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.DELIVERY,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Livraison ajoutée à la file',
+                )
 
             messages.success(request, "Le statut de la vidéo a été mis à jour avec succès.")
 
@@ -1988,78 +2057,35 @@ from django.contrib.auth.decorators import login_required
 
 @login_required
 def automation_pending_videos(request):
-    # pipeline existant clips + premiere
     videos = Video.objects.filter(
         status='in_progress',
         processing_mode='automation',
         automation_completed=False
-    ).select_related('player', 'editor')
+    ).select_related('player', 'editor__user')
 
-    # nouveau pipeline intro
     intro_videos = Video.objects.filter(
         status='in_progress',
         intro_automation_enabled=True,
         intro_automation_completed=False
-    ).select_related('player', 'editor')
+    ).select_related('player', 'editor__user')
 
+    video_list = attach_progress_to_videos(videos)
+    intro_video_list = attach_progress_to_videos(intro_videos)
     data = []
-    for video in videos:
-        data.append({
-            'video_id': video.id,
-            'status': video.status,
-            'processing_mode': video.processing_mode,
-            'automation_started': video.automation_started,
-            'automation_completed': video.automation_completed,
-            'intro_automation_started': video.intro_automation_started,
-            'intro_automation_completed': video.intro_automation_completed,
-            'intro_photo_url': request.build_absolute_uri(video.intro_photo.url) if video.intro_photo else None,
-            'season': video.season,
-            'seasons_to_process': video.seasons_to_process,
-            'club': video.club,
-            'league': video.league,
-            'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,
-            'player': {
-                'id': video.player.id,
-                'name': video.player.name,
-                'club': video.player.club,
-                'sportsbase_url': video.player.sportsbase_url,
-                'transfermarkt_url': video.player.transfermarkt_url,
-            },
-            'editor': {
-                'id': video.editor.id,
-                'username': video.editor.user.username if video.editor and video.editor.user else None,
-            }
-        })
+    for video in video_list:
+        item = video_payload(video, request=request)
+        item['progress'] = [
+            serialize_run(run) for run in video.automation_progress_runs
+        ]
+        data.append(item)
 
     intro_data = []
-    for video in intro_videos:
-        intro_data.append({
-            'video_id': video.id,
-            'status': video.status,
-            'processing_mode': video.processing_mode,
-            'automation_started': video.automation_started,
-            'automation_completed': video.automation_completed,
-            'intro_automation_started': video.intro_automation_started,
-            'intro_automation_completed': video.intro_automation_completed,
-            'intro_photo_url': request.build_absolute_uri(video.intro_photo.url) if video.intro_photo else None,
-            'intro_automation_enabled': video.intro_automation_enabled,
-            'season': video.season,
-            'seasons_to_process': video.seasons_to_process,
-            'club': video.club,
-            'league': video.league,
-            'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,
-            'player': {
-                'id': video.player.id,
-                'name': video.player.name,
-                'club': video.player.club,
-                'sportsbase_url': video.player.sportsbase_url,
-                'transfermarkt_url': video.player.transfermarkt_url,
-            },
-            'editor': {
-                'id': video.editor.id,
-                'username': video.editor.user.username if video.editor and video.editor.user else None,
-            }
-        })
+    for video in intro_video_list:
+        item = video_payload(video, request=request)
+        item['progress'] = [
+            serialize_run(run) for run in video.automation_progress_runs
+        ]
+        intro_data.append(item)
 
     print("=== VIDEOS AUTOMATION A TRAITER ===")
     for item in data:
@@ -2096,6 +2122,13 @@ def mark_automation_started(request, video_id):
 
     video.automation_started = True
     video.save(update_fields=['automation_started'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        stage=AutomationRun.StageChoices.SPORTSBASE_DISCOVERY,
+        state=AutomationRun.StateChoices.RUNNING,
+        message='Collecte SportsBase démarrée',
+    )
 
     return JsonResponse({
         'success': True,
@@ -2108,8 +2141,44 @@ def mark_automation_started(request, video_id):
 def mark_automation_completed(request, video_id):
     video = get_object_or_404(Video, id=video_id)
 
+    try:
+        payload = _automation_request_payload(request)
+        export_path = str(payload.get('export_path') or '').strip()
+        validation = payload.get('validation') or {}
+        if not export_path:
+            raise ValueError('Le chemin du MP4 final est obligatoire.')
+        if not isinstance(validation, dict) or validation.get('valid') is not True:
+            raise ValueError('Le MP4 final doit être validé avant de terminer la vidéo.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
     video.automation_completed = True
-    video.save(update_fields=['automation_completed'])
+    video.status = Video.StatusChoices.COMPLETED
+    video.save(update_fields=['automation_completed', 'status'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='MP4 final vérifié',
+        artifacts={
+            'export_path': export_path,
+            'export_validation': validation,
+        },
+    )
+    if video.delivery_mode == Video.AutomationModeChoices.AUTOMATION:
+        report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.QUEUED,
+            state=AutomationRun.StateChoices.QUEUED,
+            message='MP4 prêt pour la mise en ligne YouTube',
+            artifacts={
+                'export_path': export_path,
+                'export_validation': validation,
+            },
+        )
 
     return JsonResponse({
         'success': True,
@@ -2130,6 +2199,13 @@ def mark_intro_automation_started(request, video_id):
     video = get_object_or_404(Video, id=video_id)
     video.intro_automation_started = True
     video.save(update_fields=['intro_automation_started'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.INTRO,
+        stage=AutomationRun.StageChoices.TRANSFERMARKT,
+        state=AutomationRun.StateChoices.RUNNING,
+        message='Préparation Transfermarkt démarrée',
+    )
     return JsonResponse({
         'success': True,
         'video_id': video.id,
@@ -2141,10 +2217,356 @@ def mark_intro_automation_started(request, video_id):
 @require_POST
 def mark_intro_automation_completed(request, video_id):
     video = get_object_or_404(Video, id=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        intro_path = str(payload.get('intro_path') or '').strip()
+        validation = payload.get('validation') or {}
+        if not intro_path:
+            raise ValueError('Le MP4 Kling est obligatoire.')
+        if not isinstance(validation, dict) or validation.get('valid') is not True:
+            raise ValueError('Le MP4 Kling doit être validé avant de terminer l’intro.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
     video.intro_automation_completed = True
     video.save(update_fields=['intro_automation_completed'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.INTRO,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='Intro Kling vérifiée',
+        artifacts={
+            'intro_path': intro_path,
+            'intro_validation': validation,
+        },
+    )
     return JsonResponse({
         'success': True,
         'video_id': video.id,
         'intro_automation_completed': video.intro_automation_completed
     })
+
+
+def _automation_request_payload(request):
+    if 'application/json' in request.headers.get('Content-Type', ''):
+        try:
+            value = json.loads(request.body.decode('utf-8') or '{}')
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError('Le corps JSON est invalide.') from exc
+        if not isinstance(value, dict):
+            raise ValueError('Le corps JSON doit être un objet.')
+        return value
+    return request.POST.dict()
+
+
+@login_required
+@require_POST
+def claim_automation_job(request):
+    try:
+        payload = _automation_request_payload(request)
+        pipeline = str(payload.get('pipeline') or '').strip()
+        valid_pipelines = {value for value, _label in AutomationRun.PipelineChoices.choices}
+        if pipeline not in valid_pipelines:
+            raise ValueError('Pipeline invalide.')
+        worker_id = str(
+            payload.get('worker_id') or request.user.get_username() or 'agent-local'
+        ).strip()[:120]
+        video, run = claim_next_job(pipeline=pipeline, worker_id=worker_id)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    if not video:
+        return JsonResponse({'success': True, 'job': None})
+    return JsonResponse({
+        'success': True,
+        'job': {
+            **video_payload(video, request=request),
+            'pipeline': pipeline,
+            'run': serialize_run(run),
+            'claim_token': run.claim_token,
+        },
+    })
+
+
+@login_required
+def automation_progress_detail(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    runs = video.automation_runs.filter(is_active=True).prefetch_related('events')
+    return JsonResponse({
+        'success': True,
+        'video_id': video.pk,
+        'runs': [serialize_run(run, include_events=True) for run in runs],
+    })
+
+
+@login_required
+@require_POST
+def report_automation_progress(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        pipeline = str(payload.get('pipeline') or '').strip()
+        stage = str(payload.get('stage') or '').strip()
+        state = str(
+            payload.get('state') or AutomationRun.StateChoices.RUNNING
+        ).strip()
+        if pipeline not in {value for value, _label in AutomationRun.PipelineChoices.choices}:
+            raise ValueError('Pipeline invalide.')
+        if stage not in {value for value, _label in AutomationRun.StageChoices.choices}:
+            raise ValueError('Étape invalide.')
+        if state not in {value for value, _label in AutomationRun.StateChoices.choices}:
+            raise ValueError('État invalide.')
+
+        artifacts = payload.get('artifacts') or {}
+        details = payload.get('details') or {}
+        if not isinstance(artifacts, dict) or not isinstance(details, dict):
+            raise ValueError('Les artifacts et détails doivent être des objets JSON.')
+
+        run = report_progress(
+            video,
+            pipeline=pipeline,
+            stage=stage,
+            state=state,
+            progress_current=payload.get('progress_current'),
+            progress_total=payload.get('progress_total'),
+            progress_percent=payload.get('progress_percent'),
+            message=payload.get('message', ''),
+            error_code=payload.get('error_code', ''),
+            error_detail=payload.get('error_detail', ''),
+            artifacts=artifacts,
+            details=details,
+            claimed_by=payload.get('worker_id', ''),
+            claim_token=payload.get('claim_token', ''),
+            force_event=bool(payload.get('force_event', False)),
+        )
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    return JsonResponse({'success': True, 'run': serialize_run(run)})
+
+
+@login_required
+@require_POST
+def retry_automation_progress(request, video_id, pipeline):
+    video = get_object_or_404(Video, pk=video_id)
+    if not (
+        request.user.is_superuser
+        or (video.editor and video.editor.user_id == request.user.id)
+    ):
+        return JsonResponse(
+            {'success': False, 'error': 'Vous ne pouvez pas relancer cette tâche.'},
+            status=403,
+        )
+    run = get_object_or_404(
+        AutomationRun,
+        video=video,
+        pipeline=pipeline,
+        is_active=True,
+    )
+    retry_run(run)
+    messages.success(request, 'La reprise a été ajoutée à la file.')
+    return redirect('update_video_status', video_id=video.pk)
+
+
+@login_required
+@require_POST
+def automation_worker_heartbeat(request):
+    try:
+        payload = _automation_request_payload(request)
+        worker_id = str(payload.get('worker_id') or '').strip()[:120]
+        if not worker_id:
+            raise ValueError('Identifiant agent manquant.')
+        state = str(
+            payload.get('state') or AutomationWorker.StateChoices.IDLE
+        ).strip()
+        valid_states = {value for value, _label in AutomationWorker.StateChoices.choices}
+        if state not in valid_states:
+            raise ValueError('État agent invalide.')
+        current_video_id = payload.get('current_video_id') or None
+        current_video = None
+        if current_video_id:
+            current_video = Video.objects.filter(pk=current_video_id).first()
+            if not current_video:
+                raise ValueError('Vidéo courante introuvable.')
+        capabilities = payload.get('capabilities') or {}
+        if not isinstance(capabilities, dict):
+            raise ValueError('Les capacités doivent être un objet JSON.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    worker, _created = AutomationWorker.objects.update_or_create(
+        worker_id=worker_id,
+        defaults={
+            'display_name': str(payload.get('display_name') or worker_id)[:160],
+            'host_name': str(payload.get('host_name') or '')[:160],
+            'version': str(payload.get('version') or '')[:40],
+            'state': state,
+            'current_video': current_video,
+            'current_pipeline': str(payload.get('current_pipeline') or '')[:20],
+            'current_stage': str(payload.get('current_stage') or '')[:40],
+            'capabilities': capabilities,
+            'last_error': str(payload.get('last_error') or ''),
+            'last_seen_at': timezone.now(),
+        },
+    )
+    return JsonResponse({
+        'success': True,
+        'worker': {
+            'worker_id': worker.worker_id,
+            'state': worker.state,
+            'state_label': worker.get_state_display(),
+            'last_seen_at': worker.last_seen_at.isoformat(),
+        },
+    })
+
+
+@login_required
+def automation_worker_status(request):
+    workers = AutomationWorker.objects.select_related('current_video__player')[:10]
+    return JsonResponse({
+        'success': True,
+        'workers': [
+            {
+                'worker_id': worker.worker_id,
+                'display_name': worker.display_name,
+                'state': worker.state if worker.is_online else 'offline',
+                'state_label': worker.get_state_display() if worker.is_online else 'Hors ligne',
+                'is_online': worker.is_online,
+                'current_video_id': worker.current_video_id,
+                'current_player': (
+                    worker.current_video.player.name if worker.current_video else ''
+                ),
+                'current_pipeline': worker.current_pipeline,
+                'current_stage': worker.current_stage,
+                'last_error': worker.last_error,
+                'last_seen_at': worker.last_seen_at.isoformat(),
+            }
+            for worker in workers
+        ],
+    })
+
+
+@login_required
+@require_POST
+def complete_automation_delivery(request, video_id):
+    video = get_object_or_404(Video.objects.select_related('player'), pk=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        youtube_url = str(payload.get('youtube_url') or '').strip()
+        from sportsbase_data.services import extract_youtube_video_id
+
+        youtube_video_id = extract_youtube_video_id(youtube_url)
+        if not youtube_video_id:
+            raise ValueError('Le lien YouTube retourné est invalide.')
+        validation = payload.get('validation') or {}
+        if not isinstance(validation, dict):
+            raise ValueError('La validation YouTube doit être un objet JSON.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+        stage=AutomationRun.StageChoices.YOUTUBE_VALIDATION,
+        state=AutomationRun.StateChoices.RUNNING,
+        progress_percent=75,
+        message='Lien YouTube non répertorié vérifié',
+        artifacts={
+            'youtube_url': youtube_url,
+            'youtube_video_id': youtube_video_id,
+            'youtube_validation': validation,
+        },
+    )
+    video.video_link = youtube_url
+    video.status = Video.StatusChoices.DELIVERED
+    video.delivery_automation_started = True
+    video.save(update_fields=(
+        'video_link',
+        'status',
+        'delivery_automation_started',
+    ))
+
+    notification_context = build_status_notification_context(video)
+    whatsapp_message = notification_context['status_whatsapp_messages'][
+        Video.StatusChoices.DELIVERED
+    ]['auto']
+    whatsapp_message = ensure_delivery_link_in_message(
+        whatsapp_message,
+        video,
+        Video.StatusChoices.DELIVERED,
+    )
+    whatsapp_url = build_whatsapp_url(
+        video.player.whatsapp_number,
+        whatsapp_message[:4000],
+    )
+    whatsapp_result = send_whatsapp_text(
+        video.player.whatsapp_number,
+        whatsapp_message,
+    )
+    whatsapp_artifacts = {
+        'youtube_url': youtube_url,
+        'youtube_video_id': youtube_video_id,
+        'whatsapp_url': whatsapp_url or '',
+        'whatsapp_message': whatsapp_message,
+        'whatsapp_message_id': whatsapp_result.get('message_id', ''),
+        'whatsapp_auto_send_reason': whatsapp_result.get('reason', ''),
+    }
+    if whatsapp_result.get('sent'):
+        video.delivery_automation_completed = True
+        video.save(update_fields=('delivery_automation_completed',))
+        run = report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.COMPLETED,
+            state=AutomationRun.StateChoices.SUCCEEDED,
+            progress_percent=100,
+            message='Lien YouTube livré et WhatsApp envoyé automatiquement',
+            artifacts=whatsapp_artifacts,
+        )
+    else:
+        run = report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.WHATSAPP,
+            state=AutomationRun.StateChoices.WAITING_EXTERNAL,
+            progress_percent=95,
+            message=(
+                'Vidéo livrée : confirmation de l’envoi WhatsApp attendue'
+                if whatsapp_url
+                else 'Vidéo livrée, mais aucun numéro WhatsApp n’est renseigné'
+            ),
+            error_detail=whatsapp_result.get('reason', ''),
+            artifacts=whatsapp_artifacts,
+        )
+    return JsonResponse({
+        'success': True,
+        'video_id': video.pk,
+        'status': video.status,
+        'youtube_url': youtube_url,
+        'whatsapp_url': whatsapp_url,
+        'whatsapp_sent': bool(whatsapp_result.get('sent')),
+        'run': serialize_run(run),
+    })
+
+
+@login_required
+@require_POST
+def confirm_delivery_whatsapp(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    if video.status != Video.StatusChoices.DELIVERED or not video.video_link:
+        messages.error(request, 'La vidéo doit être livrée avant de confirmer WhatsApp.')
+        return redirect('update_video_status', video_id=video.pk)
+    video.delivery_automation_completed = True
+    video.save(update_fields=('delivery_automation_completed',))
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='Lien YouTube livré et notification WhatsApp confirmée',
+        artifacts={'youtube_url': video.video_link},
+    )
+    messages.success(request, 'L’envoi WhatsApp a été confirmé.')
+    return redirect('update_video_status', video_id=video.pk)

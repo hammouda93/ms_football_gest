@@ -10,7 +10,7 @@ load_dotenv()
 
 
 class SportsBaseAutomation:
-    def __init__(self, base_download_dir: Optional[str] = None):
+    def __init__(self, base_download_dir: Optional[str] = None, progress_callback=None):
         self.login_url = os.getenv("SPORTSBASE_LOGIN_URL", "").strip()
         self.email = os.getenv("SPORTSBASE_EMAIL", "").strip()
         self.password = os.getenv("SPORTSBASE_PASSWORD", "").strip()
@@ -19,11 +19,25 @@ class SportsBaseAutomation:
             "SPORTSBASE_DOWNLOAD_DIR",
             "D:/Django_Projects/ms_football_gest/gestion_joueurs/automated_players"
         )
+        self.progress_callback = progress_callback
 
         if not self.login_url:
             raise ValueError("SPORTSBASE_LOGIN_URL manquant dans .env")
         if not self.email or not self.password:
             raise ValueError("SPORTSBASE_EMAIL ou SPORTSBASE_PASSWORD manquant dans .env")
+
+    def notify_progress(self, stage, current=0, total=0, message=""):
+        if not self.progress_callback:
+            return
+        try:
+            self.progress_callback(
+                stage=stage,
+                current=current,
+                total=total,
+                message=message,
+            )
+        except Exception as exc:
+            print(f"[WARN] Mise à jour progression impossible: {exc}")
 
     @staticmethod
     def sanitize_filename(value: str) -> str:
@@ -60,27 +74,50 @@ class SportsBaseAutomation:
             page = context.new_page()
 
             try:
+                self.notify_progress(
+                    "sportsbase_discovery",
+                    message="Connexion au profil SportsBase",
+                )
                 self.ensure_logged_in_and_open_player(page, player_url)
 
                 sportsbase_player_name = self.get_sportsbase_player_name(page)
                 result["sportsbase_player_name"] = sportsbase_player_name or player_name
+
+                existing_video_keys = self.snapshot_existing_video_keys(
+                    page,
+                    sportsbase_player_name or player_name,
+                )
+                result["excluded_existing_video_count"] = sum(existing_video_keys.values())
 
                 self.open_player_statistics(page)
 
                 matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) 
                 result["matches_played"] = matches_played
                 print(f"[DEBUG] Matches played lus: {matches_played}")
+                self.notify_progress(
+                    "sportsbase_generation",
+                    current=0,
+                    total=matches_played,
+                    message=f"{matches_played} matchs trouvés",
+                )
 
                 generation_requests_sent, generated_match_titles = self.generate_all_players_actions(page, matches_played)
                 result["generation_requests_sent"] = generation_requests_sent
                 result["generated_match_titles"] = generated_match_titles
+                self.notify_progress(
+                    "sportsbase_download",
+                    current=0,
+                    total=generation_requests_sent,
+                    message=f"{generation_requests_sent} générations confirmées",
+                )
 
                 downloaded = self.download_ready_videos(
                     page,
                     sportsbase_player_name or player_name,
                     raw_clips_dir,
                     generated_match_titles=generated_match_titles,
-                    max_downloads=generation_requests_sent
+                    max_downloads=generation_requests_sent,
+                    excluded_row_keys=existing_video_keys,
                 )
                 result["downloaded_files"] = downloaded
 
@@ -392,9 +429,11 @@ class SportsBaseAutomation:
         direct_download_cancelled = False
 
         def abort_video_download(route):
+            nonlocal direct_download_cancelled
             url = route.request.url.lower()
             if ".mp4" in url or "videocuts" in url:
                 print(f"[DEBUG] Téléchargement bloqué: {route.request.url}")
+                direct_download_cancelled = True
                 route.abort()
             else:
                 route.continue_()
@@ -421,29 +460,29 @@ class SportsBaseAutomation:
             except Exception:
                 pass
 
-            # Bloquer tout mp4/videocuts pendant le clic
-            popup.context.route("**/*", abort_video_download)
+            # Limiter le blocage à cette popup ; les autres pages restent intactes.
+            popup.route("**/*", abort_video_download)
 
             try:
                 one_file_option.click(timeout=5000, no_wait_after=True)
                 print("[DEBUG] Clic One file effectué")
-            finally:
-                popup.wait_for_timeout(1200)
                 try:
-                    popup.context.unroute("**/*", abort_video_download)
+                    popup.get_by_text(
+                        "Video file generation has started",
+                        exact=False,
+                    ).wait_for(timeout=7000)
+                    print(
+                        f"[DEBUG] Message génération vidéo détecté "
+                        f"avec qualité {selected_quality}"
+                    )
+                    generation_confirmed = True
+                except Exception:
+                    print("[INFO] Notification de génération non détectée")
+            finally:
+                try:
+                    popup.unroute("**/*", abort_video_download)
                 except Exception:
                     pass
-
-            # Si pas de téléchargement direct, attendre la notification
-            try:
-                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=5000)
-                print(f"[DEBUG] Message génération vidéo détecté avec qualité {selected_quality}")
-                generation_confirmed = True
-            except Exception:
-                print("[INFO] Notification non détectée après clic")
-
-            # Si le mp4 a été bloqué, on considère ça comme un téléchargement annulé
-            direct_download_cancelled = True
 
         except Exception as e:
             print(f"[WARN] Erreur durant generate_download_in_popup: {e}")
@@ -478,8 +517,20 @@ class SportsBaseAutomation:
                 except Exception as e:
                     print(f"[WARN] popup.close error: {e}")
 
-                processed += 1
-                generated_match_titles.append(match_title)
+                if generation_confirmed:
+                    processed += 1
+                    generated_match_titles.append(match_title)
+                    self.notify_progress(
+                        "sportsbase_generation",
+                        current=processed,
+                        total=max_matches,
+                        message=f"Génération confirmée pour le match {processed}/{max_matches}",
+                    )
+                else:
+                    print(
+                        f"[WARN] Match #{i + 1} non compté : SportsBase "
+                        "n’a pas confirmé la génération"
+                    )
 
                 print(
                     f"[DEBUG] Match #{i + 1} traité | "
@@ -540,18 +591,52 @@ class SportsBaseAutomation:
         print("[DEBUG] Table My videos détectée")
         return page
 
+    def snapshot_existing_video_keys(self, player_page, player_name: str):
+        """Remember old rows so a new job cannot download a previous player's clip."""
+        snapshot_page = player_page.context.new_page()
+        normalized_target = f"{player_name}, All player actions".lower().strip()
+        existing = {}
+        try:
+            self.open_my_videos(snapshot_page)
+            body_group = snapshot_page.locator('div[role="rowgroup"]').nth(1)
+            rows = body_group.locator('div[role="row"]')
+            for index in range(rows.count()):
+                row = rows.nth(index)
+                title_locator = row.locator("span.Name-sc-jbc8ns-2").first
+                if title_locator.count() == 0:
+                    continue
+                title_text = title_locator.inner_text().strip()
+                if normalized_target not in title_text.casefold():
+                    continue
+                date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
+                duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
+                fingerprint = f"{title_text}|{date_text}|{duration_text}"
+                existing[fingerprint] = existing.get(fingerprint, 0) + 1
+        except Exception as exc:
+            print(f"[WARN] Snapshot My Videos incomplet: {exc}")
+        finally:
+            snapshot_page.close()
+        print(f"[DEBUG] Anciennes vidéos exclues: {sum(existing.values())}")
+        return existing
+
     def download_ready_videos(
         self,
         page,
         player_name: str,
         raw_clips_dir: Path,
         generated_match_titles: list,
-        max_downloads: int
+        max_downloads: int,
+        excluded_row_keys=None,
     ):
         my_videos_page = self.open_my_videos(page)
         downloaded_files = []
         normalized_target = f"{player_name}, All player actions".lower().strip()
 
+        excluded_counts = (
+            dict(excluded_row_keys)
+            if isinstance(excluded_row_keys, dict)
+            else {key: 1 for key in (excluded_row_keys or ())}
+        )
         seen_rows = set()
         global_rounds = 0
         max_global_rounds = 20
@@ -585,6 +670,7 @@ class SportsBaseAutomation:
         def get_candidate_indexes(rows):
             row_count = rows.count()
             indexes = []
+            occurrences = {}
 
             for i in range(row_count):
                 try:
@@ -595,11 +681,47 @@ class SportsBaseAutomation:
 
                     title_text = title_locator.inner_text().strip().lower()
                     if normalized_target in title_text:
-                        indexes.append(i)
+                        original_title = title_locator.inner_text().strip()
+                        date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
+                        duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
+                        fingerprint = f"{original_title}|{date_text}|{duration_text}"
+                        occurrence = occurrences.get(fingerprint, 0) + 1
+                        occurrences[fingerprint] = occurrence
+                        unique_key = f"{fingerprint}|occurrence={occurrence}"
+                        if (
+                            occurrence > excluded_counts.get(fingerprint, 0)
+                            and unique_key not in seen_rows
+                        ):
+                            indexes.append(i)
                 except Exception:
                     continue
 
             return indexes
+
+        def get_row_identity(rows, row_index):
+            """Identify duplicate-looking rows without collapsing a newly generated one."""
+            fingerprints = {}
+            selected = None
+            for scan_index in range(row_index + 1):
+                scan_row = rows.nth(scan_index)
+                title_locator = scan_row.locator("span.Name-sc-jbc8ns-2").first
+                if title_locator.count() == 0:
+                    continue
+                title_text = title_locator.inner_text().strip()
+                date_locator = scan_row.locator("div.DateCellContainer-sc-88jqaj-0").first
+                duration_locator = scan_row.locator("div.DurationCellContainer-sc-kz1ea2-0").first
+                date_text = date_locator.inner_text().strip() if date_locator.count() else ""
+                duration_text = duration_locator.inner_text().strip() if duration_locator.count() else ""
+                fingerprint = f"{title_text}|{date_text}|{duration_text}"
+                occurrence = fingerprints.get(fingerprint, 0) + 1
+                fingerprints[fingerprint] = occurrence
+                if scan_index == row_index:
+                    selected = (
+                        f"{fingerprint}|occurrence={occurrence}",
+                        date_text,
+                        duration_text,
+                    )
+            return selected
 
         def expand_if_needed():
             safety = 0
@@ -675,11 +797,10 @@ class SportsBaseAutomation:
                     rows = load_rows()
                     row = rows.nth(row_index)
 
-                    title_text = row.locator("span.Name-sc-jbc8ns-2").first.inner_text().strip()
-                    date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
-                    duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
-
-                    unique_key = f"{title_text}|{date_text}|{duration_text}"
+                    identity = get_row_identity(rows, row_index)
+                    if not identity:
+                        continue
+                    unique_key, date_text, duration_text = identity
                     if unique_key in seen_rows:
                         continue
 
@@ -716,11 +837,10 @@ class SportsBaseAutomation:
                         print(f"[DEBUG] Row {row_index} pas prête après attente: {status_text}")
                         continue
 
-                    title_text = row.locator("span.Name-sc-jbc8ns-2").first.inner_text().strip()
-                    date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
-                    duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
-
-                    unique_key = f"{title_text}|{date_text}|{duration_text}"
+                    identity = get_row_identity(rows, row_index)
+                    if not identity:
+                        continue
+                    unique_key, date_text, duration_text = identity
                     if unique_key in seen_rows:
                         continue
 
@@ -769,6 +889,12 @@ class SportsBaseAutomation:
                     downloaded_files.append(str(save_path))
                     seen_rows.add(unique_key)
                     downloaded_this_round += 1
+                    self.notify_progress(
+                        "sportsbase_download",
+                        current=len(downloaded_files),
+                        total=max_downloads,
+                        message=f"{len(downloaded_files)}/{max_downloads} matchs téléchargés",
+                    )
 
                     print(f"[DEBUG] Fichier téléchargé: {save_path}")
                     my_videos_page.wait_for_timeout(800)

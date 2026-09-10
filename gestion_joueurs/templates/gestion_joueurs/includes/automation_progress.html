@@ -1,0 +1,89 @@
+{% if automation_progress_runs %}
+<div class="automation-progress-list{% if compact %} automation-progress-compact{% endif %}">
+    {% for run in automation_progress_runs %}
+        <section class="automation-progress-card automation-state-{{ run.state }}">
+            <div class="automation-progress-head">
+                <div>
+                    <strong>{{ run.get_pipeline_display }}</strong>
+                    <span class="automation-stage">{{ run.get_current_stage_display }}</span>
+                </div>
+                <span class="badge {% if run.state == 'failed' %}badge-danger{% elif run.state == 'succeeded' %}badge-success{% elif run.state == 'waiting_external' %}badge-warning{% elif run.state == 'running' %}badge-info{% else %}badge-secondary{% endif %}">
+                    {{ run.get_state_display }}
+                </span>
+            </div>
+            <div class="progress automation-progress-bar" aria-label="Progression {{ run.progress_percent }} %">
+                <div
+                    class="progress-bar {% if run.state == 'failed' %}bg-danger{% elif run.state == 'succeeded' %}bg-success{% elif run.state == 'waiting_external' %}bg-warning{% else %}bg-info{% endif %}"
+                    role="progressbar"
+                    style="width: {{ run.progress_percent }}%;"
+                    aria-valuenow="{{ run.progress_percent }}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                >{{ run.progress_percent }}%</div>
+            </div>
+            {% if run.progress_total %}
+                <small class="automation-count">{{ run.progress_current }}/{{ run.progress_total }}</small>
+            {% endif %}
+            {% if run.message %}<p class="automation-message">{{ run.message }}</p>{% endif %}
+            {% if run.error_detail %}
+                <p class="automation-error">{{ run.error_detail|truncatechars:240 }}</p>
+            {% endif %}
+            <small class="automation-updated">
+                Dernière activité : {{ run.updated_at|timesince }}
+                {% if run.attempt_count %} · tentative {{ run.attempt_count }}{% endif %}
+            </small>
+
+            {% if not compact %}
+                <div class="automation-actions">
+                    {% if run.state == 'failed' %}
+                        <form method="post" action="{% url 'retry_automation_progress' video.id run.pipeline %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                Reprendre à cette étape
+                            </button>
+                        </form>
+                    {% endif %}
+                    {% if run.artifacts.youtube_url %}
+                        <a class="btn btn-sm btn-outline-danger" href="{{ run.artifacts.youtube_url }}" target="_blank" rel="noopener">
+                            Voir sur YouTube
+                        </a>
+                    {% endif %}
+                    {% if run.artifacts.whatsapp_url %}
+                        <a class="btn btn-sm btn-outline-success" href="{{ run.artifacts.whatsapp_url }}" target="_blank" rel="noopener">
+                            Ouvrir WhatsApp
+                        </a>
+                        <form method="post" action="{% url 'confirm_delivery_whatsapp' video.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-success">
+                                Confirmer l’envoi WhatsApp
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+                {% if run.artifacts.export_path %}
+                    <p class="automation-artifact"><strong>MP4 :</strong> {{ run.artifacts.export_path }}</p>
+                {% endif %}
+                <details class="automation-timeline">
+                    <summary>Afficher l’historique</summary>
+                    <ol>
+                        {% for event in run.events.all %}
+                            <li>
+                                <time>{{ event.created_at|date:"d/m/Y H:i:s" }}</time>
+                                <strong>{{ event.get_stage_display }}</strong>
+                                — {{ event.get_state_display }}
+                                {% if event.message %}<span>{{ event.message }}</span>{% endif %}
+                            </li>
+                        {% empty %}
+                            <li>Aucun événement enregistré.</li>
+                        {% endfor %}
+                    </ol>
+                </details>
+            {% endif %}
+        </section>
+    {% endfor %}
+</div>
+{% elif not compact %}
+<div class="alert alert-light border">
+    Le suivi détaillé apparaîtra dès la prochaine prise en charge par l’automatisation.
+</div>
+{% endif %}

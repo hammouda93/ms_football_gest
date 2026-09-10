@@ -19,6 +19,31 @@
             {% endif %}
         </div>
     </header>
+    <div
+        id="automation-worker-status"
+        class="automation-worker-status {% if automation_worker and automation_worker.is_online %}is-online{% else %}is-offline{% endif %}"
+        data-status-url="{% url 'automation_worker_status' %}"
+    >
+        <span class="automation-worker-dot" aria-hidden="true"></span>
+        <div>
+            <strong id="automation-worker-label">
+                {% if automation_worker and automation_worker.is_online %}
+                    Agent {{ automation_worker.get_state_display|lower }}
+                {% else %}
+                    Agent hors ligne
+                {% endif %}
+            </strong>
+            <small id="automation-worker-detail">
+                {% if automation_worker and automation_worker.is_online and automation_worker.current_video %}
+                    {{ automation_worker.current_video.player.name }} · {{ automation_worker.current_stage }}
+                {% elif automation_worker %}
+                    Dernier contact {{ automation_worker.last_seen_at|timesince }}
+                {% else %}
+                    L’agent Windows n’a pas encore envoyé de signal.
+                {% endif %}
+            </small>
+        </div>
+    </div>
     <div class="card">
         <div class="card-body">
             <form method="GET" class="mb-3" id="filter-form">
@@ -109,6 +134,7 @@
                                     <th scope="col">Joueur</th>
                                     <th scope="col">Éditeur</th>
                                     <th scope="col">Statut</th>
+                                    <th scope="col">Automatisation</th>
                                     <th scope="col">Deadline</th>
                                     <th scope="col">Ligue</th>
                                     <th scope="col">Relation client</th>
@@ -125,6 +151,9 @@
                                                 {% if video.status == 'completed' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">
                                                 {{ video.get_status_display }}
                                             </span>
+                                        </td>
+                                        <td data-label="Automatisation">
+                                            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=video.automation_progress_runs compact=True %}
                                         </td>
                                         <td data-label="Deadline" class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
                                             {{ video.deadline|date:"d/m/Y" }}
@@ -292,6 +321,9 @@
         const statusSelect = document.getElementById('status-select');
         const leagueSelect = document.getElementById('league-select');
         const editorSelect = document.getElementById('editor-select');
+        const workerBox = document.getElementById('automation-worker-status');
+        const workerLabel = document.getElementById('automation-worker-label');
+        const workerDetail = document.getElementById('automation-worker-detail');
 
         const submitForm = () => {
             filterForm.submit();
@@ -310,6 +342,31 @@
                 window.location.href = url;
             }, 600); // 600ms delay
         });
+
+        async function refreshWorkerStatus() {
+            if (!workerBox) return;
+            try {
+                const response = await fetch(workerBox.dataset.statusUrl, {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                });
+                if (!response.ok) return;
+                const payload = await response.json();
+                const worker = payload.workers && payload.workers[0];
+                const online = Boolean(worker && worker.is_online);
+                workerBox.classList.toggle('is-online', online);
+                workerBox.classList.toggle('is-offline', !online);
+                workerLabel.textContent = online
+                    ? `Agent ${worker.state_label.toLowerCase()}`
+                    : 'Agent hors ligne';
+                workerDetail.textContent = online && worker.current_player
+                    ? `${worker.current_player} · ${worker.current_stage || worker.current_pipeline}`
+                    : (worker ? 'Aucun traitement en cours' : 'L’agent Windows n’a pas encore envoyé de signal.');
+            } catch (_error) {
+                // Le prochain rafraîchissement retentera sans gêner la page.
+            }
+        }
+        window.setInterval(refreshWorkerStatus, 15000);
+        refreshWorkerStatus();
     });
 </script>
 {% endblock %}

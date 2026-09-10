@@ -1,9 +1,9 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.core.validators import MinValueValidator, RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
-from datetime import date
+from datetime import date, timedelta
 """ from .utils import send_whatsapp_message
 from django.dispatch import receiver """
 from django.db.models.signals import post_save
@@ -184,6 +184,183 @@ class Video(models.Model):
     
     def __str__(self):
         return f"Video de {self.player.name} par {self.editor.user.username} ({self.season})"
+
+
+class AutomationRun(models.Model):
+    """Durable, user-visible progress for one automation pipeline."""
+
+    class PipelineChoices(models.TextChoices):
+        HIGHLIGHTS = 'highlights', 'Highlights'
+        INTRO = 'intro', 'Présentation'
+        DELIVERY = 'delivery', 'Livraison'
+
+    class StateChoices(models.TextChoices):
+        QUEUED = 'queued', 'En attente'
+        RUNNING = 'running', 'En cours'
+        WAITING_EXTERNAL = 'waiting_external', 'Action externe attendue'
+        FAILED = 'failed', 'Échec'
+        SUCCEEDED = 'succeeded', 'Terminé'
+        CANCELLED = 'cancelled', 'Annulé'
+
+    class StageChoices(models.TextChoices):
+        QUEUED = 'queued', 'Dans la file'
+        TRANSFERMARKT = 'transfermarkt', 'Données Transfermarkt'
+        CHATGPT_IMAGE = 'chatgpt_image', 'Image ChatGPT'
+        KLING_VIDEO = 'kling_video', 'Animation Kling'
+        SPORTSBASE_DISCOVERY = 'sportsbase_discovery', 'Recherche des matchs SportsBase'
+        SPORTSBASE_GENERATION = 'sportsbase_generation', 'Génération All Actions'
+        SPORTSBASE_DOWNLOAD = 'sportsbase_download', 'Téléchargement des matchs'
+        PREMIERE_PROJECT = 'premiere_project', 'Préparation Premiere Pro'
+        HUMAN_REVIEW = 'human_review', 'Sélection des actions'
+        PREMIERE_FINAL = 'premiere_final', 'Montage final Premiere Pro'
+        EXPORT = 'export', 'Export vidéo'
+        EXPORT_VALIDATION = 'export_validation', 'Vérification du MP4'
+        YOUTUBE_UPLOAD = 'youtube_upload', 'Mise en ligne YouTube'
+        YOUTUBE_VALIDATION = 'youtube_validation', 'Vérification du lien YouTube'
+        DELIVERY_UPDATE = 'delivery_update', 'Mise à jour de la livraison'
+        WHATSAPP = 'whatsapp', 'Notification WhatsApp'
+        COMPLETED = 'completed', 'Terminé'
+
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name='automation_runs',
+    )
+    pipeline = models.CharField(max_length=20, choices=PipelineChoices.choices)
+    state = models.CharField(
+        max_length=24,
+        choices=StateChoices.choices,
+        default=StateChoices.QUEUED,
+    )
+    current_stage = models.CharField(
+        max_length=40,
+        choices=StageChoices.choices,
+        default=StageChoices.QUEUED,
+    )
+    progress_current = models.PositiveIntegerField(default=0)
+    progress_total = models.PositiveIntegerField(default=0)
+    progress_percent = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    message = models.CharField(max_length=500, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_detail = models.TextField(blank=True)
+    artifacts = models.JSONField(default=dict, blank=True)
+    claimed_by = models.CharField(max_length=120, blank=True)
+    claim_token = models.CharField(max_length=64, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    claimed_at = models.DateTimeField(blank=True, null=True)
+    last_heartbeat_at = models.DateTimeField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-updated_at', '-pk')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('video', 'pipeline'),
+                condition=models.Q(is_active=True),
+                name='unique_active_automation_pipeline',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('video', 'pipeline', 'is_active'),
+                name='gj_autorun_video_pipe_idx',
+            ),
+            models.Index(
+                fields=('state', 'updated_at'),
+                name='gj_autorun_state_time_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.video_id} · {self.get_pipeline_display()} · {self.get_current_stage_display()}"
+
+
+class AutomationEvent(models.Model):
+    """Append-only timeline displayed in the management application."""
+
+    run = models.ForeignKey(
+        AutomationRun,
+        on_delete=models.CASCADE,
+        related_name='events',
+    )
+    stage = models.CharField(
+        max_length=40,
+        choices=AutomationRun.StageChoices.choices,
+    )
+    state = models.CharField(
+        max_length=24,
+        choices=AutomationRun.StateChoices.choices,
+    )
+    progress_percent = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    message = models.CharField(max_length=500, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        indexes = [
+            models.Index(
+                fields=('run', 'created_at'),
+                name='gj_autoevent_run_time_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.run_id} · {self.get_stage_display()} · {self.get_state_display()}"
+
+
+class AutomationWorker(models.Model):
+    """Heartbeat of an automatically started desktop worker."""
+
+    class StateChoices(models.TextChoices):
+        IDLE = 'idle', 'Connecté'
+        BUSY = 'busy', 'Occupé'
+        ERROR = 'error', 'Erreur'
+        STOPPING = 'stopping', 'Arrêt en cours'
+
+    worker_id = models.CharField(max_length=120, unique=True)
+    display_name = models.CharField(max_length=160, blank=True)
+    host_name = models.CharField(max_length=160, blank=True)
+    version = models.CharField(max_length=40, blank=True)
+    state = models.CharField(
+        max_length=20,
+        choices=StateChoices.choices,
+        default=StateChoices.IDLE,
+    )
+    current_video = models.ForeignKey(
+        Video,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='automation_workers',
+    )
+    current_pipeline = models.CharField(max_length=20, blank=True)
+    current_stage = models.CharField(max_length=40, blank=True)
+    capabilities = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-last_seen_at', 'worker_id')
+
+    @property
+    def is_online(self):
+        return self.last_seen_at >= timezone.now() - timedelta(seconds=90)
+
+    def __str__(self):
+        return self.display_name or self.worker_id
     
 
 class VideoStatusHistory(models.Model):

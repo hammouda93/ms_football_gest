@@ -45,6 +45,13 @@
         });
       }
 
+      function exportFinalVideo() {
+        setStatus("Envoi de COMPLETED_MAIN vers Adobe Media Encoder...");
+        cs.evalScript('$._MSBridge.exportCompletedMain()', function (result) {
+          setStatus("Résultat: " + result);
+        });
+      }
+
       function applyCategory(code, label) {
         var script = '$._MSBridge.applyCategoryToLastTwoMarkers("' +
           escapeForEval(code) + '","' + escapeForEval(label) + '")';
@@ -68,6 +75,7 @@
       document.getElementById("build-final").addEventListener("click", buildAssemblyMain);
       document.getElementById("build-styled").addEventListener("click", buildStyledMain);
       document.getElementById("build-completed").addEventListener("click", buildCompletedMain);
+      document.getElementById("export-final").addEventListener("click", exportFinalVideo);
 
       document.getElementById("mark-slowmo").addEventListener("click", function () {
         applyStyle("SLOWMO");

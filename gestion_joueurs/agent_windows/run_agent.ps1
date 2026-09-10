@@ -1,0 +1,28 @@
+$ErrorActionPreference = 'Stop'
+
+$AgentDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path $AgentDirectory '..\..')).Path
+$ConfiguredPython = [Environment]::GetEnvironmentVariable('MS_FOOTBALL_PYTHON', 'User')
+$PathPython = Get-Command python.exe -ErrorAction SilentlyContinue
+$PythonCandidates = @(
+    $ConfiguredPython,
+    (Join-Path $RepositoryRoot '.venv\Scripts\python.exe'),
+    (Join-Path $RepositoryRoot 'venv\Scripts\python.exe'),
+    $(if ($PathPython) { $PathPython.Source } else { $null })
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+
+if (-not $PythonCandidates) {
+    throw 'Python introuvable. Définissez MS_FOOTBALL_PYTHON ou créez .venv dans le projet.'
+}
+
+$PythonExecutable = $PythonCandidates[0]
+$LogDirectory = Join-Path $RepositoryRoot 'gestion_joueurs\agent_logs'
+New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+$LogFile = Join-Path $LogDirectory 'automation_agent.log'
+$ErrorLogFile = Join-Path $LogDirectory 'automation_agent_error.log'
+
+Set-Location -LiteralPath $RepositoryRoot
+& $PythonExecutable `
+    (Join-Path $RepositoryRoot 'gestion_joueurs\automation_agent.py') `
+    1>> $LogFile `
+    2>> $ErrorLogFile

@@ -1554,3 +1554,36 @@ textarea.form-control { min-height: 100px; resize: vertical; }
     .portal-access-summary { flex-direction: column; }
     .credential-inline-grid { grid-template-columns: 1fr; }
 }
+
+/* Suivi lisible de l'automatisation vidéo */
+.automation-progress-list { display: grid; gap: 12px; margin: 10px 0 22px; }
+.automation-progress-card { padding: 14px; background: #f8fafc; border: 1px solid var(--ms-slate-200); border-left: 4px solid var(--ms-blue-600); border-radius: 12px; }
+.automation-progress-card.automation-state-failed { border-left-color: #dc3545; }
+.automation-progress-card.automation-state-succeeded { border-left-color: #198754; }
+.automation-progress-card.automation-state-waiting_external { border-left-color: #f0ad00; }
+.automation-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.automation-progress-head > div { display: flex; min-width: 0; flex-direction: column; }
+.automation-stage { color: var(--ms-slate-600); font-size: 11px; }
+.automation-progress-bar { height: 18px; margin-top: 10px; background: #e5eaf1; }
+.automation-progress-bar .progress-bar { min-width: 2rem; font-size: 10px; font-weight: 750; }
+.automation-message, .automation-error, .automation-artifact { margin: 8px 0 0; font-size: 11px; overflow-wrap: anywhere; }
+.automation-error { color: #b42318; }
+.automation-updated, .automation-count { display: block; margin-top: 7px; color: var(--ms-slate-500); font-size: 9px; }
+.automation-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.automation-timeline { margin-top: 12px; color: var(--ms-slate-700); font-size: 10px; }
+.automation-timeline summary { cursor: pointer; font-weight: 750; }
+.automation-timeline ol { margin: 8px 0 0; padding-left: 20px; }
+.automation-timeline li { margin-bottom: 6px; }
+.automation-timeline time { color: var(--ms-slate-500); }
+.automation-progress-compact { min-width: 180px; margin: 0; }
+.automation-progress-compact .automation-progress-card { padding: 8px; }
+.automation-progress-compact .automation-message, .automation-progress-compact .automation-updated { display: none; }
+.automation-progress-compact .automation-progress-head { align-items: flex-start; }
+.automation-progress-compact .automation-progress-head .badge { font-size: 8px; }
+.automation-progress-compact .automation-progress-bar { height: 14px; margin-top: 6px; }
+.automation-worker-status { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; padding: 11px 14px; background: #fff; border: 1px solid var(--ms-slate-200); border-radius: 12px; box-shadow: var(--ms-shadow-sm); }
+.automation-worker-status > div { display: flex; min-width: 0; flex-direction: column; }
+.automation-worker-status strong { color: var(--ms-slate-900); font-size: 12px; }
+.automation-worker-status small { color: var(--ms-slate-500); font-size: 9px; }
+.automation-worker-dot { width: 11px; height: 11px; flex: 0 0 11px; background: #98a2b3; border-radius: 50%; box-shadow: 0 0 0 4px rgba(152, 162, 179, .14); }
+.automation-worker-status.is-online .automation-worker-dot { background: #12b76a; box-shadow: 0 0 0 4px rgba(18, 183, 106, .14); }

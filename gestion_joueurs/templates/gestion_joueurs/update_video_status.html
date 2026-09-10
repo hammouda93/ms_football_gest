@@ -18,6 +18,9 @@
                 </div>
             {% endif %}
 
+            <h4 class="mt-3">Avancement de l’automatisation</h4>
+            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=automation_progress_runs %}
+
             <form
                 method="POST"
                 enctype="multipart/form-data"
@@ -99,7 +102,7 @@
                     </div>
                     <small class="form-text text-muted">
                         Si activé, l’agent préparera automatiquement le dossier local
-                        <strong>Uploads_Gemini</strong> pour l’intro du joueur.
+                        <strong>Uploads_ChatGPT_Kling</strong> pour l’intro du joueur.
                     </small>
 
                     {% if video.intro_automation_completed %}
@@ -113,11 +116,14 @@
                     {% endif %}
                 </div>
                 <div class="form-group" id="delivery-mode-container" style="display: none;">
-                    <label for="delivery_mode">Mode de livraison</label>
-                    <select name="delivery_mode" class="form-control" id="delivery_mode">
+                    <label for="delivery_mode">Livraison après export</label>
+                    <select name="delivery_mode" class="form-control" id="delivery_mode" onchange="toggleStatusFields()">
                         <option value="normal" {% if video.delivery_mode == 'normal' %}selected{% endif %}>Normal</option>
                         <option value="automation" {% if video.delivery_mode == 'automation' %}selected{% endif %}>Automation</option>
                     </select>
+                    <small class="form-text text-muted">
+                        En mode Automation, le MP4 vérifié est envoyé sur YouTube en non répertorié, puis le lien et WhatsApp sont préparés.
+                    </small>
                 </div>
 
                 <div class="form-group" id="video-link-container" style="display: none;">
@@ -132,7 +138,12 @@
                     >
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-block">Mettre à jour</button>
+                <div id="automation-launch-hint" class="alert alert-info" style="display: none;">
+                    En enregistrant, la tâche sera envoyée directement à l’agent vidéo Windows.
+                    Aucun terminal ni VS Code n’est nécessaire.
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="status-submit-button">Mettre à jour</button>
                 <a href="{% url 'video_status' video.id %}" class="btn btn-secondary btn-block mt-3">Retour au statut de la vidéo</a>
                 <button type="button" class="btn btn-danger btn-block mt-3" onclick="confirmProblematic()">Marquer comme problématique</button>
 
@@ -352,17 +363,25 @@
         const introAutomationContainer = document.getElementById('intro-automation-container');
         const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
         const deliveryModeContainer = document.getElementById('delivery-mode-container');
+        const deliveryModeSelect = document.getElementById('delivery_mode');
         const videoLinkContainer = document.getElementById('video-link-container');
+        const automationLaunchHint = document.getElementById('automation-launch-hint');
+        const submitButton = document.getElementById('status-submit-button');
 
         const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
 
         const status = statusSelect ? statusSelect.value : '';
         const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
         const introAutomationEnabled = introAutomationCheckbox ? introAutomationCheckbox.checked : false;
+        const deliveryMode = deliveryModeSelect ? deliveryModeSelect.value : 'normal';
 
         const isInProgress = status === 'in_progress';
         const isAutomation = processingMode === 'automation';
         const isDelivered = status === 'delivered';
+        const willLaunchAutomation = (
+            (isInProgress && (isAutomation || introAutomationEnabled))
+            || (status === 'completed' && deliveryMode === 'automation')
+        );
 
         processingModeContainer.style.display = isInProgress ? 'block' : 'none';
 
@@ -375,8 +394,12 @@
         // Transfermarkt seulement si la case est cochée
         transfermarktUrlContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
 
-        deliveryModeContainer.style.display = isDelivered ? 'block' : 'none';
+        deliveryModeContainer.style.display = (isInProgress || status === 'completed' || isDelivered) ? 'block' : 'none';
         videoLinkContainer.style.display = isDelivered ? 'block' : 'none';
+        automationLaunchHint.style.display = willLaunchAutomation ? 'block' : 'none';
+        submitButton.textContent = willLaunchAutomation
+            ? 'Enregistrer et lancer l’automatisation'
+            : 'Mettre à jour';
     }
 
     function confirmProblematic() {

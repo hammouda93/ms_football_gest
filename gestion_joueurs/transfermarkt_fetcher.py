@@ -52,6 +52,9 @@ def build_transfermarkt_assets_from_url_file(intro_folder: str):
         "badge_paths": assets["badge_paths"],
         "badges_card_path": assets["badges_card_path"],
         "prompt_path": assets["prompt_path"],
+        "chatgpt_image_prompt_path": assets["chatgpt_image_prompt_path"],
+        "kling_prompt_path": assets["kling_prompt_path"],
+        "visual_identity_brief_path": assets["visual_identity_brief_path"],
 
         # Deuxième présentation : position + valeur marchande
         "position_market_value_prompt_path": assets["position_market_value_prompt_path"],
