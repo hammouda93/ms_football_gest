@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import time
@@ -769,6 +770,142 @@ class SportsBaseAutomation:
         print("[DEBUG] Table My videos détectée")
         return page
 
+    @staticmethod
+    def _download_watch_directories(downloads_dir):
+        """Use the same Chrome download folders as the subscription scraper."""
+        directories = [Path(downloads_dir)]
+        configured = os.getenv("SPORTSBASE_BROWSER_DOWNLOAD_DIR", "").strip()
+        if configured:
+            directories.append(Path(configured))
+        else:
+            directories.append(Path.home() / "Downloads")
+        unique = []
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            if directory not in unique:
+                unique.append(directory)
+        return unique
+
+    @staticmethod
+    def _snapshot_download_files(directories):
+        snapshot = {}
+        for directory in directories:
+            try:
+                for path in directory.iterdir():
+                    if path.is_file():
+                        stat = path.stat()
+                        snapshot[str(path.resolve())] = (
+                            stat.st_size,
+                            stat.st_mtime_ns,
+                        )
+            except OSError:
+                continue
+        return snapshot
+
+    def _wait_for_new_download(self, directories, before, timeout_seconds):
+        deadline = time.monotonic() + timeout_seconds
+        stable_sizes = {}
+        temporary_suffixes = {".crdownload", ".part", ".tmp", ".download"}
+        while time.monotonic() < deadline:
+            candidates = []
+            for directory in directories:
+                try:
+                    paths = list(directory.iterdir())
+                except OSError:
+                    continue
+                for path in paths:
+                    if not path.is_file() or path.suffix.lower() in temporary_suffixes:
+                        continue
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        continue
+                    original = before.get(str(path.resolve()))
+                    if original is None or original != (stat.st_size, stat.st_mtime_ns):
+                        candidates.append((stat.st_mtime_ns, stat.st_size, path))
+
+            for _modified, size, path in sorted(candidates, reverse=True):
+                if size <= 0:
+                    continue
+                key = str(path.resolve())
+                if stable_sizes.get(key) == size:
+                    return path
+                stable_sizes[key] = size
+            time.sleep(1)
+        return None
+
+    def _configure_native_downloads(self, page, downloads_dir):
+        """Send Chrome downloads to the requested folder for a CDP profile."""
+        try:
+            browser = getattr(self, "_cdp_browser", None)
+            if browser is not None:
+                session = browser.new_browser_cdp_session()
+            else:
+                session = page.context.new_cdp_session(page)
+            session.send(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(downloads_dir).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+            return True
+        except Exception as exc:
+            print(
+                "[INFO] Dossier Chrome contrôlé par le profil persistant: "
+                f"{exc}"
+            )
+            return False
+
+    def _download_actions_with_chrome(self, page, download_icon, downloads_dir):
+        """Click once and detect the completed MP4 on disk.
+
+        This mirrors the proven All Actions subscription scraper. A browser
+        connected over CDP can complete the download without emitting
+        Playwright's ``download`` event.
+        """
+        downloads_dir = Path(downloads_dir)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        watch_dirs = self._download_watch_directories(downloads_dir)
+        self._configure_native_downloads(page, downloads_dir)
+        before = self._snapshot_download_files(watch_dirs)
+
+        download_icon.click(timeout=5_000, no_wait_after=True)
+        print("[INFO] Téléchargement Chrome lancé; attente du MP4 terminé...")
+        source = self._wait_for_new_download(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        if source is None:
+            raise TimeoutError(
+                "Aucun fichier Player actions terminé détecté après 300 secondes."
+            )
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise RuntimeError("Le fichier vidéo téléchargé est vide.")
+        with source.open("rb") as downloaded_file:
+            prefix = downloaded_file.read(256).lstrip()
+        if prefix.startswith((b"<", b"{", b"[")):
+            raise RuntimeError("SportsBase a renvoyé du texte au lieu du MP4.")
+
+        print(
+            "[INFO] MP4 original détecté sur le disque - "
+            f"{source.stat().st_size / (1024 * 1024):.1f} Mo"
+        )
+        return source
+
+    @staticmethod
+    def _unique_path(path):
+        if not path.exists():
+            return path
+        counter = 2
+        while True:
+            candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
+            if not candidate.exists():
+                return candidate
+            counter += 1
+
     def download_ready_videos(
         self,
         page,
@@ -1000,19 +1137,6 @@ class SportsBaseAutomation:
                     download_icon.scroll_into_view_if_needed()
                     my_videos_page.wait_for_timeout(300)
 
-                    try:
-                        with my_videos_page.expect_download(timeout=15000) as download_info:
-                            download_icon.click()
-                        download = download_info.value
-                    except Exception:
-                        try:
-                            with my_videos_page.expect_download(timeout=15000) as download_info:
-                                download_icon.evaluate("(el) => el.click()")
-                            download = download_info.value
-                        except Exception as e:
-                            print(f"[WARN] Download row {row_index} impossible: {e}")
-                            continue
-
                     match_title = "match_unknown"
                     if reverse_pos < len(generated_match_titles):
                         match_title = generated_match_titles[reverse_pos]
@@ -1022,11 +1146,26 @@ class SportsBaseAutomation:
                     safe_duration = self.sanitize_filename(duration_text.replace(":", "-")) if duration_text else "duration_unknown"
                     safe_date = self.sanitize_filename(date_text.replace(":", "-").replace(" ", "_")) if date_text else "date_unknown"
 
-                    ext = Path(download.suggested_filename).suffix if download.suggested_filename else ".mp4"
+                    print(f"[DEBUG] Clic download unique: {unique_key}")
+                    try:
+                        source = self._download_actions_with_chrome(
+                            page=my_videos_page,
+                            download_icon=download_icon,
+                            downloads_dir=raw_clips_dir,
+                        )
+                    except Exception as e:
+                        print(
+                            f"[WARN] Download row {row_index} impossible: {e}. "
+                            "Aucun second clic ne sera effectué."
+                        )
+                        continue
+
+                    ext = source.suffix or ".mp4"
                     filename = f"{safe_player_name} - {safe_match_title} - {safe_date} - {safe_duration}{ext}"
 
-                    save_path = raw_clips_dir / filename
-                    download.save_as(str(save_path))
+                    save_path = self._unique_path(raw_clips_dir / filename)
+                    if source.resolve() != save_path.resolve():
+                        shutil.move(str(source), str(save_path))
 
                     downloaded_files.append(str(save_path))
                     seen_rows.add(unique_key)

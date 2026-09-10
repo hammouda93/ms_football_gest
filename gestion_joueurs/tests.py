@@ -1,17 +1,21 @@
 import json
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock
 from urllib.parse import unquote
 
 from django.contrib.auth.models import User
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from .deadline_planning import ACTIVE_PLANNING_STATUSES
 from .forms import VideoForm
 from .models import AutomationEvent, AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
+from .sportsbase_playwright import SportsBaseAutomation
 from .utils import set_current_user
 from .video_status_whatsapp import (
     NOTIFICATION_PAYMENT_MODES,
@@ -21,6 +25,67 @@ from .video_status_whatsapp import (
 )
 
 from client_portal.models import PlayerAccess, PortalAccessLink, PortalProfile
+
+
+class SportsBasePlayerDownloadTests(SimpleTestCase):
+    def test_profile_download_uses_one_chrome_click_and_disk_confirmation(self):
+        automation = object.__new__(SportsBaseAutomation)
+        automation._cdp_browser = Mock()
+        page = Mock()
+        download_icon = Mock()
+        original = b"\x00\x00\x00\x18ftypmp42sportsbase-original-video"
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "Player actions.mp4"
+            source.write_bytes(original)
+            watch_dirs = [downloads_dir]
+            before = {"existing": (1, 1)}
+            automation._download_watch_directories = Mock(return_value=watch_dirs)
+            automation._configure_native_downloads = Mock(return_value=True)
+            automation._snapshot_download_files = Mock(return_value=before)
+            automation._wait_for_new_download = Mock(return_value=source)
+
+            detected = automation._download_actions_with_chrome(
+                page=page,
+                download_icon=download_icon,
+                downloads_dir=downloads_dir,
+            )
+
+            self.assertEqual(detected.read_bytes(), original)
+
+        download_icon.click.assert_called_once_with(
+            timeout=5_000,
+            no_wait_after=True,
+        )
+        automation._wait_for_new_download.assert_called_once_with(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        page.expect_download.assert_not_called()
+
+    def test_profile_cdp_sets_the_native_chrome_download_directory(self):
+        automation = object.__new__(SportsBaseAutomation)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        automation._cdp_browser = browser
+        page = Mock()
+
+        with TemporaryDirectory() as directory:
+            configured = automation._configure_native_downloads(page, directory)
+
+            self.assertTrue(configured)
+            session.send.assert_called_once_with(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(directory).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+        page.context.new_cdp_session.assert_not_called()
 
 
 @override_settings(
