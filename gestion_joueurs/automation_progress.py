@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from .models import AutomationEvent, AutomationRun, Video
 
-MAX_EVENTS_PER_RUN = 6
+MAX_EVENTS_PER_RUN = 12
 
 
 PIPELINE_STAGE_PERCENT = {
