@@ -28,7 +28,12 @@ $LogFile = Join-Path $LogDirectory 'automation_agent.log'
 $ErrorLogFile = Join-Path $LogDirectory 'automation_agent_error.log'
 
 Set-Location -LiteralPath $RepositoryRoot
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
 & $PythonExecutable `
+    -X utf8 `
+    -u `
     (Join-Path $RepositoryRoot 'gestion_joueurs\automation_agent.py') `
     1>> $LogFile `
     2>> $ErrorLogFile
+

@@ -3,11 +3,24 @@ import json
 import socket
 import sys
 import time
+import traceback
 from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
 from dotenv import load_dotenv
+
+
+def configure_utf8_console():
+    """Keep Windows logs readable even when an exception contains Unicode art."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
+configure_utf8_console()
 
 try:
     from .intro_generation import (
@@ -1030,6 +1043,7 @@ def main():
                         handler(video)
                     except Exception as exc:
                         print(f"[ERROR] {pipeline} video={video['video_id']}: {exc}")
+                        traceback.print_exc()
                         try:
                             report_video_progress(
                                 video,
@@ -1069,6 +1083,7 @@ def main():
 
         except Exception as e:
             print(f"[ERROR] {e}")
+            traceback.print_exc()
             send_heartbeat(state="error", last_error=str(e))
 
         time.sleep(POLL_INTERVAL)
@@ -1076,3 +1091,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
