@@ -45,6 +45,31 @@ class SportsBaseAutomation:
         value = re.sub(r"\s+", " ", value).strip()
         return value
 
+    @staticmethod
+    def resolve_browser_executable(playwright) -> str:
+        """Reuse an installed browser when Playwright's bundled Chromium is absent."""
+        program_files = os.getenv("ProgramFiles", "")
+        program_files_x86 = os.getenv("ProgramFiles(x86)", "")
+        local_app_data = os.getenv("LOCALAPPDATA", "")
+        candidates = [
+            os.getenv("SPORTSBASE_BROWSER_EXECUTABLE", "").strip(),
+            getattr(playwright.chromium, "executable_path", ""),
+            os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe")
+            if program_files else "",
+            os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe")
+            if program_files_x86 else "",
+            os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe")
+            if local_app_data else "",
+            os.path.join(program_files_x86, "Microsoft", "Edge", "Application", "msedge.exe")
+            if program_files_x86 else "",
+            os.path.join(program_files, "Microsoft", "Edge", "Application", "msedge.exe")
+            if program_files else "",
+        ]
+        for candidate in dict.fromkeys(candidates):
+            if candidate and Path(candidate).is_file():
+                return str(Path(candidate))
+        return ""
+
     def run_for_player(self, player_name: str, player_url: str, target_dir: str, seasons_to_process: int = 1) -> dict:
         target_path = Path(target_dir)
         raw_clips_dir = target_path / "raw_clips"
@@ -61,9 +86,17 @@ class SportsBaseAutomation:
         }
 
         with sync_playwright() as p:
+            browser_executable = self.resolve_browser_executable(p)
+            if not browser_executable:
+                raise RuntimeError(
+                    "Aucun navigateur compatible trouvé. Installez Chrome/Edge ou "
+                    "définissez SPORTSBASE_BROWSER_EXECUTABLE."
+                )
+            print(f"[DEBUG] Navigateur SportsBase: {browser_executable}")
             browser = p.chromium.launch(
                 headless=self.headless,
-                args=["--start-maximized"]
+                args=["--start-maximized"],
+                executable_path=browser_executable,
             )
 
             context = browser.new_context(
@@ -913,3 +946,4 @@ class SportsBaseAutomation:
                 global_rounds = 0
 
         return downloaded_files
+
