@@ -17,6 +17,14 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
+MY_VIDEOS_ACTION_LABELS = (
+    "player actions",
+    "all player actions",
+    "player's actions",
+    "all player's actions",
+    "actions du joueur",
+    "toutes les actions du joueur",
+)
 
 
 class SportsBaseAutomation:
@@ -62,6 +70,29 @@ class SportsBaseAutomation:
         value = re.sub(r'[<>:"/\\|?*]+', "_", value)
         value = re.sub(r"\s+", " ", value).strip()
         return value
+
+    @staticmethod
+    def my_videos_targets(player_name: str) -> set[str]:
+        """Return the title variants used by SportsBase in My Videos."""
+        normalized_name = re.sub(r"\s+", " ", player_name or "").strip().casefold()
+        aliases = {normalized_name}
+        name_parts = normalized_name.split()
+        if len(name_parts) >= 3:
+            aliases.add(" ".join(name_parts[1:]))
+        return {
+            f"{alias}, {action_label}"
+            for alias in aliases
+            for action_label in MY_VIDEOS_ACTION_LABELS
+            if alias
+        }
+
+    @classmethod
+    def is_player_actions_title(cls, title: str, player_name: str) -> bool:
+        normalized_title = re.sub(r"\s+", " ", title or "").strip().casefold()
+        return any(
+            target in normalized_title
+            for target in cls.my_videos_targets(player_name)
+        )
 
     @staticmethod
     def resolve_browser_executable(playwright) -> str:
@@ -229,12 +260,6 @@ class SportsBaseAutomation:
                 sportsbase_player_name = self.get_sportsbase_player_name(page)
                 result["sportsbase_player_name"] = sportsbase_player_name or player_name
 
-                existing_video_keys = self.snapshot_existing_video_keys(
-                    page,
-                    sportsbase_player_name or player_name,
-                )
-                result["excluded_existing_video_count"] = sum(existing_video_keys.values())
-
                 self.open_player_statistics(page)
 
                 matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) 
@@ -254,7 +279,7 @@ class SportsBaseAutomation:
                     "sportsbase_download",
                     current=0,
                     total=generation_requests_sent,
-                    message=f"{generation_requests_sent} générations confirmées",
+                    message=f"{generation_requests_sent} vidéos à télécharger",
                 )
 
                 downloaded = self.download_ready_videos(
@@ -263,7 +288,6 @@ class SportsBaseAutomation:
                     raw_clips_dir,
                     generated_match_titles=generated_match_titles,
                     max_downloads=generation_requests_sent,
-                    excluded_row_keys=existing_video_keys,
                 )
                 result["downloaded_files"] = downloaded
 
@@ -668,14 +692,15 @@ class SportsBaseAutomation:
                 except Exception as e:
                     print(f"[WARN] popup.close error: {e}")
 
-                if generation_confirmed:
+                generation_available = generation_confirmed or direct_download_cancelled
+                if generation_available:
                     processed += 1
                     generated_match_titles.append(match_title)
                     self.notify_progress(
                         "sportsbase_generation",
                         current=processed,
                         total=max_matches,
-                        message=f"Génération confirmée pour le match {processed}/{max_matches}",
+                        message=f"Vidéo disponible pour le match {processed}/{max_matches}",
                     )
                 else:
                     print(
@@ -742,34 +767,6 @@ class SportsBaseAutomation:
         print("[DEBUG] Table My videos détectée")
         return page
 
-    def snapshot_existing_video_keys(self, player_page, player_name: str):
-        """Remember old rows so a new job cannot download a previous player's clip."""
-        snapshot_page = player_page.context.new_page()
-        normalized_target = f"{player_name}, All player actions".lower().strip()
-        existing = {}
-        try:
-            self.open_my_videos(snapshot_page)
-            body_group = snapshot_page.locator('div[role="rowgroup"]').nth(1)
-            rows = body_group.locator('div[role="row"]')
-            for index in range(rows.count()):
-                row = rows.nth(index)
-                title_locator = row.locator("span.Name-sc-jbc8ns-2").first
-                if title_locator.count() == 0:
-                    continue
-                title_text = title_locator.inner_text().strip()
-                if normalized_target not in title_text.casefold():
-                    continue
-                date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
-                duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
-                fingerprint = f"{title_text}|{date_text}|{duration_text}"
-                existing[fingerprint] = existing.get(fingerprint, 0) + 1
-        except Exception as exc:
-            print(f"[WARN] Snapshot My Videos incomplet: {exc}")
-        finally:
-            snapshot_page.close()
-        print(f"[DEBUG] Anciennes vidéos exclues: {sum(existing.values())}")
-        return existing
-
     def download_ready_videos(
         self,
         page,
@@ -777,17 +774,12 @@ class SportsBaseAutomation:
         raw_clips_dir: Path,
         generated_match_titles: list,
         max_downloads: int,
-        excluded_row_keys=None,
     ):
+        if max_downloads <= 0:
+            print("[WARN] Aucune vidéo SportsBase disponible à télécharger")
+            return []
         my_videos_page = self.open_my_videos(page)
         downloaded_files = []
-        normalized_target = f"{player_name}, All player actions".lower().strip()
-
-        excluded_counts = (
-            dict(excluded_row_keys)
-            if isinstance(excluded_row_keys, dict)
-            else {key: 1 for key in (excluded_row_keys or ())}
-        )
         seen_rows = set()
         global_rounds = 0
         max_global_rounds = 20
@@ -830,8 +822,8 @@ class SportsBaseAutomation:
                     if title_locator.count() == 0:
                         continue
 
-                    title_text = title_locator.inner_text().strip().lower()
-                    if normalized_target in title_text:
+                    title_text = title_locator.inner_text().strip()
+                    if self.is_player_actions_title(title_text, player_name):
                         original_title = title_locator.inner_text().strip()
                         date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
                         duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
@@ -839,10 +831,7 @@ class SportsBaseAutomation:
                         occurrence = occurrences.get(fingerprint, 0) + 1
                         occurrences[fingerprint] = occurrence
                         unique_key = f"{fingerprint}|occurrence={occurrence}"
-                        if (
-                            occurrence > excluded_counts.get(fingerprint, 0)
-                            and unique_key not in seen_rows
-                        ):
+                        if unique_key not in seen_rows:
                             indexes.append(i)
                 except Exception:
                     continue
