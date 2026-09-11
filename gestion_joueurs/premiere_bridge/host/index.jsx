@@ -88,6 +88,35 @@ $._MSBridge.getPremiereDirForActiveProject = function () {
     }
 };
 
+$._MSBridge.findDefaultExportPresetPath = function () {
+    var relativePath = "/MediaIO/systempresets/4E49434B_48323634/YouTube 1080p HD.epr";
+    var candidates = [];
+    try {
+        if (app.path) {
+            candidates.push(String(app.path) + relativePath);
+        }
+    } catch (e1) {
+    }
+    for (var year = 2026; year >= 2020; year--) {
+        candidates.push(
+            "C:/Program Files/Adobe/Adobe Premiere Pro " + year + relativePath
+        );
+    }
+    for (var i = 0; i < candidates.length; i++) {
+        var candidate = new File(candidates[i]);
+        if (candidate.exists) {
+            return candidate.fsName;
+        }
+    }
+    return "";
+};
+
+$._MSBridge.safeFileStem = function (value) {
+    var result = String(value || "").replace(/[<>:\"\/\\|?*]/g, "_");
+    result = result.replace(/\s+/g, "_").replace(/_+/g, "_");
+    return result.replace(/^_+|_+$/g, "") || "Player";
+};
+
 $._MSBridge.readProjectContextForActiveProject = function () {
     var premiereDir = $._MSBridge.getPremiereDirForActiveProject();
     if (!premiereDir) {
@@ -96,7 +125,36 @@ $._MSBridge.readProjectContextForActiveProject = function () {
 
     var contextPath = premiereDir + "/project_context.json";
     var txt = $._MSBridge.readTextFile(contextPath);
-    return $._MSBridge.parseJsonText(txt);
+    var context = $._MSBridge.parseJsonText(txt);
+
+    // Older projects may have been created before export fields were persisted.
+    // Recover them from the sibling job file so the current edit can still export.
+    try {
+        var jobPath = premiereDir + "/premiere_job.json";
+        var jobFile = new File(jobPath);
+        if (jobFile.exists) {
+            var job = $._MSBridge.parseJsonText($._MSBridge.readTextFile(jobPath));
+            if (!context.player_name) { context.player_name = job.player_name || ""; }
+            if (!context.premiere_dir) { context.premiere_dir = job.premiere_dir || premiereDir; }
+            if (!context.final_export_path) { context.final_export_path = job.final_export_path || ""; }
+            if (!context.export_preset_path) { context.export_preset_path = job.export_preset_path || ""; }
+        }
+    } catch (jobError) {
+    }
+
+    if (!context.premiere_dir) {
+        context.premiere_dir = premiereDir;
+    }
+    if (!context.final_export_path) {
+        var projectFolder = new Folder(premiereDir);
+        var targetFolder = projectFolder.parent;
+        context.final_export_path = targetFolder.fsName + "/exports/" +
+            $._MSBridge.safeFileStem(context.player_name) + "_Highlights_Final.mp4";
+    }
+    if (!context.export_preset_path) {
+        context.export_preset_path = $._MSBridge.findDefaultExportPresetPath();
+    }
+    return context;
 };
 
 $._MSBridge.runCreateProjectFromCurrentCommand = function () {

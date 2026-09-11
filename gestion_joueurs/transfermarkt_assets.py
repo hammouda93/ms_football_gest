@@ -8,6 +8,11 @@ import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
+try:
+    from .presentation_styles import DEFAULT_PRESENTATION_STYLE, get_presentation_style
+except ImportError:
+    from presentation_styles import DEFAULT_PRESENTATION_STYLE, get_presentation_style
+
 
 def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
@@ -709,7 +714,8 @@ def build_position_market_value_card(data: dict, output_path: Path):
     bg.save(output_path)
 
 
-def build_prompt_text(data: dict) -> str:
+def build_prompt_text(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
     player_name = data.get("player_name", "Unknown Player")
     shirt_number = data.get("shirt_number", "")
     club_name = data.get("club_name", "")
@@ -767,6 +773,11 @@ VERIFIED PLAYER DATA
 - Country / League context: {country or "-"}
 
 {trophies_block}
+SELECTED PRESENTATION STYLE
+- Preset: {style['label']} ({style['category']})
+- Environment direction: {style['image_direction']}
+- Follow this preset exactly while preserving all source-priority and factual constraints below.
+
 VISUAL IDENTITY RESEARCH
 - First analyze the uploaded real club logo: identify its verified dominant colors, outline geometry and any actual symbol already visible inside it.
 - If browsing is available, verify the club's city and country from reliable club/league sources before using one or two subtle local visual motifs. If it cannot be verified, use only the uploaded logo and the nationality/country values above.
@@ -777,9 +788,9 @@ COMPOSITION
 - Premium football broadcast/scouting art with a realistic cinematic photograph finish, not an illustration.
 - Medium-wide presentation framing with the player standing naturally, looking into camera, shoulders relaxed and a very slight friendly smile.
 - Keep the player's full head, torso, arms and hands anatomically correct and unobstructed. Leave breathing room around the silhouette for animation.
-- Build a believable stadium or club-inspired environment with depth: foreground player, mid-ground pitch/tunnel architecture and a distant open sky.
+- Build the selected believable environment with clear depth: foreground player, coherent mid-ground and a restrained background.
 - Integrate the uploaded club logo once as a clean, correctly proportioned graphic element. Use badge/trophy assets only when supplied.
-- Warm directional sunlight, controlled rim light, soft atmospheric depth, refined club-color accents, subtle clouds and a clean sky area suitable for distant bird movement.
+- Match lighting and environmental details to the selected preset. Do not add outdoor sky, birds, clouds or sunlight to an indoor preset.
 - Strong hierarchy, premium negative space, no clutter, no excessive particles, no aggressive flares.
 
 TEXT
@@ -795,7 +806,8 @@ HARD CONSTRAINTS
     return prompt
 
 
-def build_kling_prompt_text(data: dict) -> str:
+def build_kling_prompt_text(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
     player_name = data.get("player_name", "the player")
     club_name = data.get("club_name", "the club")
     return f"""Animate the supplied presentation image as one restrained 6-to-8-second cinematic football portrait shot of {player_name} for {club_name}. Respect the exact composition and animate only elements that already exist in the source image.
@@ -811,11 +823,11 @@ PLAYER PERFORMANCE
 - No speaking, no lip-sync, no visible words mouthed, no large gesture.
 
 LIVING ENVIRONMENT
-- Warm sunlight glints softly across the existing scene with one restrained natural light pulse, never a strobe or artificial flash.
-- Existing thin clouds drift very slowly and consistently.
-- Two or three tiny distant birds cross only the high background sky; they never pass over the player's face, body, text or club logo.
+- Selected preset: {style['label']} ({style['category']}).
+- {style['motion_direction']}
 - Very subtle atmospheric particles and depth parallax may move only if already compatible with the source image.
-- Preserve the source weather, time of day, stadium, club/country visual language and color palette.
+- Preserve the source environment, weather, time of day, club/country visual language and color palette.
+- Never add outdoor weather, sky, birds or clouds to an indoor or studio source image.
 
 CAMERA
 - Stable professional cinema camera on a tripod or stabilized dolly.
@@ -830,7 +842,8 @@ The final result must feel like a real sober football presentation filmed on set
 """
 
 
-def build_visual_identity_brief(data: dict) -> str:
+def build_visual_identity_brief(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
     return f"""VISUAL IDENTITY BRIEF — VERIFIED INPUTS ONLY
 
 Player: {data.get('player_name') or '-'}
@@ -839,6 +852,8 @@ League: {data.get('league_name') or '-'}
 Nationality: {data.get('nationality') or '-'}
 Country/league context: {data.get('country') or '-'}
 Club logo source: {data.get('club_logo_url') or '-'}
+Selected presentation style: {style['label']} ({style['category']})
+Selected environment direction: {style['image_direction']}
 
 Before image generation, inspect the supplied club logo and extract its real dominant colors, outline geometry and visible emblem symbol. If web research is available, verify the club city/country using an official club, federation or league source. Add at most two subtle, verified geographic or architectural motifs. If verification is unavailable, do not guess: use only the supplied logo, its colors and the factual fields above. Never invent a crest, flag, landmark, trophy or cultural symbol.
 """
@@ -1029,7 +1044,65 @@ def build_badges_card(data: dict, downloaded_badges: list, output_path: Path):
     bg.save(output_path)
 
 
-def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
+def write_presentation_prompt_assets(
+    data: dict,
+    output_dir: Path,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
+    """Write the style-sensitive files without re-scraping Transfermarkt."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    style = get_presentation_style(presentation_style)
+    image_prompt_text = build_prompt_text(data, style["value"])
+
+    prompt_path = output_dir / "prompt.txt"
+    prompt_path.write_text(image_prompt_text, encoding="utf-8")
+
+    chatgpt_image_prompt_path = output_dir / "prompt_chatgpt_image.txt"
+    chatgpt_image_prompt_path.write_text(image_prompt_text, encoding="utf-8")
+
+    kling_prompt_path = output_dir / "prompt_kling_image_to_video.txt"
+    kling_prompt_path.write_text(
+        build_kling_prompt_text(data, style["value"]),
+        encoding="utf-8",
+    )
+
+    visual_identity_brief_path = output_dir / "visual_identity_brief.txt"
+    visual_identity_brief_path.write_text(
+        build_visual_identity_brief(data, style["value"]),
+        encoding="utf-8",
+    )
+
+    presentation_style_path = output_dir / "presentation_style.json"
+    presentation_style_path.write_text(
+        json.dumps(
+            {
+                "value": style["value"],
+                "label": style["label"],
+                "category": style["category"],
+                "summary": style["summary"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return {
+        "prompt_path": str(prompt_path),
+        "chatgpt_image_prompt_path": str(chatgpt_image_prompt_path),
+        "kling_prompt_path": str(kling_prompt_path),
+        "visual_identity_brief_path": str(visual_identity_brief_path),
+        "presentation_style_path": str(presentation_style_path),
+        "presentation_style": style,
+    }
+
+
+def build_assets_from_transfermarkt_html_text(
+    html_text: str,
+    output_dir: str,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1041,20 +1114,10 @@ def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
     logo_path = output_dir / "transfermarkt_Team_Logo.jpg"
     logo_ok = download_image(data.get("club_logo_url", ""), logo_path)
 
-    prompt_path = output_dir / "prompt.txt"
-    image_prompt_text = build_prompt_text(data)
-    prompt_path.write_text(image_prompt_text, encoding="utf-8")
-
-    chatgpt_image_prompt_path = output_dir / "prompt_chatgpt_image.txt"
-    chatgpt_image_prompt_path.write_text(image_prompt_text, encoding="utf-8")
-
-    kling_prompt_path = output_dir / "prompt_kling_image_to_video.txt"
-    kling_prompt_path.write_text(build_kling_prompt_text(data), encoding="utf-8")
-
-    visual_identity_brief_path = output_dir / "visual_identity_brief.txt"
-    visual_identity_brief_path.write_text(
-        build_visual_identity_brief(data),
-        encoding="utf-8",
+    prompt_assets = write_presentation_prompt_assets(
+        data,
+        output_dir,
+        presentation_style,
     )
 
     position_market_value_prompt_path = output_dir / "prompt_position_market_value.txt"
@@ -1090,10 +1153,11 @@ def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
         "logo_path": str(logo_path) if logo_ok else None,
         "badge_paths": badge_paths,
         "badges_card_path": badges_card_path,
-        "prompt_path": str(prompt_path),
-        "chatgpt_image_prompt_path": str(chatgpt_image_prompt_path),
-        "kling_prompt_path": str(kling_prompt_path),
-        "visual_identity_brief_path": str(visual_identity_brief_path),
+        "prompt_path": prompt_assets["prompt_path"],
+        "chatgpt_image_prompt_path": prompt_assets["chatgpt_image_prompt_path"],
+        "kling_prompt_path": prompt_assets["kling_prompt_path"],
+        "visual_identity_brief_path": prompt_assets["visual_identity_brief_path"],
+        "presentation_style_path": prompt_assets["presentation_style_path"],
 
         # Deuxième génération
         "position_market_value_prompt_path": str(position_market_value_prompt_path),

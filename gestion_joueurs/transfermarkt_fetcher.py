@@ -1,7 +1,19 @@
 from pathlib import Path
+import json
 import requests
 
-from transfermarkt_assets import build_assets_from_transfermarkt_html_text
+try:
+    from .presentation_styles import DEFAULT_PRESENTATION_STYLE
+    from .transfermarkt_assets import (
+        build_assets_from_transfermarkt_html_text,
+        write_presentation_prompt_assets,
+    )
+except ImportError:
+    from presentation_styles import DEFAULT_PRESENTATION_STYLE
+    from transfermarkt_assets import (
+        build_assets_from_transfermarkt_html_text,
+        write_presentation_prompt_assets,
+    )
 
 
 DEFAULT_HEADERS = {
@@ -20,7 +32,10 @@ def fetch_transfermarkt_html(url: str, timeout: int = 30) -> str:
     return response.text
 
 
-def build_transfermarkt_assets_from_url_file(intro_folder: str):
+def build_transfermarkt_assets_from_url_file(
+    intro_folder: str,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
     intro_path = Path(intro_folder)
     intro_path.mkdir(parents=True, exist_ok=True)
 
@@ -40,6 +55,7 @@ def build_transfermarkt_assets_from_url_file(intro_folder: str):
     assets = build_assets_from_transfermarkt_html_text(
         html_text=html_text,
         output_dir=str(intro_path),
+        presentation_style=presentation_style,
     )
 
     return {
@@ -55,6 +71,7 @@ def build_transfermarkt_assets_from_url_file(intro_folder: str):
         "chatgpt_image_prompt_path": assets["chatgpt_image_prompt_path"],
         "kling_prompt_path": assets["kling_prompt_path"],
         "visual_identity_brief_path": assets["visual_identity_brief_path"],
+        "presentation_style_path": assets["presentation_style_path"],
 
         # Deuxième présentation : position + valeur marchande
         "position_market_value_prompt_path": assets["position_market_value_prompt_path"],
@@ -64,6 +81,41 @@ def build_transfermarkt_assets_from_url_file(intro_folder: str):
 
         "data": assets["data"],
     }
+
+
+def refresh_presentation_style_assets(
+    intro_folder: str,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
+    """Refresh prompts for a new preset from cached factual data."""
+    intro_path = Path(intro_folder)
+    json_path = intro_path / "transfermarkt_data.json"
+    if not json_path.is_file():
+        raise FileNotFoundError(f"transfermarkt_data.json introuvable: {json_path}")
+    style_path = intro_path / "presentation_style.json"
+    if style_path.is_file():
+        try:
+            current_style = json.loads(style_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            current_style = {}
+        if current_style.get("value") == presentation_style:
+            return {
+                "prompt_path": str(intro_path / "prompt.txt"),
+                "chatgpt_image_prompt_path": str(intro_path / "prompt_chatgpt_image.txt"),
+                "kling_prompt_path": str(intro_path / "prompt_kling_image_to_video.txt"),
+                "visual_identity_brief_path": str(intro_path / "visual_identity_brief.txt"),
+                "presentation_style_path": str(style_path),
+                "presentation_style": current_style,
+                "style_changed": False,
+            }
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    result = write_presentation_prompt_assets(
+        data,
+        intro_path,
+        presentation_style,
+    )
+    result["style_changed"] = True
+    return result
 
 
 if __name__ == "__main__":

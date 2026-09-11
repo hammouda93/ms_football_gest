@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from urllib.parse import unquote
 
 from django.contrib.auth.models import User
@@ -15,7 +15,15 @@ from django.utils import timezone
 from .deadline_planning import ACTIVE_PLANNING_STATUSES
 from .forms import VideoForm
 from .models import AutomationEvent, AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
+from .presentation_styles import (
+    DEFAULT_PRESENTATION_STYLE,
+    PRESENTATION_STYLES,
+    get_presentation_style,
+)
+from .premiere_automation import PremiereAutomation
 from .sportsbase_playwright import SportsBaseAutomation
+from .transfermarkt_assets import build_kling_prompt_text, build_prompt_text
+from .transfermarkt_fetcher import refresh_presentation_style_assets
 from .utils import set_current_user
 from .video_status_whatsapp import (
     NOTIFICATION_PAYMENT_MODES,
@@ -25,6 +33,86 @@ from .video_status_whatsapp import (
 )
 
 from client_portal.models import PlayerAccess, PortalAccessLink, PortalProfile
+
+
+class PresentationStylePromptTests(SimpleTestCase):
+    def test_ten_styles_are_available_with_golden_hour_as_default(self):
+        self.assertEqual(len(PRESENTATION_STYLES), 10)
+        self.assertEqual(
+            get_presentation_style("unknown")["value"],
+            DEFAULT_PRESENTATION_STYLE,
+        )
+
+    def test_selected_indoor_style_drives_image_and_kling_prompts(self):
+        data = {"player_name": "Test Player", "club_name": "Test Club"}
+
+        image_prompt = build_prompt_text(data, "premium_locker_room")
+        kling_prompt = build_kling_prompt_text(data, "premium_locker_room")
+
+        self.assertIn("Vestiaire premium (Indoor)", image_prompt)
+        self.assertIn("refined modern first-team locker room", image_prompt)
+        self.assertIn("Vestiaire premium (Indoor)", kling_prompt)
+        self.assertIn("Never add outdoor weather", kling_prompt)
+
+    def test_cached_transfermarkt_data_can_switch_style_without_rescraping(self):
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "transfermarkt_data.json").write_text(
+                json.dumps({"player_name": "Test Player", "club_name": "Test Club"}),
+                encoding="utf-8",
+            )
+
+            first = refresh_presentation_style_assets(directory, "stadium_night")
+            unchanged = refresh_presentation_style_assets(directory, "stadium_night")
+            changed = refresh_presentation_style_assets(directory, "official_club_studio")
+
+            self.assertTrue(first["style_changed"])
+            self.assertFalse(unchanged["style_changed"])
+            self.assertTrue(changed["style_changed"])
+            prompt = Path(changed["chatgpt_image_prompt_path"]).read_text(encoding="utf-8")
+            self.assertIn("Studio officiel du club (Studio)", prompt)
+
+
+class PremiereExportConfigurationTests(SimpleTestCase):
+    def test_bundled_youtube_1080p_preset_is_used_when_env_is_empty(self):
+        with TemporaryDirectory() as directory:
+            premiere_dir = Path(directory) / "Adobe Premiere Pro 2022"
+            executable = premiere_dir / "Adobe Premiere Pro.exe"
+            preset = (
+                premiere_dir
+                / "MediaIO"
+                / "systempresets"
+                / "4E49434B_48323634"
+                / "YouTube 1080p HD.epr"
+            )
+            preset.parent.mkdir(parents=True)
+            executable.touch()
+            preset.touch()
+            automation = PremiereAutomation(premiere_exe=str(executable))
+
+            with patch.dict("os.environ", {"PREMIERE_EXPORT_PRESET": ""}):
+                resolved = automation._resolve_export_preset_path()
+
+            self.assertEqual(resolved, str(preset))
+
+    def test_project_context_persists_export_path_and_preset(self):
+        with TemporaryDirectory() as directory:
+            automation = PremiereAutomation()
+            context_path = automation._write_project_context_file(
+                Path(directory),
+                {
+                    "player_name": "Test Player",
+                    "final_export_path": "D:/exports/test.mp4",
+                    "export_preset_path": "C:/Adobe/YouTube 1080p HD.epr",
+                },
+            )
+            context = json.loads(Path(context_path).read_text(encoding="utf-8"))
+
+            self.assertEqual(context["final_export_path"], "D:/exports/test.mp4")
+            self.assertEqual(
+                context["export_preset_path"],
+                "C:/Adobe/YouTube 1080p HD.epr",
+            )
 
 
 class SportsBasePlayerDownloadTests(SimpleTestCase):
@@ -155,6 +243,10 @@ class AutomationProgressTests(TestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(first.json()["job"]["video_id"], self.video.pk)
+        self.assertEqual(
+            first.json()["job"]["intro_presentation_style"],
+            DEFAULT_PRESENTATION_STYLE,
+        )
         self.assertTrue(first.json()["job"]["claim_token"])
         self.assertIsNone(same_worker.json()["job"])
         self.assertIsNone(second.json()["job"])
@@ -262,11 +354,14 @@ class AutomationProgressTests(TestCase):
                 "sportsbase_url": self.player.sportsbase_url,
                 "transfermarkt_url": self.player.transfermarkt_url,
                 "intro_automation_enabled": "on",
+                "intro_presentation_style": "stadium_night",
                 "notification_action": "skip",
             },
         )
 
         self.assertEqual(response.status_code, 302)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.intro_presentation_style, "stadium_night")
         runs = {
             run.pipeline: run
             for run in AutomationRun.objects.filter(video=self.video)
@@ -279,6 +374,15 @@ class AutomationProgressTests(TestCase):
             runs[AutomationRun.PipelineChoices.HIGHLIGHTS].state,
             AutomationRun.StateChoices.QUEUED,
         )
+
+    def test_status_page_displays_all_ten_presentation_styles(self):
+        response = self.client.get(
+            reverse("update_video_status", args=(self.video.pk,))
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for style in PRESENTATION_STYLES:
+            self.assertContains(response, f'value="{style["value"]}"')
 
     def test_existing_automation_settings_queue_when_progress_is_missing(self):
         response = self.client.post(

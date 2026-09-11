@@ -8,6 +8,11 @@ from datetime import date, timedelta
 from django.dispatch import receiver """
 from django.db.models.signals import post_save
 
+from .presentation_styles import (
+    DEFAULT_PRESENTATION_STYLE,
+    PRESENTATION_STYLE_CHOICES,
+)
+
 
 class Player(models.Model):
     LEAGUE_CHOICES = [
@@ -159,6 +164,12 @@ class Video(models.Model):
         verbose_name="Photo Intro"
     )
     intro_automation_enabled = models.BooleanField(default=False, verbose_name="Générer la présentation")
+    intro_presentation_style = models.CharField(
+        max_length=40,
+        choices=PRESENTATION_STYLE_CHOICES,
+        default=DEFAULT_PRESENTATION_STYLE,
+        verbose_name="Style de présentation",
+    )
     intro_automation_started = models.BooleanField(default=False)
     intro_automation_completed = models.BooleanField(default=False)
     league = models.CharField(

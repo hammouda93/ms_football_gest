@@ -32,7 +32,11 @@ try:
     from .media_validation import validate_video_file
     from .premiere_automation import PremiereAutomation
     from .sportsbase_playwright import SportsBaseAutomation
-    from .transfermarkt_fetcher import build_transfermarkt_assets_from_url_file
+    from .presentation_styles import DEFAULT_PRESENTATION_STYLE
+    from .transfermarkt_fetcher import (
+        build_transfermarkt_assets_from_url_file,
+        refresh_presentation_style_assets,
+    )
 except ImportError:
     from intro_generation import (
         generate_chatgpt_presentation,
@@ -43,7 +47,11 @@ except ImportError:
     from media_validation import validate_video_file
     from premiere_automation import PremiereAutomation
     from sportsbase_playwright import SportsBaseAutomation
-    from transfermarkt_fetcher import build_transfermarkt_assets_from_url_file
+    from presentation_styles import DEFAULT_PRESENTATION_STYLE
+    from transfermarkt_fetcher import (
+        build_transfermarkt_assets_from_url_file,
+        refresh_presentation_style_assets,
+    )
 
 try:
     from sportsbase_data.youtube_uploader import YouTubeStudioUploader
@@ -276,6 +284,7 @@ def prepare_intro_generation_folder(intro_folder: Path, intro_photo_path: Path, 
         "chatgpt_image_prompt_path",
         "kling_prompt_path",
         "visual_identity_brief_path",
+        "presentation_style_path",
         "badges_card_path",
 
         # Deuxième présentation : position + valeur marchande
@@ -381,6 +390,7 @@ def existing_transfermarkt_assets(intro_folder: Path):
         "position_graph_path": intro_folder / "position_graph.png",
         "market_value_graph_path": intro_folder / "market_value_graph.png",
         "position_market_value_card_path": intro_folder / "position_market_value_card.png",
+        "presentation_style_path": intro_folder / "presentation_style.json",
     }
     badges_dir = intro_folder / "badges"
     payload = {key: str(path) for key, path in required.items()}
@@ -396,7 +406,7 @@ def existing_transfermarkt_assets(intro_folder: Path):
     return payload
 
 
-def newest_file(folder: Path, *, extensions, prefixes):
+def newest_file(folder: Path, *, extensions, prefixes, not_before=None):
     if not folder.is_dir():
         return None
     candidates = [
@@ -405,24 +415,27 @@ def newest_file(folder: Path, *, extensions, prefixes):
         if path.is_file()
         and path.suffix.casefold() in extensions
         and path.stem.casefold().startswith(prefixes)
+        and (not_before is None or path.stat().st_mtime >= not_before)
     ]
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
-def find_generated_presentation_image(folder: Path):
+def find_generated_presentation_image(folder: Path, not_before=None):
     return newest_file(
         folder,
         extensions={".png", ".jpg", ".jpeg", ".webp"},
         prefixes=("chatgpt", "generated", "presentation", "player_presentation"),
+        not_before=not_before,
     )
 
 
-def find_kling_intro(folder: Path):
+def find_kling_intro(folder: Path, not_before=None):
     return newest_file(
         folder,
         extensions={".mp4"},
         prefixes=("kling", "intro"),
+        not_before=not_before,
     )
 
 
@@ -440,6 +453,10 @@ def read_key_value_file(path: Path):
 def process_intro_video(video_data):
     video_id = video_data["video_id"]
     player_name = video_data["player"]["name"]
+    presentation_style = (
+        video_data.get("intro_presentation_style")
+        or DEFAULT_PRESENTATION_STYLE
+    )
     transfermarkt_url = video_data["player"].get("transfermarkt_url")
     intro_started = video_data.get("intro_automation_started", False)
 
@@ -478,19 +495,41 @@ def process_intro_video(video_data):
         "transfermarkt",
         state="running",
         message="Vérification des données et visuels Transfermarkt",
-        artifacts={"local_folder": str(folder)},
+        artifacts={
+            "local_folder": str(folder),
+            "presentation_style": presentation_style,
+        },
     )
 
     tm_assets = existing_transfermarkt_assets(intro_folder)
     if not tm_assets:
-        tm_assets = build_transfermarkt_assets_from_url_file(str(intro_folder))
+        tm_assets = build_transfermarkt_assets_from_url_file(
+            str(intro_folder),
+            presentation_style=presentation_style,
+        )
+    else:
+        tm_assets.update(
+            refresh_presentation_style_assets(
+                str(intro_folder),
+                presentation_style=presentation_style,
+            )
+        )
     generation_dir = prepare_intro_generation_folder(
         intro_folder=intro_folder,
         intro_photo_path=intro_photo_path,
         tm_assets=tm_assets,
     )
+    style_manifest_path = Path(tm_assets.get("presentation_style_path") or "")
+    style_selected_at = (
+        style_manifest_path.stat().st_mtime
+        if style_manifest_path.is_file()
+        else None
+    )
 
-    generated_image = find_generated_presentation_image(generation_dir)
+    generated_image = find_generated_presentation_image(
+        generation_dir,
+        not_before=style_selected_at,
+    )
     if not generated_image and openai_image_configured():
         report_video_progress(
             video_data,
@@ -549,7 +588,10 @@ def process_intro_video(video_data):
         print(f"[INFO] Image ChatGPT attendue dans {generation_dir}")
         return
 
-    kling_video = find_kling_intro(generation_dir)
+    kling_video = find_kling_intro(
+        generation_dir,
+        not_before=style_selected_at,
+    )
     if not kling_video and kling_video_configured():
         report_video_progress(
             video_data,

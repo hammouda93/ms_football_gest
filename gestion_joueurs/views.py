@@ -65,6 +65,10 @@ from .automation_progress import (
     video_payload,
 )
 from .whatsapp_delivery import send_whatsapp_text
+from .presentation_styles import (
+    DEFAULT_PRESENTATION_STYLE,
+    PRESENTATION_STYLES,
+)
 
 
 def _prepare_player_portal_access(request, player):
@@ -577,6 +581,7 @@ def _render_update_video_status(request, video):
     context = {
         'video': video,
         'automation_progress_runs': video.automation_progress_runs,
+        'presentation_styles': PRESENTATION_STYLES,
     }
     context.update(build_status_notification_context(video))
     return render(request, 'gestion_joueurs/update_video_status.html', context)
@@ -636,6 +641,10 @@ def update_video_status(request, video_id):
             sportsbase_url = request.POST.get('sportsbase_url', '').strip()
             transfermarkt_url = request.POST.get('transfermarkt_url', '').strip()
             intro_automation_enabled = request.POST.get('intro_automation_enabled') == 'on'
+            intro_presentation_style = request.POST.get(
+                'intro_presentation_style',
+                video.intro_presentation_style or DEFAULT_PRESENTATION_STYLE,
+            ).strip()
 
             set_signal_processing(False)
 
@@ -644,6 +653,14 @@ def update_video_status(request, video_id):
             old_processing_mode = video.processing_mode
             old_delivery_mode = video.delivery_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
+            old_intro_style = (
+                getattr(video, "intro_presentation_style", "")
+                or DEFAULT_PRESENTATION_STYLE
+            )
+            valid_intro_styles = {style['value'] for style in PRESENTATION_STYLES}
+            if intro_automation_enabled and intro_presentation_style not in valid_intro_styles:
+                messages.error(request, "Le style de présentation sélectionné n’est pas valide.")
+                return _render_update_video_status(request, video)
 
             # validation : SportsBase obligatoire seulement si mode Automation vidéo
             if new_status == 'in_progress' and processing_mode == 'automation':
@@ -704,8 +721,13 @@ def update_video_status(request, video_id):
                     video.automation_completed = False
 
                 video.intro_automation_enabled = intro_automation_enabled
+                if intro_presentation_style in valid_intro_styles:
+                    video.intro_presentation_style = intro_presentation_style
 
-                if intro_automation_enabled and not old_intro_enabled:
+                if intro_automation_enabled and (
+                    not old_intro_enabled
+                    or old_intro_style != video.intro_presentation_style
+                ):
                     video.intro_automation_started = False
                     video.intro_automation_completed = False
 
@@ -748,6 +770,7 @@ def update_video_status(request, video_id):
                 and (
                     old_status != Video.StatusChoices.IN_PROGRESS
                     or not old_intro_enabled
+                    or old_intro_style != video.intro_presentation_style
                     or not AutomationRun.objects.filter(
                         video=video,
                         pipeline=AutomationRun.PipelineChoices.INTRO,

@@ -10,6 +10,12 @@ from typing import Any
 
 
 class PremiereAutomation:
+    DEFAULT_EXPORT_PRESET_RELATIVE_PATHS = (
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "YouTube 1080p HD.epr",
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "00 - Match Source - High bitrate.epr",
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "01 - Match Source - High bitrate.epr",
+    )
+
     def __init__(
         self,
         premiere_exe: str | None = None,
@@ -41,6 +47,19 @@ class PremiereAutomation:
         premiere_dir = target_dir / "premiere"
         premiere_dir.mkdir(parents=True, exist_ok=True)
         return premiere_dir
+
+    def _resolve_export_preset_path(self) -> str:
+        """Use an explicit preset or a bundled Premiere H.264 1080p preset."""
+        configured = os.getenv("PREMIERE_EXPORT_PRESET", "").strip()
+        if configured and Path(configured).is_file():
+            return configured
+
+        premiere_dir = Path(self.premiere_exe).parent
+        for relative_path in self.DEFAULT_EXPORT_PRESET_RELATIVE_PATHS:
+            candidate = premiere_dir / relative_path
+            if candidate.is_file():
+                return str(candidate)
+        return configured
 
     def _build_project_path(self, premiere_dir: Path, player_name: str) -> Path:
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -93,6 +112,8 @@ class PremiereAutomation:
             "player_intro_path": job_data.get("player_intro_path", ""),
             "music_dir": job_data.get("music_dir", ""),
             "logo_path": job_data.get("logo_path", ""),
+            "final_export_path": job_data.get("final_export_path", ""),
+            "export_preset_path": job_data.get("export_preset_path", ""),
             "created_at": job_data.get("created_at", ""),
         }
 
@@ -151,7 +172,7 @@ class PremiereAutomation:
             "intro_dir": intro_dir,
             "player_intro_path": player_intro_path,
             "final_export_path": final_export_path,
-            "export_preset_path": os.getenv("PREMIERE_EXPORT_PRESET", "").strip(),
+            "export_preset_path": self._resolve_export_preset_path(),
         }
 
         job_file = premiere_dir / "premiere_job.json"

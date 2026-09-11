@@ -2,6 +2,80 @@
 
 {% block title %}Mettre à jour le statut de la vidéo{% endblock %}
 
+{% block extra_css %}
+<style>
+    .presentation-style-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .7rem;
+    }
+    .presentation-style-option {
+        position: relative;
+        margin: 0;
+    }
+    .presentation-style-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .presentation-style-card {
+        display: flex;
+        align-items: flex-start;
+        gap: .75rem;
+        height: 100%;
+        padding: .85rem;
+        border: 1px solid #d7dfeb;
+        border-radius: .75rem;
+        background: #fff;
+        cursor: pointer;
+        transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .presentation-style-card:hover {
+        border-color: #8ab3ff;
+        box-shadow: 0 5px 14px rgba(31, 91, 195, .08);
+    }
+    .presentation-style-option input:checked + .presentation-style-card {
+        border-color: #2161d1;
+        background: #f3f7ff;
+        box-shadow: 0 0 0 2px rgba(33, 97, 209, .13);
+    }
+    .presentation-style-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 2.25rem;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: .65rem;
+        color: #2161d1;
+        background: #eaf1ff;
+    }
+    .presentation-style-copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    .presentation-style-copy strong {
+        color: #12233f;
+        font-size: .86rem;
+    }
+    .presentation-style-copy small {
+        color: #637089;
+        line-height: 1.35;
+    }
+    .presentation-style-meta {
+        color: #2161d1;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    @media (max-width: 767.98px) {
+        .presentation-style-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4 ui-page workflow-page status-update-page">
     <div class="card">
@@ -98,6 +172,37 @@
                         {% endif %}
                         <small class="form-text text-muted">
                             Obligatoire si Générer la présentation est activé.
+                        </small>
+                    </div>
+                    <div class="form-group mt-3" id="presentation-style-container" style="display: none;">
+                        <label class="d-block mb-2">Style de présentation</label>
+                        <div class="presentation-style-grid" role="radiogroup" aria-label="Style de présentation">
+                            {% for style in presentation_styles %}
+                                <div class="presentation-style-option">
+                                    <input
+                                        type="radio"
+                                        name="intro_presentation_style"
+                                        id="intro-style-{{ style.value }}"
+                                        value="{{ style.value }}"
+                                        {% if video.intro_presentation_style == style.value %}checked{% endif %}
+                                    >
+                                    <label class="presentation-style-card" for="intro-style-{{ style.value }}">
+                                        <span class="presentation-style-icon" aria-hidden="true">
+                                            <i class="fas {{ style.icon }}"></i>
+                                        </span>
+                                        <span class="presentation-style-copy">
+                                            <span class="presentation-style-meta">
+                                                {{ style.category }}{% if style.value == 'stadium_golden_hour' %} · Recommandé{% endif %}
+                                            </span>
+                                            <strong>{{ style.label }}</strong>
+                                            <small>{{ style.summary }}</small>
+                                        </span>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <small class="form-text text-muted">
+                            Le choix adapte automatiquement les prompts de l’image ChatGPT et de l’animation Kling.
                         </small>
                     </div>
                     <small class="form-text text-muted">
@@ -362,6 +467,7 @@
         const sportsbaseUrlContainer = document.getElementById('sportsbase-url-container');
         const introAutomationContainer = document.getElementById('intro-automation-container');
         const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
+        const presentationStyleContainer = document.getElementById('presentation-style-container');
         const deliveryModeContainer = document.getElementById('delivery-mode-container');
         const deliveryModeSelect = document.getElementById('delivery_mode');
         const videoLinkContainer = document.getElementById('video-link-container');
@@ -393,6 +499,7 @@
 
         // Transfermarkt seulement si la case est cochée
         transfermarktUrlContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
+        presentationStyleContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
 
         deliveryModeContainer.style.display = (isInProgress || status === 'completed' || isDelivered) ? 'block' : 'none';
         videoLinkContainer.style.display = isDelivered ? 'block' : 'none';

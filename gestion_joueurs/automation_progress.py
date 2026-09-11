@@ -297,6 +297,8 @@ def video_payload(video, request=None):
             else None
         ),
         'intro_automation_enabled': video.intro_automation_enabled,
+        'intro_presentation_style': video.intro_presentation_style,
+        'intro_presentation_style_label': video.get_intro_presentation_style_display(),
         'season': video.season,
         'seasons_to_process': video.seasons_to_process,
         'club': video.club,
