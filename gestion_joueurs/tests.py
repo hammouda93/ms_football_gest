@@ -99,6 +99,7 @@ class HighlightsYouTubeConfigurationTests(SimpleTestCase):
         self.assertIn("--check-youtube", source)
         self.assertIn("--setup-youtube", source)
         self.assertIn('"thumbnail_path":', source)
+        self.assertIn('"visibility": "public"', source)
 
     def test_highlights_title_uses_the_requested_format(self):
         from .automation_agent import build_highlights_youtube_title

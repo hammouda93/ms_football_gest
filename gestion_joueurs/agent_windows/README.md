@@ -45,8 +45,9 @@ Pour chaque Highlights finale, le titre est automatiquement construit sous la
 forme `Best Of Nom du joueur 2026 Skills Assists And Goals`. L’image
 `intro\Uploads_ChatGPT_Kling\chatgpt_presentation` (`.png`, `.jpg`, `.jpeg` ou
 `.webp`) est convertie en `intro\youtube_thumbnail.jpg` au format 1280 × 720,
-puis importée comme miniature personnalisée. Si cette image manque, l’agent arrête
-la livraison avant l’enregistrement YouTube afin de ne pas publier sans miniature.
+puis importée comme miniature personnalisée. La vidéo Highlights est publiée avec
+la visibilité **Publique**. Si cette image manque, l’agent arrête la livraison avant
+l’enregistrement YouTube afin de ne pas publier sans miniature.
 
 Ne pas copier `D:\YouTube_MSPerformance_Profile` : ce dossier contient la session de
 la chaîne Performance. Pour la première connexion Highlights, fermer complètement toutes

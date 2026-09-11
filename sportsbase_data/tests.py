@@ -2094,6 +2094,23 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
 
 
 class YouTubeUploaderPathTests(SimpleTestCase):
+    def test_public_visibility_uses_public_radio(self):
+        page = Mock()
+        public_radio = Mock()
+        page.locator.return_value.first = public_radio
+        public_radio.count.return_value = 1
+        public_radio.is_visible.return_value = True
+        uploader = object.__new__(YouTubeStudioUploader)
+
+        selected = uploader._select_visibility(page, "public")
+
+        self.assertEqual(selected, "public")
+        self.assertIn(
+            'name="PUBLIC"',
+            page.locator.call_args_list[0].args[0],
+        )
+        public_radio.click.assert_called_once_with()
+
     def test_thumbnail_is_resolved_inside_subscription_storage(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -73,7 +73,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33-youtube-thumbnail"
+AGENT_VERSION = "highlights-v33-youtube-public"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -1147,7 +1147,7 @@ def process_delivery_video(video_data):
         "youtube_upload",
         state="running",
         progress_percent=35,
-        message="Mise en ligne YouTube non répertoriée en cours",
+        message="Mise en ligne YouTube publique en cours",
         artifacts={
             "export_path": str(resolved_export),
             "thumbnail_path": str(resolved_thumbnail),
@@ -1170,7 +1170,7 @@ def process_delivery_video(video_data):
                 f"Club : {video_data.get('club') or video_data['player'].get('club') or '-'}\n"
                 f"Saison : {video_data.get('season') or '-'}"
             ),
-            "visibility": "unlisted",
+            "visibility": "public",
         },
     }
     result = build_highlights_youtube_uploader(storage_root).upload(job)

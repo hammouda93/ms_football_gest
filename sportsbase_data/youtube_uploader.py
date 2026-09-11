@@ -637,30 +637,59 @@ class YouTubeStudioUploader:
                 return parts[1]
         return ""
 
-    def _select_unlisted_visibility(self, page):
-        unlisted_selectors = (
-            'tp-yt-paper-radio-button[name="UNLISTED"]',
-            '#privacy-radios tp-yt-paper-radio-button[name="UNLISTED"]',
-            '[role="radio"][name="UNLISTED"]',
-            '[name="UNLISTED"]',
+    def _select_visibility(self, page, visibility):
+        visibility_key = str(visibility or "unlisted").strip().upper()
+        visibility_options = {
+            "PUBLIC": (
+                "Publique",
+                re.compile(r"^(public|publique)$", re.IGNORECASE),
+            ),
+            "UNLISTED": (
+                "Non répertoriée",
+                re.compile(r"^(unlisted|non répertoriée?)$", re.IGNORECASE),
+            ),
+            "PRIVATE": (
+                "Privée",
+                re.compile(r"^(private|privée?)$", re.IGNORECASE),
+            ),
+        }
+        if visibility_key not in visibility_options:
+            raise YouTubeUploadError(
+                "La visibilité YouTube doit être public, unlisted ou private."
+            )
+        visibility_label, visibility_text_pattern = visibility_options[
+            visibility_key
+        ]
+        visibility_selectors = (
+            f'tp-yt-paper-radio-button[name="{visibility_key}"]',
+            "#privacy-radios "
+            f'tp-yt-paper-radio-button[name="{visibility_key}"]',
+            f'[role="radio"][name="{visibility_key}"]',
+            f'[name="{visibility_key}"]',
         )
         for _step in range(4):
-            for selector in unlisted_selectors:
+            for selector in visibility_selectors:
                 radio = page.locator(selector).first
                 if radio.count() and radio.is_visible():
                     radio.click()
                     page.wait_for_timeout(500)
-                    print("[YOUTUBE] Visibilité sélectionnée : Non répertoriée.")
-                    return
-            unlisted_text = page.get_by_text(
-                re.compile(r"^(unlisted|non répertoriée?)$", re.IGNORECASE)
+                    print(
+                        "[YOUTUBE] Visibilité sélectionnée : "
+                        f"{visibility_label}."
+                    )
+                    return visibility_key.casefold()
+            visibility_text = page.get_by_text(
+                visibility_text_pattern
             ).first
             try:
-                if unlisted_text.count() and unlisted_text.is_visible():
-                    unlisted_text.click()
+                if visibility_text.count() and visibility_text.is_visible():
+                    visibility_text.click()
                     page.wait_for_timeout(500)
-                    print("[YOUTUBE] Visibilité sélectionnée : Non répertoriée.")
-                    return
+                    print(
+                        "[YOUTUBE] Visibilité sélectionnée : "
+                        f"{visibility_label}."
+                    )
+                    return visibility_key.casefold()
             except Exception:
                 pass
             next_button = self._first_visible(
@@ -670,7 +699,9 @@ class YouTubeStudioUploader:
             )
             next_button.click()
             page.wait_for_timeout(1200)
-        raise YouTubeUploadError("L’option Non répertoriée n’a pas été trouvée.")
+        raise YouTubeUploadError(
+            f"L’option {visibility_label} n’a pas été trouvée."
+        )
 
     @staticmethod
     def _wait_button_enabled(page, locator, timeout_ms):
@@ -1009,8 +1040,12 @@ class YouTubeStudioUploader:
 
     def upload(self, job):
         video_path = self.resolve_video_path(job)
-        title = str((job.get("youtube") or {}).get("title") or video_path.stem)[:100]
-        description = str((job.get("youtube") or {}).get("description") or "")[:5000]
+        youtube_options = job.get("youtube") or {}
+        title = str(youtube_options.get("title") or video_path.stem)[:100]
+        description = str(youtube_options.get("description") or "")[:5000]
+        visibility = str(
+            youtube_options.get("visibility") or "unlisted"
+        ).strip()
         file_size = video_path.stat().st_size
         content_sha256 = _sha256(video_path)
         cached_result = self._load_receipt(
@@ -1086,7 +1121,7 @@ class YouTubeStudioUploader:
                     timeout_ms=30000,
                 )
                 audience.click()
-                self._select_unlisted_visibility(page)
+                selected_visibility = self._select_visibility(page, visibility)
 
                 youtube_url = self._read_video_url(page, timeout_ms=90000)
                 video_id = self._video_id(youtube_url)
@@ -1128,7 +1163,15 @@ class YouTubeStudioUploader:
                         "après Enregistrer. Vérifiez la vidéo avant toute reprise."
                     )
 
-                print(f"[YOUTUBE] Vidéo non répertoriée disponible : {youtube_url}")
+                visibility_label = {
+                    "public": "publique",
+                    "unlisted": "non répertoriée",
+                    "private": "privée",
+                }[selected_visibility]
+                print(
+                    f"[YOUTUBE] Vidéo {visibility_label} disponible : "
+                    f"{youtube_url}"
+                )
                 result = {
                     "status": "uploaded",
                     "youtube_url": youtube_url,
@@ -1136,6 +1179,7 @@ class YouTubeStudioUploader:
                     "youtube_channel_id": self.channel_id,
                     "content_sha256": content_sha256,
                     "file_size_bytes": file_size,
+                    "visibility": selected_visibility,
                     "thumbnail_path": (
                         str(thumbnail_path) if thumbnail_path is not None else ""
                     ),
