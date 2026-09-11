@@ -1933,8 +1933,65 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
         self.assertEqual(
             str(highlights.profile_dir), r"D:\YouTube_Highlights_Profile"
         )
+        self.assertEqual(highlights.chrome_profile_name, "Profile 1")
         self.assertIn("UC_PERFORMANCE", performance.upload_url)
         self.assertIn("UC_HIGHLIGHTS", highlights.upload_url)
+
+    def test_highlights_launches_the_copied_profile_one_directory(self):
+        with TemporaryDirectory() as directory:
+            profile_root = Path(directory) / "YouTube_Highlights_Profile"
+            (profile_root / "Profile 1").mkdir(parents=True)
+            (profile_root / "Local State").write_text("{}", encoding="utf-8")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            expected_context = object()
+            playwright = Mock()
+            playwright.chromium.launch_persistent_context.return_value = (
+                expected_context
+            )
+
+            result = uploader._launch_context(playwright)
+
+            self.assertIs(result, expected_context)
+            launch = playwright.chromium.launch_persistent_context.call_args
+            self.assertEqual(
+                launch.kwargs["user_data_dir"],
+                str(profile_root),
+            )
+            self.assertIn(
+                "--profile-directory=Profile 1",
+                launch.kwargs["args"],
+            )
+
+    def test_missing_copied_profile_fails_before_chrome_creates_default(self):
+        with TemporaryDirectory() as directory:
+            profile_root = Path(directory) / "YouTube_Highlights_Profile"
+            profile_root.mkdir()
+            (profile_root / "Local State").write_text("{}", encoding="utf-8")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "Profil Chrome copié introuvable",
+            ):
+                uploader._launch_context(Mock())
+            self.assertFalse((profile_root / "Default").exists())
 
     def test_highlights_channel_id_is_required(self):
         with TemporaryDirectory() as directory, patch.dict(

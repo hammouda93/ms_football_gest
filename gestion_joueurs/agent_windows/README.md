@@ -35,21 +35,33 @@ Dans le fichier `.env` du projet, renseigner au minimum :
 ```text
 HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID=UC_IDENTIFIANT_DE_LA_CHAINE_HIGHLIGHTS
 HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR=D:\YouTube_Highlights_Profile
+HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_NAME=Profile 1
 HIGHLIGHTS_YOUTUBE_BROWSER_CHANNEL=chrome
 HIGHLIGHTS_YOUTUBE_HEADLESS=false
 ```
 
 Ne pas copier `D:\YouTube_MSPerformance_Profile` : ce dossier contient la session de
-la chaîne Performance. Le nouveau dossier `D:\YouTube_Highlights_Profile`, placé juste
-à côté, est créé automatiquement lors du premier contrôle. Fermer auparavant toute
-fenêtre Chrome qui utilise l’un de ces profils, puis lancer depuis la racine du projet :
+la chaîne Performance. Pour réutiliser une session Google déjà connectée dans le profil
+Chrome `Profile 1`, fermer complètement Chrome puis copier depuis le dossier `User Data` :
+
+```text
+C:\Users\<utilisateur>\AppData\Local\Google\Chrome\User Data\Profile 1
+    -> D:\YouTube_Highlights_Profile\Profile 1
+
+C:\Users\<utilisateur>\AppData\Local\Google\Chrome\User Data\Local State
+    -> D:\YouTube_Highlights_Profile\Local State
+```
+
+Le fichier `Local State` d’origine est nécessaire pour relire la session Google copiée.
+L’agent passe explicitement `--profile-directory=Profile 1` à Chrome et refuse de créer
+silencieusement un profil `Default` si la copie est absente. Lancer ensuite :
 
 ```powershell
 python gestion_joueurs\automation_agent.py --check-youtube
 ```
 
-Dans la fenêtre ouverte, choisir le second compte Google, se connecter si nécessaire,
-puis vérifier que YouTube Studio affiche bien la chaîne Highlights. Revenir ensuite dans
-PowerShell, appuyer sur Entrée, attendre la confirmation, puis laisser la fenêtre se fermer.
+Dans la fenêtre ouverte, vérifier que YouTube Studio affiche directement la chaîne
+Highlights. Revenir ensuite dans PowerShell, appuyer sur Entrée, attendre la confirmation,
+puis laisser la fenêtre se fermer.
 Le contrôle existant `python -m sportsbase_data.local_agent --check-youtube` reste réservé
 à la chaîne Performance / All Actions.

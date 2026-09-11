@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 DEFAULT_CHANNEL_ID = "UCB2SMAxFXOcWDDDX5FtI9iA"
 DEFAULT_PROFILE_DIR = r"D:\YouTube_MSPerformance_Profile"
 DEFAULT_HIGHLIGHTS_PROFILE_DIR = r"D:\YouTube_Highlights_Profile"
+DEFAULT_HIGHLIGHTS_PROFILE_NAME = "Profile 1"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 
 
@@ -79,6 +80,22 @@ class YouTubeStudioUploader:
             setting_name("CHROME_PROFILE_DIR"), ""
         ).strip()
         self.profile_dir = Path(configured_profile_dir or default_profile_dir)
+        default_profile_name = (
+            DEFAULT_HIGHLIGHTS_PROFILE_NAME
+            if self.config_prefix == "HIGHLIGHTS_YOUTUBE"
+            else ""
+        )
+        self.chrome_profile_name = os.getenv(
+            setting_name("CHROME_PROFILE_NAME"),
+            default_profile_name,
+        ).strip()
+        if self.chrome_profile_name and not re.fullmatch(
+            r"(?:Default|Profile [0-9]+)", self.chrome_profile_name
+        ):
+            raise YouTubeUploadError(
+                f"{setting_name('CHROME_PROFILE_NAME')} est invalide. "
+                "Utilisez par exemple Default ou Profile 1."
+            )
         if self.config_prefix == "HIGHLIGHTS_YOUTUBE":
             performance_channel_id = (
                 os.getenv("YOUTUBE_STUDIO_CHANNEL_ID", DEFAULT_CHANNEL_ID).strip()
@@ -199,18 +216,40 @@ class YouTubeStudioUploader:
         return candidate
 
     def _launch_context(self, playwright):
-        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        launch_args = ["--start-maximized"]
+        if self.chrome_profile_name:
+            copied_profile_dir = self.profile_dir / self.chrome_profile_name
+            local_state_path = self.profile_dir / "Local State"
+            if not copied_profile_dir.is_dir():
+                raise YouTubeUploadError(
+                    "Profil Chrome copié introuvable : "
+                    f"{copied_profile_dir}. Copiez le dossier "
+                    f"{self.chrome_profile_name} complet à cet emplacement."
+                )
+            if not local_state_path.is_file():
+                raise YouTubeUploadError(
+                    "Fichier Chrome 'Local State' introuvable : "
+                    f"{local_state_path}. Copiez-le depuis le dossier User Data "
+                    "d’origine pour conserver la session Google."
+                )
+            launch_args.append(
+                f"--profile-directory={self.chrome_profile_name}"
+            )
+        else:
+            self.profile_dir.mkdir(parents=True, exist_ok=True)
         print(
             "[YOUTUBE] Ouverture Google Chrome avec profil persistant : "
             f"{self.profile_dir}"
         )
+        if self.chrome_profile_name:
+            print(f"[YOUTUBE] Sous-profil Chrome : {self.chrome_profile_name}")
         try:
             return playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.profile_dir),
                 channel=self.browser_channel or None,
                 headless=self.headless,
                 no_viewport=True,
-                args=["--start-maximized"],
+                args=launch_args,
             )
         except Exception as exc:
             raise YouTubeUploadError(

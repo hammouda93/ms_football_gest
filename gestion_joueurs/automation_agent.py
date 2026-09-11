@@ -72,7 +72,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33-youtube-split"
+AGENT_VERSION = "highlights-v33-youtube-profile1"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -1034,6 +1034,10 @@ def check_highlights_youtube_access():
     uploader = build_highlights_youtube_uploader(storage_root)
     print(f"[YOUTUBE HIGHLIGHTS] Chaîne : {uploader.channel_id}")
     print(f"[YOUTUBE HIGHLIGHTS] Profil : {uploader.profile_dir}")
+    print(
+        "[YOUTUBE HIGHLIGHTS] Sous-profil : "
+        f"{uploader.chrome_profile_name or 'Default implicite'}"
+    )
     uploader.check_access()
 
 
