@@ -71,7 +71,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33"
+AGENT_VERSION = "highlights-v33-direct-export"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -716,6 +716,62 @@ def process_video(video_data):
     print(f"[INFO] Dossier créé: {folder}")
 
     premiere = PremiereAutomation()
+    export_result = read_key_value_file(
+        folder / "premiere" / "premiere_export_result.txt"
+    )
+    export_status = str(
+        (export_result or {}).get("status") or ""
+    ).strip().casefold()
+
+    # L'export direct est exécuté par Premiere Pro. Libérer la tâche permet
+    # à l'agent de revérifier son résultat toutes les 30 secondes sans
+    # considérer un MP4 encore en cours d'écriture comme terminé.
+    if export_status in {"preparing", "queued", "rendering", "exporting"}:
+        progress = (export_result or {}).get("progress")
+        try:
+            export_percent = 92 + round(float(progress or 0) * 5)
+        except (TypeError, ValueError):
+            export_percent = 92
+        report_video_progress(
+            video_data,
+            "highlights",
+            "export",
+            state="waiting_external",
+            progress_percent=export_percent,
+            message="Export direct Premiere Pro en cours",
+            artifacts={"premiere_export_result": export_result or {}},
+        )
+        return
+
+    if export_status in {"failed", "cancelled"}:
+        cancelled = export_status == "cancelled"
+        report_video_progress(
+            video_data,
+            "highlights",
+            "export",
+            state="failed",
+            message=(
+                "Export annulé dans Premiere Pro"
+                if cancelled
+                else "Échec de l’export direct Premiere Pro"
+            ),
+            error_code=(
+                "PREMIERE_EXPORT_CANCELLED"
+                if cancelled
+                else "PREMIERE_EXPORT_FAILED"
+            ),
+            error_detail=(
+                (export_result or {}).get("error")
+                or (
+                    "L’export a été annulé."
+                    if cancelled
+                    else "Erreur d’export inconnue"
+                )
+            ),
+            artifacts={"premiere_export_result": export_result or {}},
+        )
+        return
+
     final_export = premiere.find_final_export(folder)
     if final_export:
         report_video_progress(
@@ -748,6 +804,22 @@ def process_video(video_data):
             )
         return
 
+    if export_status == "completed":
+        expected_export = (export_result or {}).get("output_path") or str(
+            folder / "exports"
+        )
+        report_video_progress(
+            video_data,
+            "highlights",
+            "export_validation",
+            state="failed",
+            message="Premiere Pro indique un export terminé, mais le MP4 est introuvable",
+            error_code="FINAL_EXPORT_MISSING",
+            error_detail=f"Fichier attendu : {expected_export}",
+            artifacts={"premiere_export_result": export_result or {}},
+        )
+        return
+
     project_result = premiere.read_project_result(folder)
     if project_result:
         if not project_result.get("success"):
@@ -762,45 +834,17 @@ def process_video(video_data):
                 artifacts={"premiere_result": project_result},
             )
             return
-        export_result = read_key_value_file(folder / "premiere" / "premiere_export_result.txt")
-        if export_result and export_result.get("status") == "failed":
-            report_video_progress(
-                video_data,
-                "highlights",
-                "export",
-                state="failed",
-                message="Échec de l’export Adobe Media Encoder",
-                error_code="PREMIERE_EXPORT_FAILED",
-                error_detail=export_result.get("error") or "Erreur d’export inconnue",
-                artifacts={"premiere_export_result": export_result},
-            )
-        elif export_result and export_result.get("status") in {"preparing", "queued", "rendering"}:
-            progress = export_result.get("progress")
-            try:
-                export_percent = 92 + round(float(progress or 0) * 5)
-            except (TypeError, ValueError):
-                export_percent = 92
-            report_video_progress(
-                video_data,
-                "highlights",
-                "export",
-                state="running",
-                progress_percent=export_percent,
-                message="Export Adobe Media Encoder en cours",
-                artifacts={"premiere_export_result": export_result},
-            )
-        else:
-            report_video_progress(
-                video_data,
-                "highlights",
-                "human_review",
-                state="waiting_external",
-                message="Projet prêt : sélection, styles, intro/audio puis bouton 4 — Exporter",
-                artifacts={
-                    "project_path": project_result.get("project_path", ""),
-                    "local_folder": str(folder),
-                },
-            )
+        report_video_progress(
+            video_data,
+            "highlights",
+            "human_review",
+            state="waiting_external",
+            message="Projet prêt : sélection, styles, intro/audio puis bouton 4 — Exporter",
+            artifacts={
+                "project_path": project_result.get("project_path", ""),
+                "local_folder": str(folder),
+            },
+        )
         return
 
     if not sportsbase_url:

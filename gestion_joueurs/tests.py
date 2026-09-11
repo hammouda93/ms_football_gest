@@ -125,6 +125,27 @@ class PremiereExportConfigurationTests(SimpleTestCase):
             )
 
 
+    def test_bridge_exports_directly_without_media_encoder_queue(self):
+        bridge_root = Path(__file__).resolve().parent / "premiere_bridge"
+        host_source = (
+            bridge_root / "host" / "index.jsx"
+        ).read_text(encoding="utf-8")
+        export_source = host_source.split(
+            "$._MSBridge.exportCompletedMain = function () {",
+            1,
+        )[1]
+        panel_source = (
+            bridge_root / "client" / "index.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("sequence.exportAsMediaDirect(", export_source)
+        self.assertIn('return "EXPORT_COMPLETED | output="', export_source)
+        self.assertNotIn("app.encoder.encodeSequence(", export_source)
+        self.assertNotIn("app.encoder.launchEncoder(", export_source)
+        self.assertIn("Export direct de COMPLETED_MAIN", panel_source)
+        self.assertNotIn("Adobe Media Encoder", panel_source)
+
+
 class SportsBasePlayerDownloadTests(SimpleTestCase):
     def test_profile_download_uses_one_chrome_click_and_disk_confirmation(self):
         automation = object.__new__(SportsBaseAutomation)

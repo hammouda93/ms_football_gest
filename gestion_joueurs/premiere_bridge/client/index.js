@@ -46,7 +46,7 @@
       }
 
       function exportFinalVideo() {
-        setStatus("Envoi de COMPLETED_MAIN vers Adobe Media Encoder...");
+        setStatus("Export direct de COMPLETED_MAIN dans Premiere Pro...");
         cs.evalScript('$._MSBridge.exportCompletedMain()', function (result) {
           setStatus("Résultat: " + result);
         });

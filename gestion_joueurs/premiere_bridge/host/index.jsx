@@ -2325,62 +2325,21 @@ $._MSBridge.findSequenceByName = function (sequenceName) {
 };
 
 $._MSBridge.writeExportStatus = function (success, status, extraText) {
-    var current = $._MSBridge.activeExportJob;
+    var current = $._MSBridge.activeExportTask;
     if (!current || !current.resultPath) {
         return;
     }
     var content =
         "success=" + (success ? "true" : "false") + "\n" +
         "status=" + status + "\n" +
-        "job_id=" + (current.jobID || "") + "\n" +
         "output_path=" + (current.outputPath || "") + "\n" +
+        "mode=direct\n" +
         (extraText || "");
     $._MSBridge.writeTextFile(current.resultPath, content);
 };
 
-$._MSBridge.onExportJobQueued = function (jobID) {
-    if ($._MSBridge.activeExportJob) {
-        $._MSBridge.activeExportJob.jobID = String(jobID);
-        $._MSBridge.writeExportStatus(false, "queued", "");
-    }
-    app.encoder.startBatch();
-};
-
-$._MSBridge.onExportJobProgress = function (jobID, progress) {
-    if ($._MSBridge.activeExportJob) {
-        $._MSBridge.activeExportJob.jobID = String(jobID);
-        $._MSBridge.writeExportStatus(false, "rendering", "progress=" + progress + "\n");
-    }
-};
-
-$._MSBridge.onExportJobComplete = function (jobID, outputFilePath) {
-    if (!$._MSBridge.activeExportJob) {
-        return;
-    }
-    $._MSBridge.activeExportJob.jobID = String(jobID);
-    if (outputFilePath) {
-        $._MSBridge.activeExportJob.outputPath = String(outputFilePath);
-    }
-    $._MSBridge.writeExportStatus(true, "completed", "");
-};
-
-$._MSBridge.onExportJobError = function (jobID, errorMessage) {
-    if (!$._MSBridge.activeExportJob) {
-        return;
-    }
-    $._MSBridge.activeExportJob.jobID = String(jobID);
-    $._MSBridge.writeExportStatus(false, "failed", "error=" + String(errorMessage || "Erreur Adobe Media Encoder") + "\n");
-};
-
-$._MSBridge.onExportJobCanceled = function (jobID) {
-    if (!$._MSBridge.activeExportJob) {
-        return;
-    }
-    $._MSBridge.activeExportJob.jobID = String(jobID);
-    $._MSBridge.writeExportStatus(false, "cancelled", "");
-};
-
 $._MSBridge.exportCompletedMain = function () {
+    $._MSBridge.activeExportTask = null;
     try {
         var context = $._MSBridge.readProjectContextForActiveProject();
         var sequence = $._MSBridge.findSequenceByName("COMPLETED_MAIN");
@@ -2406,34 +2365,32 @@ $._MSBridge.exportCompletedMain = function () {
             throw new Error("Impossible de remplacer l'ancien export: " + outputFile.fsName);
         }
 
-        $._MSBridge.activeExportJob = {
-            jobID: "",
+        $._MSBridge.activeExportTask = {
             outputPath: outputFile.fsName,
             resultPath: context.premiere_dir + "/premiere_export_result.txt"
         };
-        $._MSBridge.writeExportStatus(false, "preparing", "");
+        $._MSBridge.writeExportStatus(false, "exporting", "");
+        app.project.save();
 
-        app.encoder.bind('onEncoderJobQueued', $._MSBridge.onExportJobQueued);
-        app.encoder.bind('onEncoderJobProgress', $._MSBridge.onExportJobProgress);
-        app.encoder.bind('onEncoderJobComplete', $._MSBridge.onExportJobComplete);
-        app.encoder.bind('onEncoderJobError', $._MSBridge.onExportJobError);
-        app.encoder.bind('onEncoderJobCanceled', $._MSBridge.onExportJobCanceled);
-        app.encoder.launchEncoder();
-
-        var jobID = app.encoder.encodeSequence(
-            sequence,
+        // Équivalent automatisé de Ctrl+M puis « Exporter » :
+        // le rendu reste dans Premiere Pro et couvre toute la séquence.
+        var exportSucceeded = sequence.exportAsMediaDirect(
             outputFile.fsName,
             presetFile.fsName,
-            app.encoder.ENCODE_ENTIRE,
-            1
+            0
         );
-        if (!jobID || String(jobID) === "0") {
-            throw new Error("Adobe Media Encoder a refusé la tâche d'export");
+        if (!exportSucceeded) {
+            throw new Error("Premiere Pro a refusé l'export direct");
         }
-        $._MSBridge.activeExportJob.jobID = String(jobID);
-        app.encoder.startBatch();
+
+        var completedFile = new File(outputFile.fsName);
+        if (!completedFile.exists) {
+            throw new Error("L'export direct est terminé mais le MP4 est introuvable");
+        }
+
+        $._MSBridge.writeExportStatus(true, "completed", "");
         app.project.save();
-        return "EXPORT_QUEUED | job=" + jobID + " | output=" + outputFile.fsName;
+        return "EXPORT_COMPLETED | output=" + completedFile.fsName;
     } catch (e) {
         try {
             $._MSBridge.writeExportStatus(false, "failed", "error=" + e.toString() + "\n");
