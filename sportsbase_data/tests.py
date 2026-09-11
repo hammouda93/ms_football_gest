@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from django.core import mail
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1908,7 +1908,99 @@ class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
         self.assertEqual(self.match.video_delivery_status, "uploaded")
 
 
-class YouTubeUploaderPathTests(TestCase):
+class YouTubeChannelConfigurationTests(SimpleTestCase):
+    def test_highlights_configuration_is_isolated_from_performance(self):
+        settings = {
+            "YOUTUBE_STUDIO_CHANNEL_ID": "UC_PERFORMANCE",
+            "YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_MSPerformance_Profile",
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+            "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_Highlights_Profile",
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            performance = YouTubeStudioUploader(directory)
+            highlights = YouTubeStudioUploader(
+                directory,
+                config_prefix="HIGHLIGHTS_YOUTUBE",
+            )
+
+        self.assertEqual(performance.channel_id, "UC_PERFORMANCE")
+        self.assertEqual(highlights.channel_id, "UC_HIGHLIGHTS")
+        self.assertEqual(
+            str(performance.profile_dir), r"D:\YouTube_MSPerformance_Profile"
+        )
+        self.assertEqual(
+            str(highlights.profile_dir), r"D:\YouTube_Highlights_Profile"
+        )
+        self.assertIn("UC_PERFORMANCE", performance.upload_url)
+        self.assertIn("UC_HIGHLIGHTS", highlights.upload_url)
+
+    def test_highlights_channel_id_is_required(self):
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", {}, clear=True
+        ):
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID est obligatoire",
+            ):
+                YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+    def test_highlights_profile_must_be_different_from_performance(self):
+        settings = {
+            "YOUTUBE_STUDIO_CHANNEL_ID": "UC_PERFORMANCE",
+            "YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_MSPerformance_Profile",
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+            "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": (
+                r"D:\YouTube_MSPerformance_Profile"
+            ),
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR doit être différent",
+            ):
+                YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+    def test_highlights_does_not_reuse_a_legacy_performance_receipt(self):
+        settings = {
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            uploader = YouTubeStudioUploader(
+                directory,
+                config_prefix="HIGHLIGHTS_YOUTUBE",
+            )
+            job = {"job_id": "highlight-1914"}
+            receipt = {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": "video-digest",
+                "file_size_bytes": 123,
+            }
+            uploader._save_receipt(job, receipt)
+
+            self.assertIsNone(
+                uploader._load_receipt(
+                    job,
+                    content_sha256="video-digest",
+                    file_size=123,
+                )
+            )
+
+
+class YouTubeUploaderPathTests(SimpleTestCase):
     def test_fast_upload_completion_is_detected_from_studio_status(self):
         class FakeHost:
             def inner_text(self):

@@ -83,6 +83,20 @@ class PresentationStylePromptTests(SimpleTestCase):
             self.assertIn("Studio officiel du club (Studio)", prompt)
 
 
+class HighlightsYouTubeConfigurationTests(SimpleTestCase):
+    def test_delivery_agent_uses_dedicated_highlights_configuration(self):
+        source = (Path(__file__).parent / "automation_agent.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('config_prefix="HIGHLIGHTS_YOUTUBE"', source)
+        self.assertIn(
+            "build_highlights_youtube_uploader(storage_root).upload(job)",
+            source,
+        )
+        self.assertIn("--check-youtube", source)
+
+
 class PremiereExportConfigurationTests(SimpleTestCase):
     def test_bundled_youtube_1080p_preset_is_used_when_env_is_empty(self):
         with TemporaryDirectory() as directory:

@@ -1,3 +1,4 @@
+import argparse
 import os
 import json
 import socket
@@ -71,7 +72,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33-direct-export"
+AGENT_VERSION = "highlights-v33-youtube-split"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -1020,6 +1021,22 @@ def process_video(video_data):
         print(f"[WARN] Vidéo {video_id} incomplète ; reprise manuelle disponible")
 
 
+def build_highlights_youtube_uploader(storage_root):
+    """Keep Highlights delivery isolated from Performance YouTube settings."""
+    return YouTubeStudioUploader(
+        storage_root,
+        config_prefix="HIGHLIGHTS_YOUTUBE",
+    )
+
+
+def check_highlights_youtube_access():
+    storage_root = Path(LOCAL_STORAGE_DIR).resolve()
+    uploader = build_highlights_youtube_uploader(storage_root)
+    print(f"[YOUTUBE HIGHLIGHTS] Chaîne : {uploader.channel_id}")
+    print(f"[YOUTUBE HIGHLIGHTS] Profil : {uploader.profile_dir}")
+    uploader.check_access()
+
+
 def process_delivery_video(video_data):
     video_id = video_data["video_id"]
     folder = Path(create_local_folder(video_data))
@@ -1076,7 +1093,7 @@ def process_delivery_video(video_data):
             "visibility": "unlisted",
         },
     }
-    result = YouTubeStudioUploader(storage_root).upload(job)
+    result = build_highlights_youtube_uploader(storage_root).upload(job)
     if result.get("status") != "uploaded":
         raise ValueError(result.get("error") or "YouTube n’a pas confirmé la mise en ligne.")
 
@@ -1096,6 +1113,19 @@ def process_delivery_video(video_data):
     }:
         os.startfile(whatsapp_url)
     print(f"[INFO] Vidéo {video_id} livrée: {result.get('youtube_url')}")
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Agent Windows Vidéos Highlights")
+    parser.add_argument(
+        "--check-youtube",
+        action="store_true",
+        help=(
+            "ouvrir le profil Chrome de la chaîne Highlights et vérifier "
+            "l’accès à YouTube Studio"
+        ),
+    )
+    return parser.parse_args(argv)
 
 
 def main():
@@ -1181,4 +1211,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    arguments = parse_args()
+    if arguments.check_youtube:
+        check_highlights_youtube_access()
+    else:
+        main()

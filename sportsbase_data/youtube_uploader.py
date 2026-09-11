@@ -13,6 +13,8 @@ from playwright.sync_api import sync_playwright
 
 
 DEFAULT_CHANNEL_ID = "UCB2SMAxFXOcWDDDX5FtI9iA"
+DEFAULT_PROFILE_DIR = r"D:\YouTube_MSPerformance_Profile"
+DEFAULT_HIGHLIGHTS_PROFILE_DIR = r"D:\YouTube_Highlights_Profile"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 
 
@@ -39,30 +41,87 @@ def _sha256(path):
     return digest.hexdigest()
 
 
+def _profile_path_key(path):
+    return (
+        os.path.normcase(os.path.abspath(str(path)))
+        .replace("\\", "/")
+        .rstrip("/")
+        .casefold()
+    )
+
+
 class YouTubeStudioUploader:
-    def __init__(self, storage_root):
+    def __init__(self, storage_root, *, config_prefix="YOUTUBE"):
         self.storage_root = Path(storage_root)
+        self.config_prefix = str(config_prefix or "YOUTUBE").strip().upper().rstrip("_")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", self.config_prefix):
+            raise YouTubeUploadError("Le préfixe de configuration YouTube est invalide.")
+
+        def setting_name(suffix):
+            return f"{self.config_prefix}_{suffix}"
+
+        is_performance_config = self.config_prefix == "YOUTUBE"
+        default_channel_id = DEFAULT_CHANNEL_ID if is_performance_config else ""
         self.channel_id = os.getenv(
-            "YOUTUBE_STUDIO_CHANNEL_ID", DEFAULT_CHANNEL_ID
+            setting_name("STUDIO_CHANNEL_ID"), default_channel_id
         ).strip()
-        self.profile_dir = Path(
-            os.getenv(
-                "YOUTUBE_CHROME_PROFILE_DIR",
-                r"D:\YouTube_MSPerformance_Profile",
+        if not self.channel_id:
+            raise YouTubeUploadError(
+                f"{setting_name('STUDIO_CHANNEL_ID')} est obligatoire."
             )
+
+        default_profile_dir = (
+            DEFAULT_PROFILE_DIR
+            if is_performance_config
+            else DEFAULT_HIGHLIGHTS_PROFILE_DIR
         )
-        self.browser_channel = os.getenv("YOUTUBE_BROWSER_CHANNEL", "chrome").strip()
-        self.headless = _env_bool("YOUTUBE_HEADLESS", False)
+        configured_profile_dir = os.getenv(
+            setting_name("CHROME_PROFILE_DIR"), ""
+        ).strip()
+        self.profile_dir = Path(configured_profile_dir or default_profile_dir)
+        if self.config_prefix == "HIGHLIGHTS_YOUTUBE":
+            performance_channel_id = (
+                os.getenv("YOUTUBE_STUDIO_CHANNEL_ID", DEFAULT_CHANNEL_ID).strip()
+                or DEFAULT_CHANNEL_ID
+            )
+            performance_profile_dir = Path(
+                os.getenv("YOUTUBE_CHROME_PROFILE_DIR", "").strip()
+                or DEFAULT_PROFILE_DIR
+            )
+            if self.channel_id == performance_channel_id:
+                raise YouTubeUploadError(
+                    "La chaîne Highlights doit être différente de la chaîne Performance."
+                )
+            if _profile_path_key(self.profile_dir) == _profile_path_key(
+                performance_profile_dir
+            ):
+                raise YouTubeUploadError(
+                    "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR doit être différent de "
+                    "YOUTUBE_CHROME_PROFILE_DIR."
+                )
+        self.browser_channel = os.getenv(
+            setting_name("BROWSER_CHANNEL"),
+            os.getenv("YOUTUBE_BROWSER_CHANNEL", "chrome"),
+        ).strip()
+        self.headless = _env_bool(setting_name("HEADLESS"), False)
         self.upload_timeout_ms = int(
-            os.getenv("YOUTUBE_UPLOAD_TIMEOUT_MINUTES", "180")
+            os.getenv(
+                setting_name("UPLOAD_TIMEOUT_MINUTES"),
+                os.getenv("YOUTUBE_UPLOAD_TIMEOUT_MINUTES", "180"),
+            )
         ) * 60 * 1000
         self.navigation_timeout_ms = int(
-            os.getenv("YOUTUBE_NAVIGATION_TIMEOUT_SECONDS", "90")
+            os.getenv(
+                setting_name("NAVIGATION_TIMEOUT_SECONDS"),
+                os.getenv("YOUTUBE_NAVIGATION_TIMEOUT_SECONDS", "90"),
+            )
         ) * 1000
-        self.upload_url = os.getenv(
-            "YOUTUBE_STUDIO_UPLOAD_URL",
-            f"https://studio.youtube.com/channel/{self.channel_id}/videos/upload",
+        configured_upload_url = os.getenv(
+            setting_name("STUDIO_UPLOAD_URL"), ""
         ).strip()
+        self.upload_url = configured_upload_url or (
+            f"https://studio.youtube.com/channel/{self.channel_id}/videos/upload"
+        )
         self.content_url = (
             f"https://studio.youtube.com/channel/{self.channel_id}/videos"
         )
@@ -82,10 +141,13 @@ class YouTubeStudioUploader:
             return None
         youtube_url = str(receipt.get("youtube_url") or "").strip()
         video_id = self._video_id(youtube_url)
+        receipt_channel_id = str(receipt.get("youtube_channel_id") or "").strip()
         if (
             receipt.get("status") != "uploaded"
             or receipt.get("content_sha256") != content_sha256
             or int(receipt.get("file_size_bytes") or 0) != file_size
+            or (receipt_channel_id and receipt_channel_id != self.channel_id)
+            or (not receipt_channel_id and self.config_prefix != "YOUTUBE")
             or not video_id
         ):
             return None
@@ -183,13 +245,13 @@ class YouTubeStudioUploader:
                     if self.headless:
                         raise YouTubeAuthenticationRequired(
                             "La première connexion YouTube nécessite "
-                            "YOUTUBE_HEADLESS=false."
+                            f"{self.config_prefix}_HEADLESS=false."
                         )
                     print()
                     print("[YOUTUBE] Première connexion nécessaire.")
                     print(
-                        "[YOUTUBE] Connectez-vous au compte Google de la chaîne "
-                        "MS Performance dans cette fenêtre."
+                        "[YOUTUBE] Connectez-vous au compte Google puis sélectionnez "
+                        f"la chaîne {self.channel_id} dans cette fenêtre."
                     )
                     print(
                         "[YOUTUBE] Quand YouTube Studio est visible, revenez dans "
@@ -764,7 +826,8 @@ class YouTubeStudioUploader:
                 page.wait_for_timeout(2500)
                 if self._authentication_required(page):
                     raise YouTubeAuthenticationRequired(
-                        "Le profil Chrome YouTube n’est pas connecté à MS Performance."
+                        "Le profil Chrome YouTube n’est pas connecté à la chaîne "
+                        f"configurée ({self.channel_id})."
                     )
 
                 file_input = self._open_upload_dialog(page)
@@ -848,6 +911,7 @@ class YouTubeStudioUploader:
                     "status": "uploaded",
                     "youtube_url": youtube_url,
                     "youtube_video_id": video_id,
+                    "youtube_channel_id": self.channel_id,
                     "content_sha256": content_sha256,
                     "file_size_bytes": file_size,
                 }
