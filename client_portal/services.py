@@ -16,7 +16,7 @@ from django.template.defaultfilters import slugify
 from django.utils.crypto import get_random_string
 from django.utils import timezone
 
-from gestion_joueurs.models import Invoice, Player, Video
+from gestion_joueurs.models import AutomationRun, Invoice, Player, Video
 
 from .models import (
     CommunicationLog,
@@ -130,6 +130,51 @@ STAGE_NEXT_ACTION = {
 }
 
 
+OFFICIAL_STATUS_ALLOWED_STAGES = {
+    Video.StatusChoices.PENDING: (
+        VideoWorkflow.Stage.NEW_ORDER,
+        VideoWorkflow.Stage.AWAITING_DEPOSIT,
+        VideoWorkflow.Stage.AWAITING_MEDIA,
+        VideoWorkflow.Stage.BLOCKED,
+    ),
+    Video.StatusChoices.IN_PROGRESS: (
+        VideoWorkflow.Stage.DOWNLOADING,
+        VideoWorkflow.Stage.EDITING,
+        VideoWorkflow.Stage.CLIENT_REVIEW,
+        VideoWorkflow.Stage.REVISIONS,
+        VideoWorkflow.Stage.BLOCKED,
+    ),
+    Video.StatusChoices.COMPLETED_COLLAB: (
+        VideoWorkflow.Stage.EDITING,
+        VideoWorkflow.Stage.CLIENT_REVIEW,
+        VideoWorkflow.Stage.BLOCKED,
+    ),
+    Video.StatusChoices.COMPLETED: (
+        VideoWorkflow.Stage.AWAITING_BALANCE,
+        VideoWorkflow.Stage.READY_DELIVERY,
+        VideoWorkflow.Stage.BLOCKED,
+    ),
+    Video.StatusChoices.DELIVERED: (VideoWorkflow.Stage.DELIVERED,),
+    Video.StatusChoices.PROBLEMATIC: (VideoWorkflow.Stage.BLOCKED,),
+}
+
+
+DOWNLOAD_AUTOMATION_STAGES = {
+    AutomationRun.StageChoices.QUEUED,
+    AutomationRun.StageChoices.SPORTSBASE_DISCOVERY,
+    AutomationRun.StageChoices.SPORTSBASE_GENERATION,
+    AutomationRun.StageChoices.SPORTSBASE_DOWNLOAD,
+}
+
+
+DELIVERY_AUTOMATION_STAGES = {
+    AutomationRun.StageChoices.YOUTUBE_UPLOAD,
+    AutomationRun.StageChoices.YOUTUBE_VALIDATION,
+    AutomationRun.StageChoices.DELIVERY_UPDATE,
+    AutomationRun.StageChoices.WHATSAPP,
+}
+
+
 def invoice_snapshot(video):
     try:
         invoice = video.invoices
@@ -221,12 +266,56 @@ def _saved_workflow(video):
         return None
 
 
-def derived_stage(video):
-    workflow = _saved_workflow(video)
-    if workflow:
-        return workflow.stage
+def allowed_workflow_stages(video):
+    return OFFICIAL_STATUS_ALLOWED_STAGES.get(
+        video.status,
+        (VideoWorkflow.Stage.BLOCKED,),
+    )
 
-    payment = invoice_snapshot(video)
+
+def _automation_runs(video):
+    attached = getattr(video, "automation_progress_runs", None)
+    if attached is not None:
+        return list(attached)
+    return list(video.automation_runs.filter(is_active=True))
+
+
+def production_automation_run(video):
+    runs = _automation_runs(video)
+    if video.status == Video.StatusChoices.IN_PROGRESS:
+        relevant = [
+            run
+            for run in runs
+            if run.pipeline in {
+                AutomationRun.PipelineChoices.INTRO,
+                AutomationRun.PipelineChoices.HIGHLIGHTS,
+            }
+        ]
+    elif video.status == Video.StatusChoices.COMPLETED:
+        relevant = [
+            run
+            for run in runs
+            if run.pipeline == AutomationRun.PipelineChoices.DELIVERY
+        ]
+    else:
+        relevant = []
+
+    failed = next(
+        (run for run in relevant if run.state == AutomationRun.StateChoices.FAILED),
+        None,
+    )
+    if failed:
+        return failed
+    unfinished = [
+        run
+        for run in relevant
+        if run.state != AutomationRun.StateChoices.SUCCEEDED
+    ]
+    return max(unfinished, key=lambda run: run.updated_at, default=None)
+
+
+def _automatic_stage(video, payment=None):
+    payment = payment or invoice_snapshot(video)
     if video.status == Video.StatusChoices.PROBLEMATIC:
         return VideoWorkflow.Stage.BLOCKED
     if video.status == Video.StatusChoices.DELIVERED:
@@ -236,8 +325,17 @@ def derived_stage(video):
             return VideoWorkflow.Stage.AWAITING_BALANCE
         return VideoWorkflow.Stage.READY_DELIVERY
     if video.status == Video.StatusChoices.COMPLETED_COLLAB:
-        return VideoWorkflow.Stage.CLIENT_REVIEW
+        return VideoWorkflow.Stage.EDITING
     if video.status == Video.StatusChoices.IN_PROGRESS:
+        automation_run = production_automation_run(video)
+        if automation_run:
+            if automation_run.state == AutomationRun.StateChoices.FAILED:
+                return VideoWorkflow.Stage.BLOCKED
+            if automation_run.current_stage in DOWNLOAD_AUTOMATION_STAGES:
+                return VideoWorkflow.Stage.DOWNLOADING
+            if automation_run.current_stage in DELIVERY_AUTOMATION_STAGES:
+                return VideoWorkflow.Stage.READY_DELIVERY
+            return VideoWorkflow.Stage.EDITING
         if video.automation_started and not video.automation_completed:
             return VideoWorkflow.Stage.DOWNLOADING
         return VideoWorkflow.Stage.EDITING
@@ -246,30 +344,59 @@ def derived_stage(video):
     return VideoWorkflow.Stage.AWAITING_MEDIA
 
 
+def derived_stage(video):
+    workflow = _saved_workflow(video)
+    automation_run = production_automation_run(video)
+    if (
+        workflow
+        and workflow.stage in allowed_workflow_stages(video)
+        and not automation_run
+    ):
+        return workflow.stage
+    return _automatic_stage(video)
+
+
 def decorate_video(video):
     workflow = _saved_workflow(video)
-    stage = workflow.stage if workflow else derived_stage(video)
     payment = invoice_snapshot(video)
+    stage = derived_stage(video)
+    automation_run = production_automation_run(video)
     video.production_stage = stage
     video.production_stage_label = dict(VideoWorkflow.Stage.choices)[stage]
     video.production_progress = (
-        workflow.progress if workflow else STAGE_PROGRESS.get(stage, 0)
+        max(STAGE_PROGRESS.get(stage, 0), automation_run.progress_percent)
+        if automation_run and stage != VideoWorkflow.Stage.BLOCKED
+        else workflow.progress
+        if workflow and workflow.stage == stage
+        else STAGE_PROGRESS.get(stage, 0)
     )
     video.production_priority = (
         workflow.priority if workflow else VideoWorkflow.Priority.NORMAL
     )
     video.production_next_action = (
-        workflow.next_action
-        if workflow and workflow.next_action
+        automation_run.message
+        if automation_run and automation_run.message
+        else workflow.next_action
+        if workflow and workflow.stage == stage and workflow.next_action
         else STAGE_NEXT_ACTION.get(stage, "")
     )
-    if video.status == Video.StatusChoices.COMPLETED_COLLAB:
+    if (
+        video.status == Video.StatusChoices.COMPLETED_COLLAB
+        and stage != VideoWorkflow.Stage.BLOCKED
+    ):
         video.production_stage_label = CLIENT_COMPLETED_COLLAB_LABEL
         if not workflow or not workflow.next_action:
             video.production_next_action = (
                 "Notre équipe finalise le montage et classe les séquences sélectionnées."
             )
-    video.production_blocked_reason = workflow.blocked_reason if workflow else ""
+    video.production_blocked_reason = (
+        (automation_run.error_detail or automation_run.message)
+        if automation_run and automation_run.state == AutomationRun.StateChoices.FAILED
+        else workflow.blocked_reason
+        if workflow and workflow.stage == stage
+        else ""
+    )
+    video.production_automation = automation_run
     video.payment_snapshot = payment
     video.final_delivery_available = bool(
         video.status == Video.StatusChoices.DELIVERED
@@ -769,6 +896,10 @@ def deliver_portal_credentials(
 
 def update_workflow(video, cleaned_data, *, actor):
     previous_stage = derived_stage(video)
+    if cleaned_data["stage"] not in allowed_workflow_stages(video):
+        raise ValueError(
+            "Cette étape n’est pas compatible avec l’état officiel de la vidéo."
+        )
     workflow, _created = VideoWorkflow.objects.get_or_create(
         video=video,
         defaults={
@@ -794,6 +925,41 @@ def update_workflow(video, cleaned_data, *, actor):
             metadata={"from": previous_stage, "to": workflow.stage},
             created_by=actor,
         )
+    return workflow
+
+
+def sync_workflow_to_official_status(video, *, actor):
+    """Repair a saved workflow after the official video status changes."""
+    workflow = _saved_workflow(video)
+    if not workflow or workflow.stage in allowed_workflow_stages(video):
+        return workflow
+
+    previous_stage = workflow.stage
+    new_stage = _automatic_stage(video)
+    workflow.stage = new_stage
+    workflow.progress = STAGE_PROGRESS.get(new_stage, workflow.progress)
+    workflow.next_action = STAGE_NEXT_ACTION.get(new_stage, "")
+    workflow.blocked_reason = (
+        workflow.blocked_reason if new_stage == VideoWorkflow.Stage.BLOCKED else ""
+    )
+    workflow.updated_by = actor
+    workflow.save()
+    VideoActivity.objects.create(
+        video=video,
+        kind=VideoActivity.Kind.STAGE,
+        visibility=VideoActivity.Visibility.INTERNAL,
+        message=(
+            "Étape synchronisée avec l’état officiel : "
+            f"« {dict(VideoWorkflow.Stage.choices)[previous_stage]} » → "
+            f"« {workflow.get_stage_display()} »."
+        ),
+        metadata={
+            "from": previous_stage,
+            "to": new_stage,
+            "reason": "official_status_sync",
+        },
+        created_by=actor,
+    )
     return workflow
 
 

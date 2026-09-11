@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q,Count,F,Sum
+from django.db.models import Q, Count, F, Sum, Prefetch
 from django.utils import timezone
 from datetime import timedelta,datetime
 from django.http import JsonResponse, HttpResponse
@@ -55,6 +55,7 @@ from client_portal.services import (
     issue_reusable_portal_access_link,
     portal_access_states_for_players,
 )
+from client_portal.models import Organization, OrganizationPlayer
 from .automation_progress import (
     attach_progress_to_videos,
     claim_next_job,
@@ -69,6 +70,54 @@ from .presentation_styles import (
     DEFAULT_PRESENTATION_STYLE,
     PRESENTATION_STYLES,
 )
+from sportsbase_data.forms import InlinePerformanceSubscriptionForm
+from sportsbase_data.models import SportsBaseSubscription
+
+
+def _performance_subscription_for_player(player):
+    if not player or not player.pk:
+        return None
+    try:
+        return player.sportsbase_subscription
+    except SportsBaseSubscription.DoesNotExist:
+        return None
+
+
+def _inline_performance_form(*, data=None, player=None):
+    subscription = _performance_subscription_for_player(player)
+    return InlinePerformanceSubscriptionForm(
+        data,
+        prefix="performance",
+        instance=subscription,
+        player=player,
+        initial={"season": "2025/2026"} if not subscription else None,
+    )
+
+
+def _associate_player_organization(*, player, organization, user):
+    """Add or reactivate an agent/academy link without removing other relations."""
+    if not organization:
+        return None
+    link, _created = OrganizationPlayer.objects.update_or_create(
+        organization=organization,
+        player=player,
+        defaults={
+            "is_active": True,
+            "ended_at": None,
+            "added_by": user,
+        },
+    )
+    return link
+
+
+def _active_player_organization_links(player):
+    if not player or not player.pk:
+        return OrganizationPlayer.objects.none()
+    return player.portal_organization_links.filter(
+        is_active=True,
+        organization__is_active=True,
+        organization__kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+    ).select_related('organization').order_by('organization__kind', 'organization__name')
 
 
 def _prepare_player_portal_access(request, player):
@@ -120,6 +169,8 @@ def create_video_highlight(request):
     player_form = PlayerForm()
     video_form = VideoForm(user=request.user)
     player = None
+    performance_form = _inline_performance_form()
+    performance_requested = False
     selected_player_id = (
         request.POST.get('selected_player_id')
         or request.GET.get('player_id')
@@ -131,32 +182,81 @@ def create_video_highlight(request):
         player = Player.objects.filter(id=selected_player_id).first()
         if player:
             player_form = PlayerForm(instance=player)
+            performance_form = _inline_performance_form(player=player)
+            performance_requested = bool(_performance_subscription_for_player(player))
 
     if request.method == 'POST':
         if 'add_player' in request.POST:
             portal_access = None
+            performance_requested = (
+                request.POST.get("create_performance_subscription") == "on"
+            )
             if selected_player_id:
-                try:
-                    player = Player.objects.get(id=selected_player_id)
+                player = Player.objects.filter(id=selected_player_id).first()
+                if player:
                     player_form = PlayerForm(request.POST, instance=player)
-                    if player_form.is_valid():
-                        player = player_form.save()
-                        if player_form.cleaned_data.get('create_client_account'):
-                            portal_access = _prepare_player_portal_access(request, player)
-                        messages.success(request, "Les informations du joueur ont été mises à jour avec succès !")
-                    else:
-                        messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
-                except Player.DoesNotExist:
+                else:
                     messages.error(request, "Le joueur sélectionné n'existe pas.")
             else:
                 player_form = PlayerForm(request.POST)
-                if player_form.is_valid():
-                    player = player_form.save()
+
+            if player_form.is_valid():
+                candidate_player = player_form.save(commit=False)
+                performance_form = _inline_performance_form(
+                    data=request.POST,
+                    player=candidate_player,
+                )
+                performance_valid = (
+                    not performance_requested or performance_form.is_valid()
+                )
+                if performance_valid:
+                    with transaction.atomic():
+                        player = candidate_player
+                        player.save()
+                        _associate_player_organization(
+                            player=player,
+                            organization=player_form.cleaned_data.get('organization'),
+                            user=request.user,
+                        )
+                        if performance_requested:
+                            subscription = performance_form.save(commit=False)
+                            subscription.player = player
+                            if not subscription.created_by_id:
+                                subscription.created_by = request.user
+                            subscription.save()
                     if player_form.cleaned_data.get('create_client_account'):
                         portal_access = _prepare_player_portal_access(request, player)
-                    messages.success(request, "Le nouveau joueur a été ajouté avec succès !")
+                    if selected_player_id:
+                        messages.success(
+                            request,
+                            "Les informations du joueur ont été mises à jour avec succès !",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            "Le nouveau joueur a été ajouté avec succès !",
+                        )
+                    if performance_requested:
+                        messages.success(
+                            request,
+                            "L’abonnement Performance est prêt pour ce joueur.",
+                        )
+                    performance_form = _inline_performance_form(player=player)
                 else:
-                    messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
+                    player = None
+                    messages.error(
+                        request,
+                        "Veuillez corriger les informations de l’abonnement Performance.",
+                    )
+            else:
+                performance_form = _inline_performance_form(
+                    data=request.POST,
+                    player=player_form.instance,
+                )
+                messages.error(
+                    request,
+                    "Veuillez corriger les erreurs dans le formulaire du joueur.",
+                )
 
             video_form = VideoForm(user=request.user)
             return render(request, 'gestion_joueurs/create_video.html', {
@@ -166,6 +266,9 @@ def create_video_highlight(request):
                 'new_player_added': player is not None,
                 'added_player': player,
                 'portal_access': portal_access,
+                'performance_form': performance_form,
+                'performance_requested': performance_requested,
+                'selected_player_id': selected_player_id,
             })
 
         elif 'create_video' in request.POST:
@@ -179,6 +282,8 @@ def create_video_highlight(request):
                     'players': Player.objects.all(),
                     'new_player_added': False,
                     'added_player': None,
+                    'performance_form': performance_form,
+                    'performance_requested': performance_requested,
                 })
 
             video_form = VideoForm(request.POST, user=request.user)
@@ -195,6 +300,8 @@ def create_video_highlight(request):
                     'players': Player.objects.all(),
                     'new_player_added': player is not None,
                     'added_player': player,
+                    'performance_form': _inline_performance_form(player=player),
+                    'performance_requested': bool(_performance_subscription_for_player(player)),
                 })
 
             try:
@@ -210,6 +317,8 @@ def create_video_highlight(request):
                             'players': Player.objects.all(),
                             'new_player_added': True,
                             'added_player': player,
+                            'performance_form': _inline_performance_form(player=player),
+                            'performance_requested': bool(_performance_subscription_for_player(player)),
                         })
 
                     try:
@@ -222,6 +331,8 @@ def create_video_highlight(request):
                             'players': Player.objects.all(),
                             'new_player_added': True,
                             'added_player': player,
+                            'performance_form': _inline_performance_form(player=player),
+                            'performance_requested': bool(_performance_subscription_for_player(player)),
                         })
 
                     video = video_form.save(commit=False)
@@ -297,6 +408,9 @@ def create_video_highlight(request):
         'players': players,
         'new_player_added': player is not None,
         'added_player': player,
+        'performance_form': performance_form,
+        'performance_requested': performance_requested,
+        'selected_player_id': selected_player_id,
     })
 
 
@@ -485,13 +599,44 @@ def dashboard_cards_view(request):
 @superadmin_required
 @login_required
 def player_dashboard(request):
-    players = Player.objects.all().order_by('-player_creation_date')
+    active_video_statuses = {
+        Video.StatusChoices.PENDING,
+        Video.StatusChoices.IN_PROGRESS,
+        Video.StatusChoices.COMPLETED_COLLAB,
+        Video.StatusChoices.COMPLETED,
+    }
+    active_organization_links = OrganizationPlayer.objects.filter(
+        is_active=True,
+        organization__is_active=True,
+        organization__kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+    ).select_related('organization').order_by('organization__kind', 'organization__name')
+    players = Player.objects.select_related('sportsbase_subscription').prefetch_related(
+        Prefetch(
+            'portal_organization_links',
+            queryset=active_organization_links,
+            to_attr='active_organization_links',
+        )
+    ).annotate(
+        video_count=Count('video', distinct=True),
+        active_video_count=Count(
+            'video',
+            filter=Q(video__status__in=active_video_statuses),
+            distinct=True,
+        ),
+        delivered_video_count=Count(
+            'video',
+            filter=Q(video__status=Video.StatusChoices.DELIVERED),
+            distinct=True,
+        ),
+    ).order_by('-player_creation_date')
     
     search_query = request.GET.get('search')
     league_filter = request.GET.get('league')
     position_filter = request.GET.get('position')
     client_fidel_filter = request.GET.get('client_fidel')
     client_vip_filter = request.GET.get('client_vip')
+    video_relation = request.GET.get('video_relation', '')
+    performance_relation = request.GET.get('performance_relation', '')
 
     if search_query:
         players = players.filter(
@@ -511,18 +656,51 @@ def player_dashboard(request):
     if client_vip_filter:
         players = players.filter(client_vip=(client_vip_filter == 'true'))
 
+    if video_relation == 'any':
+        players = players.filter(video_count__gt=0)
+    elif video_relation == 'active':
+        players = players.filter(active_video_count__gt=0)
+    elif video_relation == 'delivered':
+        players = players.filter(delivered_video_count__gt=0)
+    elif video_relation == 'none':
+        players = players.filter(video_count=0)
+
+    today = timezone.localdate()
+    active_performance = Q(
+        sportsbase_subscription__is_active=True,
+        sportsbase_subscription__starts_on__lte=today,
+    ) & (
+        Q(sportsbase_subscription__ends_on__isnull=True)
+        | Q(sportsbase_subscription__ends_on__gte=today)
+    )
+    if performance_relation == 'active':
+        players = players.filter(active_performance)
+    elif performance_relation == 'history':
+        players = players.filter(sportsbase_subscription__isnull=False).exclude(
+            active_performance
+        )
+    elif performance_relation == 'none':
+        players = players.filter(sportsbase_subscription__isnull=True)
+
     # Set up pagination
     paginator = Paginator(players, 20)  # Show 20 players per page
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    portal_states = portal_access_states_for_players(
+        [player.pk for player in page_obj.object_list]
+    )
+    for listed_player in page_obj.object_list:
+        listed_player.client_portal_state = portal_states.get(listed_player.pk, 'none')
 
-    players_count = len(players)
+    players_count = paginator.count
 
     return render(request, 'gestion_joueurs/player_dashboard.html', {
         'page_obj': page_obj,
         'messages': [],
         'request': request,
         'players_count' : players_count,
+        'video_relation': video_relation,
+        'performance_relation': performance_relation,
     })
 
 def user_login(request):
@@ -852,7 +1030,26 @@ def register_video_editor(request):
 @login_required
 def edit_player(request, player_id):
     player = get_object_or_404(Player, id=player_id)
-    videos = Video.objects.filter(player=player).prefetch_related('status_history')  # Utiliser le related_name
+    videos = Video.objects.filter(player=player).select_related(
+        'editor__user',
+        'invoices',
+    ).prefetch_related('status_history', 'payments').order_by('-video_creation_date')
+    performance_subscription = _performance_subscription_for_player(player)
+    performance_payments = (
+        performance_subscription.payments.select_related('created_by').all()
+        if performance_subscription
+        else []
+    )
+    video_payments = Payment.objects.filter(player=player).select_related(
+        'video',
+        'invoice',
+        'created_by',
+    ).order_by('-payment_date', '-pk')
+    client_portal_state = portal_access_states_for_players((player.pk,)).get(
+        player.pk,
+        'none',
+    )
+    organization_links = _active_player_organization_links(player)
 
     # Ajouter le dernier statut pour chaque vidéo
     for video in videos:
@@ -861,8 +1058,19 @@ def edit_player(request, player_id):
     if request.method == 'POST':
         form = PlayerForm(request.POST, instance=player)
         if form.is_valid():
-            player = form.save()
+            with transaction.atomic():
+                player = form.save()
+                organization_link = _associate_player_organization(
+                    player=player,
+                    organization=form.cleaned_data.get('organization'),
+                    user=request.user,
+                )
             messages.success(request, "Les informations du joueur ont été mises à jour avec succès.")
+            if organization_link:
+                messages.success(
+                    request,
+                    f"{player.name} est maintenant associé à {organization_link.organization.name}.",
+                )
             if form.cleaned_data.get('create_client_account'):
                 portal_access = _prepare_player_portal_access(request, player)
                 if portal_access:
@@ -880,6 +1088,15 @@ def edit_player(request, player_id):
         'form': form,
         'player': player,
         'videos': videos,
+        'video_count': videos.count(),
+        'active_video_count': videos.exclude(
+            status__in={Video.StatusChoices.DELIVERED, Video.StatusChoices.PROBLEMATIC}
+        ).count(),
+        'performance_subscription': performance_subscription,
+        'performance_payments': performance_payments,
+        'video_payments': video_payments,
+        'client_portal_state': client_portal_state,
+        'organization_links': organization_links,
     })
 thread_local = threading.local()
 
@@ -1087,16 +1304,30 @@ def get_remaining_balance(request, video_id):
 @login_required
 def search_players(request):
     query = request.GET.get('q', '')
-    players = Player.objects.filter(name__icontains=query).values(
-        'id',
-        'name',
-        'date_of_birth',
-        'league',
-        'club',
-        'email',
-        'whatsapp_number',
-    )[:10]
-    return JsonResponse({'players': list(players)})
+    players = Player.objects.filter(name__icontains=query).order_by('name')[:10]
+    data = []
+    for player in players:
+        organization_link = _active_player_organization_links(player).first()
+        data.append({
+            'id': player.id,
+            'name': player.name,
+            'date_of_birth': (
+                player.date_of_birth.isoformat() if player.date_of_birth else ''
+            ),
+            'league': player.league,
+            'club': player.club,
+            'email': player.email or '',
+            'whatsapp_number': player.whatsapp_number or '',
+            'position': player.position,
+            'sportsbase_url': player.sportsbase_url or '',
+            'transfermarkt_url': player.transfermarkt_url or '',
+            'client_fidel': player.client_fidel,
+            'client_vip': player.client_vip,
+            'organization_id': (
+                organization_link.organization_id if organization_link else ''
+            ),
+        })
+    return JsonResponse({'players': data})
 
 @superadmin_required
 @login_required
@@ -2033,6 +2264,9 @@ def import_transfermarkt_player(request):
         ).first()
 
         if existing_player:
+            organization_link = _active_player_organization_links(
+                existing_player
+            ).first()
             return JsonResponse({
                 "success": True,
                 "exists": True,
@@ -2045,8 +2279,15 @@ def import_transfermarkt_player(request):
                     "email": existing_player.email or "",
                     "whatsapp_number": existing_player.whatsapp_number or "",
                     "position": existing_player.position,
+                    "sportsbase_url": existing_player.sportsbase_url or "",
+                    "transfermarkt_url": existing_player.transfermarkt_url or url,
                     "client_fidel": existing_player.client_fidel,
                     "client_vip": existing_player.client_vip,
+                    "organization_id": (
+                        organization_link.organization_id
+                        if organization_link
+                        else ""
+                    ),
                 }
             })
 
@@ -2062,8 +2303,11 @@ def import_transfermarkt_player(request):
                 "email": "",
                 "whatsapp_number": "",
                 "position": parsed_data.get("position", "DF"),
+                "sportsbase_url": "",
+                "transfermarkt_url": url,
                 "client_fidel": False,
                 "client_vip": False,
+                "organization_id": "",
             }
         })
 

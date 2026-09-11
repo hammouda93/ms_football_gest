@@ -17,6 +17,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from gestion_joueurs.models import Player, Video, VideoEditor
+from gestion_joueurs.automation_progress import attach_progress_to_videos
 from gestion_joueurs.video_status_whatsapp import (
     PAYMENT_MODE_CHOICES,
     build_status_notification_context,
@@ -71,6 +72,7 @@ from .services import (
     provision_portal_account,
     production_brief,
     production_queryset_for,
+    sync_workflow_to_official_status,
     update_portal_account,
     update_workflow,
 )
@@ -210,7 +212,10 @@ def production_board(request):
         request,
         production_queryset_for(request.user),
     )
-    videos = [decorate_video(video) for video in queryset.order_by("deadline", "id")]
+    videos = attach_progress_to_videos(
+        list(queryset.order_by("deadline", "id"))
+    )
+    videos = [decorate_video(video) for video in videos]
     selected_stage = request.GET.get("stage", "").strip()
     valid_stages = {value for value, _label in VideoWorkflow.Stage.choices}
     if selected_stage in valid_stages:
@@ -269,7 +274,9 @@ def _staff_video_or_404(user, video_id):
 
 @production_required
 def production_video_detail(request, video_id):
-    video = decorate_video(_staff_video_or_404(request.user, video_id))
+    video = _staff_video_or_404(request.user, video_id)
+    attach_progress_to_videos([video])
+    video = decorate_video(video)
     try:
         workflow = video.production_workflow
     except VideoWorkflow.DoesNotExist:
@@ -298,6 +305,7 @@ def production_video_detail(request, video_id):
         "workflow_form": VideoWorkflowForm(
             instance=workflow,
             initial=workflow_initial,
+            video=video,
         ),
         "activity_form": VideoActivityForm(),
         "version_form": VideoVersionForm(),
@@ -355,6 +363,7 @@ def production_video_status_update(request, video_id):
 
     if update_fields:
         video.save(update_fields=tuple(update_fields))
+        sync_workflow_to_official_status(video, actor=request.user)
         messages.success(request, "L’état officiel de la vidéo a été mis à jour.")
     else:
         messages.info(request, "Aucun changement d’état n’était nécessaire.")
@@ -409,10 +418,14 @@ def production_workflow_update(request, video_id):
         workflow = video.production_workflow
     except VideoWorkflow.DoesNotExist:
         workflow = None
-    form = VideoWorkflowForm(request.POST, instance=workflow)
+    form = VideoWorkflowForm(request.POST, instance=workflow, video=video)
     if form.is_valid():
-        update_workflow(video, form.cleaned_data, actor=request.user)
-        messages.success(request, "Le suivi de production a été mis à jour.")
+        try:
+            update_workflow(video, form.cleaned_data, actor=request.user)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, "Le suivi de production a été mis à jour.")
     else:
         messages.error(request, "Vérifiez les informations du suivi de production.")
     return redirect("portal:production_video", video_id=video.pk)

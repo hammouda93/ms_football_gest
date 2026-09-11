@@ -36,6 +36,13 @@
     <div class="production-layout">
         <main>
             <section class="portal-panel">
+                <div class="panel-heading">
+                    <div><h2>Automatisation</h2><small>Présentation, Highlights et livraison</small></div>
+                </div>
+                {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=video.automation_progress_runs %}
+            </section>
+
+            <section class="portal-panel">
                 <div class="panel-heading"><h2>Versions et validation</h2><span>{{ versions|length }} version(s)</span></div>
                 <form method="post" action="{% url 'portal:production_version_add' video.pk %}" class="compact-form">
                     {% csrf_token %}
@@ -122,7 +129,7 @@
                         {{ status_form.video_link }}
                         <span class="helptext">{{ status_form.video_link.help_text }}</span>
                     </p>
-                    <p class="form-note production-status-note"><i class="fas fa-circle-info"></i> Le suivi détaillé ci-dessous reste indépendant : vous gardez la main sur l’étape, la priorité et la progression.</p>
+                    <p class="form-note production-status-note"><i class="fas fa-circle-info"></i> L’état officiel définit les étapes de production possibles. L’automatisation précise ensuite l’avancement réel.</p>
                     <button class="btn btn-primary btn-block" type="submit"><i class="fas fa-arrows-rotate"></i> Enregistrer l’état</button>
                 </form>
             </section>
@@ -131,7 +138,7 @@
                 <div class="panel-heading"><h2>Suivi de production</h2></div>
                 <form method="post" action="{% url 'portal:production_workflow_update' video.pk %}" class="compact-form">
                     {% csrf_token %}{{ workflow_form.as_p }}
-                    <p class="form-note">Ce suivi n’écrase pas l’état historique de la vidéo.</p>
+                    <p class="form-note">Les étapes incompatibles avec l’état officiel sont automatiquement exclues.</p>
                     <button class="btn btn-primary btn-block" type="submit">Mettre à jour</button>
                 </form>
             </section>

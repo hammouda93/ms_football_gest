@@ -8,7 +8,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from gestion_joueurs.models import Invoice, Payment, Player, Video, VideoEditor
+from gestion_joueurs.models import AutomationRun, Invoice, Payment, Player, Video, VideoEditor
 from gestion_joueurs.utils import set_current_user
 
 from .models import (
@@ -164,16 +164,16 @@ class ProductionCenterTests(PortalFixtureMixin, TestCase):
         response = self.client.post(
             reverse("portal:production_workflow_update", args=(self.video.pk,)),
             {
-                "stage": VideoWorkflow.Stage.EDITING,
+                "stage": VideoWorkflow.Stage.NEW_ORDER,
                 "priority": VideoWorkflow.Priority.HIGH,
-                "progress": 55,
-                "next_action": "Préparer la première version",
+                "progress": 5,
+                "next_action": "Qualifier la commande",
                 "blocked_reason": "",
             },
         )
         self.assertEqual(response.status_code, 302)
         workflow = VideoWorkflow.objects.get(video=self.video)
-        self.assertEqual(workflow.stage, VideoWorkflow.Stage.EDITING)
+        self.assertEqual(workflow.stage, VideoWorkflow.Stage.NEW_ORDER)
         self.video.refresh_from_db()
         self.invoice.refresh_from_db()
         self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
@@ -181,6 +181,65 @@ class ProductionCenterTests(PortalFixtureMixin, TestCase):
         self.assertTrue(
             VideoActivity.objects.filter(video=self.video, kind="stage").exists()
         )
+
+    def test_pending_video_rejects_incompatible_delivered_workflow(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("portal:production_workflow_update", args=(self.video.pk,)),
+            {
+                "stage": VideoWorkflow.Stage.DELIVERED,
+                "priority": VideoWorkflow.Priority.NORMAL,
+                "progress": 100,
+                "next_action": "",
+                "blocked_reason": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(VideoWorkflow.objects.filter(video=self.video).exists())
+
+    def test_official_status_repairs_an_incompatible_saved_stage(self):
+        VideoWorkflow.objects.create(
+            video=self.video,
+            stage=VideoWorkflow.Stage.DELIVERED,
+            progress=100,
+            updated_by=self.admin,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("portal:production_video_status_update", args=(self.video.pk,)),
+            {
+                "status": Video.StatusChoices.IN_PROGRESS,
+                "video_link": "",
+                "notification_action": "skip",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        workflow = VideoWorkflow.objects.get(video=self.video)
+        self.assertEqual(workflow.stage, VideoWorkflow.Stage.EDITING)
+
+    def test_automation_stage_is_visible_and_drives_production(self):
+        self.second_video.processing_mode = Video.AutomationModeChoices.AUTOMATION
+        self.second_video.save(update_fields=("processing_mode",))
+        AutomationRun.objects.create(
+            video=self.second_video,
+            pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+            state=AutomationRun.StateChoices.WAITING_EXTERNAL,
+            current_stage=AutomationRun.StageChoices.HUMAN_REVIEW,
+            progress_percent=78,
+            message="Projet prêt : sélection humaine attendue",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(
+            reverse("portal:production_video", args=(self.second_video.pk,))
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["video"].production_stage, VideoWorkflow.Stage.EDITING)
+        self.assertContains(response, "Sélection des actions")
 
     def test_blocked_workflow_requires_reason(self):
         self.client.force_login(self.admin)

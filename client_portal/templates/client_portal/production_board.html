@@ -64,6 +64,7 @@
                             <span class="ticket-meta">{{ video.club|default:video.player.club }} · {{ video.season }}</span>
                             <span class="ticket-meta"><i class="far fa-calendar"></i> {{ video.deadline|date:"d/m/Y" }}{% if video.is_late %} · En retard{% endif %}</span>
                             <span class="ticket-meta"><i class="far fa-user"></i> {{ video.editor.user.username }}</span>
+                            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=video.automation_progress_runs compact=True %}
                             <div class="progress production-progress"><div style="width: {{ video.production_progress }}%"></div></div>
                             <div class="ticket-balance">
                                 <span>Progression {{ video.production_progress }}%</span>

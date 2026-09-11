@@ -12,6 +12,22 @@
         </div>
     </div>
 
+    {% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
+
+    <section class="player-relationship-summary mb-4">
+        <article><span>Espace client</span><strong>{% if client_portal_state == 'active' %}<i class="fas fa-user-check text-success"></i> Actif{% elif client_portal_state == 'inactive' %}<i class="fas fa-user-lock text-warning"></i> Désactivé{% else %}<i class="fas fa-user-slash text-muted"></i> Aucun{% endif %}</strong></article>
+        <article><span>Vidéos Highlights</span><strong><i class="fas fa-video text-primary"></i> {{ video_count }} total · {{ active_video_count }} en cours</strong></article>
+        <article><span>Abonnement Performance</span><strong>{% if performance_subscription and performance_subscription.access_enabled %}<i class="fas fa-chart-line text-success"></i> Actif{% elif performance_subscription %}<i class="fas fa-clock-rotate-left text-muted"></i> Ancien / inactif{% else %}<i class="fas fa-minus text-muted"></i> Aucun{% endif %}</strong></article>
+        <article><span>Profil SportsBase</span><strong>{% if player.sportsbase_url %}<i class="fas fa-circle-check text-success"></i> Renseigné{% else %}<i class="fas fa-triangle-exclamation text-warning"></i> Manquant{% endif %}</strong></article>
+        <article><span>Agent / académie</span><strong>{% for link in organization_links %}<i class="fas fa-users text-info"></i> {{ link.organization.name }}{% if not forloop.last %}<br>{% endif %}{% empty %}<i class="fas fa-minus text-muted"></i> Aucune association{% endfor %}</strong></article>
+    </section>
+    <div class="ui-actions mb-4">
+        <a href="{% url 'create_video_request' %}?player_id={{ player.pk }}" class="btn btn-primary"><i class="fas fa-video"></i> Nouvelle vidéo</a>
+        {% if performance_subscription %}<a href="{% url 'performance:subscription_edit' performance_subscription.pk %}" class="btn btn-outline-primary"><i class="fas fa-chart-line"></i> Ouvrir l’abonnement Performance</a>{% else %}<a href="{% url 'performance:subscription_create' %}?player_id={{ player.pk }}" class="btn btn-outline-primary"><i class="fas fa-chart-line"></i> Créer l’abonnement Performance</a>{% endif %}
+        <a href="{% url 'portal:management' %}" class="btn btn-outline-secondary"><i class="fas fa-users"></i> Gérer l’espace client</a>
+        <a href="{% url 'portal:organization_create' %}" class="btn btn-outline-secondary"><i class="fas fa-building-circle-check"></i> Nouvel agent / académie</a>
+    </div>
+
     <div class="row">
         <!-- Card for player modification -->
         <div class="col-md-6">
@@ -23,6 +39,15 @@
                     <form method="POST">
                         {% csrf_token %}
                         {{ form|crispy }}  
+                        {% if organization_links %}
+                            <div class="alert alert-light border">
+                                <strong>Associations actives :</strong>
+                                {% for link in organization_links %}
+                                    <a href="{% url 'portal:organization_detail' link.organization.pk %}">{{ link.organization.name }}</a>{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                                <div class="small text-muted">Choisir une autre organisation l’ajoute sans supprimer ces relations.</div>
+                            </div>
+                        {% endif %}
                         <div class="d-flex justify-content-between align-items-center mt-4">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> Mettre à jour le Joueur
@@ -61,11 +86,7 @@
                                             <td>{{ video.season }}</td>
                                             <td>{{ video.club }}</td>
                                             <td>
-                                                {% if video.last_status %}
-                                                    {{ video.last_status.status }}
-                                                {% else %}
-                                                    Aucun statut
-                                                {% endif %}
+                                                <span class="badge {% if video.status == 'delivered' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">{{ video.get_status_display }}</span>
                                             </td>
                                             <td>
                                                 {% if video.last_status %}
@@ -91,5 +112,39 @@
             </div>
         </div>
     </div>
+
+    <div class="row">
+        <div class="col-md-7">
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="card-title mb-0">Historique des paiements vidéo</h5></div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm">
+                        <thead><tr><th>Date</th><th>Vidéo</th><th>Type</th><th>Montant</th><th>Solde</th></tr></thead>
+                        <tbody>
+                        {% for payment in video_payments %}
+                            <tr><td>{{ payment.payment_date|date:"d/m/Y" }}</td><td>{{ payment.video.season }}</td><td>{{ payment.get_payment_type_display }}</td><td><strong>{{ payment.amount|floatformat:2 }}</strong></td><td>{{ payment.remaining_balance|floatformat:2 }}</td></tr>
+                        {% empty %}<tr><td colspan="5">Aucun paiement vidéo enregistré.</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="card-title mb-0">Paiements Performance</h5></div>
+                <div class="card-body">
+                    {% if performance_subscription %}
+                        <p><strong>{{ performance_subscription.amount_paid|floatformat:2 }} / {{ performance_subscription.total_amount|floatformat:2 }} {{ performance_subscription.currency }}</strong><br><small>Solde : {{ performance_subscription.remaining_balance|floatformat:2 }} {{ performance_subscription.currency }}</small></p>
+                        <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Montant</th><th>Mode</th></tr></thead><tbody>
+                        {% for payment in performance_payments %}<tr><td>{{ payment.payment_date|date:"d/m/Y" }}</td><td>{{ payment.amount|floatformat:2 }} {{ performance_subscription.currency }}</td><td>{{ payment.get_payment_method_display }}</td></tr>{% empty %}<tr><td colspan="3">Aucun paiement.</td></tr>{% endfor %}
+                        </tbody></table></div>
+                    {% else %}<p>Aucun abonnement Performance pour ce joueur.</p>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+<style>
+.player-relationship-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.player-relationship-summary article{padding:16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 6px 18px rgba(15,23,42,.05)}.player-relationship-summary span{display:block;color:#64748b;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}.player-relationship-summary strong{display:block;margin-top:7px;color:#0f172a}@media(max-width:991px){.player-relationship-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:575px){.player-relationship-summary{grid-template-columns:1fr}}
+</style>
 {% endblock %}

@@ -227,8 +227,29 @@ class VideoWorkflowForm(StyledModelForm):
             "blocked_reason": forms.Textarea(attrs={"rows": 2}),
         }
 
+    def __init__(self, *args, video=None, **kwargs):
+        self.video = video or getattr(kwargs.get("instance"), "video", None)
+        super().__init__(*args, **kwargs)
+        if self.video:
+            from .services import allowed_workflow_stages
+
+            allowed = set(allowed_workflow_stages(self.video))
+            self.fields["stage"].choices = [
+                choice
+                for choice in VideoWorkflow.Stage.choices
+                if choice[0] in allowed
+            ]
+
     def clean(self):
         cleaned_data = super().clean()
+        if self.video and cleaned_data.get("stage"):
+            from .services import allowed_workflow_stages
+
+            if cleaned_data["stage"] not in allowed_workflow_stages(self.video):
+                self.add_error(
+                    "stage",
+                    "Cette étape n’est pas compatible avec l’état officiel de la vidéo.",
+                )
         if (
             cleaned_data.get("stage") == VideoWorkflow.Stage.BLOCKED
             and not cleaned_data.get("blocked_reason", "").strip()

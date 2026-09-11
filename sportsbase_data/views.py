@@ -19,6 +19,7 @@ from client_portal.decorators import (
 )
 from client_portal.models import PlayerAccess, PortalProfile
 from client_portal.services import accessible_players_for
+from gestion_joueurs.models import Player
 
 from .analysis_engine import ms_rating, platform_index
 from .forms import (
@@ -666,7 +667,17 @@ def subscription_form(request, pk=None):
     subscription = (
         get_object_or_404(SportsBaseSubscription, pk=pk) if pk else None
     )
-    form = SportsBaseSubscriptionForm(request.POST or None, instance=subscription)
+    initial = None
+    requested_player_id = request.GET.get("player_id", "").strip()
+    if not subscription and requested_player_id.isdigit():
+        requested_player = Player.objects.filter(pk=int(requested_player_id)).first()
+        if requested_player:
+            initial = {"player": requested_player}
+    form = SportsBaseSubscriptionForm(
+        request.POST or None,
+        instance=subscription,
+        initial=initial,
+    )
     if request.method == "POST" and form.is_valid():
         item = form.save(commit=False)
         if not item.pk:

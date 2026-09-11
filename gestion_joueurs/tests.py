@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from .deadline_planning import ACTIVE_PLANNING_STATUSES
 from .forms import VideoForm
-from .models import AutomationEvent, AutomationRun, AutomationWorker, Invoice, Notification, Player, Video, VideoEditor
+from .models import AutomationEvent, AutomationRun, AutomationWorker, Invoice, Notification, Payment, Player, Video, VideoEditor
 from .presentation_styles import (
     DEFAULT_PRESENTATION_STYLE,
     PRESENTATION_STYLES,
@@ -32,7 +32,17 @@ from .video_status_whatsapp import (
     get_payment_snapshot,
 )
 
-from client_portal.models import PlayerAccess, PortalAccessLink, PortalProfile
+from client_portal.models import (
+    Organization,
+    OrganizationPlayer,
+    PlayerAccess,
+    PortalAccessLink,
+    PortalProfile,
+)
+from sportsbase_data.models import (
+    PerformanceSubscriptionPayment,
+    SportsBaseSubscription,
+)
 
 
 class PresentationStylePromptTests(SimpleTestCase):
@@ -1017,6 +1027,237 @@ class PlayerPortalProvisioningTests(TestCase):
                 player=self.player,
                 user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
             ).exists()
+        )
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
+class PlayerRelationshipManagementTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="player-relationship-admin",
+            email="relationship-admin@example.com",
+            password="test-password",
+        )
+        editor_user = User.objects.create_user(
+            username="player-relationship-editor",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=editor_user)
+        self.player = Player.objects.create(
+            name="Relationship Player",
+            club="Relationship Club",
+            email="relationship@example.com",
+            whatsapp_number="+21622111222",
+            league="L1",
+            position="MF",
+            sportsbase_url="https://football.sportsbase.world/players/456",
+            transfermarkt_url="https://www.transfermarkt.fr/player/profil/spieler/123",
+        )
+        self.empty_player = Player.objects.create(
+            name="No Service Player",
+            club="No Service Club",
+            league="L2",
+            position="DF",
+        )
+        self.agent = Organization.objects.create(
+            name="Relationship Agency",
+            kind=Organization.Kind.AGENT,
+            created_by=self.admin,
+        )
+        self.academy = Organization.objects.create(
+            name="Relationship Academy",
+            kind=Organization.Kind.ACADEMY,
+            created_by=self.admin,
+        )
+        set_current_user(self.admin)
+        self.client.force_login(self.admin)
+
+    def player_form_data(self):
+        return {
+            "selected_player_id": str(self.player.pk),
+            "add_player": "1",
+            "name": self.player.name,
+            "date_of_birth": "",
+            "league": self.player.league,
+            "club": self.player.club,
+            "email": self.player.email,
+            "whatsapp_number": self.player.whatsapp_number,
+            "position": self.player.position,
+            "sportsbase_url": self.player.sportsbase_url,
+            "transfermarkt_url": self.player.transfermarkt_url,
+            "client_fidel": "",
+            "client_vip": "",
+        }
+
+    def test_player_search_returns_every_prefill_field(self):
+        OrganizationPlayer.objects.create(
+            organization=self.agent,
+            player=self.player,
+            added_by=self.admin,
+        )
+        response = self.client.get(reverse("search_players"), {"q": "Relationship"})
+
+        self.assertEqual(response.status_code, 200)
+        player = response.json()["players"][0]
+        self.assertEqual(player["sportsbase_url"], self.player.sportsbase_url)
+        self.assertEqual(player["transfermarkt_url"], self.player.transfermarkt_url)
+        self.assertEqual(player["position"], self.player.position)
+        self.assertIn("client_fidel", player)
+        self.assertIn("client_vip", player)
+        self.assertEqual(player["organization_id"], self.agent.pk)
+
+    def test_new_player_can_be_associated_with_an_agent(self):
+        data = self.player_form_data()
+        data.update({
+            "selected_player_id": "",
+            "name": "New Agent Player",
+            "email": "new-agent-player@example.com",
+            "organization": str(self.agent.pk),
+        })
+
+        response = self.client.post(reverse("create_video_request"), data)
+
+        self.assertEqual(response.status_code, 200)
+        player = Player.objects.get(name="New Agent Player")
+        link = OrganizationPlayer.objects.get(player=player, organization=self.agent)
+        self.assertTrue(link.is_active)
+        self.assertEqual(link.added_by, self.admin)
+
+    def test_player_sheet_can_add_an_academy_without_removing_agent(self):
+        OrganizationPlayer.objects.create(
+            organization=self.agent,
+            player=self.player,
+            added_by=self.admin,
+        )
+        data = self.player_form_data()
+        data.pop("selected_player_id")
+        data.pop("add_player")
+        data["organization"] = str(self.academy.pk)
+
+        response = self.client.post(
+            reverse("edit_player", args=(self.player.pk,)),
+            data,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(OrganizationPlayer.objects.filter(
+            organization=self.agent,
+            player=self.player,
+            is_active=True,
+        ).exists())
+        self.assertTrue(OrganizationPlayer.objects.filter(
+            organization=self.academy,
+            player=self.player,
+            is_active=True,
+        ).exists())
+
+    def test_create_page_prefills_existing_player_urls(self):
+        response = self.client.get(
+            reverse("create_video_request"),
+            {"player_id": self.player.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.player.sportsbase_url)
+        self.assertContains(response, self.player.transfermarkt_url)
+        self.assertContains(response, f'value="{self.player.pk}"')
+
+    def test_performance_create_link_prefills_selected_player(self):
+        response = self.client.get(
+            reverse("performance:subscription_create"),
+            {"player_id": self.player.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"].initial["player"], self.player)
+
+    def test_create_page_can_create_performance_subscription_for_selected_player(self):
+        data = self.player_form_data()
+        data.update({
+            "create_performance_subscription": "on",
+            "performance-season": "2025/2026",
+            "performance-starts_on": timezone.localdate().isoformat(),
+            "performance-ends_on": "",
+            "performance-sync_from_date": "",
+            "performance-first_match_id": "",
+            "performance-all_actions_enabled": "on",
+            "performance-email_delivery_enabled": "on",
+            "performance-report_language": "fr",
+            "performance-total_amount": "450.00",
+            "performance-currency": "TND",
+            "performance-payment_url": "",
+            "performance-sync_interval_hours": "24",
+            "performance-is_active": "on",
+        })
+
+        response = self.client.post(reverse("create_video_request"), data)
+
+        self.assertEqual(response.status_code, 200)
+        subscription = SportsBaseSubscription.objects.get(player=self.player)
+        self.assertEqual(subscription.total_amount, Decimal("450.00"))
+        self.assertEqual(subscription.created_by, self.admin)
+        self.assertContains(response, "L’abonnement Performance est prêt")
+
+    def test_player_dashboard_filters_and_detail_show_relationships(self):
+        video = Video.objects.create(
+            player=self.player,
+            editor=self.editor,
+            status=Video.StatusChoices.IN_PROGRESS,
+            advance_payment=Decimal("100.00"),
+            total_payment=Decimal("300.00"),
+            deadline=timezone.localdate() + timedelta(days=7),
+            season="2025/2026",
+            club=self.player.club,
+            league=self.player.league,
+        )
+        invoice = Invoice.objects.create(
+            video=video,
+            total_amount=Decimal("300.00"),
+            amount_paid=Decimal("100.00"),
+            status="partially_paid",
+            created_by=self.admin,
+        )
+        Payment.objects.create(
+            player=self.player,
+            video=video,
+            invoice=invoice,
+            amount=Decimal("100.00"),
+            payment_type="advance",
+            remaining_balance=Decimal("200.00"),
+            created_by=self.admin,
+        )
+        subscription = SportsBaseSubscription.objects.create(
+            player=self.player,
+            season="2025/2026",
+            total_amount=Decimal("500.00"),
+            created_by=self.admin,
+        )
+        PerformanceSubscriptionPayment.objects.create(
+            subscription=subscription,
+            amount=Decimal("200.00"),
+            created_by=self.admin,
+        )
+
+        list_response = self.client.get(
+            reverse("player_dashboard"),
+            {"video_relation": "active", "performance_relation": "active"},
+        )
+        self.assertContains(list_response, self.player.name)
+        self.assertNotContains(list_response, self.empty_player.name)
+        self.assertContains(list_response, "1 en cours")
+
+        detail_response = self.client.get(reverse("edit_player", args=(self.player.pk,)))
+        self.assertContains(detail_response, "Historique des paiements vidéo")
+        self.assertContains(detail_response, "Paiements Performance")
+        self.assertEqual(
+            list(detail_response.context["video_payments"])[0].amount,
+            Decimal("100.00"),
+        )
+        self.assertEqual(
+            list(detail_response.context["performance_payments"])[0].amount,
+            Decimal("200.00"),
         )
 
 

@@ -6,9 +6,20 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from client_portal.models import Organization
 
 
 class PlayerForm(forms.ModelForm):
+    organization = forms.ModelChoiceField(
+        queryset=Organization.objects.none(),
+        required=False,
+        label="Agent ou académie",
+        help_text=(
+            "Associez le joueur à une agence, un agent ou une académie existante. "
+            "Les autres relations déjà enregistrées seront conservées."
+        ),
+        empty_label="Aucun nouvel agent ou académie",
+    )
     email = forms.EmailField(
         required=False,
         label="Adresse e-mail",
@@ -42,6 +53,21 @@ class PlayerForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['organization'].queryset = Organization.objects.filter(
+            is_active=True,
+            kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+        ).order_by('kind', 'name')
+        if self.instance and self.instance.pk and not self.is_bound:
+            active_link = self.instance.portal_organization_links.filter(
+                is_active=True,
+                organization__is_active=True,
+                organization__kind__in=(
+                    Organization.Kind.AGENT,
+                    Organization.Kind.ACADEMY,
+                ),
+            ).select_related('organization').first()
+            if active_link:
+                self.fields['organization'].initial = active_link.organization
         self.fields['club'].widget.attrs['placeholder'] = "Entrez le club du joueur"
         self.fields['whatsapp_number'].widget.attrs['placeholder'] = "Numéro WhatsApp (+999999999999 ou 999999999)"
         self.fields['position'].widget.attrs['placeholder'] = "Sélectionnez la position"

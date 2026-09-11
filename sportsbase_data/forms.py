@@ -63,6 +63,44 @@ class SportsBaseSubscriptionForm(forms.ModelForm):
         return cleaned
 
 
+class InlinePerformanceSubscriptionForm(forms.ModelForm):
+    """Performance subscription fields embedded in the player creation flow."""
+
+    class Meta:
+        model = SportsBaseSubscription
+        fields = (
+            "season",
+            "starts_on",
+            "ends_on",
+            "sync_from_date",
+            "first_match_id",
+            "all_actions_enabled",
+            "email_delivery_enabled",
+            "youtube_delivery_enabled",
+            "report_language",
+            "total_amount",
+            "currency",
+            "payment_url",
+            "sync_interval_hours",
+            "is_active",
+        )
+        widgets = {
+            "starts_on": forms.DateInput(attrs={"type": "date"}),
+            "ends_on": forms.DateInput(attrs={"type": "date"}),
+            "sync_from_date": forms.DateInput(attrs={"type": "date"}),
+        }
+
+    def __init__(self, *args, player=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if player is not None:
+            self.instance.player = player
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "form-check-input"
+            else:
+                field.widget.attrs["class"] = "form-control"
+
+
 class PerformanceSubscriptionPaymentForm(forms.ModelForm):
     class Meta:
         model = PerformanceSubscriptionPayment

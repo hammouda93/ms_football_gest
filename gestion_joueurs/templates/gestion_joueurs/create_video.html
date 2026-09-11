@@ -69,10 +69,32 @@
                     
                         <!-- Only include the player_form fields other than 'name' -->
                         {{ player_form|crispy }}
+                        <div class="small text-muted mt-n2 mb-3">
+                            Agent ou académie absent ?
+                            <a href="{% url 'portal:organization_create' %}" target="_blank" rel="noopener">Créer l’organisation</a>, puis rechargez cette page.
+                        </div>
+
+                        <section class="inline-performance-panel mt-4">
+                            <label class="inline-performance-toggle" for="createPerformanceSubscription">
+                                <input
+                                    type="checkbox"
+                                    name="create_performance_subscription"
+                                    id="createPerformanceSubscription"
+                                    {% if performance_requested %}checked{% endif %}
+                                >
+                                <span>
+                                    <strong>Créer ou mettre à jour l’abonnement Performance</strong>
+                                    <small>La fiche SportsBase, la saison, la facturation et les options de livraison seront enregistrées en même temps.</small>
+                                </span>
+                            </label>
+                            <div id="performanceSubscriptionFields" {% if not performance_requested %}hidden{% endif %}>
+                                {{ performance_form|crispy }}
+                            </div>
+                        </section>
                         
                         <!-- Hidden input to store selected player ID -->
                         <input type="hidden" name="selected_player_id" id="selectedPlayerId" 
-                            value="{% if added_player %}{{ added_player.id }}{% endif %}">
+                            value="{% if added_player and added_player.pk %}{{ added_player.id }}{% else %}{{ selected_player_id|default:'' }}{% endif %}">
                     
                         <div class="d-flex justify-content-between align-items-center mt-4">
                             <button type="submit" name="add_player" class="btn btn-primary">
@@ -123,7 +145,7 @@ document.getElementById('playerName').addEventListener('input', function() {
         return;
     }
 
-    fetch(`/gestion_joueurs/search_players/?q=${query}`)
+    fetch(`/gestion_joueurs/search_players/?q=${encodeURIComponent(query)}`)
         .then(response => response.json())
         .then(data => {
             resultsContainer.innerHTML = '';
@@ -133,18 +155,27 @@ document.getElementById('playerName').addEventListener('input', function() {
                     item.className = 'list-group-item list-group-item-action';
                     item.innerText = `${player.name} (${player.date_of_birth})`;
                     item.href = '#';
-                    item.onclick = function() {
+                    item.onclick = function(event) {
+                        event.preventDefault();
                         // Populate the hidden player form fields with the selected player's information
                         document.getElementById('id_name').value = player.name; // Player name
                         document.getElementById('id_date_of_birth').value = player.date_of_birth; // Date of birth
                         document.getElementById('id_league').value = player.league; // League
                         document.getElementById('id_club').value = player.club; // Club
                         document.getElementById('id_email').value = player.email || '';
-                        document.getElementById('id_whatsapp_number').value = player.whatsapp_number; // WhatsApp number
+                        document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
+                        document.getElementById('id_position').value = player.position || 'DF';
+                        document.getElementById('id_sportsbase_url').value = player.sportsbase_url || '';
+                        document.getElementById('id_transfermarkt_url').value = player.transfermarkt_url || '';
+                        document.getElementById('id_client_fidel').checked = !!player.client_fidel;
+                        document.getElementById('id_client_vip').checked = !!player.client_vip;
+                        if (document.getElementById('id_organization')) {
+                            document.getElementById('id_organization').value = player.organization_id || '';
+                        }
                         document.getElementById('selectedPlayerId').value = player.id; // Update the selected player ID
-                        // Automatically check the client fidèles checkbox
-                        document.getElementById('id_client_fidel').checked = true;
+                        document.getElementById('playerName').value = player.name;
                         resultsContainer.style.display = 'none'; // Hide the results
+                        return false;
                     };
                     resultsContainer.appendChild(item);
                 });
@@ -158,13 +189,12 @@ document.getElementById('playerName').addEventListener('input', function() {
 // Handle focus out event to manage form visibility
 document.getElementById('playerName').addEventListener('blur', function() {
     var query = this.value;
-    var playerFormContainer = document.getElementById('playerFormContainer');
     var playerName = this.value;
     if (playerName) {
         document.getElementById('id_name').value = playerName; // Populate the Player Name field
     }
     if (!query) {
-        playerFormContainer.innerHTML = `{{ player_form|crispy|safe }}`; // Reset the form if input is empty
+        document.getElementById('selectedPlayerId').value = '';
     }
 });
 </script>
@@ -214,8 +244,13 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
             document.getElementById('id_email').value = player.email || '';
             document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
             document.getElementById('id_position').value = player.position || 'DF';
+            document.getElementById('id_sportsbase_url').value = player.sportsbase_url || '';
+            document.getElementById('id_transfermarkt_url').value = player.transfermarkt_url || url;
             document.getElementById('id_client_fidel').checked = !!player.client_fidel;
             document.getElementById('id_client_vip').checked = !!player.client_vip;
+            if (document.getElementById('id_organization')) {
+                document.getElementById('id_organization').value = player.organization_id || '';
+            }
             document.getElementById('selectedPlayerId').value = player.id || '';
 
             messageBox.innerText = "Joueur trouvé dans la base.";
@@ -229,8 +264,13 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
             document.getElementById('id_email').value = player.email || '';
             document.getElementById('id_whatsapp_number').value = player.whatsapp_number || '';
             document.getElementById('id_position').value = player.position || 'DF';
+            document.getElementById('id_sportsbase_url').value = player.sportsbase_url || '';
+            document.getElementById('id_transfermarkt_url').value = player.transfermarkt_url || url;
             document.getElementById('id_client_fidel').checked = false;
             document.getElementById('id_client_vip').checked = false;
+            if (document.getElementById('id_organization')) {
+                document.getElementById('id_organization').value = '';
+            }
             document.getElementById('selectedPlayerId').value = '';
 
             messageBox.innerText = "Joueur non trouvé dans la base. Formulaire rempli automatiquement.";
@@ -244,6 +284,16 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
     });
 });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('createPerformanceSubscription');
+    const fields = document.getElementById('performanceSubscriptionFields');
+    if (!toggle || !fields) return;
+    const refresh = () => { fields.hidden = !toggle.checked; };
+    toggle.addEventListener('change', refresh);
+    refresh();
+});
+</script>
 <style>
     #playerName {
         border: 2px solid blue; /* Change to your preferred color */
@@ -252,6 +302,23 @@ document.getElementById('importTransfermarktBtn').addEventListener('click', func
     #playerName:focus {
         border-color: darkblue; /* Color when focused */
     }
+
+    .inline-performance-panel {
+        padding: 16px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        background: #f8fafc;
+    }
+    .inline-performance-toggle {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        cursor: pointer;
+    }
+    .inline-performance-toggle input { margin-top: 4px; }
+    .inline-performance-toggle span { display: grid; gap: 3px; }
+    .inline-performance-toggle small { color: #64748b; font-weight: 400; }
+    #performanceSubscriptionFields { margin-top: 16px; }
 </style>
 {% endblock %}
 
