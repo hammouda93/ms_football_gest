@@ -2094,6 +2094,81 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
 
 
 class YouTubeUploaderPathTests(SimpleTestCase):
+    def test_thumbnail_is_resolved_inside_subscription_storage(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            thumbnail = root / "player_1" / "intro" / "youtube_thumbnail.jpg"
+            thumbnail.parent.mkdir(parents=True)
+            thumbnail.write_bytes(b"jpeg-thumbnail")
+            uploader = YouTubeStudioUploader(root)
+
+            resolved = uploader.resolve_thumbnail_path(
+                {
+                    "youtube": {
+                        "thumbnail_path": (
+                            "player_1/intro/youtube_thumbnail.jpg"
+                        )
+                    }
+                }
+            )
+
+            self.assertEqual(resolved, thumbnail.resolve())
+
+    def test_thumbnail_path_traversal_is_rejected(self):
+        with TemporaryDirectory() as directory:
+            uploader = YouTubeStudioUploader(directory)
+            with self.assertRaises(YouTubeUploadError):
+                uploader.resolve_thumbnail_path(
+                    {"youtube": {"thumbnail_path": "../outside.jpg"}}
+                )
+
+    def test_thumbnail_uses_youtube_studio_hidden_file_input(self):
+        class FakeFileInput:
+            def __init__(self):
+                self.uploaded_path = ""
+
+            def set_input_files(self, path):
+                self.uploaded_path = path
+
+        class FakePreview:
+            def __init__(self):
+                self.waited_states = []
+
+            @property
+            def first(self):
+                return self
+
+            def wait_for(self, **kwargs):
+                self.waited_states.append(kwargs)
+
+        class FakePage:
+            def __init__(self, preview):
+                self.preview = preview
+
+            def locator(self, _selector):
+                return self.preview
+
+            def wait_for_timeout(self, _milliseconds):
+                return None
+
+        uploader = object.__new__(YouTubeStudioUploader)
+        file_input = FakeFileInput()
+        preview = FakePreview()
+        uploader._attached_thumbnail_input = lambda _page: file_input
+        page = FakePage(preview)
+        thumbnail = Path("youtube_thumbnail.jpg")
+
+        uploader._upload_thumbnail(page, thumbnail)
+
+        self.assertEqual(file_input.uploaded_path, str(thumbnail))
+        self.assertEqual(
+            preview.waited_states,
+            [
+                {"state": "visible", "timeout": 60000},
+                {"state": "hidden", "timeout": 60000},
+            ],
+        )
+
     def test_fast_upload_completion_is_detected_from_studio_status(self):
         class FakeHost:
             def inner_text(self):

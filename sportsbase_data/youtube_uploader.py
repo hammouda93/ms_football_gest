@@ -19,6 +19,8 @@ DEFAULT_PROFILE_DIR = r"D:\YouTube_MSPerformance_Profile"
 DEFAULT_HIGHLIGHTS_PROFILE_DIR = r"D:\YouTube_Highlights_Profile"
 DEFAULT_HIGHLIGHTS_PROFILE_NAME = "Default"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
+ALLOWED_THUMBNAIL_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+MAX_THUMBNAIL_FILE_SIZE_BYTES = 50 * 1024 * 1024
 
 
 class YouTubeUploadError(RuntimeError):
@@ -220,6 +222,49 @@ class YouTubeStudioUploader:
             raise YouTubeUploadError("Le fichier All Actions est vide.")
         return candidate
 
+    def resolve_thumbnail_path(self, job):
+        raw_path = str(
+            (job.get("youtube") or {}).get("thumbnail_path") or ""
+        ).strip()
+        if not raw_path:
+            return None
+
+        normalized = raw_path.replace("\\", "/")
+        relative = PurePosixPath(normalized)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or re.match(r"^[A-Za-z]:", normalized)
+        ):
+            raise YouTubeUploadError(
+                "Le chemin de la miniature YouTube est invalide."
+            )
+
+        root = self.storage_root.resolve()
+        candidate = root.joinpath(*relative.parts).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise YouTubeUploadError(
+                "La miniature YouTube se trouve hors du stockage autorisé."
+            ) from exc
+        if not candidate.is_file():
+            raise YouTubeUploadError(
+                f"Miniature YouTube introuvable : {candidate}"
+            )
+        if candidate.suffix.casefold() not in ALLOWED_THUMBNAIL_EXTENSIONS:
+            raise YouTubeUploadError(
+                "La miniature YouTube doit être au format JPG ou PNG."
+            )
+        file_size = candidate.stat().st_size
+        if file_size <= 0:
+            raise YouTubeUploadError("La miniature YouTube est vide.")
+        if file_size > MAX_THUMBNAIL_FILE_SIZE_BYTES:
+            raise YouTubeUploadError(
+                "La miniature YouTube dépasse la limite de 50 Mo."
+            )
+        return candidate
+
     def _launch_context(self, playwright):
         launch_args = ["--start-maximized"]
         if self.chrome_profile_name:
@@ -417,6 +462,66 @@ class YouTubeStudioUploader:
             locator.press("Control+A")
             locator.press("Backspace")
             locator.type(value)
+
+    @staticmethod
+    def _attached_thumbnail_input(page):
+        selectors = (
+            "ytcp-video-custom-still-editor "
+            'ytcp-thumbnail-uploader input#file-loader[type="file"]',
+            'ytcp-thumbnail-uploader input#file-loader[type="file"]',
+            'ytcp-thumbnail-uploader input[type="file"][accept*="image"]',
+        )
+        for selector in selectors:
+            inputs = page.locator(selector)
+            try:
+                if inputs.count():
+                    return inputs.first
+            except Exception:
+                continue
+        return None
+
+    def _upload_thumbnail(self, page, thumbnail_path, timeout_ms=60000):
+        deadline = time.monotonic() + timeout_ms / 1000
+        file_input = None
+        while time.monotonic() < deadline:
+            file_input = self._attached_thumbnail_input(page)
+            if file_input is not None:
+                break
+            page.wait_for_timeout(400)
+        if file_input is None:
+            raise YouTubeUploadError(
+                "Le champ Importer un fichier de la miniature YouTube "
+                "n’a pas été trouvé."
+            )
+
+        # YouTube garde cet input masqué derrière le bouton « Importer un
+        # fichier ». set_input_files évite le sélecteur de fichiers Windows et
+        # transmet le chemin directement au contrôle officiel de Studio.
+        file_input.set_input_files(str(thumbnail_path))
+        preview = page.locator(
+            "ytcp-video-custom-still-editor "
+            "ytcp-thumbnail-uploader button#preview-button"
+        ).first
+        try:
+            preview.wait_for(state="visible", timeout=timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            raise YouTubeUploadError(
+                "YouTube Studio n’a pas confirmé l’import de la miniature."
+            ) from exc
+        uploading = page.locator(
+            "ytcp-video-custom-still-editor "
+            "ytcp-thumbnail-uploader .uploading"
+        ).first
+        try:
+            uploading.wait_for(state="hidden", timeout=timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            raise YouTubeUploadError(
+                "L’import de la miniature YouTube n’est pas terminé."
+            ) from exc
+        print(
+            "[YOUTUBE] Miniature personnalisée importée : "
+            f"{thumbnail_path.name}"
+        )
 
     @staticmethod
     def _attached_file_input(page):
@@ -915,6 +1020,10 @@ class YouTubeStudioUploader:
         )
         if cached_result:
             return cached_result
+        thumbnail_path = self.resolve_thumbnail_path(job)
+        thumbnail_sha256 = (
+            _sha256(thumbnail_path) if thumbnail_path is not None else ""
+        )
         print(
             f"[YOUTUBE] Préparation : {video_path.name} "
             f"({file_size / (1024 * 1024):.1f} Mo)"
@@ -964,6 +1073,9 @@ class YouTubeStudioUploader:
                         timeout_ms=30000,
                     )
                     self._replace_text(description_box, description)
+
+                if thumbnail_path is not None:
+                    self._upload_thumbnail(page, thumbnail_path)
 
                 audience = self._first_visible(
                     page,
@@ -1024,6 +1136,10 @@ class YouTubeStudioUploader:
                     "youtube_channel_id": self.channel_id,
                     "content_sha256": content_sha256,
                     "file_size_bytes": file_size,
+                    "thumbnail_path": (
+                        str(thumbnail_path) if thumbnail_path is not None else ""
+                    ),
+                    "thumbnail_sha256": thumbnail_sha256,
                 }
                 self._save_receipt(job, result)
                 return result

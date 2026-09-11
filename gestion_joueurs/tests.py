@@ -6,6 +6,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 from urllib.parse import unquote
 
+from PIL import Image
+
 from django.contrib.auth.models import User
 from django.core import mail
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -96,6 +98,44 @@ class HighlightsYouTubeConfigurationTests(SimpleTestCase):
         )
         self.assertIn("--check-youtube", source)
         self.assertIn("--setup-youtube", source)
+        self.assertIn('"thumbnail_path":', source)
+
+    def test_highlights_title_uses_the_requested_format(self):
+        from .automation_agent import build_highlights_youtube_title
+
+        with patch.dict(
+            "os.environ",
+            {"HIGHLIGHTS_YOUTUBE_TITLE_YEAR": "2026"},
+        ):
+            title = build_highlights_youtube_title("Iyed Belwafi")
+
+        self.assertEqual(
+            title,
+            "Best Of Iyed Belwafi 2026 Skills Assists And Goals",
+        )
+
+    def test_chatgpt_presentation_is_prepared_as_youtube_thumbnail(self):
+        from .automation_agent import prepare_highlights_youtube_thumbnail
+
+        with TemporaryDirectory() as directory:
+            player_folder = Path(directory) / "1914_Iyed_Belwafi"
+            generation_dir = (
+                player_folder / "intro" / "Uploads_ChatGPT_Kling"
+            )
+            generation_dir.mkdir(parents=True)
+            Image.new("RGB", (1920, 1080), "navy").save(
+                generation_dir / "chatgpt_presentation.png"
+            )
+
+            output = prepare_highlights_youtube_thumbnail(player_folder)
+
+            self.assertEqual(
+                output,
+                player_folder / "intro" / "youtube_thumbnail.jpg",
+            )
+            with Image.open(output) as thumbnail:
+                self.assertEqual(thumbnail.size, (1280, 720))
+                self.assertEqual(thumbnail.format, "JPEG")
 
 
 class PremiereExportConfigurationTests(SimpleTestCase):

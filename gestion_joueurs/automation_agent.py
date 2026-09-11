@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 from dotenv import load_dotenv
+from PIL import Image, ImageOps
 
 
 def configure_utf8_console():
@@ -72,7 +73,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33-youtube-normal-login"
+AGENT_VERSION = "highlights-v33-youtube-thumbnail"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -423,12 +424,60 @@ def newest_file(folder: Path, *, extensions, prefixes, not_before=None):
 
 
 def find_generated_presentation_image(folder: Path, not_before=None):
+    if folder.is_dir():
+        exact_candidates = [
+            path
+            for path in folder.iterdir()
+            if path.is_file()
+            and path.suffix.casefold() in {".png", ".jpg", ".jpeg", ".webp"}
+            and path.stem.casefold() == "chatgpt_presentation"
+            and (not_before is None or path.stat().st_mtime >= not_before)
+        ]
+        exact_candidates.sort(
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if exact_candidates:
+            return exact_candidates[0]
     return newest_file(
         folder,
         extensions={".png", ".jpg", ".jpeg", ".webp"},
         prefixes=("chatgpt", "generated", "presentation", "player_presentation"),
         not_before=not_before,
     )
+
+
+def prepare_highlights_youtube_thumbnail(folder: Path):
+    generation_dir = folder / "intro" / "Uploads_ChatGPT_Kling"
+    source_image = find_generated_presentation_image(generation_dir)
+    if not source_image:
+        return None
+
+    output_path = folder / "intro" / "youtube_thumbnail.jpg"
+    with Image.open(source_image) as image:
+        image.load()
+        thumbnail = ImageOps.fit(
+            image.convert("RGB"),
+            (1280, 720),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        thumbnail.save(
+            output_path,
+            format="JPEG",
+            quality=92,
+            optimize=True,
+            progressive=True,
+        )
+    return output_path
+
+
+def build_highlights_youtube_title(player_name: str):
+    title_year = (
+        os.getenv("HIGHLIGHTS_YOUTUBE_TITLE_YEAR", "2026").strip() or "2026"
+    )
+    return f"Best Of {player_name.strip()} {title_year} Skills Assists And Goals"[:100]
 
 
 def find_kling_intro(folder: Path, not_before=None):
@@ -1076,6 +1125,22 @@ def process_delivery_video(video_data):
             "Le MP4 final doit rester dans le dossier sécurisé de l’automatisation."
         ) from exc
 
+    thumbnail_path = prepare_highlights_youtube_thumbnail(folder)
+    if not thumbnail_path:
+        raise ValueError(
+            "L’image ChatGPT générée est introuvable dans "
+            "intro\\Uploads_ChatGPT_Kling. L’upload YouTube est arrêté pour "
+            "éviter une vidéo sans miniature."
+        )
+    resolved_thumbnail = thumbnail_path.resolve()
+    try:
+        relative_thumbnail = resolved_thumbnail.relative_to(storage_root)
+    except ValueError as exc:
+        raise ValueError(
+            "La miniature YouTube doit rester dans le dossier sécurisé de "
+            "l’automatisation."
+        ) from exc
+
     report_video_progress(
         video_data,
         "delivery",
@@ -1083,7 +1148,10 @@ def process_delivery_video(video_data):
         state="running",
         progress_percent=35,
         message="Mise en ligne YouTube non répertoriée en cours",
-        artifacts={"export_path": str(resolved_export)},
+        artifacts={
+            "export_path": str(resolved_export),
+            "thumbnail_path": str(resolved_thumbnail),
+        },
     )
     player_name = video_data["player"]["name"].strip()
     job = {
@@ -1094,7 +1162,8 @@ def process_delivery_video(video_data):
             "filename": relative_export.name,
         },
         "youtube": {
-            "title": f"{player_name} — Season Highlights {video_data.get('season', '')}"[:100],
+            "title": build_highlights_youtube_title(player_name),
+            "thumbnail_path": str(relative_thumbnail).replace("\\", "/"),
             "description": (
                 "MS Football — Player Highlights\n"
                 f"Joueur : {player_name}\n"
