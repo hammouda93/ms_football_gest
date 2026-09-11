@@ -72,7 +72,7 @@ LOCAL_STORAGE_DIR = (
 )
 
 session = requests.Session()
-AGENT_VERSION = "highlights-v33-youtube-profile1"
+AGENT_VERSION = "highlights-v33-youtube-normal-login"
 WORKER_ID = os.getenv(
     "AUTOMATION_WORKER_ID",
     f"{socket.gethostname()}-highlights",
@@ -1038,7 +1038,14 @@ def check_highlights_youtube_access():
         "[YOUTUBE HIGHLIGHTS] Sous-profil : "
         f"{uploader.chrome_profile_name or 'Default implicite'}"
     )
-    uploader.check_access()
+    uploader.check_access(allow_interactive_login=False)
+
+
+def setup_highlights_youtube_access():
+    storage_root = Path(LOCAL_STORAGE_DIR).resolve()
+    uploader = build_highlights_youtube_uploader(storage_root)
+    print(f"[YOUTUBE HIGHLIGHTS] Chaîne : {uploader.channel_id}")
+    uploader.setup_access_with_normal_chrome()
 
 
 def process_delivery_video(video_data):
@@ -1121,12 +1128,21 @@ def process_delivery_video(video_data):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Agent Windows Vidéos Highlights")
-    parser.add_argument(
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument(
         "--check-youtube",
         action="store_true",
         help=(
             "ouvrir le profil Chrome de la chaîne Highlights et vérifier "
             "l’accès à YouTube Studio"
+        ),
+    )
+    actions.add_argument(
+        "--setup-youtube",
+        action="store_true",
+        help=(
+            "ouvrir Chrome normal pour connecter le profil Highlights, puis "
+            "vérifier la session avec l’uploader"
         ),
     )
     return parser.parse_args(argv)
@@ -1216,7 +1232,9 @@ def main():
 
 if __name__ == "__main__":
     arguments = parse_args()
-    if arguments.check_youtube:
+    if arguments.setup_youtube:
+        setup_highlights_youtube_access()
+    elif arguments.check_youtube:
         check_highlights_youtube_access()
     else:
         main()

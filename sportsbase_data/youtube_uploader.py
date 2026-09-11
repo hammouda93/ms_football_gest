@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import time
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlparse
@@ -15,7 +17,7 @@ from playwright.sync_api import sync_playwright
 DEFAULT_CHANNEL_ID = "UCB2SMAxFXOcWDDDX5FtI9iA"
 DEFAULT_PROFILE_DIR = r"D:\YouTube_MSPerformance_Profile"
 DEFAULT_HIGHLIGHTS_PROFILE_DIR = r"D:\YouTube_Highlights_Profile"
-DEFAULT_HIGHLIGHTS_PROFILE_NAME = "Profile 1"
+DEFAULT_HIGHLIGHTS_PROFILE_NAME = "Default"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 
 
@@ -119,6 +121,9 @@ class YouTubeStudioUploader:
         self.browser_channel = os.getenv(
             setting_name("BROWSER_CHANNEL"),
             os.getenv("YOUTUBE_BROWSER_CHANNEL", "chrome"),
+        ).strip()
+        self.chrome_executable = os.getenv(
+            setting_name("CHROME_EXE"), ""
         ).strip()
         self.headless = _env_bool(setting_name("HEADLESS"), False)
         self.upload_timeout_ms = int(
@@ -269,7 +274,67 @@ class YouTubeStudioUploader:
             > 0
         )
 
-    def check_access(self):
+    def _find_normal_chrome_executable(self):
+        candidates = []
+        if self.chrome_executable:
+            candidates.append(Path(self.chrome_executable))
+
+        for environment_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base_dir = os.getenv(environment_name, "").strip()
+            if base_dir:
+                candidates.append(
+                    Path(base_dir)
+                    / "Google"
+                    / "Chrome"
+                    / "Application"
+                    / "chrome.exe"
+                )
+
+        for command_name in ("chrome", "google-chrome", "google-chrome-stable"):
+            resolved = shutil.which(command_name)
+            if resolved:
+                candidates.append(Path(resolved))
+
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        raise YouTubeUploadError(
+            "Google Chrome normal est introuvable. Configurez "
+            f"{self.config_prefix}_CHROME_EXE avec le chemin de chrome.exe."
+        )
+
+    def setup_access_with_normal_chrome(self):
+        """Authenticate in regular Chrome before Playwright reuses the session."""
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        chrome_executable = self._find_normal_chrome_executable()
+        profile_name = self.chrome_profile_name or "Default"
+        command = [
+            str(chrome_executable),
+            f"--user-data-dir={self.profile_dir}",
+            f"--profile-directory={profile_name}",
+            "--new-window",
+            self.content_url,
+        ]
+        print(f"[YOUTUBE] Chrome normal : {chrome_executable}")
+        print(f"[YOUTUBE] Profil persistant : {self.profile_dir}")
+        print(f"[YOUTUBE] Sous-profil : {profile_name}")
+        print(
+            "[YOUTUBE] Connectez-vous normalement à Google et ouvrez la bonne "
+            "chaîne dans YouTube Studio."
+        )
+        try:
+            subprocess.Popen(command)
+        except OSError as exc:
+            raise YouTubeUploadError(
+                f"Impossible d’ouvrir Google Chrome normal : {exc}"
+            ) from exc
+        input(
+            "[YOUTUBE] Fermez complètement cette fenêtre Chrome, puis appuyez "
+            "sur Entrée pour vérifier la session : "
+        )
+        return self.check_access(allow_interactive_login=False)
+
+    def check_access(self, *, allow_interactive_login=True):
         with sync_playwright() as playwright:
             context = self._launch_context(playwright)
             try:
@@ -281,6 +346,12 @@ class YouTubeStudioUploader:
                 )
                 page.wait_for_timeout(3000)
                 if self._authentication_required(page):
+                    if not allow_interactive_login:
+                        raise YouTubeAuthenticationRequired(
+                            "La session Google n’est pas encore connectée dans le "
+                            f"profil {self.profile_dir}. Relancez la préparation avec "
+                            "--setup-youtube dans Chrome normal."
+                        )
                     if self.headless:
                         raise YouTubeAuthenticationRequired(
                             "La première connexion YouTube nécessite "

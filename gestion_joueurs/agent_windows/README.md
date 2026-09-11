@@ -35,33 +35,28 @@ Dans le fichier `.env` du projet, renseigner au minimum :
 ```text
 HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID=UC_IDENTIFIANT_DE_LA_CHAINE_HIGHLIGHTS
 HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR=D:\YouTube_Highlights_Profile
-HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_NAME=Profile 1
+HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_NAME=Default
 HIGHLIGHTS_YOUTUBE_BROWSER_CHANNEL=chrome
 HIGHLIGHTS_YOUTUBE_HEADLESS=false
 ```
 
 Ne pas copier `D:\YouTube_MSPerformance_Profile` : ce dossier contient la session de
-la chaîne Performance. Pour réutiliser une session Google déjà connectée dans le profil
-Chrome `Profile 1`, fermer complètement Chrome puis copier depuis le dossier `User Data` :
-
-```text
-C:\Users\<utilisateur>\AppData\Local\Google\Chrome\User Data\Profile 1
-    -> D:\YouTube_Highlights_Profile\Profile 1
-
-C:\Users\<utilisateur>\AppData\Local\Google\Chrome\User Data\Local State
-    -> D:\YouTube_Highlights_Profile\Local State
-```
-
-Le fichier `Local State` d’origine est nécessaire pour relire la session Google copiée.
-L’agent passe explicitement `--profile-directory=Profile 1` à Chrome et refuse de créer
-silencieusement un profil `Default` si la copie est absente. Lancer ensuite :
+la chaîne Performance. Pour la première connexion Highlights, fermer complètement toutes
+les fenêtres Chrome, puis lancer Chrome normal — sans Playwright — avec :
 
 ```powershell
-python gestion_joueurs\automation_agent.py --check-youtube
+python gestion_joueurs\automation_agent.py --setup-youtube
 ```
 
-Dans la fenêtre ouverte, vérifier que YouTube Studio affiche directement la chaîne
-Highlights. Revenir ensuite dans PowerShell, appuyer sur Entrée, attendre la confirmation,
-puis laisser la fenêtre se fermer.
+Cette commande ouvre Chrome normalement avec `D:\YouTube_Highlights_Profile\Default`.
+Se connecter à Google, sélectionner la chaîne Highlights et attendre l’ouverture de
+YouTube Studio. Fermer ensuite complètement cette fenêtre Chrome et appuyer sur Entrée
+dans PowerShell. L’agent rouvre alors le même profil avec Playwright uniquement pour
+vérifier que la session est prête. Les connexions suivantes ne redemandent pas le mot
+de passe.
+
+La commande `--check-youtube` vérifie une session existante sans proposer de connexion
+dans le navigateur automatisé. Si Chrome n’est pas détecté automatiquement, renseigner
+`HIGHLIGHTS_YOUTUBE_CHROME_EXE` avec le chemin complet vers `chrome.exe`.
 Le contrôle existant `python -m sportsbase_data.local_agent --check-youtube` reste réservé
 à la chaîne Performance / All Actions.

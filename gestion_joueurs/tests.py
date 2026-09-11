@@ -95,6 +95,7 @@ class HighlightsYouTubeConfigurationTests(SimpleTestCase):
             source,
         )
         self.assertIn("--check-youtube", source)
+        self.assertIn("--setup-youtube", source)
 
 
 class PremiereExportConfigurationTests(SimpleTestCase):

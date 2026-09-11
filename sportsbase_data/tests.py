@@ -1933,7 +1933,7 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
         self.assertEqual(
             str(highlights.profile_dir), r"D:\YouTube_Highlights_Profile"
         )
-        self.assertEqual(highlights.chrome_profile_name, "Profile 1")
+        self.assertEqual(highlights.chrome_profile_name, "Default")
         self.assertIn("UC_PERFORMANCE", performance.upload_url)
         self.assertIn("UC_HIGHLIGHTS", highlights.upload_url)
 
@@ -1945,6 +1945,7 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
             settings = {
                 "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
                 "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_NAME": "Profile 1",
             }
             with patch.dict("os.environ", settings, clear=True):
                 uploader = YouTubeStudioUploader(
@@ -1971,7 +1972,42 @@ class YouTubeChannelConfigurationTests(SimpleTestCase):
                 launch.kwargs["args"],
             )
 
-    def test_missing_copied_profile_fails_before_chrome_creates_default(self):
+    def test_setup_opens_normal_chrome_then_checks_the_saved_session(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_root = root / "YouTube_Highlights_Profile"
+            chrome_executable = root / "Google" / "Chrome" / "chrome.exe"
+            chrome_executable.parent.mkdir(parents=True)
+            chrome_executable.write_bytes(b"chrome")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+                "HIGHLIGHTS_YOUTUBE_CHROME_EXE": str(chrome_executable),
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            with patch(
+                "sportsbase_data.youtube_uploader.subprocess.Popen"
+            ) as popen, patch("builtins.input"), patch.object(
+                uploader,
+                "check_access",
+                return_value=True,
+            ) as check_access:
+                result = uploader.setup_access_with_normal_chrome()
+
+            self.assertTrue(result)
+            command = popen.call_args.args[0]
+            self.assertEqual(command[0], str(chrome_executable))
+            self.assertIn(f"--user-data-dir={profile_root}", command)
+            self.assertIn("--profile-directory=Default", command)
+            self.assertIn(uploader.content_url, command)
+            check_access.assert_called_once_with(allow_interactive_login=False)
+
+    def test_missing_profile_fails_before_playwright_creates_another_one(self):
         with TemporaryDirectory() as directory:
             profile_root = Path(directory) / "YouTube_Highlights_Profile"
             profile_root.mkdir()
