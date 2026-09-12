@@ -115,6 +115,10 @@
             <div class="sidebar-scroll">
                 {% if request.user.is_superuser %}
                     <a class="sidebar-primary-action" href="{% url 'create_video_request' %}"><i class="fas fa-plus"></i><span>Créer une vidéo</span></a>
+                    <div class="sidebar-agent-actions" aria-label="Démarrer les agents locaux">
+                        <a class="sidebar-agent-action" href="msfootball-agent://performance" title="Démarrer l’agent Performance / All Actions"><i class="fas fa-chart-line"></i><span>Agent Performance</span></a>
+                        <a class="sidebar-agent-action" href="msfootball-agent://highlights" title="Démarrer l’agent Vidéos Highlights"><i class="fas fa-film"></i><span>Agent Highlights</span></a>
+                    </div>
                 {% endif %}
 
                 <nav class="sidebar-nav">

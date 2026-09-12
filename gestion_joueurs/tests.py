@@ -139,6 +139,48 @@ class HighlightsYouTubeConfigurationTests(SimpleTestCase):
                 self.assertEqual(thumbnail.format, "JPEG")
 
 
+class AgentLauncherConfigurationTests(SimpleTestCase):
+    def test_sidebar_contains_both_agent_buttons_below_create_video(self):
+        source = (
+            Path(__file__).parent
+            / "templates"
+            / "gestion_joueurs"
+            / "base.html"
+        ).read_text(encoding="utf-8")
+
+        create_position = source.index("Créer une vidéo")
+        performance_position = source.index(
+            'href="msfootball-agent://performance"'
+        )
+        highlights_position = source.index(
+            'href="msfootball-agent://highlights"'
+        )
+        navigation_position = source.index('<nav class="sidebar-nav">')
+
+        self.assertLess(create_position, performance_position)
+        self.assertLess(performance_position, highlights_position)
+        self.assertLess(highlights_position, navigation_position)
+
+    def test_activation_disables_autostart_and_registers_safe_protocol(self):
+        agent_directory = Path(__file__).parent / "agent_windows"
+        activation_command = (
+            agent_directory / "Activer_Boutons_Agents.cmd"
+        ).read_text(encoding="utf-8")
+        protocol_setup = (
+            agent_directory / "enable_agent_buttons.ps1"
+        ).read_text(encoding="utf-8")
+        launcher = (
+            agent_directory / "launch_agent_from_url.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("uninstall_agent.ps1", activation_command)
+        self.assertIn("HKCU:\\Software\\Classes\\$ProtocolName", protocol_setup)
+        self.assertIn("msfootball-agent", protocol_setup)
+        self.assertIn("sportsbase_data.local_agent", launcher)
+        self.assertIn("gestion_joueurs.automation_agent", launcher)
+        self.assertIn("Get-CimInstance Win32_Process", launcher)
+
+
 class PremiereExportConfigurationTests(SimpleTestCase):
     def test_bundled_youtube_1080p_preset_is_used_when_env_is_empty(self):
         with TemporaryDirectory() as directory:

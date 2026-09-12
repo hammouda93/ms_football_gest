@@ -69,3 +69,30 @@ dans le navigateur automatisé. Si Chrome n’est pas détecté automatiquement,
 `HIGHLIGHTS_YOUTUBE_CHROME_EXE` avec le chemin complet vers `chrome.exe`.
 Le contrôle existant `python -m sportsbase_data.local_agent --check-youtube` reste réservé
 à la chaîne Performance / All Actions.
+
+## Boutons de démarrage dans le menu
+
+Les boutons **Agent Performance** et **Agent Highlights**, placés sous **Créer une
+vidéo**, ouvrent directement un terminal sur le PC Windows. Ils ne modifient pas le
+fonctionnement des agents et n’installent aucun logiciel.
+
+Après la mise à jour du projet, double-cliquer une seule fois sur
+`Activer_Boutons_Agents.cmd`. Cette activation effectue uniquement deux opérations
+pour l’utilisateur Windows courant, sans droits administrateur :
+
+- elle retire l’ancienne tâche planifiée qui lançait l’agent automatiquement à
+  l’ouverture de Windows ;
+- elle enregistre le lien local `msfootball-agent://` utilisé par les deux boutons.
+
+Chrome peut demander une confirmation au premier clic ; autoriser l’ouverture de MS
+Football Agent. Ensuite, les agents démarrent uniquement depuis ces boutons ou depuis
+un terminal avec les commandes équivalentes :
+
+```powershell
+python -m sportsbase_data.local_agent
+python -m gestion_joueurs.automation_agent
+```
+
+Le changement du statut d’une vidéo continue uniquement à créer sa tâche dans la file.
+Il ne démarre aucun programme sur le PC. Si l’agent demandé est déjà actif, le nouveau
+terminal le signale et ne lance pas de doublon.
