@@ -35,16 +35,25 @@ from .video_status_whatsapp import (
 )
 
 from client_portal.models import (
+    AgentPlayerRequest,
     Organization,
     OrganizationPlayer,
     PlayerAccess,
     PortalAccessLink,
     PortalProfile,
+    RevisionRequest,
+    VideoVersion,
+    VideoWorkflow,
 )
 from sportsbase_data.models import (
     PerformanceSubscriptionPayment,
+    PerformanceReport,
+    SportsBaseMatch,
     SportsBaseSubscription,
+    SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
 )
+from prospects.models import Prospect
 
 
 class PresentationStylePromptTests(SimpleTestCase):
@@ -179,6 +188,187 @@ class AgentLauncherConfigurationTests(SimpleTestCase):
         self.assertIn("sportsbase_data.local_agent", launcher)
         self.assertIn("gestion_joueurs.automation_agent", launcher)
         self.assertIn("Get-CimInstance Win32_Process", launcher)
+
+
+class DashboardCardsTests(TestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.admin = User.objects.create_superuser(
+            username="admin-dashboard",
+            email="dashboard@example.com",
+            password="test-password",
+        )
+        self.editor_user = User.objects.create_user(
+            username="editor-dashboard",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=self.editor_user)
+        self.player = Player.objects.create(
+            name="Joueur Dashboard",
+            club="MS Test Club",
+            sportsbase_url="https://football.sportsbase.world/players/123",
+            client_vip=True,
+            client_fidel=True,
+        )
+        self.video = Video.objects.create(
+            player=self.player,
+            editor=self.editor,
+            status=Video.StatusChoices.IN_PROGRESS,
+            advance_payment=Decimal("100.00"),
+            total_payment=Decimal("500.00"),
+            deadline=self.today - timedelta(days=1),
+            season="2025/2026",
+            club=self.player.club,
+        )
+        Invoice.objects.create(
+            video=self.video,
+            total_amount=Decimal("500.00"),
+            amount_paid=Decimal("100.00"),
+            status="partially_paid",
+        )
+        VideoWorkflow.objects.create(
+            video=self.video,
+            stage=VideoWorkflow.Stage.BLOCKED,
+            priority=VideoWorkflow.Priority.URGENT,
+            progress=40,
+        )
+        AutomationRun.objects.create(
+            video=self.video,
+            pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+            state=AutomationRun.StateChoices.FAILED,
+            current_stage=AutomationRun.StageChoices.YOUTUBE_UPLOAD,
+        )
+        AutomationWorker.objects.create(
+            worker_id="dashboard-worker",
+            display_name="Poste Highlights",
+            last_seen_at=timezone.now(),
+        )
+
+        self.subscription = SportsBaseSubscription.objects.create(
+            player=self.player,
+            season="2025/2026",
+            starts_on=self.today - timedelta(days=5),
+            ends_on=self.today + timedelta(days=20),
+            last_sync_state=SportsBaseSubscription.SyncState.FAILED,
+        )
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="456",
+            season="2025/2026",
+            match_date=self.today,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+        )
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=self.match,
+            report_type=PerformanceReport.ReportType.MATCH,
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport Dashboard",
+        )
+        SportsBaseSyncJob.objects.create(
+            subscription=self.subscription,
+            status=SportsBaseSyncJob.Status.PENDING,
+        )
+        SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+        )
+
+        self.portal_user = User.objects.create_user(
+            username="client-dashboard",
+            password="test-password",
+        )
+        PortalProfile.objects.create(
+            user=self.portal_user,
+            account_type=PortalProfile.AccountType.PLAYER,
+            display_name=self.player.name,
+            is_active=True,
+        )
+        PlayerAccess.objects.create(
+            user=self.portal_user,
+            player=self.player,
+            is_active=True,
+        )
+        self.organization = Organization.objects.create(
+            name="Agence Dashboard",
+            is_active=True,
+        )
+        AgentPlayerRequest.objects.create(
+            organization=self.organization,
+            requested_by=self.portal_user,
+            full_name="Nouveau joueur",
+            status=AgentPlayerRequest.Status.NEW,
+        )
+        version = VideoVersion.objects.create(
+            video=self.video,
+            version_number=1,
+            preview_url="https://example.com/preview",
+        )
+        RevisionRequest.objects.create(
+            version=version,
+            requested_by=self.portal_user,
+            comment="Corriger le titre",
+            status=RevisionRequest.Status.OPEN,
+        )
+        Prospect.objects.create(
+            full_name="Prospect Dashboard",
+            whatsapp_number="+21620123456",
+            position=Prospect.Position.MIDFIELDER,
+            season="2025/2026",
+            service_type=Prospect.Service.HIGHLIGHTS,
+            status=Prospect.Status.NEW,
+        )
+
+    def test_admin_dashboard_aggregates_new_business_kpis(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("dashboard_cards_view"))
+
+        self.assertEqual(response.status_code, 200)
+        expected_context = {
+            "total_videos_in_progress": 1,
+            "total_late_videos": 1,
+            "blocked_workflows_count": 1,
+            "urgent_workflows_count": 1,
+            "automation_failed_count": 1,
+            "online_worker_count": 1,
+            "total_active_subscriptions": 1,
+            "performance_matches_count": 1,
+            "ready_all_actions_count": 1,
+            "published_performance_reports_count": 1,
+            "subscriptions_ending_soon_count": 1,
+            "performance_job_queue_count": 1,
+            "performance_attention_count": 2,
+            "total_active_portal_accounts": 1,
+            "total_active_organizations": 1,
+            "total_client_players": 1,
+            "client_attention_count": 2,
+            "active_prospects_count": 1,
+            "new_prospects_count": 1,
+            "dashboard_attention_count": 7,
+        }
+        for key, expected in expected_context.items():
+            self.assertEqual(response.context[key], expected, key)
+        self.assertEqual(
+            response.context["outstanding_invoice_balance"],
+            Decimal("400.00"),
+        )
+        self.assertContains(response, "Abonnements actifs")
+        self.assertContains(response, "Espaces clients actifs")
+        self.assertContains(response, "Automatisations & finance")
+        self.assertContains(response, "Agent Performance")
+        self.assertContains(response, "Agent Highlights")
+        self.assertContains(response, "Nouveaux prospects")
+
+    def test_collaborator_gets_focused_production_dashboard(self):
+        self.client.force_login(self.editor_user)
+
+        response = self.client.get(reverse("dashboard_cards_view"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Votre espace de travail")
+        self.assertNotContains(response, "Abonnements actifs")
+        self.assertNotContains(response, "Automatisations & finance")
 
 
 class PremiereExportConfigurationTests(SimpleTestCase):

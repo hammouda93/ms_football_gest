@@ -1,20 +1,36 @@
 {% extends 'gestion_joueurs/base.html' %}
 
-{% block title %}Aperçu Dashboard{% endblock %}
+{% block title %}Cockpit de pilotage{% endblock %}
 
 {% block content %}
 <div class="container mt-4 ui-page dashboard-cards-page">
-    <div class="page-hero-card mb-4">
-        <div class="d-flex justify-content-between align-items-center flex-wrap">
-            <div>
-                <span class="ui-eyebrow">Tableau de bord</span>
-                <h1 class="mb-2">Aperçu de l’activité</h1>
-                <p class="mb-0">Les productions, paiements et actions prioritaires réunis en un coup d’œil.</p>
+    <div class="page-hero-card dashboard-hero mb-4">
+        <div class="dashboard-hero-layout">
+            <div class="dashboard-hero-copy">
+                <span class="ui-eyebrow">Cockpit opérationnel</span>
+                {% if request.user.is_superuser %}
+                <h1 class="mb-2">Pilotez toute l’activité</h1>
+                <p class="mb-0">Production vidéo, abonnements Performance, espaces clients, automatisations et finance réunis dans une vue décisionnelle.</p>
+                {% else %}
+                <h1 class="mb-2">Pilotez vos productions</h1>
+                <p class="mb-0">Vos commandes, échéances et prochaines actions réunies dans un espace de travail clair.</p>
+                {% endif %}
+                <span class="dashboard-refresh-label"><i class="fas fa-rotate"></i> Actualisé le {{ dashboard_updated_at|date:"d/m/Y à H:i" }}</span>
             </div>
-            <div class="hero-actions mt-3 mt-md-0">
-                <a href="{% url 'dashboard' %}" class="btn btn-primary">
-                    <i class="fas fa-list-check mr-2"></i>Voir les commandes
+            <div class="hero-actions dashboard-hero-actions">
+                {% if request.user.is_superuser %}
+                <a href="{% url 'create_video_request' %}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Nouvelle vidéo
                 </a>
+                {% endif %}
+                <a href="{% url 'portal:production_board' %}" class="btn dashboard-hero-secondary">
+                    <i class="fas fa-clapperboard"></i> Centre de production
+                </a>
+                {% if request.user.is_superuser %}
+                <a href="{% url 'performance:subscription_create' %}" class="btn dashboard-hero-secondary">
+                    <i class="fas fa-chart-line"></i> Nouvel abonnement
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>

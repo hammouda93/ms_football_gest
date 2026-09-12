@@ -55,7 +55,14 @@ from client_portal.services import (
     issue_reusable_portal_access_link,
     portal_access_states_for_players,
 )
-from client_portal.models import Organization, OrganizationPlayer
+from client_portal.models import (
+    AgentPlayerRequest,
+    Organization,
+    OrganizationPlayer,
+    PortalProfile,
+    RevisionRequest,
+    VideoWorkflow,
+)
 from .automation_progress import (
     attach_progress_to_videos,
     claim_next_job,
@@ -71,7 +78,15 @@ from .presentation_styles import (
     PRESENTATION_STYLES,
 )
 from sportsbase_data.forms import InlinePerformanceSubscriptionForm
-from sportsbase_data.models import SportsBaseSubscription
+from sportsbase_data.models import (
+    PerformanceReport,
+    SportsBaseDailymotionUpload,
+    SportsBaseMatch,
+    SportsBaseSubscription,
+    SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
+)
+from prospects.models import Prospect
 
 
 def _performance_subscription_for_player(player):
@@ -557,42 +572,345 @@ def dashboard(request):
 @login_required
 def dashboard_cards_view(request):
     today = timezone.now().date()
+    now = timezone.now()
 
-    total_players = Player.objects.count()
-    total_videos_delivered = Video.objects.filter(status='delivered').count()
-    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
-    total_late_videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).count()
+    player_metrics = Player.objects.aggregate(
+        total=Count('id'),
+        vip=Count('id', filter=Q(client_vip=True)),
+        loyal=Count('id', filter=Q(client_fidel=True)),
+    )
+    total_players = player_metrics['total']
+    total_vip_clients = player_metrics['vip']
+    total_loyal_clients = player_metrics['loyal']
 
-    total_unpaid_invoices = Invoice.objects.filter(status='unpaid').count()
-    total_partially_paid_invoices = Invoice.objects.filter(status='partially_paid').count()
-
-    total_vip_clients = Player.objects.filter(client_vip=True).count()
-    total_loyal_clients = Player.objects.filter(client_fidel=True).count()
+    video_metrics = Video.objects.aggregate(
+        delivered=Count('id', filter=Q(status=Video.StatusChoices.DELIVERED)),
+        in_progress=Count(
+            'id',
+            filter=~Q(
+                status__in=(
+                    Video.StatusChoices.DELIVERED,
+                    Video.StatusChoices.PROBLEMATIC,
+                )
+            ),
+        ),
+        late=Count(
+            'id',
+            filter=Q(deadline__lt=today)
+            & ~Q(
+                status__in=(
+                    Video.StatusChoices.DELIVERED,
+                    Video.StatusChoices.PROBLEMATIC,
+                )
+            ),
+        ),
+        completed_not_paid=Count(
+            'id',
+            filter=Q(
+                status=Video.StatusChoices.COMPLETED,
+                invoices__status__in=('unpaid', 'partially_paid'),
+            ),
+            distinct=True,
+        ),
+        delivered_not_paid=Count(
+            'id',
+            filter=Q(
+                status=Video.StatusChoices.DELIVERED,
+                invoices__status__in=('unpaid', 'partially_paid'),
+            ),
+            distinct=True,
+        ),
+    )
+    total_videos_delivered = video_metrics['delivered']
+    total_videos_in_progress = video_metrics['in_progress']
+    total_late_videos = video_metrics['late']
+    completed_videos_not_paid_count = video_metrics['completed_not_paid']
+    delivered_videos_not_paid_count = video_metrics['delivered_not_paid']
 
     unread_notifications = Notification.objects.filter(user=request.user, is_read=False).count()
 
-    completed_videos_not_paid_count = Video.objects.filter(
-        status='completed',
-        invoices__status__in=['unpaid', 'partially_paid']
-    ).count()
-
-    delivered_videos_not_paid_count = Video.objects.filter(
-        status='delivered',
-        invoices__status__in=['unpaid', 'partially_paid']
-    ).count()
-
-    return render(request, 'gestion_joueurs/dashboard_cards_page.html', {
+    base_context = {
+        'dashboard_updated_at': now,
         'total_players': total_players,
         'total_videos_delivered': total_videos_delivered,
         'total_videos_in_progress': total_videos_in_progress,
         'total_late_videos': total_late_videos,
+        'unread_notifications': unread_notifications,
+    }
+    if not request.user.is_superuser:
+        return render(
+            request,
+            'gestion_joueurs/dashboard_cards_page.html',
+            base_context,
+        )
+
+    invoice_metrics = Invoice.objects.aggregate(
+        unpaid=Count('id', filter=Q(status='unpaid')),
+        partially_paid=Count('id', filter=Q(status='partially_paid')),
+        total=Sum(
+            'total_amount',
+            filter=Q(status__in=('unpaid', 'partially_paid')),
+        ),
+        paid=Sum(
+            'amount_paid',
+            filter=Q(status__in=('unpaid', 'partially_paid')),
+        ),
+    )
+    total_unpaid_invoices = invoice_metrics['unpaid']
+    total_partially_paid_invoices = invoice_metrics['partially_paid']
+    outstanding_invoice_balance = max(
+        Decimal('0.00'),
+        (invoice_metrics['total'] or Decimal('0.00'))
+        - (invoice_metrics['paid'] or Decimal('0.00')),
+    )
+
+    workflow_metrics = VideoWorkflow.objects.aggregate(
+        blocked=Count(
+            'id',
+            filter=Q(stage=VideoWorkflow.Stage.BLOCKED),
+        ),
+        client_review=Count(
+            'id',
+            filter=Q(
+                stage__in=(
+                    VideoWorkflow.Stage.CLIENT_REVIEW,
+                    VideoWorkflow.Stage.REVISIONS,
+                )
+            ),
+        ),
+        urgent=Count(
+            'id',
+            filter=Q(priority=VideoWorkflow.Priority.URGENT)
+            & ~Q(stage=VideoWorkflow.Stage.DELIVERED),
+        ),
+    )
+    blocked_workflows_count = workflow_metrics['blocked']
+    client_review_workflows_count = workflow_metrics['client_review']
+    urgent_workflows_count = workflow_metrics['urgent']
+
+    automation_metrics = AutomationRun.objects.filter(is_active=True).aggregate(
+        running=Count(
+            'id',
+            filter=Q(
+                state__in=(
+                    AutomationRun.StateChoices.QUEUED,
+                    AutomationRun.StateChoices.RUNNING,
+                )
+            ),
+        ),
+        waiting=Count(
+            'id',
+            filter=Q(state=AutomationRun.StateChoices.WAITING_EXTERNAL),
+        ),
+        failed=Count(
+            'id',
+            filter=Q(state=AutomationRun.StateChoices.FAILED),
+        ),
+    )
+    automation_running_count = automation_metrics['running']
+    automation_waiting_count = automation_metrics['waiting']
+    automation_failed_count = automation_metrics['failed']
+    online_worker_cutoff = now - timedelta(seconds=90)
+    worker_metrics = AutomationWorker.objects.aggregate(
+        total=Count('id'),
+        online=Count('id', filter=Q(last_seen_at__gte=online_worker_cutoff)),
+    )
+    online_worker_count = worker_metrics['online']
+    automation_worker_count = worker_metrics['total']
+
+    active_performance_subscriptions = SportsBaseSubscription.objects.filter(
+        is_active=True,
+        starts_on__lte=today,
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today))
+    subscription_metrics = active_performance_subscriptions.aggregate(
+        total=Count('id'),
+        ending_soon=Count(
+            'id',
+            filter=Q(
+                ends_on__isnull=False,
+                ends_on__lte=today + timedelta(days=30),
+            ),
+        ),
+        sync_issue=Count(
+            'id',
+            filter=Q(
+                last_sync_state__in=(
+                    SportsBaseSubscription.SyncState.PARTIAL,
+                    SportsBaseSubscription.SyncState.FAILED,
+                )
+            ),
+        ),
+    )
+    total_active_subscriptions = subscription_metrics['total']
+    subscriptions_ending_soon_count = subscription_metrics['ending_soon']
+    performance_sync_issue_count = subscription_metrics['sync_issue']
+    match_metrics = SportsBaseMatch.objects.filter(
+        subscription__in=active_performance_subscriptions
+    ).aggregate(
+        total=Count('id'),
+        ready=Count(
+            'id',
+            filter=Q(
+                actions_state__in=(
+                    SportsBaseMatch.ActionsState.DOWNLOADED,
+                    SportsBaseMatch.ActionsState.EMAILED,
+                )
+            ),
+        ),
+    )
+    performance_matches_count = match_metrics['total']
+    ready_all_actions_count = match_metrics['ready']
+    published_performance_reports_count = PerformanceReport.objects.filter(
+        subscription__in=active_performance_subscriptions,
+        status=PerformanceReport.Status.PUBLISHED,
+    ).count()
+    performance_job_queue_count = SportsBaseSyncJob.objects.filter(
+        status__in=(
+            SportsBaseSyncJob.Status.PENDING,
+            SportsBaseSyncJob.Status.RUNNING,
+        )
+    ).count()
+    youtube_delivery_metrics = SportsBaseYouTubeUpload.objects.aggregate(
+        issues=Count(
+            'id',
+            filter=Q(status=SportsBaseYouTubeUpload.Status.FAILED),
+        ),
+        queued=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseYouTubeUpload.Status.PENDING,
+                    SportsBaseYouTubeUpload.Status.RUNNING,
+                )
+            ),
+        ),
+    )
+    dailymotion_delivery_metrics = SportsBaseDailymotionUpload.objects.aggregate(
+        issues=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseDailymotionUpload.Status.FAILED,
+                    SportsBaseDailymotionUpload.Status.LINK_PENDING,
+                )
+            ),
+        ),
+        queued=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseDailymotionUpload.Status.PENDING,
+                    SportsBaseDailymotionUpload.Status.RUNNING,
+                )
+            ),
+        ),
+    )
+    youtube_delivery_issue_count = youtube_delivery_metrics['issues']
+    dailymotion_delivery_issue_count = dailymotion_delivery_metrics['issues']
+    delivery_issue_count = (
+        youtube_delivery_issue_count + dailymotion_delivery_issue_count
+    )
+    delivery_queue_count = (
+        youtube_delivery_metrics['queued']
+        + dailymotion_delivery_metrics['queued']
+    )
+    performance_attention_count = (
+        performance_sync_issue_count + delivery_issue_count
+    )
+
+    total_active_portal_accounts = PortalProfile.objects.filter(
+        is_active=True,
+        user__is_active=True,
+    ).count()
+    total_active_organizations = Organization.objects.filter(is_active=True).count()
+    total_client_players = Player.objects.filter(
+        Q(
+            portal_user_accesses__is_active=True,
+            portal_user_accesses__user__is_active=True,
+            portal_user_accesses__user__portal_profile__is_active=True,
+        )
+        | Q(
+            portal_organization_links__is_active=True,
+            portal_organization_links__organization__is_active=True,
+            portal_organization_links__organization__memberships__is_active=True,
+            portal_organization_links__organization__memberships__user__is_active=True,
+            portal_organization_links__organization__memberships__user__portal_profile__is_active=True,
+        )
+    ).distinct().count()
+    pending_agent_requests_count = AgentPlayerRequest.objects.filter(
+        status__in=(
+            AgentPlayerRequest.Status.NEW,
+            AgentPlayerRequest.Status.REVIEWING,
+        )
+    ).count()
+    open_revision_requests_count = RevisionRequest.objects.filter(
+        status__in=(
+            RevisionRequest.Status.OPEN,
+            RevisionRequest.Status.IN_PROGRESS,
+        )
+    ).count()
+    prospect_metrics = Prospect.objects.aggregate(
+        active=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    Prospect.Status.NEW,
+                    Prospect.Status.CONTACTED,
+                    Prospect.Status.INTERESTED,
+                )
+            ),
+        ),
+        new=Count('id', filter=Q(status=Prospect.Status.NEW)),
+    )
+    active_prospects_count = prospect_metrics['active']
+    new_prospects_count = prospect_metrics['new']
+    client_attention_count = (
+        pending_agent_requests_count + open_revision_requests_count
+    )
+    dashboard_attention_count = (
+        total_late_videos
+        + automation_failed_count
+        + performance_attention_count
+        + client_attention_count
+        + new_prospects_count
+    )
+
+    return render(request, 'gestion_joueurs/dashboard_cards_page.html', {
+        **base_context,
+        'dashboard_attention_count': dashboard_attention_count,
         'total_unpaid_invoices': total_unpaid_invoices,
         'total_partially_paid_invoices': total_partially_paid_invoices,
         'total_vip_clients': total_vip_clients,
         'total_loyal_clients': total_loyal_clients,
-        'unread_notifications': unread_notifications,
         'completed_videos_not_paid_count': completed_videos_not_paid_count,
         'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
+        'outstanding_invoice_balance': outstanding_invoice_balance,
+        'blocked_workflows_count': blocked_workflows_count,
+        'client_review_workflows_count': client_review_workflows_count,
+        'urgent_workflows_count': urgent_workflows_count,
+        'automation_running_count': automation_running_count,
+        'automation_waiting_count': automation_waiting_count,
+        'automation_failed_count': automation_failed_count,
+        'online_worker_count': online_worker_count,
+        'automation_worker_count': automation_worker_count,
+        'total_active_subscriptions': total_active_subscriptions,
+        'performance_matches_count': performance_matches_count,
+        'ready_all_actions_count': ready_all_actions_count,
+        'published_performance_reports_count': published_performance_reports_count,
+        'subscriptions_ending_soon_count': subscriptions_ending_soon_count,
+        'performance_sync_issue_count': performance_sync_issue_count,
+        'performance_job_queue_count': performance_job_queue_count,
+        'delivery_issue_count': delivery_issue_count,
+        'delivery_queue_count': delivery_queue_count,
+        'performance_attention_count': performance_attention_count,
+        'total_active_portal_accounts': total_active_portal_accounts,
+        'total_active_organizations': total_active_organizations,
+        'total_client_players': total_client_players,
+        'pending_agent_requests_count': pending_agent_requests_count,
+        'open_revision_requests_count': open_revision_requests_count,
+        'client_attention_count': client_attention_count,
+        'active_prospects_count': active_prospects_count,
+        'new_prospects_count': new_prospects_count,
     })
 
 

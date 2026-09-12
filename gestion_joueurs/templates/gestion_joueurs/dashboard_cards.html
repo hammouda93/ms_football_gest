@@ -1,185 +1,245 @@
-<div class="row mb-4 dashboard-metric-row" aria-label="Résumé des productions">
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'dashboard' %}?tab=ongoing" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-blue h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-spinner"></i>
-                    </div>
-                    <h6 class="stat-label">Vidéos en cours</h6>
-                    <h3 class="stat-value">{{ total_videos_in_progress }}</h3>
-                    <span class="stat-action">Voir les vidéos en cours</span>
-                </div>
-            </div>
-        </a>
+{% if request.user.is_superuser %}
+<section class="dashboard-executive-grid" aria-label="Indicateurs clés de l’activité">
+    <a class="dashboard-executive-card tone-blue" href="{% url 'dashboard' %}?tab=ongoing">
+        <span class="dashboard-executive-icon"><i class="fas fa-clapperboard"></i></span>
+        <span class="dashboard-executive-label">Productions actives</span>
+        <strong>{{ total_videos_in_progress }}</strong>
+        <small>{{ urgent_workflows_count }} urgente{{ urgent_workflows_count|pluralize }} · piloter les commandes</small>
+        <span class="dashboard-executive-link">Ouvrir <i class="fas fa-arrow-right"></i></span>
+    </a>
+
+    <a class="dashboard-executive-card tone-teal" href="{% url 'performance:management' %}">
+        <span class="dashboard-executive-icon"><i class="fas fa-chart-line"></i></span>
+        <span class="dashboard-executive-label">Abonnements actifs</span>
+        <strong>{{ total_active_subscriptions }}</strong>
+        <small>{{ performance_matches_count }} match{{ performance_matches_count|pluralize }} suivi{{ performance_matches_count|pluralize }}</small>
+        <span class="dashboard-executive-link">Gérer les abonnements <i class="fas fa-arrow-right"></i></span>
+    </a>
+
+    <a class="dashboard-executive-card tone-violet" href="{% url 'portal:management' %}">
+        <span class="dashboard-executive-icon"><i class="fas fa-building-user"></i></span>
+        <span class="dashboard-executive-label">Espaces clients actifs</span>
+        <strong>{{ total_active_portal_accounts }}</strong>
+        <small>{{ total_client_players }} joueur{{ total_client_players|pluralize }} accessible{{ total_client_players|pluralize }} · {{ total_players }} au total</small>
+        <span class="dashboard-executive-link">Gérer les accès <i class="fas fa-arrow-right"></i></span>
+    </a>
+
+    <a class="dashboard-executive-card {% if dashboard_attention_count %}tone-red{% else %}tone-green{% endif %}" href="#dashboard-priorities">
+        <span class="dashboard-executive-icon"><i class="fas {% if dashboard_attention_count %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i></span>
+        <span class="dashboard-executive-label">Points d’attention</span>
+        <strong>{{ dashboard_attention_count }}</strong>
+        <small>{% if dashboard_attention_count %}Actions à prioriser aujourd’hui{% else %}Aucune alerte critique{% endif %}</small>
+        <span class="dashboard-executive-link">Voir les priorités <i class="fas fa-arrow-down"></i></span>
+    </a>
+</section>
+
+<section class="dashboard-section" id="dashboard-priorities" aria-labelledby="dashboard-priorities-title">
+    <div class="dashboard-section-heading">
+        <div>
+            <span class="ui-eyebrow">Priorités</span>
+            <h2 id="dashboard-priorities-title">À traiter maintenant</h2>
+            <p>Les anomalies et demandes qui peuvent bloquer une livraison ou un client.</p>
+        </div>
+        <a class="dashboard-text-link" href="{% url 'portal:operations_brief' %}">Brief du jour <i class="fas fa-arrow-right"></i></a>
     </div>
 
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'dashboard' %}?tab=delivered" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-green h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <h6 class="stat-label">Vidéos livrées</h6>
-                    <h3 class="stat-value">{{ total_videos_delivered }}</h3>
-                    <span class="stat-action">Voir les vidéos livrées</span>
-                </div>
-            </div>
+    <div class="dashboard-alert-grid">
+        <a class="dashboard-alert-card {% if total_late_videos %}has-alert{% else %}is-clear{% endif %}" href="{% url 'dashboard' %}?deadline_filter=past&amp;tab=ongoing">
+            <span class="dashboard-alert-icon"><i class="fas fa-calendar-xmark"></i></span>
+            <span><strong>{{ total_late_videos }}</strong><b>Vidéo{{ total_late_videos|pluralize }} en retard</b><small>{% if total_late_videos %}Échéance dépassée{% else %}Délais sous contrôle{% endif %}</small></span>
+            <i class="fas fa-chevron-right"></i>
         </a>
+        <a class="dashboard-alert-card {% if automation_failed_count %}has-alert{% else %}is-clear{% endif %}" href="{% url 'portal:production_board' %}">
+            <span class="dashboard-alert-icon"><i class="fas fa-robot"></i></span>
+            <span><strong>{{ automation_failed_count }}</strong><b>Automation{{ automation_failed_count|pluralize }} en échec</b><small>{% if automation_failed_count %}Relance ou contrôle requis{% else %}Aucun échec actif{% endif %}</small></span>
+            <i class="fas fa-chevron-right"></i>
+        </a>
+        <a class="dashboard-alert-card {% if performance_attention_count %}has-alert{% else %}is-clear{% endif %}" href="{% url 'performance:management' %}">
+            <span class="dashboard-alert-icon"><i class="fas fa-signal"></i></span>
+            <span><strong>{{ performance_attention_count }}</strong><b>Incident{{ performance_attention_count|pluralize }} Performance</b><small>{{ performance_sync_issue_count }} sync · {{ delivery_issue_count }} livraison</small></span>
+            <i class="fas fa-chevron-right"></i>
+        </a>
+        <a class="dashboard-alert-card {% if client_attention_count %}has-alert{% else %}is-clear{% endif %}" href="{% url 'portal:management' %}">
+            <span class="dashboard-alert-icon"><i class="fas fa-user-clock"></i></span>
+            <span><strong>{{ client_attention_count }}</strong><b>Demande{{ client_attention_count|pluralize }} client</b><small>{{ pending_agent_requests_count }} accès · {{ open_revision_requests_count }} correction{{ open_revision_requests_count|pluralize }}</small></span>
+            <i class="fas fa-chevron-right"></i>
+        </a>
+        <a class="dashboard-alert-card {% if new_prospects_count %}has-alert{% else %}is-clear{% endif %}" href="{% url 'prospects:prospect_list' %}?status=new">
+            <span class="dashboard-alert-icon"><i class="fas fa-user-plus"></i></span>
+            <span><strong>{{ new_prospects_count }}</strong><b>Nouveau{{ new_prospects_count|pluralize:"x" }} prospect{{ new_prospects_count|pluralize }}</b><small>{{ active_prospects_count }} opportunité{{ active_prospects_count|pluralize }} active{{ active_prospects_count|pluralize }}</small></span>
+            <i class="fas fa-chevron-right"></i>
+        </a>
+    </div>
+</section>
+
+<section class="dashboard-section" aria-labelledby="dashboard-services-title">
+    <div class="dashboard-section-heading">
+        <div>
+            <span class="ui-eyebrow">Services</span>
+            <h2 id="dashboard-services-title">Pilotage par activité</h2>
+            <p>Un résumé exploitable de chaque pôle, avec accès direct à son espace de gestion.</p>
+        </div>
     </div>
 
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'dashboard' %}?deadline_filter=past&tab=ongoing" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-red h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-exclamation-triangle"></i>
-                    </div>
-                    <h6 class="stat-label">Vidéos en retard</h6>
-                    <h3 class="stat-value">{{ total_late_videos }}</h3>
-                    <span class="stat-action">Voir les vidéos en retard</span>
-                </div>
+    <div class="dashboard-domain-grid">
+        <article class="dashboard-domain-card domain-production">
+            <header>
+                <span class="dashboard-domain-icon"><i class="fas fa-film"></i></span>
+                <div><span>Production vidéo</span><h3>Commandes & livraisons</h3></div>
+                <span class="dashboard-health-pill {% if total_late_videos or blocked_workflows_count %}needs-attention{% else %}is-healthy{% endif %}">{% if total_late_videos or blocked_workflows_count %}À surveiller{% else %}Sous contrôle{% endif %}</span>
+            </header>
+            <div class="dashboard-domain-highlight">
+                <strong>{{ total_videos_in_progress }}</strong>
+                <span>vidéo{{ total_videos_in_progress|pluralize }} actuellement en production</span>
             </div>
-        </a>
+            <div class="dashboard-mini-stat-grid">
+                <div><span>Livrées</span><strong>{{ total_videos_delivered }}</strong></div>
+                <div><span>En retard</span><strong>{{ total_late_videos }}</strong></div>
+                <div><span>Bloquées</span><strong>{{ blocked_workflows_count }}</strong></div>
+                <div><span>Validation client</span><strong>{{ client_review_workflows_count }}</strong></div>
+            </div>
+            <footer>
+                <a href="{% url 'portal:production_board' %}">Centre de production <i class="fas fa-arrow-right"></i></a>
+                <a href="{% url 'dashboard' %}">Toutes les commandes</a>
+            </footer>
+        </article>
+
+        <article class="dashboard-domain-card domain-performance">
+            <header>
+                <span class="dashboard-domain-icon"><i class="fas fa-chart-column"></i></span>
+                <div><span>Abonnement Performance</span><h3>SportsBase & All Actions</h3></div>
+                <span class="dashboard-health-pill {% if performance_attention_count %}needs-attention{% else %}is-healthy{% endif %}">{% if performance_attention_count %}{{ performance_attention_count }} alerte{{ performance_attention_count|pluralize }}{% else %}Opérationnel{% endif %}</span>
+            </header>
+            <div class="dashboard-domain-highlight">
+                <strong>{{ total_active_subscriptions }}</strong>
+                <span>abonnement{{ total_active_subscriptions|pluralize }} actif{{ total_active_subscriptions|pluralize }}</span>
+            </div>
+            <div class="dashboard-mini-stat-grid">
+                <div><span>Matchs suivis</span><strong>{{ performance_matches_count }}</strong></div>
+                <div><span>All Actions prêts</span><strong>{{ ready_all_actions_count }}</strong></div>
+                <div><span>Rapports publiés</span><strong>{{ published_performance_reports_count }}</strong></div>
+                <div><span>Fin sous 30 j</span><strong>{{ subscriptions_ending_soon_count }}</strong></div>
+            </div>
+            <footer>
+                <a href="{% url 'performance:management' %}">Gérer les abonnements <i class="fas fa-arrow-right"></i></a>
+                <a href="{% url 'performance:subscription_create' %}">Nouvel abonnement</a>
+            </footer>
+        </article>
+
+        <article class="dashboard-domain-card domain-client">
+            <header>
+                <span class="dashboard-domain-icon"><i class="fas fa-people-roof"></i></span>
+                <div><span>Espace client</span><h3>Accès & réseau</h3></div>
+                <span class="dashboard-health-pill {% if client_attention_count %}needs-attention{% else %}is-healthy{% endif %}">{% if client_attention_count %}{{ client_attention_count }} demande{{ client_attention_count|pluralize }}{% else %}À jour{% endif %}</span>
+            </header>
+            <div class="dashboard-domain-highlight">
+                <strong>{{ total_active_portal_accounts }}</strong>
+                <span>compte{{ total_active_portal_accounts|pluralize }} client actif{{ total_active_portal_accounts|pluralize }}</span>
+            </div>
+            <div class="dashboard-mini-stat-grid">
+                <div><span>Organisations</span><strong>{{ total_active_organizations }}</strong></div>
+                <div><span>Joueurs accessibles</span><strong>{{ total_client_players }}</strong></div>
+                <div><span>Clients VIP</span><strong>{{ total_vip_clients }}</strong></div>
+                <div><span>Clients fidèles</span><strong>{{ total_loyal_clients }}</strong></div>
+                <div><span>Prospects actifs</span><strong>{{ active_prospects_count }}</strong></div>
+                <div><span>Nouveaux prospects</span><strong>{{ new_prospects_count }}</strong></div>
+            </div>
+            <footer>
+                <a href="{% url 'portal:management' %}">Gérer les espaces <i class="fas fa-arrow-right"></i></a>
+                <a href="{% url 'portal:organization_create' %}">Nouvelle organisation</a>
+                <a href="{% url 'prospects:prospect_list' %}">Prospects</a>
+            </footer>
+        </article>
+    </div>
+</section>
+
+<section class="dashboard-section" aria-labelledby="dashboard-operations-title">
+    <div class="dashboard-section-heading">
+        <div>
+            <span class="ui-eyebrow">Exécution</span>
+            <h2 id="dashboard-operations-title">Automatisations & finance</h2>
+            <p>La santé des agents et les encours financiers les plus importants.</p>
+        </div>
     </div>
 
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'player_dashboard' %}" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-slate h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <h6 class="stat-label">Joueurs</h6>
-                    <h3 class="stat-value">{{ total_players }}</h3>
-                    <span class="stat-action">Voir les joueurs</span>
+    <div class="dashboard-operations-grid">
+        <article class="dashboard-operations-card dashboard-automation-card">
+            <header>
+                <div><span class="dashboard-domain-icon"><i class="fas fa-gears"></i></span><span><small>Infrastructure locale</small><h3>Agents d’automatisation</h3></span></div>
+                <span class="dashboard-health-pill {% if automation_failed_count %}needs-attention{% elif online_worker_count %}is-healthy{% else %}is-neutral{% endif %}">{% if automation_failed_count %}Incident actif{% elif online_worker_count %}{{ online_worker_count }} poste{{ online_worker_count|pluralize }} en ligne{% else %}En attente de lancement{% endif %}</span>
+            </header>
+            <div class="dashboard-agent-summary">
+                <div class="dashboard-agent-state {% if online_worker_count %}is-online{% endif %}">
+                    <span class="dashboard-agent-dot"></span>
+                    <span><strong>{{ online_worker_count }} / {{ automation_worker_count }}</strong><small>poste{{ automation_worker_count|pluralize }} Highlights en ligne</small></span>
+                </div>
+                <div class="dashboard-queue-stats">
+                    <div><strong>{{ automation_running_count }}</strong><span>pipelines actifs</span></div>
+                    <div><strong>{{ automation_waiting_count }}</strong><span>actions externes</span></div>
+                    <div><strong>{{ performance_job_queue_count }}</strong><span>syncs en file</span></div>
+                    <div><strong>{{ delivery_queue_count }}</strong><span>uploads en file</span></div>
                 </div>
             </div>
-        </a>
-    </div>
-</div>
+            <div class="dashboard-agent-actions">
+                <a class="btn btn-outline-primary" href="msfootball-agent://performance"><i class="fas fa-chart-line"></i> Agent Performance</a>
+                <a class="btn btn-outline-primary" href="msfootball-agent://highlights"><i class="fas fa-film"></i> Agent Highlights</a>
+                <a class="btn btn-secondary" href="{% url 'portal:production_board' %}"><i class="fas fa-list-check"></i> Suivi production</a>
+            </div>
+        </article>
 
-<div class="row mb-4 dashboard-metric-row" aria-label="Résumé financier">
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'view_invoices' %}?status=unpaid" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-amber h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                    </div>
-                    <h6 class="stat-label">Factures impayées</h6>
-                    <h3 class="stat-value">{{ total_unpaid_invoices }}</h3>
-                    <span class="stat-action">Voir les factures impayées</span>
-                </div>
+        <article class="dashboard-operations-card dashboard-finance-card">
+            <header>
+                <div><span class="dashboard-domain-icon"><i class="fas fa-wallet"></i></span><span><small>Pilotage financier</small><h3>Encours à sécuriser</h3></span></div>
+                <a class="dashboard-text-link" href="{% url 'financial_report_list' %}">Rapports <i class="fas fa-arrow-right"></i></a>
+            </header>
+            <div class="dashboard-finance-highlight"><span>Solde factures restant</span><strong>{{ outstanding_invoice_balance|floatformat:2 }}</strong></div>
+            <div class="dashboard-finance-list">
+                <a href="{% url 'view_invoices' %}?status=unpaid"><span>Factures impayées</span><strong>{{ total_unpaid_invoices }}</strong></a>
+                <a href="{% url 'view_invoices' %}?status=partially_paid"><span>Paiements partiels</span><strong>{{ total_partially_paid_invoices }}</strong></a>
+                <a href="{% url 'statistical_dashboard' %}"><span>Terminées non payées</span><strong>{{ completed_videos_not_paid_count }}</strong></a>
+                <a href="{% url 'statistical_dashboard' %}"><span>Livrées non payées</span><strong>{{ delivered_videos_not_paid_count }}</strong></a>
             </div>
-        </a>
+        </article>
     </div>
+</section>
+{% else %}
+<section class="dashboard-executive-grid" aria-label="Résumé des productions">
+    <a class="dashboard-executive-card tone-blue" href="{% url 'dashboard' %}?tab=ongoing">
+        <span class="dashboard-executive-icon"><i class="fas fa-spinner"></i></span>
+        <span class="dashboard-executive-label">Vidéos en cours</span>
+        <strong>{{ total_videos_in_progress }}</strong>
+        <small>Commandes actuellement en production</small>
+        <span class="dashboard-executive-link">Voir les commandes <i class="fas fa-arrow-right"></i></span>
+    </a>
+    <a class="dashboard-executive-card tone-green" href="{% url 'dashboard' %}?tab=delivered">
+        <span class="dashboard-executive-icon"><i class="fas fa-circle-check"></i></span>
+        <span class="dashboard-executive-label">Vidéos livrées</span>
+        <strong>{{ total_videos_delivered }}</strong>
+        <small>Productions finalisées</small>
+        <span class="dashboard-executive-link">Voir les livraisons <i class="fas fa-arrow-right"></i></span>
+    </a>
+    <a class="dashboard-executive-card {% if total_late_videos %}tone-red{% else %}tone-green{% endif %}" href="{% url 'dashboard' %}?deadline_filter=past&amp;tab=ongoing">
+        <span class="dashboard-executive-icon"><i class="fas fa-calendar-xmark"></i></span>
+        <span class="dashboard-executive-label">Vidéos en retard</span>
+        <strong>{{ total_late_videos }}</strong>
+        <small>{% if total_late_videos %}À prioriser aujourd’hui{% else %}Délais sous contrôle{% endif %}</small>
+        <span class="dashboard-executive-link">Voir les échéances <i class="fas fa-arrow-right"></i></span>
+    </a>
+    <a class="dashboard-executive-card tone-violet" href="{% url 'notification_list' %}">
+        <span class="dashboard-executive-icon"><i class="fas fa-bell"></i></span>
+        <span class="dashboard-executive-label">Notifications</span>
+        <strong>{{ unread_notifications }}</strong>
+        <small>Message{{ unread_notifications|pluralize }} non lu{{ unread_notifications|pluralize }}</small>
+        <span class="dashboard-executive-link">Ouvrir le centre <i class="fas fa-arrow-right"></i></span>
+    </a>
+</section>
 
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'view_invoices' %}?status=partially_paid" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-cyan h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-coins"></i>
-                    </div>
-                    <h6 class="stat-label">Factures partiellement payées</h6>
-                    <h3 class="stat-value">{{ total_partially_paid_invoices }}</h3>
-                    <span class="stat-action">Voir les factures partiellement payées</span>
-                </div>
-            </div>
-        </a>
+<section class="dashboard-section">
+    <div class="dashboard-section-heading"><div><span class="ui-eyebrow">Production</span><h2>Votre espace de travail</h2><p>Accédez aux commandes, délais et validations qui vous concernent.</p></div></div>
+    <div class="dashboard-collaborator-actions">
+        <a href="{% url 'dashboard' %}"><span><i class="fas fa-list-check"></i></span><strong>Commandes vidéo</strong><small>Gérer vos productions et statuts</small><i class="fas fa-arrow-right"></i></a>
+        <a href="{% url 'portal:production_board' %}"><span><i class="fas fa-clapperboard"></i></span><strong>Centre de production</strong><small>Voir les étapes et prochaines actions</small><i class="fas fa-arrow-right"></i></a>
+        <a href="{% url 'portal:operations_brief' %}"><span><i class="fas fa-wand-magic-sparkles"></i></span><strong>Brief du jour</strong><small>Priorités et échéances du jour</small><i class="fas fa-arrow-right"></i></a>
     </div>
-
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'statistical_dashboard' %}" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-rose h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-hourglass-half"></i>
-                    </div>
-                    <h6 class="stat-label">Vidéos terminées non payées</h6>
-                    <h3 class="stat-value">{{ completed_videos_not_paid_count }}</h3>
-                    <span class="stat-action">Voir le dashboard statistique</span>
-                </div>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'statistical_dashboard' %}" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-purple h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-truck"></i>
-                    </div>
-                    <h6 class="stat-label">Vidéos livrées non payées</h6>
-                    <h3 class="stat-value">{{ delivered_videos_not_paid_count }}</h3>
-                    <span class="stat-action">Voir le dashboard statistique</span>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
-
-<div class="row mb-4 dashboard-metric-row" aria-label="Clients et activité">
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'player_dashboard' %}?client_fidel=true" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-emerald h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-handshake"></i>
-                    </div>
-                    <h6 class="stat-label">Clients fidèles</h6>
-                    <h3 class="stat-value">{{ total_loyal_clients }}</h3>
-                    <span class="stat-action">Voir les clients fidèles</span>
-                </div>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'player_dashboard' %}?client_vip=true" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-gold h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-crown"></i>
-                    </div>
-                    <h6 class="stat-label">Clients VIP</h6>
-                    <h3 class="stat-value">{{ total_vip_clients }}</h3>
-                    <span class="stat-action">Voir les clients VIP</span>
-                </div>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'notification_list' %}" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-indigo h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-bell"></i>
-                    </div>
-                    <h6 class="stat-label">Notifications non lues</h6>
-                    <h3 class="stat-value">{{ unread_notifications }}</h3>
-                    <span class="stat-action">Voir les notifications</span>
-                </div>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-md-3 mb-4">
-        <a href="{% url 'financial_report_list' %}" class="dashboard-card-link">
-            <div class="card dashboard-stat-card stat-dark h-100">
-                <div class="card-body">
-                    <div class="stat-icon-wrap">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <h6 class="stat-label">Rapports financiers</h6>
-                    <h3 class="stat-value">+</h3>
-                    <span class="stat-action">Voir les rapports financiers</span>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
+</section>
+{% endif %}
