@@ -17,8 +17,10 @@ from client_portal.decorators import (
     portal_required,
     production_required,
 )
-from client_portal.models import PlayerAccess, PortalProfile
-from client_portal.services import accessible_players_for
+from client_portal.services import (
+    accessible_players_for,
+    sync_subscription_portal_language,
+)
 from gestion_joueurs.models import Player
 
 from .analysis_engine import ms_rating, platform_index
@@ -600,22 +602,6 @@ def _portal_subscription_or_404(user, player_id):
     )
 
 
-def _sync_direct_portal_language(subscription):
-    """Keep both internal language selectors coherent for direct player accounts."""
-    profile = (
-        PortalProfile.objects.filter(
-            user__portal_player_accesses__player=subscription.player,
-            user__portal_player_accesses__role=PlayerAccess.Role.PLAYER,
-            account_type=PortalProfile.AccountType.PLAYER,
-        )
-        .order_by("created_at")
-        .first()
-    )
-    if profile and profile.preferred_language != subscription.report_language:
-        profile.preferred_language = subscription.report_language
-        profile.save(update_fields=("preferred_language", "updated_at"))
-
-
 @portal_admin_required
 def subscription_management(request):
     query = request.GET.get("q", "").strip()
@@ -683,7 +669,7 @@ def subscription_form(request, pk=None):
         if not item.pk:
             item.created_by = request.user
         item.save()
-        _sync_direct_portal_language(item)
+        sync_subscription_portal_language(item)
         generate_reports_for_subscription(item)
         messages.success(
             request,

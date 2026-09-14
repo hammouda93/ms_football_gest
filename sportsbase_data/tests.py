@@ -2391,6 +2391,32 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertFalse(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_email_prefers_active_player_portal_email(self):
+        self.player.email = "ancienne-adresse@example.com"
+        self.player.save(update_fields=("email",))
+        portal_user = User.objects.create_user(
+            username="performance-player-portal",
+            email="adresse-portail@example.com",
+            password="test-password",
+        )
+        PortalProfile.objects.create(
+            user=portal_user,
+            account_type=PortalProfile.AccountType.PLAYER,
+            display_name=self.player.name,
+            created_by=self.admin,
+        )
+        PlayerAccess.objects.create(
+            user=portal_user,
+            player=self.player,
+            role=PlayerAccess.Role.PLAYER,
+            granted_by=self.admin,
+        )
+
+        report = generate_match_report(self._create_match(2))
+
+        self.assertTrue(send_ready_delivery_notification(report))
+        self.assertEqual(mail.outbox[0].to, ["adresse-portail@example.com"])
+
     def test_email_accepts_dailymotion_when_youtube_upload_failed(self):
         self.subscription.youtube_delivery_enabled = True
         self.subscription.save(

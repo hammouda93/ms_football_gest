@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ from .portal_i18n import (
 
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -743,6 +745,48 @@ def provision_portal_account(cleaned_data, *, created_by):
     return profile, temporary_password
 
 
+def sync_subscription_portal_language(subscription):
+    """Use the Performance subscription language for the direct player account."""
+    profile = (
+        PortalProfile.objects.filter(
+            user__portal_player_accesses__player=subscription.player,
+            user__portal_player_accesses__role=PlayerAccess.Role.PLAYER,
+            user__portal_player_accesses__is_active=True,
+            account_type=PortalProfile.AccountType.PLAYER,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if profile and profile.preferred_language != subscription.report_language:
+        profile.preferred_language = subscription.report_language
+        profile.save(update_fields=("preferred_language", "updated_at"))
+    return profile
+
+
+def player_delivery_email(player):
+    """Return the active direct portal e-mail, falling back to the player sheet."""
+    fallback = (getattr(player, "email", "") or "").strip()
+    if not player or not player.pk:
+        return fallback
+
+    access = (
+        PlayerAccess.objects.select_related("user__portal_profile")
+        .filter(
+            player=player,
+            role=PlayerAccess.Role.PLAYER,
+            is_active=True,
+            user__is_active=True,
+            user__portal_profile__account_type=PortalProfile.AccountType.PLAYER,
+            user__portal_profile__is_active=True,
+        )
+        .exclude(user__email="")
+        .order_by("created_at")
+        .first()
+    )
+    portal_email = (access.user.email or "").strip() if access else ""
+    return portal_email or fallback
+
+
 @transaction.atomic
 def ensure_player_portal_account(player, *, created_by):
     existing_access = (
@@ -763,6 +807,12 @@ def ensure_player_portal_account(player, *, created_by):
         if not existing_access.is_active:
             existing_access.is_active = True
             existing_access.save(update_fields=("is_active",))
+        if (
+            not (profile.user.email or "").strip()
+            and (player.email or "").strip()
+        ):
+            profile.user.email = player.email.strip().lower()
+            profile.user.save(update_fields=("email",))
         if changed_profile:
             profile.is_active = True
             profile.save(update_fields=("is_active", "updated_at"))
@@ -819,7 +869,9 @@ def deliver_portal_credentials(
     player=None,
 ):
     recipient_name = profile.display_name
-    email = (profile.user.email or "").strip()
+    email = (profile.user.email or "").strip() or (
+        (player.email or "").strip() if player is not None else ""
+    )
     phone_value = profile.whatsapp_number or (
         player.whatsapp_number if player else ""
     )
@@ -847,6 +899,7 @@ def deliver_portal_credentials(
 
     email_sent = False
     email_error = False
+    email_error_message = ""
     if email:
         try:
             email_sent = bool(
@@ -858,14 +911,32 @@ def deliver_portal_credentials(
                     fail_silently=False,
                 )
             )
-        except Exception:
+            if not email_sent:
+                email_error = True
+                email_error_message = (
+                    "Le serveur de messagerie n’a confirmé aucun envoi."
+                )
+        except Exception as exc:
             email_error = True
+            email_error_message = str(exc).strip()[:1000]
+            logger.exception(
+                "Échec de l’envoi des accès portail au joueur %s vers %s.",
+                getattr(player, "pk", None),
+                email,
+            )
         CommunicationLog.objects.create(
             player=player,
             channel=CommunicationLog.Channel.EMAIL,
             template_key="portal_credentials",
             recipient=email,
-            message="Lien sécurisé du portail client préparé par MS Football.",
+            message=(
+                "Lien sécurisé du portail client envoyé par MS Football."
+                if email_sent
+                else (
+                    "Échec de l’envoi du lien sécurisé du portail client : "
+                    f"{email_error_message or 'erreur de messagerie inconnue'}"
+                )
+            ),
             state=(
                 CommunicationLog.State.SENT
                 if email_sent
