@@ -43,8 +43,22 @@
         <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Type</th><th>État</th><th>Créée</th><th>Résultat</th></tr></thead><tbody>{% for job in jobs %}<tr><td>{{ job.subscription.player.name }}</td><td>{{ job.get_job_type_display }}</td><td><span class="job-status status-{{ job.status }}">{{ job.get_status_display }}</span></td><td>{{ job.created_at|date:"d/m/Y H:i" }}</td><td>{% if job.error_message %}<span class="text-danger">{{ job.error_message|truncatechars:80 }}</span>{% elif job.result_summary %}{{ job.result_summary.matches_received|default:0 }} match(s){% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Aucune tâche pour le moment.</td></tr>{% endfor %}</tbody></table></div>
     </section>
 
-    <section class="performance-jobs-panel">
-        <div class="panel-heading"><div><h2>Livraison All Actions</h2><small>YouTube reste prioritaire. Lancez Dailymotion seulement comme solution de secours.</small></div></div>
+    <section class="performance-jobs-panel" id="delivery-all-actions">
+        <div class="panel-heading performance-search-heading">
+            <div><h2>Livraison All Actions</h2><small>YouTube reste prioritaire. Lancez Dailymotion seulement comme solution de secours.</small></div>
+            <form class="performance-section-search" method="get" action="{% url 'performance:management' %}#delivery-all-actions">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                {% if selected_state %}<input type="hidden" name="state" value="{{ selected_state }}">{% endif %}
+                {% if report_query %}<input type="hidden" name="report_q" value="{{ report_query }}">{% endif %}
+                <div class="performance-search-control">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input class="form-control form-control-sm" type="search" name="delivery_q" value="{{ delivery_query }}" placeholder="Joueur, club ou équipe" aria-label="Rechercher dans les livraisons All Actions">
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Rechercher</button>
+                {% if delivery_query %}<button class="btn btn-sm btn-outline-secondary" type="submit" name="delivery_q" value="">Effacer</button>{% endif %}
+            </form>
+        </div>
+        {% if delivery_query %}<p class="performance-search-result">{{ youtube_jobs|length }} résultat{{ youtube_jobs|length|pluralize }} pour « {{ delivery_query }} » — recherche effectuée dans tout l’historique.</p>{% endif %}
         <div class="table-responsive">
             <table class="table performance-delivery-table">
                 <thead><tr><th>Joueur</th><th>Match</th><th>YouTube</th><th>Dailymotion</th></tr></thead>
@@ -84,15 +98,40 @@
                             {% endwith %}
                         </td>
                     </tr>
-                    {% empty %}<tr><td colspan="4">Aucune publication planifiée. Activez YouTube dans un abonnement.</td></tr>{% endfor %}
+                    {% empty %}<tr><td colspan="4">{% if delivery_query %}Aucune livraison trouvée pour « {{ delivery_query }} ».{% else %}Aucune publication planifiée. Activez YouTube dans un abonnement.{% endif %}</td></tr>{% endfor %}
                 </tbody>
             </table>
         </div>
     </section>
 
-    <section class="performance-jobs-panel">
-        <div class="panel-heading"><div><h2>Rapports de l’analyste</h2><small>Générés automatiquement, puis modifiables avant ou après publication</small></div></div>
-        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Rapport</th><th>Langue</th><th>État</th><th>Dernière version</th><th></th></tr></thead><tbody>{% for report in reports %}<tr><td>{{ report.subscription.player.name }}</td><td>{{ report.title }}</td><td>{{ report.get_language_display }}</td><td><span class="job-status status-{{ report.status }}">{{ report.get_status_display }}</span></td><td>{{ report.updated_at|date:"d/m/Y H:i" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'performance:report_edit' report.pk %}"><i class="fas fa-pen"></i> Modifier</a></td></tr>{% empty %}<tr><td colspan="6">Les rapports apparaîtront après la prochaine synchronisation.</td></tr>{% endfor %}</tbody></table></div>
+    <section class="performance-jobs-panel" id="analyst-reports">
+        <div class="panel-heading performance-search-heading">
+            <div><h2>Rapports de l’analyste</h2><small>Générés automatiquement, puis modifiables avant ou après publication</small></div>
+            <form class="performance-section-search" method="get" action="{% url 'performance:management' %}#analyst-reports">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                {% if selected_state %}<input type="hidden" name="state" value="{{ selected_state }}">{% endif %}
+                {% if delivery_query %}<input type="hidden" name="delivery_q" value="{{ delivery_query }}">{% endif %}
+                <div class="performance-search-control">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input class="form-control form-control-sm" type="search" name="report_q" value="{{ report_query }}" placeholder="Joueur, club, saison ou rapport" aria-label="Rechercher dans les rapports de l’analyste">
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Rechercher</button>
+                {% if report_query %}<button class="btn btn-sm btn-outline-secondary" type="submit" name="report_q" value="">Effacer</button>{% endif %}
+            </form>
+        </div>
+        {% if report_query %}<p class="performance-search-result">{{ reports|length }} résultat{{ reports|length|pluralize }} pour « {{ report_query }} » — recherche effectuée dans tout l’historique.</p>{% endif %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Joueur</th><th>Rapport</th><th>Langue</th><th>État</th><th>Dernière version</th><th></th></tr></thead>
+                <tbody>
+                    {% for report in reports %}
+                        <tr><td>{{ report.subscription.player.name }}</td><td>{{ report.title }}</td><td>{{ report.get_language_display }}</td><td><span class="job-status status-{{ report.status }}">{{ report.get_status_display }}</span></td><td>{{ report.updated_at|date:"d/m/Y H:i" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'performance:report_edit' report.pk %}"><i class="fas fa-pen"></i> Modifier</a></td></tr>
+                    {% empty %}
+                        <tr><td colspan="6">{% if report_query %}Aucun rapport trouvé pour « {{ report_query }} ».{% else %}Les rapports apparaîtront après la prochaine synchronisation.{% endif %}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </section>
 </div>
 {% endblock %}

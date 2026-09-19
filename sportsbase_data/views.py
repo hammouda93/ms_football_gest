@@ -639,13 +639,35 @@ def subscription_management(request):
         subscriptions = subscriptions.filter(last_sync_state=state)
     else:
         state = ""
+    delivery_query = request.GET.get("delivery_q", "").strip()
+    report_query = request.GET.get("report_q", "").strip()
+
     jobs = SportsBaseSyncJob.objects.select_related("subscription__player")[:30]
     youtube_jobs = SportsBaseYouTubeUpload.objects.select_related(
         "match__subscription__player", "match__dailymotion_upload"
-    )[:30]
+    )
+    if delivery_query:
+        youtube_jobs = youtube_jobs.filter(
+            Q(match__subscription__player__name__icontains=delivery_query)
+            | Q(match__subscription__player__club__icontains=delivery_query)
+            | Q(match__home_team__icontains=delivery_query)
+            | Q(match__away_team__icontains=delivery_query)
+        )
+    else:
+        youtube_jobs = youtube_jobs[:30]
+
     reports = PerformanceReport.objects.select_related(
         "subscription__player", "match"
-    )[:30]
+    )
+    if report_query:
+        reports = reports.filter(
+            Q(subscription__player__name__icontains=report_query)
+            | Q(subscription__player__club__icontains=report_query)
+            | Q(subscription__season__icontains=report_query)
+            | Q(title__icontains=report_query)
+        )
+    else:
+        reports = reports[:30]
     return render(
         request,
         "sportsbase_data/subscription_management.html",
@@ -654,6 +676,8 @@ def subscription_management(request):
             "jobs": jobs,
             "youtube_jobs": youtube_jobs,
             "reports": reports,
+            "delivery_query": delivery_query,
+            "report_query": report_query,
             "query": query,
             "selected_state": state,
             "state_choices": SportsBaseSubscription.SyncState.choices,

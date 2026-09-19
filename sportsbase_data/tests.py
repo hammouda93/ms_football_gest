@@ -1608,6 +1608,93 @@ class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
 @override_settings(
     STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
 )
+class SubscriptionManagementSearchTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        today = timezone.localdate()
+        self.old_match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="old-search-target",
+            season=self.subscription.season,
+            match_date=today - timedelta(days=200),
+            home_team="Ancien Club",
+            away_team="Adversaire historique",
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="performance-player/old-search-target",
+            all_actions_filename="all-actions.mp4",
+        )
+        self.old_upload = SportsBaseYouTubeUpload.objects.create(
+            match=self.old_match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée pour droits d’auteur.",
+        )
+        self.old_report = PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=self.old_match,
+            report_type=PerformanceReport.ReportType.MATCH,
+            title="Ancien rapport du joueur recherché",
+            generated_at=timezone.now() - timedelta(days=200),
+        )
+
+        for index in range(31):
+            recent_match = SportsBaseMatch.objects.create(
+                subscription=self.other_subscription,
+                sportsbase_match_id=f"recent-search-{index}",
+                season=self.other_subscription.season,
+                match_date=today - timedelta(days=index),
+                home_team=f"Club récent {index}",
+                away_team="Adversaire",
+            )
+            SportsBaseYouTubeUpload.objects.create(match=recent_match)
+            PerformanceReport.objects.create(
+                subscription=self.other_subscription,
+                match=recent_match,
+                report_type=PerformanceReport.ReportType.MATCH,
+                title=f"Rapport récent {index}",
+                generated_at=timezone.now() - timedelta(minutes=index),
+            )
+
+    def test_section_searches_find_records_beyond_the_default_thirty(self):
+        self.client.force_login(self.admin)
+        url = reverse("performance:management")
+
+        default_page = self.client.get(url)
+        self.assertNotIn(
+            self.old_upload.pk,
+            [upload.pk for upload in default_page.context["youtube_jobs"]],
+        )
+        self.assertNotIn(
+            self.old_report.pk,
+            [report.pk for report in default_page.context["reports"]],
+        )
+
+        delivery_search = self.client.get(
+            url,
+            {"delivery_q": "Performance Player"},
+        )
+        self.assertEqual(
+            [upload.pk for upload in delivery_search.context["youtube_jobs"]],
+            [self.old_upload.pk],
+        )
+        self.assertContains(delivery_search, "Ancien Club")
+        self.assertContains(delivery_search, "Essayer Dailymotion")
+        self.assertContains(delivery_search, "recherche effectuée dans tout l’historique")
+
+        report_search = self.client.get(
+            url,
+            {"report_q": "Performance Player"},
+        )
+        self.assertEqual(
+            [report.pk for report in report_search.context["reports"]],
+            [self.old_report.pk],
+        )
+        self.assertContains(report_search, self.old_report.title)
+        self.assertContains(report_search, "recherche effectuée dans tout l’historique")
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
 class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
     def setUp(self):
         super().setUp()
