@@ -585,7 +585,7 @@ def accessible_videos_for(user):
 
 def editable_players_for(user):
     """Players for which a portal user may submit or approve client actions."""
-    if not user.is_authenticated:
+    if not user.is_authenticated or user.is_superuser:
         return Player.objects.none()
     direct = Q(
         portal_user_accesses__user=user,

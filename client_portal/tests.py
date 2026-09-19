@@ -531,6 +531,23 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertEqual(mutation.status_code, 404)
         self.assertEqual(MediaSubmission.objects.count(), submissions_before)
 
+        payment_request = PaymentRequest.objects.create(
+            video=self.hidden_video,
+            label="Contrôle lecture seule",
+            amount=Decimal("100"),
+            payment_url="https://payments.example.com/read-only",
+            created_by=self.admin,
+        )
+        payment_mutation = self.client.post(
+            reverse("portal:payment_open", args=(payment_request.pk,))
+        )
+        self.assertEqual(payment_mutation.status_code, 403)
+        payment_request.refresh_from_db()
+        self.assertEqual(
+            payment_request.status,
+            PaymentRequest.Status.PENDING,
+        )
+
     def test_player_account_cannot_open_other_player_video(self):
         self.client.force_login(self.player_user)
         allowed = self.client.get(reverse("portal:video", args=(self.video.pk,)))

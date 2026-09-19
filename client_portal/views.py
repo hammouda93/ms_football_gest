@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.http import HttpResponse, JsonResponse
@@ -1166,6 +1167,8 @@ def portal_version_approve(request, version_id):
 @portal_required
 @require_POST
 def portal_payment_open(request, payment_request_id):
+    if getattr(request, "portal_overview_admin", False):
+        raise PermissionDenied
     payment_request = get_object_or_404(
         PaymentRequest.objects.select_related("video"),
         pk=payment_request_id,
@@ -1186,6 +1189,8 @@ def portal_payment_open(request, payment_request_id):
 @portal_required
 @require_POST
 def portal_agent_player_request(request):
+    if getattr(request, "portal_overview_admin", False):
+        raise PermissionDenied
     form = AgentPlayerRequestForm(
         request.POST,
         user=request.user,
