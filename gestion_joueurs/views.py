@@ -54,7 +54,6 @@ from client_portal.services import (
     ensure_player_portal_account,
     issue_reusable_portal_access_link,
     portal_access_states_for_players,
-    sync_subscription_portal_language,
 )
 from client_portal.models import (
     AgentPlayerRequest,
@@ -79,7 +78,6 @@ from .presentation_styles import (
     PRESENTATION_STYLES,
 )
 from sportsbase_data.forms import InlinePerformanceSubscriptionForm
-from sportsbase_data.reports import generate_reports_for_subscription
 from sportsbase_data.models import (
     PerformanceReport,
     SportsBaseDailymotionUpload,
@@ -205,7 +203,6 @@ def create_video_highlight(request):
     if request.method == 'POST':
         if 'add_player' in request.POST:
             portal_access = None
-            subscription = None
             performance_requested = (
                 request.POST.get("create_performance_subscription") == "on"
             )
@@ -244,14 +241,6 @@ def create_video_highlight(request):
                             subscription.save()
                     if player_form.cleaned_data.get('create_client_account'):
                         portal_access = _prepare_player_portal_access(request, player)
-                    if performance_requested:
-                        # Account creation can align the subscription from the
-                        # portal default. The explicit inline choice wins here.
-                        subscription.save(
-                            update_fields=("report_language", "updated_at")
-                        )
-                        sync_subscription_portal_language(subscription)
-                        generate_reports_for_subscription(subscription)
                     if selected_player_id:
                         messages.success(
                             request,

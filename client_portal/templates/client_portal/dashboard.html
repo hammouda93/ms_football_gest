@@ -5,9 +5,15 @@
 {% block portal_content %}
 <section class="portal-hero">
     <div>
-        <span class="eyebrow">{{ pc.dashboard }}</span>
-        <h1>{{ pc.hello }} {{ request.portal_profile.display_name }}</h1>
-        <p>{{ pc.dashboard_intro }}</p>
+        {% if portal_overview_admin %}
+            <span class="eyebrow">Vue administrateur Performance</span>
+            <h1>Tous les espaces clients abonnés</h1>
+            <p>Consultation centralisée et en lecture seule de tous les joueurs ayant un abonnement Performance actif.</p>
+        {% else %}
+            <span class="eyebrow">{{ pc.dashboard }}</span>
+            <h1>{{ pc.hello }} {{ request.portal_profile.display_name }}</h1>
+            <p>{{ pc.dashboard_intro }}</p>
+        {% endif %}
     </div>
     {% if organizations %}
         <div class="organization-badges" aria-label="{{ pc.linked_organizations }}">

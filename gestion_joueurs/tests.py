@@ -1283,55 +1283,6 @@ class PlayerPortalProvisioningTests(TestCase):
             snapshot,
         )
 
-    def test_new_player_combined_portal_and_performance_sends_credentials(self):
-        email = "nouveau-joueur@example.com"
-        response = self.client.post(
-            reverse("create_video_request"),
-            self.player_form_data(
-                selected_player_id="",
-                add_player="1",
-                name="Nouveau Joueur Abonné",
-                email=email,
-                sportsbase_url=(
-                    "https://football.sportsbase.world/players/987654"
-                ),
-                create_client_account="on",
-                create_performance_subscription="on",
-                **{
-                    "performance-season": "2025/2026",
-                    "performance-starts_on": timezone.localdate().isoformat(),
-                    "performance-ends_on": "",
-                    "performance-sync_from_date": "",
-                    "performance-first_match_id": "",
-                    "performance-all_actions_enabled": "on",
-                    "performance-email_delivery_enabled": "on",
-                    "performance-report_language": "en",
-                    "performance-total_amount": "450.00",
-                    "performance-currency": "TND",
-                    "performance-payment_url": "",
-                    "performance-sync_interval_hours": "24",
-                    "performance-is_active": "on",
-                },
-            ),
-        )
-
-        self.assertEqual(response.status_code, 200)
-        player = Player.objects.get(name="Nouveau Joueur Abonné")
-        profile = PortalProfile.objects.get(
-            user__portal_player_accesses__player=player,
-            user__portal_player_accesses__role=PlayerAccess.Role.PLAYER,
-        )
-        subscription = SportsBaseSubscription.objects.get(player=player)
-        profile.refresh_from_db()
-        subscription.refresh_from_db()
-        self.assertEqual(profile.user.email, email)
-        self.assertEqual(profile.preferred_language, "en")
-        self.assertEqual(subscription.report_language, "en")
-        self.assertTrue(subscription.email_delivery_enabled)
-        self.assertTrue(response.context["portal_access"]["delivery"].email_sent)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, [email])
-
     def test_video_edit_controls_portal_visibility_and_account_creation(self):
         video = Video.objects.create(
             player=self.player,

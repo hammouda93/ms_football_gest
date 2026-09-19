@@ -7,8 +7,6 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils import timezone
 
-from client_portal.services import player_delivery_email
-
 from .analysis_engine import build_match_analysis
 from .models import (
     PerformanceReport,
@@ -481,12 +479,9 @@ def send_ready_delivery_notification(report):
             )
             return False
 
-    recipient = player_delivery_email(subscription.player)
+    recipient = (subscription.player.email or "").strip()
     if not recipient:
-        report.notification_error = (
-            "Aucune adresse e-mail n’est renseignée dans le compte client actif "
-            "ni dans la fiche joueur."
-        )
+        report.notification_error = "Aucune adresse e-mail n’est renseignée pour ce joueur."
         report.save(update_fields=("notification_error", "updated_at"))
         return False
 

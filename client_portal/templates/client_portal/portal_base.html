@@ -31,17 +31,17 @@
         {% if request.user.is_authenticated %}
             <details class="portal-account-menu">
                 <summary aria-label="{{ pc.open_account_menu }}">
-                    <span class="portal-account-avatar">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
+                    <span class="portal-account-avatar">{{ request.portal_profile.display_name|default:request.user.username|first|upper }}</span>
                     <span class="portal-account-copy">
-                        <strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong>
+                        <strong>{{ request.portal_profile.display_name|default:request.user.username }}</strong>
                         <small>{{ pc.my_account }}</small>
                     </span>
                     <span class="portal-account-chevron" aria-hidden="true">⌄</span>
                 </summary>
                 <div class="portal-account-dropdown">
                     <div class="portal-account-summary">
-                        <span class="portal-account-avatar large">{{ request.user.portal_profile.display_name|default:request.user.username|first|upper }}</span>
-                        <div><strong>{{ request.user.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:pc.ms_account }}</small></div>
+                        <span class="portal-account-avatar large">{{ request.portal_profile.display_name|default:request.user.username|first|upper }}</span>
+                        <div><strong>{{ request.portal_profile.display_name|default:request.user.username }}</strong><small>{{ request.user.email|default:pc.ms_account }}</small></div>
                     </div>
                     <a href="{% url 'portal:dashboard' %}">{{ pc.my_space }}</a>
                     <a href="{% url 'portal:password_change' %}">{{ pc.change_password }}</a>

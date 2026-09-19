@@ -453,6 +453,84 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertContains(response, self.second_player.name)
         self.assertNotContains(response, self.hidden_player.name)
 
+    def test_superuser_can_log_in_to_portal_without_client_profile(self):
+        response = self.client.post(
+            reverse("portal:login"),
+            {
+                "username": self.admin.username,
+                "password": "test-password",
+            },
+        )
+
+        self.assertRedirects(response, reverse("portal:dashboard"))
+        self.assertFalse(
+            PortalProfile.objects.filter(user=self.admin).exists()
+        )
+
+    def test_superuser_portal_aggregates_active_performance_players_read_only(self):
+        from sportsbase_data.models import SportsBaseSubscription
+
+        today = timezone.localdate()
+        for index, player in enumerate(
+            (self.player, self.second_player, self.hidden_player),
+            start=1,
+        ):
+            player.sportsbase_url = (
+                f"https://football.sportsbase.world/players/{900000 + index}"
+            )
+            player.save(update_fields=("sportsbase_url",))
+
+        SportsBaseSubscription.objects.create(
+            player=self.player,
+            season="2025/2026",
+            starts_on=today,
+            ends_on=today + timedelta(days=365),
+            created_by=self.admin,
+        )
+        SportsBaseSubscription.objects.create(
+            player=self.second_player,
+            season="2024/2025",
+            starts_on=today - timedelta(days=366),
+            ends_on=today - timedelta(days=1),
+            created_by=self.admin,
+        )
+        SportsBaseSubscription.objects.create(
+            player=self.hidden_player,
+            season="2025/2026",
+            starts_on=today,
+            ends_on=today + timedelta(days=365),
+            created_by=self.admin,
+        )
+
+        self.client.force_login(self.admin)
+        dashboard = self.client.get(reverse("portal:dashboard"))
+
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertContains(dashboard, "Vue administrateur Performance")
+        self.assertEqual(
+            {player.pk for player in dashboard.context["players"]},
+            {self.player.pk, self.hidden_player.pk},
+        )
+        self.assertNotContains(dashboard, self.second_player.name)
+
+        video_detail = self.client.get(
+            reverse("portal:video", args=(self.hidden_video.pk,))
+        )
+        self.assertEqual(video_detail.status_code, 200)
+        self.assertFalse(video_detail.context["can_edit_video"])
+
+        submissions_before = MediaSubmission.objects.count()
+        mutation = self.client.post(
+            reverse("portal:media_submit", args=(self.hidden_video.pk,)),
+            {
+                "title": "Tentative administrateur",
+                "category": MediaSubmission.Category.OTHER,
+                "source_url": "https://example.com/media",
+            },
+        )
+        self.assertEqual(mutation.status_code, 404)
+        self.assertEqual(MediaSubmission.objects.count(), submissions_before)
+
     def test_player_account_cannot_open_other_player_video(self):
         self.client.force_login(self.player_user)
         allowed = self.client.get(reverse("portal:video", args=(self.video.pk,)))

@@ -117,6 +117,8 @@ def _portal_user_from_login_data(request):
 @ensure_csrf_cookie
 def portal_login(request):
     if request.user.is_authenticated:
+        if request.user.is_superuser:
+            return redirect("portal:dashboard")
         try:
             if request.user.portal_profile.is_active:
                 return redirect("portal:dashboard")
@@ -127,6 +129,9 @@ def portal_login(request):
     form = PortalLoginForm(request=request, data=data)
     if request.method == "POST" and form.is_valid():
         user = form.get_user()
+        if user.is_superuser:
+            login(request, user)
+            return redirect("portal:dashboard")
         try:
             profile = user.portal_profile
         except Exception:
@@ -961,6 +966,11 @@ def portal_dashboard(request):
                 video.client_action_count for video in current_videos
             ),
             "performance_subscriptions": performance_subscriptions,
+            "portal_overview_admin": getattr(
+                request,
+                "portal_overview_admin",
+                False,
+            ),
         },
     )
 

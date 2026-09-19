@@ -424,6 +424,44 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
         self.assertContains(response, self.player.name)
         self.assertContains(response, self.other_player.name)
 
+    def test_superuser_sees_every_active_performance_subscription(self):
+        expired_player = Player.objects.create(
+            name="Expired Performance Player",
+            club="Former Club",
+            email="expired@example.com",
+            sportsbase_url="https://football.sportsbase.world/players/111111",
+        )
+        SportsBaseSubscription.objects.create(
+            player=expired_player,
+            season="2024/2025",
+            starts_on=timezone.localdate() - timedelta(days=366),
+            ends_on=timezone.localdate() - timedelta(days=1),
+            created_by=self.admin,
+        )
+
+        self.client.force_login(self.admin)
+        overview = self.client.get(reverse("performance:portal_overview"))
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertContains(overview, self.player.name)
+        self.assertContains(overview, self.other_player.name)
+        self.assertNotContains(overview, expired_player.name)
+        self.assertFalse(
+            PortalProfile.objects.filter(user=self.admin).exists()
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("performance:portal_detail", args=(self.player.pk,))
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("performance:portal_detail", args=(self.other_player.pk,))
+            ).status_code,
+            200,
+        )
+
     def test_unrelated_portal_user_cannot_open_player_or_map(self):
         user = self.portal_user("outsider")
         self.client.force_login(user)
@@ -2390,32 +2428,6 @@ class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
         self.assertNotIn("https://", mail.outbox[0].body)
         self.assertFalse(send_ready_delivery_notification(report))
         self.assertEqual(len(mail.outbox), 1)
-
-    def test_email_prefers_active_player_portal_email(self):
-        self.player.email = "ancienne-adresse@example.com"
-        self.player.save(update_fields=("email",))
-        portal_user = User.objects.create_user(
-            username="performance-player-portal",
-            email="adresse-portail@example.com",
-            password="test-password",
-        )
-        PortalProfile.objects.create(
-            user=portal_user,
-            account_type=PortalProfile.AccountType.PLAYER,
-            display_name=self.player.name,
-            created_by=self.admin,
-        )
-        PlayerAccess.objects.create(
-            user=portal_user,
-            player=self.player,
-            role=PlayerAccess.Role.PLAYER,
-            granted_by=self.admin,
-        )
-
-        report = generate_match_report(self._create_match(2))
-
-        self.assertTrue(send_ready_delivery_notification(report))
-        self.assertEqual(mail.outbox[0].to, ["adresse-portail@example.com"])
 
     def test_email_accepts_dailymotion_when_youtube_upload_failed(self):
         self.subscription.youtube_delivery_enabled = True
