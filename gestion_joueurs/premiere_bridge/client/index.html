@@ -106,6 +106,40 @@
     padding: 10px;
   }
 
+  .position-selector {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .position-selector label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .position-selector select {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    color: var(--text);
+    background: var(--panel-3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    outline: none;
+  }
+
+  .position-selector select:focus {
+    border-color: var(--primary);
+  }
+
   button {
     border: 0;
     border-radius: 9px;
@@ -225,6 +259,7 @@
   }
 
   @media (max-width: 300px) {
+    .position-selector,
     .categories-grid,
     .pipeline-row,
     .top-actions {
@@ -251,18 +286,19 @@
         <div class="card">
           <div class="card-header">Tags</div>
           <div class="card-body">
-            <div class="categories-grid">
-              <button class="cat-btn" data-code="0" data-label="CLOSEUP"><span class="cat-code">0</span>Closeup</button>
-              <button class="cat-btn" data-code="1" data-label="GOAL"><span class="cat-code">1</span>Goal</button>
-              <button class="cat-btn" data-code="2" data-label="ASSIST"><span class="cat-code">2</span>Assist</button>
-              <button class="cat-btn" data-code="3" data-label="KEYPASS"><span class="cat-code">3</span>KeyPass</button>
-              <button class="cat-btn" data-code="4" data-label="BESTACTION"><span class="cat-code">4</span>BestAction</button>
-              <button class="cat-btn" data-code="5" data-label="DRIBBLE"><span class="cat-code">5</span>Dribble</button>
-              <button class="cat-btn" data-code="6" data-label="CHALLENGE"><span class="cat-code">6</span>Challenge</button>
-              <button class="cat-btn" data-code="7" data-label="GREATPASS"><span class="cat-code">7</span>GreatPass</button>
-              <button class="cat-btn" data-code="8" data-label="HEADER"><span class="cat-code">8</span>Header</button>
-              <button class="cat-btn" data-code="9" data-label="OTHER"><span class="cat-code">9</span>Other</button>
+            <div class="position-selector">
+              <label for="player-position">Poste</label>
+              <select id="player-position" aria-label="Poste du joueur">
+                <option value="goalkeeper">Gardien</option>
+                <option value="central_defender">Défenseur axial</option>
+                <option value="fullback">Arrière / latéral</option>
+                <option value="defensive_midfielder">Milieu défensif</option>
+                <option value="attacking_midfielder">Milieu offensif</option>
+                <option value="winger">Ailier</option>
+                <option value="striker" selected>Attaquant</option>
+              </select>
             </div>
+            <div id="categories-grid" class="categories-grid"></div>
           </div>
         </div>
 
