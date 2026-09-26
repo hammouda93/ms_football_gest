@@ -796,6 +796,100 @@ class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
 
 
 class ScraperNormalizationTests(TestCase):
+    def test_full_sync_preflight_skips_complete_known_matches(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[
+                {"sportsbase_match_id": "800001"},
+                {"sportsbase_match_id": "800002"},
+            ]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800001": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                },
+                "800002": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                },
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertFalse(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], [])
+        self.assertEqual(result["pending_match_ids"], [])
+        self.assertEqual(result["discovered_count"], 2)
+
+    def test_full_sync_preflight_detects_new_match(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[
+                {"sportsbase_match_id": "800003"},
+                {"sportsbase_match_id": "800002"},
+            ]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800002": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                }
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], ["800003"])
+        self.assertEqual(result["pending_match_ids"], ["800003"])
+
+    def test_full_sync_preflight_preserves_incomplete_match_recovery(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[{"sportsbase_match_id": "800004"}]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800004": {
+                    "complete": False,
+                    "players_statistics_headers": ["complete"],
+                }
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], [])
+        self.assertEqual(result["pending_match_ids"], ["800004"])
+
+    def test_full_sync_preflight_fails_open_on_empty_discovery(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(return_value=[])
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={"800005": {"complete": True}},
+        )
+
+        self.assertFalse(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["discovered_count"], 0)
+
     def test_windows_installed_chrome_uses_cdp_port_by_default(self):
         scraper = object.__new__(SportsBaseSubscriptionScraper)
         scraper.browser_channel = "chrome"
