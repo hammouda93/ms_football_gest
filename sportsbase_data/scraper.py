@@ -33,7 +33,7 @@ PLAYER_ACTIONS_BUTTON_RE = re.compile(
     r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
     re.IGNORECASE,
 )
-SCRAPER_BUILD = "sportsbase-cdp-port-disk-download-v30-20260909"
+SCRAPER_BUILD = "sportsbase-new-match-gate-v31-20260926"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
@@ -459,6 +459,62 @@ class SportsBaseSubscriptionScraper:
                         f"{self._sportsbase_player_name} "
                         f"(nom local : {player.get('name', '')})"
                     )
+
+                # Periodic FULL jobs only need the expensive season refresh when
+                # SportsBase has something new (or an older match still needs
+                # the existing recovery pipeline). The first synchronization has
+                # no known matches and therefore keeps the historical FULL flow.
+                if job["job_type"] == "full" and known:
+                    preflight = None
+                    try:
+                        self.automation.open_player_statistics(page)
+                        preflight = self._full_sync_preflight(
+                            page=page,
+                            job=job,
+                            known=known,
+                        )
+                    except Exception as exc:
+                        print(
+                            "[SPORTSBASE][WARN] Vérification légère des matchs "
+                            f"impossible — pipeline complet conservé : {exc}"
+                        )
+
+                    if preflight and preflight["reliable"]:
+                        if not preflight["needs_processing"]:
+                            print(
+                                "[SPORTSBASE] Aucun nouveau match — "
+                                f"{preflight['discovered_count']} match(s) vérifié(s), "
+                                "données saison inchangées — passage au joueur suivant."
+                            )
+                            result["summary"] = {
+                                "matches_imported": 0,
+                                "all_actions_downloaded": 0,
+                                "matches_checked": preflight["discovered_count"],
+                                "new_matches_detected": 0,
+                                "season_refresh_skipped": True,
+                            }
+                            return result
+
+                        if preflight["new_match_ids"]:
+                            print(
+                                "[SPORTSBASE] Nouveau(x) match(s) détecté(s) : "
+                                + ", ".join(preflight["new_match_ids"])
+                                + " — pipeline complet déclenché."
+                            )
+                        else:
+                            print(
+                                "[SPORTSBASE] Aucun nouveau match, mais un traitement "
+                                "existant reste incomplet — reprise du pipeline actuel."
+                            )
+
+                    # The preflight opens the statistics area. Reopen the player
+                    # profile before continuing so the proven FULL pipeline below
+                    # starts from exactly the same page state as before.
+                    self.automation.ensure_logged_in_and_open_player(
+                        page,
+                        player["sportsbase_url"],
+                    )
+
                 if job["job_type"] in {"full", "profile"}:
                     result["profile"] = self._read_profile(page, job)
 
@@ -1229,25 +1285,74 @@ class SportsBaseSubscriptionScraper:
         formatted = f"{value:.2f}".rstrip("0").rstrip(".")
         return f"{formatted}%" if percent else formatted
 
-    def _read_matches(self, *, page, context, job, known, player_root, downloads_dir):
+    def _discover_job_matches(self, page, job):
+        """Discover only the match list needed to decide whether work exists."""
         try:
-            matches_played = self.automation.get_matches_played(page, seasons_to_process=1)
+            matches_played = self.automation.get_matches_played(
+                page,
+                seasons_to_process=1,
+            )
         except Exception:
             matches_played = 100
         self.automation.expand_matches_list(page, matches_played)
         discovered = self._discover_matches(page)
-        discovered = self._apply_season_boundary(discovered, job)
+        return self._apply_season_boundary(discovered, job)
+
+    def _match_requires_processing(self, match_data, known, job):
+        """Mirror the existing _read_matches skip rule without opening a match."""
+        previous = known.get(match_data["sportsbase_match_id"], {})
+        statistics_are_complete = not self._missing_enriched_players_headers(
+            previous.get("players_statistics_headers")
+        )
+        return not (
+            previous.get("complete")
+            and (
+                job["job_type"] == "all_actions"
+                or statistics_are_complete
+            )
+        )
+
+    def _full_sync_preflight(self, *, page, job, known):
+        """Return a fail-safe lightweight decision for a periodic FULL sync."""
+        discovered = self._discover_job_matches(page, job)
+        if not discovered:
+            # A player that already has known matches should not suddenly expose
+            # an empty list. Treat that as an unreliable preflight and preserve
+            # the historical FULL behavior.
+            return {
+                "reliable": False,
+                "discovered_count": 0,
+                "new_match_ids": [],
+                "pending_match_ids": [],
+                "needs_processing": True,
+            }
+
+        new_match_ids = [
+            item["sportsbase_match_id"]
+            for item in discovered
+            if item["sportsbase_match_id"] not in known
+        ]
+        pending_match_ids = [
+            item["sportsbase_match_id"]
+            for item in discovered
+            if self._match_requires_processing(item, known, job)
+        ]
+        return {
+            "reliable": True,
+            "discovered_count": len(discovered),
+            "new_match_ids": new_match_ids,
+            "pending_match_ids": pending_match_ids,
+            "needs_processing": bool(pending_match_ids),
+        }
+
+    def _read_matches(self, *, page, context, job, known, player_root, downloads_dir):
+        discovered = self._discover_job_matches(page, job)
         output = []
         generation_queue = []
 
         for match_data in discovered:
             previous = known.get(match_data["sportsbase_match_id"], {})
-            statistics_are_complete = not self._missing_enriched_players_headers(
-                previous.get("players_statistics_headers")
-            )
-            if previous.get("complete") and (
-                job["job_type"] == "all_actions" or statistics_are_complete
-            ):
+            if not self._match_requires_processing(match_data, known, job):
                 continue
             match_item = self._match_item(page, match_data["sportsbase_match_id"])
             if job["job_type"] != "all_actions":
