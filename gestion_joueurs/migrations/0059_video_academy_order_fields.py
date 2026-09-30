@@ -61,6 +61,7 @@ class Migration(migrations.Migration):
             model_name="video",
             name="matches_processed",
             field=models.PositiveSmallIntegerField(
+                blank=True,
                 default=0,
                 verbose_name="Nombre de matchs déjà traités",
             ),
