@@ -32,6 +32,7 @@
         const accountType = document.getElementById('id_account_type');
         const playerSelect = document.getElementById('id_player');
         const organizationSelect = document.getElementById('id_organization');
+        const organizationRole = document.getElementById('id_organization_role');
         const playersSelect = document.getElementById('id_players');
         const displayName = document.getElementById('id_display_name');
         const email = document.getElementById('id_email');
@@ -62,6 +63,7 @@
             const isPlayer = accountType.value === 'player';
             show(playerSelect, isPlayer);
             show(organizationSelect, !isPlayer);
+            show(organizationRole, !isPlayer);
             show(playersSelect, !isPlayer);
         }
 
