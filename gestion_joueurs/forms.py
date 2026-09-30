@@ -7,6 +7,8 @@ from crispy_forms.layout import Submit
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from client_portal.models import Organization
+from decimal import Decimal
+from datetime import timedelta
 
 
 class PlayerForm(forms.ModelForm):
@@ -115,7 +117,13 @@ class VideoForm(forms.ModelForm):
             'status',
             'advance_payment',
             'total_payment',
+            'client_organization',
+            'whatsapp_conversation_date',
+            'deadline_from_whatsapp',
+            'match_package',
+            'matches_processed',
             'deadline',
+            'delivery_date',
             'video_link',
             'client_portal_visible',
             'info',
@@ -127,10 +135,53 @@ class VideoForm(forms.ModelForm):
     editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=True)
 
     def __init__(self, *args, **kwargs):
-        # Récupérer l'utilisateur connecté
+        # Récupérer l'utilisateur connecté et, à la création, le joueur choisi.
         user = kwargs.pop('user', None)
+        player = kwargs.pop('player', None)
         super(VideoForm, self).__init__(*args, **kwargs)
         self.is_editing = bool(self.instance and self.instance.pk)
+
+        self.fields['client_organization'].queryset = Organization.objects.filter(
+            is_active=True
+        ).order_by('kind', 'name')
+        self.fields['client_organization'].label = "Académie / agence liée"
+        self.fields['client_organization'].help_text = (
+            "Sélectionnez l’organisation qui a commandé cette vidéo. "
+            "Laissez vide pour une commande directe du joueur."
+        )
+        self.fields['whatsapp_conversation_date'].widget = forms.DateInput(
+            attrs={'type': 'date'}
+        )
+        self.fields['whatsapp_conversation_date'].help_text = (
+            "Date de début de la conversation WhatsApp avec l’académie ou l’agence."
+        )
+        self.fields['deadline_from_whatsapp'].help_text = (
+            "Si cochée, la deadline sera enregistrée à 5 jours après la date WhatsApp."
+        )
+        self.fields['match_package'].help_text = (
+            "Tarifs académie : 3 matchs = 300 DT, 5 = 350 DT, 10 = 400 DT."
+        )
+        self.fields['matches_processed'].help_text = (
+            "Progression réelle de la commande, par exemple 3 sur 5 matchs."
+        )
+        self.fields['delivery_date'].widget = forms.DateInput(attrs={'type': 'date'})
+        self.fields['delivery_date'].help_text = (
+            "Pour une ancienne vidéo livrée, vous pouvez corriger ici la vraie date de livraison."
+        )
+
+        if not self.is_bound and not self.is_editing and player is not None:
+            active_link = (
+                player.portal_organization_links.filter(
+                    is_active=True,
+                    organization__is_active=True,
+                )
+                .select_related('organization')
+                .order_by('-created_at')
+                .first()
+            )
+            if active_link:
+                self.fields['client_organization'].initial = active_link.organization
+
         self.fields['deadline'].label = "Deadline de livraison"
         self.fields['deadline'].widget.attrs['data-deadline-planner-target'] = 'true'
         if self.is_editing:
@@ -155,6 +206,43 @@ class VideoForm(forms.ModelForm):
     
     def clean(self):
         cleaned_data = super().clean()
+        organization = cleaned_data.get("client_organization")
+        whatsapp_date = cleaned_data.get("whatsapp_conversation_date")
+        deadline_from_whatsapp = cleaned_data.get("deadline_from_whatsapp")
+        match_package = cleaned_data.get("match_package")
+        matches_processed = cleaned_data.get("matches_processed") or 0
+
+        if organization and not match_package:
+            self.add_error(
+                "match_package",
+                "Sélectionnez le nombre de matchs prévu pour cette commande d’académie/agence.",
+            )
+        if match_package and not organization:
+            self.add_error(
+                "client_organization",
+                "Sélectionnez l’académie ou l’agence liée à ce pack de matchs.",
+            )
+
+        if deadline_from_whatsapp:
+            if not whatsapp_date:
+                self.add_error(
+                    "whatsapp_conversation_date",
+                    "Renseignez la date de la conversation WhatsApp pour calculer la deadline +5 jours.",
+                )
+            else:
+                cleaned_data["deadline"] = whatsapp_date + timedelta(days=5)
+
+        if match_package:
+            package_count = int(match_package)
+            cleaned_data["total_payment"] = Decimal(
+                str(Video.MATCH_PACKAGE_PRICES[package_count])
+            )
+            if matches_processed > package_count:
+                self.add_error(
+                    "matches_processed",
+                    "Le nombre de matchs traités ne peut pas dépasser le pack commandé.",
+                )
+
         advance_payment = cleaned_data.get("advance_payment")
         total_payment = cleaned_data.get("total_payment")
 
@@ -163,7 +251,7 @@ class VideoForm(forms.ModelForm):
                 raise ValidationError("L'avance ne peut pas être supérieure au montant total.")
 
         return cleaned_data
-    
+
     def clean_deadline(self):
         deadline = self.cleaned_data.get('deadline')
         if deadline and deadline < timezone.localdate() and not self.is_editing:
