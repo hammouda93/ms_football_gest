@@ -162,6 +162,9 @@
 
             <section class="portal-panel">
                 <div class="panel-heading"><div><h2>Utilisateurs</h2><small>Comptes liés à cet espace</small></div><span class="portal-count">{{ memberships|length }}</span></div>
+                <a class="btn btn-sm btn-outline-primary mb-3" href="{% url 'portal:account_create' %}?organization={{ organization.pk }}&role=staff">
+                    <i class="fas fa-user-plus"></i> Ajouter un contact au même espace
+                </a>
                 {% for membership in memberships %}
                     <article class="account-access-card compact">
                         <div class="account-access-heading"><span class="portal-account-avatar">{{ membership.user.portal_profile.display_name|default:membership.user.username|first|upper }}</span><div><strong>{{ membership.user.portal_profile.display_name|default:membership.user.username }}</strong><small>{{ membership.get_role_display }}</small></div></div>
