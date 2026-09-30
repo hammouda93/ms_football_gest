@@ -31,6 +31,7 @@ from .forms import (
     AgentPlayerRequestForm,
     MediaSubmissionForm,
     OrganizationForm,
+    OrganizationGoogleSheetForm,
     OrganizationPlayerForm,
     PaymentRequestForm,
     PortalAccountEditForm,
@@ -76,6 +77,13 @@ from .services import (
     sync_workflow_to_official_status,
     update_portal_account,
     update_workflow,
+)
+from .google_sheets import (
+    GoogleSheetError,
+    google_sheets_is_configured,
+    organization_sheet_whatsapp_contacts,
+    send_organization_sheet_to_contacts,
+    sync_organization_sheet,
 )
 from .portal_i18n import get_portal_copy, normalize_portal_language
 
@@ -636,6 +644,13 @@ def organization_detail(request, pk):
         {
             "organization": organization,
             "player_form": OrganizationPlayerForm(organization=organization),
+            "google_sheet_form": OrganizationGoogleSheetForm(
+                organization=organization
+            ),
+            "google_sheets_configured": google_sheets_is_configured(),
+            "sheet_whatsapp_contacts": organization_sheet_whatsapp_contacts(
+                organization
+            ),
             "player_links": player_links.filter(is_active=True),
             "former_player_links": player_links.filter(is_active=False),
             "memberships": organization.memberships.select_related("user", "user__portal_profile"),
@@ -645,6 +660,84 @@ def organization_detail(request, pk):
             "all_players": Player.objects.order_by("name", "club"),
         },
     )
+
+
+@portal_admin_required
+@require_POST
+def organization_google_sheet_settings(request, pk):
+    organization = get_object_or_404(Organization, pk=pk)
+    form = OrganizationGoogleSheetForm(
+        request.POST,
+        organization=organization,
+    )
+    if form.is_valid():
+        form.save()
+        messages.success(
+            request,
+            "La configuration Google Sheet de l’organisation a été enregistrée.",
+        )
+    else:
+        messages.error(
+            request,
+            "La configuration Google Sheet n’a pas pu être enregistrée.",
+        )
+    return redirect("portal:organization_detail", pk=organization.pk)
+
+
+def _record_google_sheet_error(organization, error):
+    organization.google_sheet_last_error = str(error)[:2000]
+    organization.save(
+        update_fields=("google_sheet_last_error", "updated_at")
+    )
+
+
+@portal_admin_required
+@require_POST
+def organization_google_sheet_sync(request, pk):
+    organization = get_object_or_404(Organization, pk=pk)
+    try:
+        result = sync_organization_sheet(organization)
+    except GoogleSheetError as exc:
+        _record_google_sheet_error(organization, exc)
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            (
+                f"Google Sheet synchronisé : {result.row_count} commande(s), "
+                f"total {result.grand_total:.2f} DT."
+            ),
+        )
+    return redirect("portal:organization_detail", pk=organization.pk)
+
+
+@portal_admin_required
+@require_POST
+def organization_google_sheet_send(request, pk):
+    organization = get_object_or_404(Organization, pk=pk)
+    try:
+        result = send_organization_sheet_to_contacts(organization)
+    except GoogleSheetError as exc:
+        _record_google_sheet_error(organization, exc)
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            (
+                "Google Sheet synchronisé et lien envoyé par e-mail à "
+                f"{len(result.recipients)} contact(s)."
+            ),
+        )
+        if result.permission_errors:
+            messages.warning(
+                request,
+                (
+                    "Le lien a été envoyé, mais Google n’a pas pu ajouter "
+                    "automatiquement l’accès pour : "
+                    + " ; ".join(result.permission_errors)
+                ),
+            )
+    return redirect("portal:organization_detail", pk=organization.pk)
 
 
 @portal_admin_required
