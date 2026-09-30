@@ -251,7 +251,7 @@ class VideoForm(forms.ModelForm):
                 raise ValidationError("L'avance ne peut pas être supérieure au montant total.")
 
         return cleaned_data
-
+    
     def clean_deadline(self):
         deadline = self.cleaned_data.get('deadline')
         if deadline and deadline < timezone.localdate() and not self.is_editing:
