@@ -197,6 +197,7 @@ def create_video_highlight(request):
         player = Player.objects.filter(id=selected_player_id).first()
         if player:
             player_form = PlayerForm(instance=player)
+            video_form = VideoForm(user=request.user, player=player)
             performance_form = _inline_performance_form(player=player)
             performance_requested = bool(_performance_subscription_for_player(player))
 
@@ -273,7 +274,7 @@ def create_video_highlight(request):
                     "Veuillez corriger les erreurs dans le formulaire du joueur.",
                 )
 
-            video_form = VideoForm(user=request.user)
+            video_form = VideoForm(user=request.user, player=player)
             return render(request, 'gestion_joueurs/create_video.html', {
                 'video_form': video_form,
                 'player_form': player_form,
