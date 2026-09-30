@@ -160,6 +160,7 @@ class Video(models.Model):
     )
     matches_processed = models.PositiveSmallIntegerField(
         default=0,
+        blank=True,
         verbose_name="Nombre de matchs déjà traités",
     )
     delivery_date = models.DateField(
