@@ -223,7 +223,8 @@ def describe(request, name, parameters):
             fields[key] = {"label": label.get_text(" ", strip=True) if label else key, "type": kind, "value": "" if SECRET.search(key) else value, "required": control.has_attr("required"), "choices": choices, "requiresUserInput": bool(SECRET.search(key))}
     snapshot = {"target": fingerprint(instance), "values": {key: value["value"] for key, value in fields.items() if not value.get("requiresUserInput")}}
     baseline = hashlib.sha256(json.dumps(snapshot, sort_keys=True, cls=DjangoJSONEncoder).encode()).hexdigest()
-    return {"action": name, "label": spec.label, "parameters": parameters, "fields": fields, "effects": spec.effects, "baseline": baseline, "sourcePath": path}
+    identity = {"entity": spec.entity, "id": instance.pk, "label": str(instance)} if instance is not None else None
+    return {"action": name, "label": spec.label, "target": identity, "parameters": parameters, "fields": fields, "effects": spec.effects, "baseline": baseline, "sourcePath": path}
 
 
 def prepare(request, name, parameters, changes):
@@ -245,10 +246,15 @@ def prepare(request, name, parameters, changes):
         if field["type"] == "checkbox" and type(value) is not bool:
             raise ValueError("Une case à cocher attend un booléen.")
         values[key] = value
-        preview.append({"field": key, "label": field["label"], "before": field["value"], "after": value})
+        labels = {str(choice[0]): str(choice[1]) for choice in field["choices"]}
+        def display(item):
+            if isinstance(item, list):
+                return ", ".join(labels.get(str(part), str(part)) for part in item)
+            return labels.get(str(item), item)
+        preview.append({"field": key, "label": field["label"], "before": field["value"], "after": value, "beforeDisplay": display(field["value"]), "afterDisplay": display(value)})
     plan = AgentAction.objects.create(owner=request.user, action=name, parameters=parameters, values=values, baseline=descriptor["baseline"], expires_at=timezone.now() + timedelta(minutes=15))
     secure_fields = [{"field": key, "label": value["label"], "required": value["required"]} for key, value in descriptor["fields"].items() if value.get("requiresUserInput")]
-    return {"planId": str(plan.pk), "label": descriptor["label"], "changes": preview, "effects": descriptor["effects"], "secureFields": secure_fields, "expiresAt": plan.expires_at.isoformat(), "status": "requires_confirmation", "sourcePath": descriptor["sourcePath"]}
+    return {"planId": str(plan.pk), "label": descriptor["label"], "target": descriptor["target"], "changes": preview, "effects": descriptor["effects"], "secureFields": secure_fields, "expiresAt": plan.expires_at.isoformat(), "status": "requires_confirmation", "sourcePath": descriptor["sourcePath"]}
 
 
 def confirm(request, plan_id, secure_inputs=None, cancel=False):

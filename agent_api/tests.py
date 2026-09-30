@@ -83,6 +83,8 @@ class AgentApiTests(TestCase):
         self.assertEqual(plan["changes"][0]["before"], "Original FC")
         self.assertEqual(plan["changes"][0]["after"], "New FC")
         self.assertEqual(plan["status"], "requires_confirmation")
+        self.assertEqual(plan["target"]["id"], self.player.pk)
+        self.assertIn("Test Player", plan["target"]["label"])
 
     def test_confirm_uses_the_existing_view_preserves_other_fields_and_deduplicates(self):
         plan = self.proposal()
