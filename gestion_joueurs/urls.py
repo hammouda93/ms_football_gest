@@ -17,8 +17,11 @@ from .views import (
 )
 from .deadline_planning import deadline_planning_assistant
 from django.conf import settings
+from .jarvis_api import jarvis_agent_health, jarvis_agent_tool
 from django.conf.urls.static import static
 urlpatterns = [
+    path('jarvis-agent/health/', jarvis_agent_health, name='jarvis_agent_health'),
+    path('jarvis-agent/tool/', jarvis_agent_tool, name='jarvis_agent_tool'),
     path('', dashboard, name='dashboard'),
     path('players/', player_dashboard, name='player_dashboard'),
     path('create/', create_video_highlight, name='create_video_request'),
