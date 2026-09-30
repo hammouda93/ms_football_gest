@@ -56,6 +56,14 @@ BLOCKED_SQL_SOURCES = {
     "django_migrations",
 }
 
+SENSITIVE_CODE_LINE_RE = re.compile(
+    r"(?i)\b("
+    r"secret_key|telegram_bot_token|api[_-]?key|access[_-]?token|"
+    r"refresh[_-]?token|password|private[_-]?key|authorization"
+    r")\b\s*[:=]"
+)
+
+
 CODE_EXTENSIONS = {
     ".py",
     ".html",
@@ -517,10 +525,13 @@ def search_code(
         for index in hit_lines[:3]:
             start = max(0, index - 2)
             end = min(len(lines), index + 3)
-            snippet = "\n".join(
-                f"{line_no + 1}: {lines[line_no][:240]}"
-                for line_no in range(start, end)
-            )
+            rendered = []
+            for line_no in range(start, end):
+                line = lines[line_no][:240]
+                if SENSITIVE_CODE_LINE_RE.search(line):
+                    line = "[REDACTED SENSITIVE CONFIGURATION]"
+                rendered.append(f"{line_no + 1}: {line}")
+            snippet = "\n".join(rendered)
             matches.append(
                 {
                     "path": str(relative).replace("\\", "/"),
