@@ -29,6 +29,12 @@ document.addEventListener('DOMContentLoaded', function () {
             if (wrapper) wrapper.hidden = !linked;
         });
 
+        if (!linked) {
+            if (matchPackage) matchPackage.value = '';
+            if (matchesProcessed) matchesProcessed.value = '0';
+            if (deadlineToggle) deadlineToggle.checked = false;
+        }
+
         if (totalPayment) {
             const packagePrice = linked && matchPackage ? prices[matchPackage.value] : null;
             if (packagePrice) {
