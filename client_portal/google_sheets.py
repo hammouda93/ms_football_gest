@@ -395,6 +395,28 @@ def organization_sheet_whatsapp_contacts(organization):
         f"{organization.google_sheet_url}"
     )
     contacts = []
+    seen_phones = set()
+
+    def add_contact(name, raw_phone):
+        phone = re.sub(r"\D", "", raw_phone or "")
+        if not phone or phone in seen_phones:
+            return
+        seen_phones.add(phone)
+        contacts.append(
+            {
+                "name": name,
+                "whatsapp_number": raw_phone,
+                "whatsapp_url": (
+                    f"https://wa.me/{phone}?text={quote(message, safe='')}"
+                ),
+            }
+        )
+
+    add_contact(
+        organization.contact_name or organization.name,
+        organization.whatsapp_number,
+    )
+
     memberships = (
         organization.memberships.filter(
             is_active=True,
@@ -406,16 +428,8 @@ def organization_sheet_whatsapp_contacts(organization):
     )
     for membership in memberships:
         profile = membership.user.portal_profile
-        phone = re.sub(r"\D", "", profile.whatsapp_number or "")
-        if not phone:
-            continue
-        contacts.append(
-            {
-                "name": profile.display_name or membership.user.username,
-                "whatsapp_number": profile.whatsapp_number,
-                "whatsapp_url": (
-                    f"https://wa.me/{phone}?text={quote(message, safe='')}"
-                ),
-            }
+        add_contact(
+            profile.display_name or membership.user.username,
+            profile.whatsapp_number,
         )
     return contacts
