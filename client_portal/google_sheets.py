@@ -180,7 +180,11 @@ def _build_sheet_payload(organization):
         rows.append(
             [
                 video.player.name,
-                int(video.match_package) if video.match_package else "",
+                (
+                    f"{int(video.match_package)} matchs"
+                    if video.match_package
+                    else ""
+                ),
                 float(price),
                 month_name,
             ]
