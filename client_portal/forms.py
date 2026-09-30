@@ -5,6 +5,7 @@ from gestion_joueurs.models import Player, Video
 from prospects.services import validate_transfermarkt_profile_url
 
 from .portal_i18n import FORM_COPY, normalize_portal_language, translated_choice
+from .google_sheets import GoogleSheetError, normalize_spreadsheet_reference
 from .models import (
     AgentPlayerRequest,
     MediaSubmission,
@@ -61,6 +62,62 @@ class OrganizationForm(StyledModelForm):
             "country",
             "is_active",
         )
+
+
+class OrganizationGoogleSheetForm(forms.Form):
+    google_sheet_reference = forms.CharField(
+        label="Lien ou ID Google Sheet",
+        required=False,
+        help_text=(
+            "Collez le lien complet du Google Sheet ou uniquement son ID. "
+            "Laissez vide pour désactiver le Sheet de cette organisation."
+        ),
+    )
+    google_sheet_tab = forms.CharField(
+        label="Onglet à synchroniser",
+        max_length=100,
+        required=False,
+        initial="Players",
+    )
+
+    def __init__(self, *args, organization, **kwargs):
+        self.organization = organization
+        is_bound = (bool(args) and args[0] is not None) or kwargs.get("data") is not None
+        if not is_bound and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "google_sheet_reference": organization.google_sheet_url
+                or organization.google_sheet_id,
+                "google_sheet_tab": organization.google_sheet_tab or "Players",
+            }
+        super().__init__(*args, **kwargs)
+        _style_fields(self)
+
+    def clean_google_sheet_reference(self):
+        value = self.cleaned_data.get("google_sheet_reference", "")
+        try:
+            return normalize_spreadsheet_reference(value)
+        except GoogleSheetError as exc:
+            raise forms.ValidationError(str(exc)) from exc
+
+    def clean_google_sheet_tab(self):
+        return (self.cleaned_data.get("google_sheet_tab") or "Players").strip()
+
+    def save(self):
+        self.organization.google_sheet_id = self.cleaned_data["google_sheet_reference"]
+        self.organization.google_sheet_tab = self.cleaned_data["google_sheet_tab"]
+        if not self.organization.google_sheet_id:
+            self.organization.google_sheet_last_error = ""
+            self.organization.google_sheet_last_synced_at = None
+        self.organization.save(
+            update_fields=(
+                "google_sheet_id",
+                "google_sheet_tab",
+                "google_sheet_last_error",
+                "google_sheet_last_synced_at",
+                "updated_at",
+            )
+        )
+        return self.organization
 
 
 class PortalAccountForm(forms.Form):
