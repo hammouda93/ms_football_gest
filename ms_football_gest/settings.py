@@ -221,6 +221,18 @@ PUBLIC_SITE_URL = os.getenv(
     'https://msfootball-1a882b44ed52.herokuapp.com',
 ).rstrip('/')
 
+# Google Sheets / Drive integration for academy and agent organizations.
+# Credentials stay in environment variables (Heroku Config Vars), never in Git.
+GOOGLE_SHEETS_ENABLED = os.getenv(
+    'GOOGLE_SHEETS_ENABLED',
+    'False',
+).strip().lower() in {'1', 'true', 'yes', 'on'}
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
+GOOGLE_SERVICE_ACCOUNT_JSON_B64 = os.getenv(
+    'GOOGLE_SERVICE_ACCOUNT_JSON_B64',
+    '',
+).strip()
+
 # L'agent SportsBase s'exécute sur le PC local. Les images légères (heatmaps)
 # sont conservées en base pour rester disponibles sur Heroku, tandis que les
 # vidéos All Actions restent dans le stockage local configuré de l'agent.
