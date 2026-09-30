@@ -213,7 +213,7 @@ def sync_organization_sheet(organization) -> OrganizationSheetSyncResult:
         clear_url,
         payload={
             "ranges": [
-                f"{tab_a1}!A2:D1000",
+                f"{tab_a1}!A2:D",
                 f"{tab_a1}!F1:G14",
             ]
         },
@@ -357,6 +357,8 @@ def send_organization_sheet_to_contacts(
     body = (
         f"Bonjour,\n\n"
         f"Le Google Sheet de {organization.name} vient d’être synchronisé.\n"
+        f"Commandes : {sync_result.row_count}\n"
+        f"Total : {sync_result.grand_total:.2f} DT\n\n"
         f"Vous pouvez l’ouvrir ici : {sync_result.spreadsheet_url}\n\n"
         f"MS Football"
     )
