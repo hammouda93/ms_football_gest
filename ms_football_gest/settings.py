@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'gestion_joueurs',
+    'agent_api.apps.AgentApiConfig',
     'prospects.apps.ProspectsConfig',
     'client_portal.apps.ClientPortalConfig',
     'sportsbase_data.apps.SportsbaseDataConfig',

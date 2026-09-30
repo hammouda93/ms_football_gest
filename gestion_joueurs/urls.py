@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 #from .views import dashboard, create_video_request, video_status, update_video_status, register_video_editor, user_login, user_logout
 from .views import automation_pending_videos, dashboard, create_video_highlight, mark_automation_completed, mark_automation_started, mark_intro_automation_completed, mark_intro_automation_started, video_status, update_video_status,add_expense,edit_expense,view_expenses,player_dashboard,notification_center
 from. views import register_video_editor,search_players,view_invoices,view_payments,manage_salaries,get_videos_by_editor,view_profile,generate_financial_report,view_video
@@ -19,6 +19,7 @@ from .deadline_planning import deadline_planning_assistant
 from django.conf import settings
 from django.conf.urls.static import static
 urlpatterns = [
+    path('agent/', include('agent_api.urls')),
     path('', dashboard, name='dashboard'),
     path('players/', player_dashboard, name='player_dashboard'),
     path('create/', create_video_highlight, name='create_video_request'),
