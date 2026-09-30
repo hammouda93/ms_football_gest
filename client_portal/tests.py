@@ -244,7 +244,7 @@ class OrganizationGoogleSheetTests(PortalFixtureMixin, TestCase):
             if range_name.startswith("'Players'!A2:D")
         )
         self.assertEqual(player_rows[0][0], self.player.name)
-        self.assertEqual(player_rows[0][1], 5)
+        self.assertEqual(player_rows[0][1], "5 matchs")
         self.assertEqual(player_rows[0][2], 350.0)
 
     def test_send_emails_live_sheet_link_to_organization_contacts(self):
