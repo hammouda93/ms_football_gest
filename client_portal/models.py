@@ -24,6 +24,27 @@ class Organization(models.Model):
     email = models.EmailField("E-mail", blank=True)
     whatsapp_number = models.CharField("WhatsApp", max_length=24, blank=True)
     country = models.CharField("Pays", max_length=80, blank=True)
+    google_sheet_id = models.CharField(
+        "Google Sheet ID",
+        max_length=255,
+        blank=True,
+        help_text="ID du fichier Google Sheet associé à cette organisation.",
+    )
+    google_sheet_tab = models.CharField(
+        "Onglet Google Sheet",
+        max_length=100,
+        default="Players",
+        blank=True,
+    )
+    google_sheet_last_synced_at = models.DateTimeField(
+        "Dernière synchronisation Google Sheet",
+        null=True,
+        blank=True,
+    )
+    google_sheet_last_error = models.TextField(
+        "Dernière erreur Google Sheet",
+        blank=True,
+    )
     is_active = models.BooleanField("Actif", default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -39,6 +60,12 @@ class Organization(models.Model):
         ordering = ("name",)
         verbose_name = "Organisation cliente"
         verbose_name_plural = "Organisations clientes"
+
+    @property
+    def google_sheet_url(self):
+        if not self.google_sheet_id:
+            return ""
+        return f"https://docs.google.com/spreadsheets/d/{self.google_sheet_id}/edit"
 
     def __str__(self):
         return self.name
