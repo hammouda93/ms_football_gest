@@ -1570,6 +1570,131 @@ class PlayerRelationshipManagementTests(TestCase):
         )
 
 
+
+class VideoAcademyOrderTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="admin-academy-orders",
+            email="academy-orders@example.com",
+            password="test-password",
+        )
+        editor_user = User.objects.create_user(
+            username="academy-editor",
+            password="test-password",
+        )
+        self.editor = VideoEditor.objects.create(user=editor_user)
+        self.player = Player.objects.create(
+            name="Academy Player",
+            club="Academy Club",
+        )
+        self.organization = Organization.objects.create(
+            name="Sami Academy",
+            kind=Organization.Kind.ACADEMY,
+            created_by=self.admin,
+        )
+        OrganizationPlayer.objects.create(
+            organization=self.organization,
+            player=self.player,
+            added_by=self.admin,
+        )
+
+    def form_data(self, **overrides):
+        whatsapp_date = timezone.localdate()
+        data = {
+            "status": Video.StatusChoices.PENDING,
+            "advance_payment": "0.00",
+            "total_payment": "999.00",
+            "client_organization": str(self.organization.pk),
+            "whatsapp_conversation_date": whatsapp_date.isoformat(),
+            "deadline_from_whatsapp": "on",
+            "match_package": "5",
+            "matches_processed": "2",
+            "deadline": (whatsapp_date + timedelta(days=20)).isoformat(),
+            "delivery_date": "",
+            "video_link": "",
+            "client_portal_visible": "on",
+            "info": "",
+            "season": "2025/2026",
+            "editor": str(self.editor.pk),
+            "seasons_to_process": "1",
+        }
+        data.update(overrides)
+        return data
+
+    def test_player_organization_is_preselected_for_new_video(self):
+        form = VideoForm(user=self.admin, player=self.player)
+
+        self.assertEqual(
+            form.fields["client_organization"].initial,
+            self.organization,
+        )
+
+    def test_academy_package_sets_price_and_whatsapp_deadline(self):
+        form = VideoForm(
+            data=self.form_data(),
+            user=self.admin,
+            player=self.player,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["total_payment"], Decimal("350"))
+        self.assertEqual(
+            form.cleaned_data["deadline"],
+            timezone.localdate() + timedelta(days=5),
+        )
+
+    def test_match_progress_cannot_exceed_ordered_package(self):
+        form = VideoForm(
+            data=self.form_data(matches_processed="6"),
+            user=self.admin,
+            player=self.player,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("matches_processed", form.errors)
+
+    def test_delivery_date_is_automatic_then_can_be_corrected(self):
+        set_current_user(self.admin)
+        try:
+            video = Video.objects.create(
+                player=self.player,
+                editor=self.editor,
+                status=Video.StatusChoices.PENDING,
+                advance_payment=Decimal("0.00"),
+                total_payment=Decimal("350.00"),
+                deadline=timezone.localdate() + timedelta(days=5),
+                season="2025/2026",
+                club=self.player.club,
+                league=self.player.league,
+                client_organization=self.organization,
+                whatsapp_conversation_date=timezone.localdate(),
+                deadline_from_whatsapp=True,
+                match_package=5,
+                matches_processed=5,
+            )
+            video.status = Video.StatusChoices.DELIVERED
+            video.save()
+            video.refresh_from_db()
+            self.assertEqual(video.delivery_date, timezone.localdate())
+
+            corrected_date = timezone.localdate() - timedelta(days=3)
+            form = VideoForm(
+                data=self.form_data(
+                    status=Video.StatusChoices.DELIVERED,
+                    matches_processed="5",
+                    delivery_date=corrected_date.isoformat(),
+                ),
+                instance=video,
+                user=self.admin,
+            )
+            self.assertTrue(form.is_valid(), form.errors)
+            form.save()
+            video.refresh_from_db()
+            self.assertEqual(video.delivery_date, corrected_date)
+        finally:
+            set_current_user(None)
+
+
 class DeadlinePlanningAssistantTests(TestCase):
     def setUp(self):
         self.today = timezone.localdate()
