@@ -103,6 +103,18 @@ class Video(models.Model):
     class SeasonsToProcessChoices(models.IntegerChoices):
         ONE = 1, '1 saison'
         TWO = 2, '2 saisons'
+
+    class MatchPackageChoices(models.IntegerChoices):
+        THREE = 3, '3 matchs — 300 DT'
+        FIVE = 5, '5 matchs — 350 DT'
+        TEN = 10, '10 matchs — 400 DT'
+
+    MATCH_PACKAGE_PRICES = {
+        3: 300,
+        5: 350,
+        10: 400,
+    }
+
     class AutomationModeChoices(models.TextChoices):
         NORMAL = 'normal', 'Normal'
         AUTOMATION = 'automation', 'Automation'
@@ -119,6 +131,46 @@ class Video(models.Model):
     advance_payment = models.DecimalField(max_digits=10, decimal_places=2)
     total_payment = models.DecimalField(max_digits=10, decimal_places=2)
     deadline = models.DateField()
+    client_organization = models.ForeignKey(
+        "client_portal.Organization",
+        on_delete=models.SET_NULL,
+        related_name="video_orders",
+        null=True,
+        blank=True,
+        verbose_name="Académie / agence liée",
+        help_text=(
+            "Organisation cliente à l’origine de cette commande. "
+            "La relation reste enregistrée sur la vidéo même si le joueur change d’agence plus tard."
+        ),
+    )
+    whatsapp_conversation_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date de création de la conversation WhatsApp",
+    )
+    deadline_from_whatsapp = models.BooleanField(
+        default=False,
+        verbose_name="Deadline automatique : WhatsApp + 5 jours",
+    )
+    match_package = models.PositiveSmallIntegerField(
+        choices=MatchPackageChoices.choices,
+        null=True,
+        blank=True,
+        verbose_name="Nombre de matchs à traiter",
+    )
+    matches_processed = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Nombre de matchs déjà traités",
+    )
+    delivery_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date réelle de livraison",
+        help_text=(
+            "Renseignée automatiquement lors du passage à Livrée si elle est vide, "
+            "mais reste modifiable pour corriger une ancienne vidéo."
+        ),
+    )
     video_link = models.URLField(blank=True, null=True)
     client_portal_visible = models.BooleanField(
         default=True,
