@@ -5,3 +5,6 @@ gestion_joueurs/sportsbase_subscriptions/
 .test-venv/
 test_*.sqlite3
 gestion_joueurs/agent_logs/
+.env
+.env.*
+!.env.example
