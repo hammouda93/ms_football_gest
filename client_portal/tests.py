@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import unquote
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -28,6 +29,13 @@ from .models import (
     VideoWorkflow,
 )
 from .services import create_portal_account
+from .google_sheets import (
+    OrganizationSheetDeliveryResult,
+    OrganizationSheetSyncResult,
+    normalize_spreadsheet_reference,
+    send_organization_sheet_to_contacts,
+    sync_organization_sheet,
+)
 
 
 class PortalFixtureMixin:
@@ -122,6 +130,142 @@ class PortalFixtureMixin:
             created_by=self.admin,
         )
         return user
+
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class OrganizationGoogleSheetTests(PortalFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.organization = Organization.objects.create(
+            name="Sami Academy",
+            kind=Organization.Kind.ACADEMY,
+            contact_name="Sami",
+            email="sami@example.com",
+            whatsapp_number="+21620123456",
+            google_sheet_id="1h0OPtip7K824cli0wqrFpVkeUvcD3H50--tL7c3ZIOI",
+            google_sheet_tab="Players",
+            created_by=self.admin,
+        )
+        self.video.client_organization = self.organization
+        self.video.match_package = 5
+        self.video.matches_processed = 3
+        self.video.whatsapp_conversation_date = timezone.localdate()
+        self.video.total_payment = Decimal("350")
+        self.video.save()
+
+        self.dali = self.make_portal_user(
+            "dali",
+            account_type=PortalProfile.AccountType.ACADEMY,
+        )
+        self.dali.email = "dali@example.com"
+        self.dali.save(update_fields=("email",))
+        self.dali.portal_profile.whatsapp_number = "+21620987654"
+        self.dali.portal_profile.save(update_fields=("whatsapp_number", "updated_at"))
+        OrganizationMembership.objects.create(
+            organization=self.organization,
+            user=self.dali,
+            role=OrganizationMembership.Role.STAFF,
+        )
+        self.client.force_login(self.admin)
+
+    def test_google_sheet_url_is_normalized_to_id(self):
+        url = (
+            "https://docs.google.com/spreadsheets/d/"
+            "1h0OPtip7K824cli0wqrFpVkeUvcD3H50--tL7c3ZIOI/edit?usp=drivesdk"
+        )
+        self.assertEqual(
+            normalize_spreadsheet_reference(url),
+            "1h0OPtip7K824cli0wqrFpVkeUvcD3H50--tL7c3ZIOI",
+        )
+
+    def test_sync_writes_academy_video_rows_and_totals(self):
+        with patch(
+            "client_portal.google_sheets._google_request",
+            return_value={},
+        ) as google_request:
+            result = sync_organization_sheet(self.organization)
+
+        self.assertEqual(result.row_count, 1)
+        self.assertEqual(result.grand_total, Decimal("350"))
+        self.organization.refresh_from_db()
+        self.assertIsNotNone(self.organization.google_sheet_last_synced_at)
+        update_payload = google_request.call_args_list[-1].kwargs["payload"]
+        ranges = {item["range"]: item["values"] for item in update_payload["data"]}
+        player_rows = next(
+            values
+            for range_name, values in ranges.items()
+            if range_name.startswith("'Players'!A2:D")
+        )
+        self.assertEqual(player_rows[0][0], self.player.name)
+        self.assertEqual(player_rows[0][1], 5)
+        self.assertEqual(player_rows[0][2], 350.0)
+
+    def test_send_emails_live_sheet_link_to_organization_contacts(self):
+        sync_result = OrganizationSheetSyncResult(
+            row_count=1,
+            grand_total=Decimal("350"),
+            spreadsheet_url=self.organization.google_sheet_url,
+        )
+        with patch(
+            "client_portal.google_sheets.sync_organization_sheet",
+            return_value=sync_result,
+        ), patch(
+            "client_portal.google_sheets.share_sheet_with_contacts",
+            return_value=(("sami@example.com", "dali@example.com"), ()),
+        ):
+            result = send_organization_sheet_to_contacts(self.organization)
+
+        self.assertEqual(
+            set(result.recipients),
+            {"sami@example.com", "dali@example.com"},
+        )
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertTrue(
+            all(self.organization.google_sheet_url in message.body for message in mail.outbox)
+        )
+
+    def test_admin_page_shows_sync_email_and_whatsapp_actions(self):
+        response = self.client.get(
+            reverse("portal:organization_detail", args=(self.organization.pk,))
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Synchroniser + envoyer par e-mail")
+        self.assertContains(response, "Ouvrir Google Sheet")
+        self.assertContains(response, "Dali")
+        self.assertContains(response, "+21620987654")
+
+    def test_send_view_reports_success(self):
+        delivery = OrganizationSheetDeliveryResult(
+            recipients=("sami@example.com", "dali@example.com"),
+            shared_with=("sami@example.com", "dali@example.com"),
+            permission_errors=(),
+            sync_result=OrganizationSheetSyncResult(
+                row_count=1,
+                grand_total=Decimal("350"),
+                spreadsheet_url=self.organization.google_sheet_url,
+            ),
+        )
+        with patch(
+            "client_portal.views.send_organization_sheet_to_contacts",
+            return_value=delivery,
+        ):
+            response = self.client.post(
+                reverse(
+                    "portal:organization_google_sheet_send",
+                    args=(self.organization.pk,),
+                )
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse("portal:organization_detail", args=(self.organization.pk,)),
+        )
 
 
 @override_settings(
