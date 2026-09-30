@@ -13,7 +13,7 @@ import sqlparse
 from django.apps import apps
 from django.conf import settings
 from django.db import connection, transaction
-from django.urls import URLPattern, URLResolver, get_resolver
+from django.urls import URLPattern, URLResolver, get_resolver, reverse
 
 
 SENSITIVE_NAMES = {
@@ -275,6 +275,7 @@ def list_capabilities() -> dict[str, Any]:
             "run_readonly_sql",
             "search_code",
             "list_routes",
+            "resolve_route",
         ],
         "write_tools": [
             "prepare_mutation",
@@ -549,6 +550,40 @@ def search_code(
     }
 
 
+def resolve_route(
+    name: str,
+    kwargs: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    route_name = (name or "").strip()
+    if not route_name:
+        raise BridgeError("Route name is required")
+
+    try:
+        path = reverse(route_name, kwargs=dict(kwargs or {}))
+    except Exception as exc:
+        raise BridgeError(
+            f"Cannot resolve Django route {route_name}: {exc}"
+        ) from exc
+
+    base_url = str(
+        getattr(settings, "PUBLIC_SITE_URL", "") or ""
+    ).rstrip("/")
+    url = (base_url + path) if base_url else path
+
+    query_values = dict(query or {})
+    if query_values:
+        from urllib.parse import urlencode
+
+        url += "?" + urlencode(query_values, doseq=True)
+
+    return {
+        "name": route_name,
+        "path": path,
+        "url": url,
+    }
+
+
 def _walk_urlpatterns(
     patterns,
     prefix: str = "",
@@ -780,6 +815,7 @@ TOOL_HANDLERS = {
     "run_readonly_sql": run_readonly_sql,
     "search_code": search_code,
     "list_routes": list_routes,
+    "resolve_route": resolve_route,
     "prepare_mutation": prepare_mutation,
     "commit_mutation": commit_mutation,
 }
