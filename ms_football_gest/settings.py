@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'prospects.apps.ProspectsConfig',
     'client_portal.apps.ClientPortalConfig',
     'sportsbase_data.apps.SportsbaseDataConfig',
+    'agent_api.apps.AgentApiConfig',
     'crispy_forms',
     'crispy_bootstrap4',
     'whitenoise.runserver_nostatic',

@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 #from .views import dashboard, create_video_request, video_status, update_video_status, register_video_editor, user_login, user_logout
 from .views import automation_pending_videos, dashboard, create_video_highlight, mark_automation_completed, mark_automation_started, mark_intro_automation_completed, mark_intro_automation_started, video_status, update_video_status,add_expense,edit_expense,view_expenses,player_dashboard,notification_center
 from. views import register_video_editor,search_players,view_invoices,view_payments,manage_salaries,get_videos_by_editor,view_profile,generate_financial_report,view_video
@@ -20,6 +20,7 @@ from django.conf import settings
 from .jarvis_api import jarvis_agent_health, jarvis_agent_tool
 from django.conf.urls.static import static
 urlpatterns = [
+    path('agent/', include('agent_api.urls')),
     path('jarvis-agent/health/', jarvis_agent_health, name='jarvis_agent_health'),
     path('jarvis-agent/tool/', jarvis_agent_tool, name='jarvis_agent_tool'),
     path('', dashboard, name='dashboard'),
