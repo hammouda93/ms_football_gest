@@ -55,6 +55,80 @@
             {% endif %}
 
             <section class="portal-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Google Sheet de l’organisation</h2>
+                        <small>Un Sheet distinct par académie / agence</small>
+                    </div>
+                    {% if organization.google_sheet_id %}
+                        <span class="portal-count"><i class="fab fa-google-drive"></i></span>
+                    {% endif %}
+                </div>
+
+                {% if not google_sheets_configured %}
+                    <div class="alert alert-warning">
+                        Le serveur n’a pas encore ses identifiants Google. Vous pouvez enregistrer le Sheet maintenant,
+                        puis ajouter les Config Vars Google sur Heroku avant la première synchronisation.
+                    </div>
+                {% endif %}
+
+                <form method="post" action="{% url 'portal:organization_google_sheet_settings' organization.pk %}" class="compact-form mb-3">
+                    {% csrf_token %}
+                    {{ google_sheet_form.as_p }}
+                    <button class="btn btn-outline-primary" type="submit">
+                        <i class="fas fa-save"></i> Enregistrer le Google Sheet
+                    </button>
+                </form>
+
+                {% if organization.google_sheet_id %}
+                    <div class="ui-actions mb-3">
+                        <a class="btn btn-outline-secondary" href="{{ organization.google_sheet_url }}" target="_blank" rel="noopener">
+                            <i class="fas fa-up-right-from-square"></i> Ouvrir Google Sheet
+                        </a>
+                        <form method="post" action="{% url 'portal:organization_google_sheet_sync' organization.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-primary" type="submit" {% if not google_sheets_configured %}disabled{% endif %}>
+                                <i class="fas fa-rotate"></i> Synchroniser
+                            </button>
+                        </form>
+                        <form method="post" action="{% url 'portal:organization_google_sheet_send' organization.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-success" type="submit" {% if not google_sheets_configured %}disabled{% endif %}>
+                                <i class="fas fa-envelope"></i> Synchroniser + envoyer par e-mail
+                            </button>
+                        </form>
+                    </div>
+
+                    <p class="text-muted mb-2">
+                        {% if organization.google_sheet_last_synced_at %}
+                            Dernière synchronisation : {{ organization.google_sheet_last_synced_at|date:"d/m/Y H:i" }}.
+                        {% else %}
+                            Aucune synchronisation effectuée depuis MS Football.
+                        {% endif %}
+                    </p>
+
+                    {% if organization.google_sheet_last_error %}
+                        <div class="alert alert-danger">
+                            <strong>Dernière erreur :</strong> {{ organization.google_sheet_last_error }}
+                        </div>
+                    {% endif %}
+
+                    {% if sheet_whatsapp_contacts %}
+                        <div class="mt-3">
+                            <strong>Envoyer aussi le lien sur WhatsApp :</strong>
+                            <div class="ui-actions mt-2">
+                                {% for contact in sheet_whatsapp_contacts %}
+                                    <a class="btn btn-sm btn-outline-success" href="{{ contact.whatsapp_url }}" target="_blank" rel="noopener">
+                                        <i class="fab fa-whatsapp"></i> {{ contact.name }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </section>
+
+            <section class="portal-panel">
                 <div class="panel-heading"><div><h2>Demandes de nouveaux joueurs</h2><small>À examiner avant association</small></div><span class="portal-count">{{ agent_requests|length }}</span></div>
                 {% for item in agent_requests %}
                     <article class="request-review">
@@ -91,7 +165,12 @@
                 {% for membership in memberships %}
                     <article class="account-access-card compact">
                         <div class="account-access-heading"><span class="portal-account-avatar">{{ membership.user.portal_profile.display_name|default:membership.user.username|first|upper }}</span><div><strong>{{ membership.user.portal_profile.display_name|default:membership.user.username }}</strong><small>{{ membership.get_role_display }}</small></div></div>
-                        <p>{{ membership.user.email|default:"Aucun e-mail renseigné" }}</p>
+                        <p>
+                            {{ membership.user.email|default:"Aucun e-mail renseigné" }}
+                            {% if membership.user.portal_profile.whatsapp_number %}
+                                <br><small><i class="fab fa-whatsapp"></i> {{ membership.user.portal_profile.whatsapp_number }}</small>
+                            {% endif %}
+                        </p>
                     </article>
                 {% empty %}
                     <div class="empty-state">Aucun compte rattaché.</div>
