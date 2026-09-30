@@ -23,7 +23,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-kx5#*2*9l*64p#o^&zk!++t0m&_(1&bi@+kur$up%=#*ra9m^^'
+SECRET_KEY = (os.getenv('DJANGO_SECRET_KEY') or '').strip()
+if not SECRET_KEY:
+    if os.getenv('DYNO'):
+        raise RuntimeError('DJANGO_SECRET_KEY must be configured in production.')
+    SECRET_KEY = 'dev-only-unsafe-key-change-me'
 
 # Keep the historical local-development behaviour, but never expose debug pages
 # from a Heroku dyno. DEBUG can still be set explicitly through configuration.
@@ -49,12 +53,8 @@ SECURE_HSTS_SECONDS = int(
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
 
-# Add your Telegram bot token
-TELEGRAM_BOT_TOKEN = '7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8'
-# Prefer Heroku/local environment secrets when configured. The legacy values
-# remain only as compatibility fallbacks until they are rotated in deployment.
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN)
+# Secrets must come from environment variables. Never keep production tokens in Git.
+TELEGRAM_BOT_TOKEN = (os.getenv('TELEGRAM_BOT_TOKEN') or '').strip()
 
 # Application definition
 
@@ -128,7 +128,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql', # on utilise l'adaptateur postgresql
         'NAME': 'gestion_ms', # le nom de notre base de donnees creee precedemment
         'USER': 'postgres', # attention : remplacez par votre nom d'utilisateur
-        'PASSWORD': 'salih1',
+        'PASSWORD': (os.getenv('POSTGRES_PASSWORD') or '').strip(),
         'HOST': '127.0.0.1',
         'PORT': '5432',
         'ATOMIC_REQUESTS': True,
