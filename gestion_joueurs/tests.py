@@ -1570,7 +1570,6 @@ class PlayerRelationshipManagementTests(TestCase):
         )
 
 
-
 class VideoAcademyOrderTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
