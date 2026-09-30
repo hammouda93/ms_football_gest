@@ -700,7 +700,10 @@ def create_portal_account(cleaned_data, *, created_by, initial_password=None):
         OrganizationMembership.objects.create(
             user=user,
             organization=organization,
-            role=OrganizationMembership.Role.OWNER,
+            role=(
+                cleaned_data.get("organization_role")
+                or OrganizationMembership.Role.OWNER
+            ),
         )
         for linked_player in cleaned_data.get("players") or ():
             OrganizationPlayer.objects.update_or_create(
