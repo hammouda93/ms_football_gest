@@ -172,6 +172,49 @@ class OrganizationGoogleSheetTests(PortalFixtureMixin, TestCase):
         )
         self.client.force_login(self.admin)
 
+    def test_add_contact_link_prefills_same_organization_and_staff_role(self):
+        response = self.client.get(
+            reverse("portal:account_create"),
+            {
+                "organization": str(self.organization.pk),
+                "role": OrganizationMembership.Role.STAFF,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(
+            form.initial["organization"],
+            self.organization,
+        )
+        self.assertEqual(
+            form.initial["organization_role"],
+            OrganizationMembership.Role.STAFF,
+        )
+
+    def test_create_contact_persists_selected_organization_role(self):
+        data = {
+            "account_type": PortalProfile.AccountType.ACADEMY,
+            "organization": str(self.organization.pk),
+            "organization_role": OrganizationMembership.Role.VIEWER,
+            "players": [],
+            "display_name": "Observer",
+            "email": "observer@example.com",
+            "whatsapp_number": "+21622111222",
+            "preferred_language": "fr",
+        }
+        response = self.client.post(reverse("portal:account_create"), data)
+
+        self.assertEqual(response.status_code, 200)
+        membership = OrganizationMembership.objects.get(
+            organization=self.organization,
+            user__email="observer@example.com",
+        )
+        self.assertEqual(
+            membership.role,
+            OrganizationMembership.Role.VIEWER,
+        )
+
     def test_google_sheet_url_is_normalized_to_id(self):
         url = (
             "https://docs.google.com/spreadsheets/d/"
