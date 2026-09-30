@@ -164,6 +164,14 @@ class AgentApiTests(TestCase):
         self.assertEqual(proposal.status_code, 200, proposal.content)
         self.assertEqual(Player.objects.count(), 1)
 
+    def test_performance_payment_uses_its_parent_form_without_recording_a_payment(self):
+        from sportsbase_data.models import SportsBaseSubscription, PerformanceSubscriptionPayment
+        subscription = SportsBaseSubscription.objects.create(player=self.player, season="2025/2026")
+        response = self.post("action_describe", {"action": "performance:subscription_payment_add", "parameters": {"pk": subscription.pk}})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn("amount", response.json()["fields"])
+        self.assertEqual(PerformanceSubscriptionPayment.objects.count(), 0)
+
     def test_invalid_site_response_rolls_back_even_if_a_view_changed_data(self):
         plan = self.proposal()
         from django.http import HttpResponse

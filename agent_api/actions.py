@@ -62,7 +62,7 @@ ACTIONS = {
     "prospects:prospect_status_update": ActionSpec("Changer le statut d’un prospect", "prospects.prospect", "pk", fields=("status",)),
     "performance:subscription_create": ActionSpec("Créer un abonnement performance"),
     "performance:subscription_edit": ActionSpec("Modifier un abonnement performance", "sportsbase_data.sportsbasesubscription", "pk"),
-    "performance:subscription_payment_add": ActionSpec("Enregistrer un paiement d’abonnement", "sportsbase_data.sportsbasesubscription", "pk", effects="Ajoute un paiement comptable à l’abonnement."),
+    "performance:subscription_payment_add": ActionSpec("Enregistrer un paiement d’abonnement", "sportsbase_data.sportsbasesubscription", "pk", "performance:subscription_edit", effects="Ajoute un paiement comptable à l’abonnement."),
     "performance:subscription_toggle": ActionSpec("Activer ou désactiver un abonnement", "sportsbase_data.sportsbasesubscription", "pk", fields=("action",)),
     "performance:subscription_sync": ActionSpec("Synchroniser les données SportsBase", "sportsbase_data.sportsbasesubscription", "pk", fields=("job_type",), effects="Ajoute un travail de synchronisation exécuté par le worker SportsBase."),
     "performance:youtube_upload_retry": ActionSpec("Relancer une publication YouTube", "sportsbase_data.sportsbaseyoutubeupload", "pk", fields=(), effects="Relance une publication externe YouTube."),
@@ -87,7 +87,7 @@ def catalog():
             parameters = ["pk", "link_id"]
         if name == "retry_automation_progress":
             parameters = ["video_id", "pipeline"]
-        result.append({"action": name, "label": spec.label, "parameters": parameters, "effects": spec.effects, "requiresReview": True})
+        result.append({"action": name, "label": spec.label, "parameters": parameters, "targetEntity": spec.entity or None, "targetParameter": spec.key or None, "effects": spec.effects, "requiresReview": True})
     return result
 
 
