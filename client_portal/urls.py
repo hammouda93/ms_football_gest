@@ -100,6 +100,21 @@ urlpatterns = [
         name="organization_detail",
     ),
     path(
+        "gestion/portail/organisation/<int:pk>/google-sheet/configurer/",
+        views.organization_google_sheet_settings,
+        name="organization_google_sheet_settings",
+    ),
+    path(
+        "gestion/portail/organisation/<int:pk>/google-sheet/synchroniser/",
+        views.organization_google_sheet_sync,
+        name="organization_google_sheet_sync",
+    ),
+    path(
+        "gestion/portail/organisation/<int:pk>/google-sheet/envoyer/",
+        views.organization_google_sheet_send,
+        name="organization_google_sheet_send",
+    ),
+    path(
         "gestion/portail/organisation/<int:pk>/joueur/ajouter/",
         views.organization_player_add,
         name="organization_player_add",
