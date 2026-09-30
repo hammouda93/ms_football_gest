@@ -851,7 +851,32 @@ def _render_account_credentials(request, profile, temporary_password=None, *, pl
 
 @portal_admin_required
 def portal_account_create(request):
-    form = PortalAccountForm(request.POST or None)
+    initial = None
+    if request.method == "GET":
+        organization_id = request.GET.get("organization", "")
+        organization = (
+            Organization.objects.filter(pk=organization_id, is_active=True).first()
+            if organization_id.isdigit()
+            else None
+        )
+        if organization:
+            initial = {
+                "account_type": (
+                    PortalProfile.AccountType.ACADEMY
+                    if organization.kind in {
+                        Organization.Kind.ACADEMY,
+                        Organization.Kind.CLUB,
+                    }
+                    else PortalProfile.AccountType.AGENT
+                ),
+                "organization": organization,
+                "organization_role": request.GET.get(
+                    "role",
+                    "staff",
+                ),
+                "preferred_language": "fr",
+            }
+    form = PortalAccountForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         profile, temporary_password = provision_portal_account(
             form.cleaned_data,
