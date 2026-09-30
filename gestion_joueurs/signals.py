@@ -23,6 +23,13 @@ def create_video_status_history(sender, instance, created, **kwargs):
     User_Connected = get_current_user()
     
     if created:
+        if instance.status == Video.StatusChoices.DELIVERED and not instance.delivery_date:
+            delivered_on = timezone.localdate()
+            Video.objects.filter(pk=instance.pk, delivery_date__isnull=True).update(
+                delivery_date=delivered_on
+            )
+            instance.delivery_date = delivered_on
+
         # Créer l'historique du statut de la vidéo
         VideoStatusHistory.objects.create(
             video=instance,
@@ -59,6 +66,13 @@ def create_video_status_history(sender, instance, created, **kwargs):
             comment = "Status changed."
             if instance.status == 'delivered':
                 comment = "Video Delivered."
+                if not instance.delivery_date:
+                    delivered_on = timezone.localdate()
+                    Video.objects.filter(
+                        pk=instance.pk,
+                        delivery_date__isnull=True,
+                    ).update(delivery_date=delivered_on)
+                    instance.delivery_date = delivered_on
 
             VideoStatusHistory.objects.create(
                 video=instance,
