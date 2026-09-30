@@ -5,7 +5,9 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from dotenv import load_dotenv
 
 from gestion_joueurs.jarvis_bridge import BridgeError, execute_tool, list_capabilities
 
@@ -152,6 +154,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        load_dotenv(settings.BASE_DIR / ".env")
         token = (
             os.getenv("JARVIS_MS_FOOTBALL_BRIDGE_TOKEN")
             or ""
