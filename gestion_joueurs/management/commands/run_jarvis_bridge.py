@@ -186,7 +186,7 @@ class Command(BaseCommand):
         )
         self.stdout.write(
             "Tools: list_capabilities, describe_schema, query_records, "
-            "run_readonly_sql, search_code, list_routes, "
+            "run_readonly_sql, search_code, list_routes, resolve_route, "
             "prepare_mutation, commit_mutation"
         )
         self.stdout.write(
