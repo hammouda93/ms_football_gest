@@ -117,6 +117,23 @@ class AgentApiTests(TestCase):
         self.client.force_login(other)
         self.assertEqual(self.post("action_confirm", {"planId": plan["planId"], "confirmation": True}).status_code, 404)
 
+    def test_an_old_session_success_notice_cannot_confirm_a_refused_view(self):
+        from django.http import HttpResponseRedirect
+        from .actions import dispatch
+        plan = self.proposal()
+        session = self.client.session
+        session["_messages"] = '[["__json_message", 0, 25, "Old success", ""]]'
+        session.save()
+        def refused(request, path, method="GET", values=None):
+            if method == "GET":
+                return dispatch(request, path, method, values)
+            return HttpResponseRedirect("/gestion_joueurs/login/"), []
+        with patch("agent_api.actions.dispatch", side_effect=refused):
+            result = self.post("action_confirm", {"planId": plan["planId"], "confirmation": True}).json()
+        self.assertEqual(result["status"], "failed")
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.club, "Original FC")
+
     def test_csrf_is_enforced_on_queries_and_confirmations(self):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.owner)
