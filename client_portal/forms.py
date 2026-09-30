@@ -146,6 +146,12 @@ class PortalAccountForm(forms.Form):
         required=False,
         widget=forms.Select(attrs={"class": "searchable-organization-select"}),
     )
+    organization_role = forms.ChoiceField(
+        label="Rôle dans l’organisation",
+        choices=OrganizationMembership.Role.choices,
+        required=False,
+        initial=OrganizationMembership.Role.OWNER,
+    )
     players = forms.ModelMultipleChoiceField(
         label="Joueurs suivis par l’agent",
         queryset=Player.objects.none(),
@@ -161,6 +167,7 @@ class PortalAccountForm(forms.Form):
                 "account_type",
                 "player",
                 "organization",
+                "organization_role",
                 "players",
                 "display_name",
                 "email",
@@ -205,6 +212,7 @@ class PortalAccountForm(forms.Form):
                 )
         if account_type == PortalProfile.AccountType.PLAYER:
             cleaned_data["organization"] = None
+            cleaned_data["organization_role"] = None
             cleaned_data["players"] = ()
         if account_type in {
             PortalProfile.AccountType.AGENT,
@@ -216,6 +224,10 @@ class PortalAccountForm(forms.Form):
             PortalProfile.AccountType.ACADEMY,
         }:
             cleaned_data["player"] = None
+            cleaned_data["organization_role"] = (
+                cleaned_data.get("organization_role")
+                or OrganizationMembership.Role.OWNER
+            )
         return cleaned_data
 
 
