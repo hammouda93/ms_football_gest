@@ -298,13 +298,49 @@ def describe_schema(
     limit_models: int = 80,
 ) -> dict[str, Any]:
     needle = (search or "").strip().lower()
-    output = []
+    ranked: list[tuple[int, str, Any]] = []
 
     for model in _project_models():
-        model_name = _model_key(model)
-        fields = []
-        haystack = [model_name.lower(), model._meta.db_table.lower()]
+        model_key = _model_key(model)
+        model_names = {
+            model.__name__.lower(),
+            model._meta.model_name.lower(),
+            model_key.lower(),
+            f"{model._meta.app_label}.{model._meta.model_name}".lower(),
+            model._meta.db_table.lower(),
+        }
+        field_names = [
+            str(getattr(field, "name", "") or "").lower()
+            for field in model._meta.get_fields()
+            if getattr(field, "name", "")
+            and not _is_sensitive_name(getattr(field, "name", ""))
+        ]
 
+        if not needle:
+            score = 0
+        elif needle in model_names:
+            score = 100
+        elif any(
+            needle in name or name in needle
+            for name in model_names
+            if name
+        ):
+            score = 80
+        elif needle in field_names:
+            score = 50
+        elif any(needle in name for name in field_names):
+            score = 20
+        else:
+            continue
+
+        ranked.append((score, model_key.lower(), model))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    max_models = max(1, min(int(limit_models), 120))
+    output = []
+
+    for _score, _key, model in ranked[:max_models]:
+        fields = []
         for field in model._meta.get_fields():
             name = getattr(field, "name", "")
             if not name or _is_sensitive_name(name):
@@ -321,37 +357,26 @@ def describe_schema(
                 item["attname"] = attname
             if related_model is not None:
                 item["related_model"] = (
-                    f"{related_model._meta.app_label}."
-                    f"{related_model.__name__}"
+                    f"{related_model._meta.app_label}.{related_model.__name__}"
                 )
             choices = getattr(field, "choices", None)
             if choices:
                 item["choices"] = [
                     [_json_value(value), str(label)]
-                    for value, label in list(choices)[:30]
+                    for value, label in list(choices)[:20]
                 ]
             fields.append(item)
-            haystack.append(name.lower())
-
-        if needle and not any(needle in value for value in haystack):
-            continue
 
         output.append(
             {
-                "model": model_name,
+                "model": _model_key(model),
                 "table": model._meta.db_table,
                 "verbose_name": str(model._meta.verbose_name),
                 "fields": fields,
             }
         )
-        if len(output) >= max(1, min(int(limit_models), 120)):
-            break
 
-    return {
-        "models": output,
-        "count": len(output),
-    }
-
+    return {"models": output, "count": len(output)}
 
 def count_records(
     model: str,
