@@ -640,6 +640,55 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.assertContains(response, self.second_player.name)
         self.assertNotContains(response, self.hidden_player.name)
 
+    def test_admin_internal_menu_links_to_client_portal_without_second_login(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("view_profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ouvrir l’espace client")
+        self.assertContains(response, reverse("portal:dashboard"))
+
+    def test_admin_switch_between_management_and_portal_preserves_session_user(self):
+        self.client.force_login(self.admin)
+        session_user_before = self.client.session.get("_auth_user_id")
+
+        portal_response = self.client.get(reverse("portal:dashboard"))
+        session_user_in_portal = self.client.session.get("_auth_user_id")
+
+        management_response = self.client.get(reverse("dashboard_cards_view"))
+        session_user_after = self.client.session.get("_auth_user_id")
+
+        self.assertEqual(portal_response.status_code, 200)
+        self.assertEqual(management_response.status_code, 200)
+        self.assertEqual(session_user_before, str(self.admin.pk))
+        self.assertEqual(session_user_in_portal, str(self.admin.pk))
+        self.assertEqual(session_user_after, str(self.admin.pk))
+        self.assertFalse(
+            PortalProfile.objects.filter(user=self.admin).exists()
+        )
+
+    def test_admin_portal_menu_links_back_to_management_without_login(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("portal:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Retour à la gestion MS Football")
+        self.assertContains(response, reverse("dashboard_cards_view"))
+
+    def test_authenticated_admin_opening_portal_login_keeps_admin_session(self):
+        self.client.force_login(self.admin)
+        session_user_before = self.client.session.get("_auth_user_id")
+
+        response = self.client.get(reverse("portal:login"))
+
+        self.assertRedirects(response, reverse("portal:dashboard"))
+        self.assertEqual(
+            self.client.session.get("_auth_user_id"),
+            session_user_before,
+        )
+
     def test_superuser_can_log_in_to_portal_without_client_profile(self):
         response = self.client.post(
             reverse("portal:login"),
