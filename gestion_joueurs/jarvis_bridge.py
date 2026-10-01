@@ -121,6 +121,15 @@ def _project_root() -> Path:
 
 
 def _is_project_app(model) -> bool:
+    if model._meta.app_label in {
+        "admin",
+        "auth",
+        "contenttypes",
+        "sessions",
+        "messages",
+        "staticfiles",
+    }:
+        return False
     try:
         app_path = Path(model._meta.app_config.path).resolve()
         app_path.relative_to(_project_root())
@@ -342,6 +351,12 @@ def describe_schema(
     for _score, _key, model in ranked[:max_models]:
         fields = []
         for field in model._meta.get_fields():
+            if getattr(field, "auto_created", False) and not getattr(
+                field,
+                "concrete",
+                False,
+            ):
+                continue
             name = getattr(field, "name", "")
             if not name or _is_sensitive_name(name):
                 continue
