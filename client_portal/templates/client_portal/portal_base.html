@@ -45,7 +45,11 @@
                     </div>
                     <a href="{% url 'portal:dashboard' %}">{{ pc.my_space }}</a>
                     <a href="{% url 'portal:password_change' %}">{{ pc.change_password }}</a>
-                    <a href="{% url 'user_login' %}">{{ pc.team_login }}</a>
+                    {% if request.user.is_superuser %}
+                        <a href="{% url 'dashboard_cards_view' %}"><i class="fas fa-arrow-left"></i> Retour à la gestion MS Football</a>
+                    {% else %}
+                        <a href="{% url 'user_login' %}">{{ pc.team_login }}</a>
+                    {% endif %}
                     <form method="post" action="{% url 'portal:logout' %}">
                         {% csrf_token %}
                         <button type="submit">{{ pc.logout }}</button>
