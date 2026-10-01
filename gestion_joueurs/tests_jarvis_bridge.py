@@ -17,6 +17,18 @@ class JarvisBridgeSafetyTests(SimpleTestCase):
             model_names,
         )
 
+    def test_exact_player_schema_is_ranked_first(self):
+        payload = describe_schema(search="Player", limit_models=1)
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(
+            payload["models"][0]["model"],
+            "gestion_joueurs.Player",
+        )
+        self.assertEqual(
+            payload["models"][0]["table"],
+            "gestion_joueurs_player",
+        )
+
     def test_routes_are_discoverable(self):
         payload = list_routes(search="player", limit=20)
         self.assertGreater(payload["count"], 0)
