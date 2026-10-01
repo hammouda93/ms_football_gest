@@ -352,6 +352,22 @@ def describe_schema(
     }
 
 
+def count_records(
+    model: str,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    model_cls = _resolve_model(model)
+    clean_filters = dict(filters or {})
+    for key in clean_filters:
+        _validate_field_path(model_cls, str(key))
+    total = model_cls.objects.filter(**clean_filters).count()
+    return {
+        "model": _model_key(model_cls),
+        "filters": _json_value(clean_filters),
+        "count": total,
+    }
+
+
 def query_records(
     model: str,
     filters: dict[str, Any] | None = None,
