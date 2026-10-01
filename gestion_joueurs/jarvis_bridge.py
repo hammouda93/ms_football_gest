@@ -276,7 +276,7 @@ def list_capabilities() -> dict[str, Any]:
 
     return {
         "project": "ms_football_gest",
-        "mode": "local_django_bridge",
+        "mode": "django_bridge",
         "read_tools": [
             "list_capabilities",
             "describe_schema",
