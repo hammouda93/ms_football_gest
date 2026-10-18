@@ -276,6 +276,18 @@ def _plan_sheet_merge(videos, matrix, tab_a1):
     writes = []
     for key, video_group in grouped_videos.items():
         candidates = list(by_name.get(key, []))
+        if not candidates:
+            # A typo in a manually entered name must not produce a second
+            # player. Ask for a human review rather than fuzzy auto-merging.
+            from difflib import get_close_matches
+            close = get_close_matches(key, by_name.keys(), n=1, cutoff=0.90)
+            if close:
+                possible = by_name[close[0]][0]["name"]
+                raise GoogleSheetError(
+                    f"Le nom « {video_group[0].player.name} » ressemble à "
+                    f"« {possible} » déjà présent dans le Sheet. "
+                    "Vérifiez le nom avant d’ajouter une ligne."
+                )
         remaining_rows = list(candidates)
         remaining_videos = list(video_group)
         assignments = []
