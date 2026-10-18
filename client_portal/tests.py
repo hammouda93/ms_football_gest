@@ -318,6 +318,27 @@ class OrganizationGoogleSheetTests(PortalFixtureMixin, TestCase):
         with self.assertRaisesMessage(GoogleSheetError, "Plusieurs lignes"):
             _plan_sheet_merge([self.video], matrix, "'Players'")
 
+    def test_similar_name_prevents_duplicate_append(self):
+        self.video.player.name = "Jules RAMBAUD"
+        matrix = self._new_sheet(
+            ["Julles RAMBAUD", "", "5 matchs", "", ""],
+        )
+        with self.assertRaisesMessage(GoogleSheetError, "ressemble"):
+            _plan_sheet_merge([self.video], matrix, "'Players'")
+
+    def test_unmanaged_player_with_manual_price_is_kept_in_monthly_totals(self):
+        month = self.video.whatsapp_conversation_date.strftime("%B")
+        matrix = self._new_sheet(
+            ["Alpha Player", "5 matchs", "10 matchs", 350, month],
+            ["Manual Player", "3 matchs", "3 matchs", 300, month],
+            ["Future Player", "", "5 matchs", "", ""],
+        )
+        writes, entries, total = _plan_sheet_merge([self.video], matrix, "'Players'")
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(total, Decimal("650"))
+        self.assertFalse(any(item["range"].startswith("'Players'!A") for item in writes))
+        self.assertFalse(any(item["range"].startswith("'Players'!C") for item in writes))
+
     def test_old_sheet_layout_is_rejected_before_any_write(self):
         matrix = [[
             "Player name", "Number of matches", "Price (DT)",
