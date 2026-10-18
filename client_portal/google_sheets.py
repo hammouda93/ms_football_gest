@@ -11,6 +11,7 @@ from urllib.parse import quote
 import requests
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 
 from gestion_joueurs.models import Video
@@ -417,7 +418,13 @@ def _remember_expected_matches(organization, entries):
             linked[0].save(update_fields=("expected_matches",))
 
 
+@transaction.atomic
 def sync_organization_sheet(organization) -> OrganizationSheetSyncResult:
+    # Serialize concurrent sync clicks for one academy. Two requests must not
+    # read the same missing player and append duplicate rows simultaneously.
+    type(organization).objects.select_for_update().only("pk").get(
+        pk=organization.pk
+    )
     spreadsheet_id = normalize_spreadsheet_reference(organization.google_sheet_id)
     if not spreadsheet_id:
         raise GoogleSheetError(
