@@ -26,7 +26,13 @@
                     {% for link in player_links %}
                         <article class="relation-card static">
                             <span class="relation-avatar player">{{ link.player.name|first|upper }}</span>
-                            <div><strong>{{ link.player.name }}</strong><small>{{ link.player.club|default:"Sans club" }}{% if link.label %} · {{ link.label }}{% endif %}</small></div>
+                            <div>
+                                <strong>{{ link.player.name }}</strong>
+                                <small>{{ link.player.club|default:"Sans club" }}{% if link.label %} · {{ link.label }}{% endif %}</small>
+                                {% if link.expected_matches %}
+                                    <small> · Prévision académie : {{ link.expected_matches }} matchs</small>
+                                {% endif %}
+                            </div>
                             <span class="relation-type">Joueur existant</span>
                             <form method="post" action="{% url 'portal:organization_player_remove' organization.pk link.pk %}" onsubmit="return confirm('Retirer seulement cet accès ? La fiche joueur restera intacte.');">
                                 {% csrf_token %}
