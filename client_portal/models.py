@@ -163,6 +163,13 @@ class OrganizationPlayer(models.Model):
         related_name="portal_organization_links",
     )
     label = models.CharField("Référence interne", max_length=100, blank=True)
+    expected_matches = models.PositiveSmallIntegerField(
+        "Nombre de matchs attendus par l’organisation",
+        choices=((3, "3 matchs"), (5, "5 matchs"), (10, "10 matchs")),
+        null=True,
+        blank=True,
+        help_text="Planification de l’académie, distincte des matchs envoyés par le joueur.",
+    )
     is_active = models.BooleanField(default=True)
     ended_at = models.DateTimeField(
         "Fin de la relation",
