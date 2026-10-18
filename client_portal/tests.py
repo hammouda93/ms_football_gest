@@ -30,6 +30,8 @@ from .models import (
 )
 from .services import create_portal_account
 from .google_sheets import (
+    GoogleSheetError,
+    _plan_sheet_merge,
     OrganizationSheetDeliveryResult,
     OrganizationSheetSyncResult,
     normalize_spreadsheet_reference,
@@ -225,27 +227,112 @@ class OrganizationGoogleSheetTests(PortalFixtureMixin, TestCase):
             "1h0OPtip7K824cli0wqrFpVkeUvcD3H50--tL7c3ZIOI",
         )
 
-    def test_sync_writes_academy_video_rows_and_totals(self):
-        with patch(
-            "client_portal.google_sheets._google_request",
-            return_value={},
-        ) as google_request:
+    def _new_sheet(self, *rows):
+        return [
+            [
+                "Player name", "Number of matches sent",
+                "Number of matches expected", "Price (DT)", "Month",
+                "", "Monthly totals", "Price (DT)",
+            ],
+            *rows,
+        ]
+
+    def test_sync_preserves_expected_manual_roster_and_existing_player_names(self):
+        month = self.video.whatsapp_conversation_date.strftime("%B")
+        link = OrganizationPlayer.objects.create(
+            organization=self.organization,
+            player=self.player,
+            added_by=self.admin,
+        )
+        matrix = self._new_sheet(
+            ["Alpha Player", "3 matchs", "10 matchs", 300, month],
+            ["  Lubin AURIOL  ", "", "3 matchs", "", ""],
+            ["Julles RAMBAUD", "", "5 matchs", "", ""],
+        )
+        seen = []
+
+        def google_request(method, url, *, payload=None):
+            seen.append((method, url, payload))
+            if method == "GET":
+                return {"values": matrix}
+            return {}
+
+        with patch("client_portal.google_sheets._google_request", side_effect=google_request):
             result = sync_organization_sheet(self.organization)
 
         self.assertEqual(result.row_count, 1)
         self.assertEqual(result.grand_total, Decimal("350"))
-        self.organization.refresh_from_db()
-        self.assertIsNotNone(self.organization.google_sheet_last_synced_at)
-        update_payload = google_request.call_args_list[-1].kwargs["payload"]
-        ranges = {item["range"]: item["values"] for item in update_payload["data"]}
-        player_rows = next(
-            values
-            for range_name, values in ranges.items()
-            if range_name.startswith("'Players'!A2:D")
+        self.assertFalse(any("batchClear" in url for _, url, _ in seen))
+        writes = next(payload["data"] for method, url, payload in seen if "batchUpdate" in url)
+        cells = {item["range"]: item["values"] for item in writes}
+        self.assertEqual(cells["'Players'!B2"], [["5 matchs"]])
+        self.assertEqual(cells["'Players'!D2"], [[350.0]])
+        self.assertFalse(any("!C2" in cell or "!A2" in cell for cell in cells))
+        self.assertFalse(any("!A3" in cell or "!A4" in cell for cell in cells))
+        link.refresh_from_db()
+        self.assertEqual(link.expected_matches, 10)
+
+    def test_new_video_appends_after_manually_planned_players(self):
+        self.second_video.client_organization = self.organization
+        self.second_video.match_package = 3
+        self.second_video.total_payment = Decimal("300")
+        self.second_video.save(update_fields=(
+            "client_organization", "match_package", "total_payment"
+        ))
+        month = self.video.whatsapp_conversation_date.strftime("%B")
+        matrix = self._new_sheet(
+            ["Alpha Player", "5 matchs", "10 matchs", 350, month],
+            ["Lubin AURIOL", "", "3 matchs", "", ""],
+            ["Julles RAMBAUD", "", "5 matchs", "", ""],
         )
-        self.assertEqual(player_rows[0][0], self.player.name)
-        self.assertEqual(player_rows[0][1], "5 matchs")
-        self.assertEqual(player_rows[0][2], 350.0)
+        videos = [self.video, self.second_video]
+        writes, updated, total = _plan_sheet_merge(videos, matrix, "'Players'")
+        new_rows = [
+            item for item in writes
+            if item["range"].startswith("'Players'!A")
+        ]
+        self.assertEqual(len(new_rows), 1)
+        self.assertEqual(new_rows[0]["range"], "'Players'!A5:E5")
+        self.assertEqual(new_rows[0]["values"][0][0], "Beta Player")
+        self.assertEqual(new_rows[0]["values"][0][2], "")
+        self.assertEqual(total, Decimal("650"))
+        self.assertEqual(len(updated), 4)
+
+    def test_repeated_sync_does_not_duplicate_existing_video(self):
+        month = self.video.whatsapp_conversation_date.strftime("%B")
+        matrix = self._new_sheet(
+            ["Alpha Player", "5 matchs", "10 matchs", 350, month],
+        )
+        # The same player/order is already in the Sheet.
+        writes, entries, total = _plan_sheet_merge([self.video], matrix, "'Players'")
+        self.assertFalse(any(item["range"].startswith("'Players'!A") for item in writes))
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(total, Decimal("350"))
+
+    def test_duplicate_name_with_identical_orders_refuses_unsafe_write(self):
+        month = self.video.whatsapp_conversation_date.strftime("%B")
+        matrix = self._new_sheet(
+            ["Alpha Player", "5 matchs", "3 matchs", 350, month],
+            ["ALPHA PLAYER", "5 matchs", "10 matchs", 350, month],
+        )
+        with self.assertRaisesMessage(GoogleSheetError, "Plusieurs lignes"):
+            _plan_sheet_merge([self.video], matrix, "'Players'")
+
+    def test_old_sheet_layout_is_rejected_before_any_write(self):
+        matrix = [[
+            "Player name", "Number of matches", "Price (DT)",
+            "Month", "", "Monthly totals", "Price (DT)",
+        ]]
+        seen = []
+
+        def google_request(method, url, *, payload=None):
+            seen.append(method)
+            return {"values": matrix}
+
+        with patch("client_portal.google_sheets._google_request", side_effect=google_request):
+            with self.assertRaisesMessage(GoogleSheetError, "format du Sheet"):
+                sync_organization_sheet(self.organization)
+        self.assertEqual(seen, ["GET"])
 
     def test_send_emails_live_sheet_link_to_organization_contacts(self):
         sync_result = OrganizationSheetSyncResult(
