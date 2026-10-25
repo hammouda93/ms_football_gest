@@ -443,3 +443,55 @@
     .performance-tracked-stat-table > div { grid-template-columns: minmax(0, 1fr) 62px 62px; padding: 8px 4px; }
     .performance-row-metrics { grid-template-columns: repeat(3, 1fr); }
 }
+
+
+/* Read-only Performance Worker Control Center — no existing agent CSS changed. */
+.performance-monitor-panel { margin: 20px 0 22px; background: #fff; color: #223047; border: 1px solid var(--performance-border, #dce4ee); border-radius: 18px; padding: 21px; box-shadow: 0 7px 28px rgba(25, 42, 65, .045); }
+.performance-monitor-heading, .performance-monitor-controls, .monitor-pane-heading, .monitor-worker-header, .monitor-task-row, .monitor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.performance-monitor-heading { align-items: flex-start; margin-bottom: 18px; }
+.performance-monitor-heading h2 { margin: 4px 0 5px; font-size: 1.15rem; font-weight: 800; }
+.performance-monitor-heading p { color: #66768d; margin: 0; font-size: .8rem; }
+.performance-monitor-controls { flex-wrap: wrap; justify-content: flex-end; }
+.performance-monitor-controls small { font-size: .7rem; color: #657890; }
+.performance-monitor-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 17px; }
+.performance-monitor-metrics > div { background: #f6f9fd; border: 1px solid #e8edf3; border-radius: 12px; padding: 14px; display: flex; gap: 2px; flex-direction: column; }
+.performance-monitor-metrics strong { font-size: 1.6rem; line-height: 1.2; font-weight: 800; }
+.performance-monitor-metrics span { font-size: .7rem; color: #60748c; }
+.performance-monitor-grid { display: grid; grid-template-columns: minmax(280px, .92fr) minmax(310px, 1.08fr); gap: 15px; }
+.monitor-pane { min-width: 0; border: 1px solid #e2e9f1; border-radius: 13px; padding: 13px; background: #fcfdff; }
+.monitor-pane h3 { font-size: .88rem; font-weight: 800; margin: 2px 0 12px; }
+.monitor-pane-heading { align-items: flex-start; }
+.monitor-pane-heading label { font-size: .67rem; color: #64748b; display: flex; gap: 6px; align-items: center; }
+.monitor-pane-heading select { width: auto; max-width: 170px; font-size: .68rem; padding: 4px; }
+.monitor-items { display: flex; flex-direction: column; gap: 7px; max-height: 400px; overflow: auto; }
+.monitor-worker-card { display: flex; flex-direction: column; gap: 5px; border: 1px solid #e3eaf3; background: #fff; border-radius: 10px; padding: 11px; }
+.monitor-worker-header strong { font-size: .82rem; overflow-wrap: anywhere; }
+.monitor-pill { display: inline-block; border: 1px solid #d5e0ee; border-radius: 50px; padding: 3px 8px; font-size: .65rem; font-weight: 800; white-space: nowrap; color: #415571; background: #f3f6fb; }
+.monitor-active, .monitor-running { color: #146c43; background: #e9f8f1; border-color: #bde8d0; }
+.monitor-offline, .monitor-failed { color: #9b4422; background: #fff1e8; border-color: #f6cbb2; }
+.monitor-worker-current { font-size: .76rem; font-weight: 750; overflow-wrap: anywhere; }
+.monitor-subtle { display: block; font-size: .67rem; line-height: 1.5; color: #6d7e93; overflow-wrap: anywhere; }
+.monitor-event-row { display: grid; grid-template-columns: 111px minmax(0, 1fr); gap: 10px; align-items: start; border-bottom: 1px solid #e8edf3; padding: 9px 2px; }
+.monitor-event-time { font-size: .68rem; color: #657992; font-variant-numeric: tabular-nums; }
+.monitor-event-message, .monitor-task-name { font-size: .76rem; font-weight: 700; overflow-wrap: anywhere; }
+.monitor-event-error .monitor-event-message { color: #b42318; }
+.monitor-event-warning .monitor-event-message { color: #a65c0d; }
+.monitor-task-row, .monitor-missing-row { border-radius: 9px; padding: 9px 10px; border: 1px solid #e4ebf3; background: #fff; }
+.monitor-task-row { align-items: flex-start; }
+.monitor-empty { font-size: .77rem; line-height: 1.6; color: #6c7e93; }
+.monitor-missing-panel { border-top: 1px solid #e3ebf5; margin-top: 15px; padding-top: 14px; }
+.monitor-missing-panel summary { cursor: pointer; font-size: .84rem; font-weight: 800; }
+.monitor-missing-panel p { font-size: .7rem; color: #60748c; margin: 8px 0 12px; }
+.monitor-missing-row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.monitor-missing-row > div { display: flex; flex-direction: column; }
+.monitor-footer { margin-top: 14px; flex-wrap: wrap; font-size: .64rem; color: #7a8a9c; }
+@media (max-width: 850px) {
+    .performance-monitor-heading { flex-direction: column; }
+    .performance-monitor-controls { justify-content: flex-start; }
+    .performance-monitor-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 500px) {
+    .performance-monitor-panel { padding: 13px; }
+    .performance-monitor-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .monitor-event-row { grid-template-columns: 78px minmax(0, 1fr); }
+}
