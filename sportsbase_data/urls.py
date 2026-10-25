@@ -1,11 +1,26 @@
 from django.urls import path
 
-from . import views, monitoring_views
+from . import views, monitoring_views, monitoring_history
 
 
 app_name = "performance"
 
 urlpatterns = [
+    path(
+        "gestion/performances/monitoring/history/",
+        monitoring_history.monitoring_history,
+        name="monitor_history",
+    ),
+    path(
+        "gestion/performances/monitoring/session/<uuid:run_id>/",
+        monitoring_history.monitoring_session_detail,
+        name="monitor_session_detail",
+    ),
+    path(
+        "gestion/performances/monitoring/job/<int:job_id>/",
+        monitoring_history.monitoring_job_detail,
+        name="monitor_job_detail",
+    ),
     path(
         "sportsbase/automation/monitoring/ingest/",
         monitoring_views.ingest_monitor_events,
