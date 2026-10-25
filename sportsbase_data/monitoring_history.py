@@ -168,13 +168,12 @@ def current_issue_digest():
     active = active_subscriptions()
     matches = (
         SportsBaseMatch.objects.filter(subscription__in=active)
-        .filter(season__in=active.values("season"))
         .select_related("subscription__player", "player_stats", "performance_report")
         .only(
             "id", "subscription_id", "sportsbase_match_id", "season", "match_date",
             "home_team", "away_team", "sync_state", "actions_state", "updated_at",
             "subscription__player__name", "subscription__player_id",
-            "subscription__all_actions_enabled",
+            "subscription__all_actions_enabled", "subscription__season",
             "player_stats__players_statistics_headers",
             "player_stats__players_statistics_rows",
             "performance_report__status", "performance_report__analysis_payload",
