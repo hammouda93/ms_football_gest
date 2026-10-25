@@ -211,3 +211,47 @@ l’API ni enregistrés dans la base Django.
    langue de l’abonnement.
 8. Le joueur ou son agent consulte la vidéo, les données et le PDF selon les droits déjà gérés par
    `client_portal`.
+
+
+## Centre de contrôle Performance (branche de développement)
+
+La page interne `/gestion/performances/` affiche un nouveau panneau de
+**supervision en lecture seule**. Il montre l'état des sessions Windows,
+la présence (dernier heartbeat), le plan initial, les joueurs, les événements
+XLSX/PDF/All Actions et les erreurs, ainsi que les matchs récemment incomplets.
+
+Le bouton latéral **Agent Performance** utilise toujours le même protocole
+`msfootball-agent://performance`. Dans cette branche, son lanceur Windows
+appelle `sportsbase_data.monitoring_proxy`, un processus observateur qui
+exécute le module **inchangé** `sportsbase_data.local_agent` et relaie
+sa sortie vers la fenêtre PowerShell d'origine.
+
+L'observateur envoie seulement des messages structurés et filtrés à
+`/sportsbase/automation/monitoring/ingest/` au moyen du même compte
+d'automatisation Django que l'agent. Il ne connaît ni ne manipule la logique
+SportsBase, les All Actions, les rapports, ni YouTube. Une panne de télémétrie
+n'empêche pas l'agent d'exécuter ses tâches. Les URL et chemins locaux sont
+retirés des messages téléversés. Les identifiants restent sur le PC.
+
+`/gestion/performances/monitoring/status/` est réservé à l'administrateur
+et fournit un instantané actualisé par le navigateur toutes les 10 secondes.
+
+Un démarrage de l'agent directement par
+`python -m sportsbase_data.local_agent` **n'est pas observé** par ce wrapper ;
+le démarrage par le bouton latéral déclenche la supervision. Le cas échéant,
+une ancienne session sera marquée « Signal perdu » après 90 secondes sans
+heartbeat. Il ne s'agit pas d'un ordre d'arrêt du processus local.
+
+Option de secours : `MS_PERFORMANCE_MONITOR_ENABLED=0` désactive les
+transmissions de supervision pour le processus démarré depuis le bouton.
+Le bouton Highlights reste inchangé.
+
+Les événements n'apparaîtront qu'après la mise à jour **à la fois** du site
+Heroku et des fichiers locaux sur le PC Windows. Le `Procfile` existant
+inclut déjà `release: python manage.py migrate --noinput` ; la nouvelle
+migration `0008_agent_monitoring` crée uniquement les tables de supervision.
+La branche est préparatoire : pas de déploiement implicite.
+
+La télémétrie est un observateur, pas un contrôleur : aucune action distante,
+aucune modification de file d'attente, aucune commande de suppression ou de
+réexécution n'est disponible depuis ce module.
