@@ -11,6 +11,59 @@
 
     {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
 
+    <section class="performance-monitor-panel" id="performance-control-center"
+             data-monitor-url="{% url 'performance:monitor_status' %}" aria-label="Centre de contrôle Performance">
+        <div class="performance-monitor-heading">
+            <div>
+                <span class="eyebrow">MS Worker Cloud · supervision locale</span>
+                <h2>Centre de contrôle Performance</h2>
+                <p>Activité des agents lancés depuis le bouton Agent Performance · données actualisées automatiquement.</p>
+            </div>
+            <div class="performance-monitor-controls">
+                <small id="monitor-connection" role="status">Chargement de la supervision…</small>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="monitor-refresh">
+                    <i class="fas fa-rotate"></i> Actualiser
+                </button>
+            </div>
+        </div>
+        <div class="performance-monitor-metrics">
+            <div><strong id="monitor-count-subs">—</strong><span>Abonnements actifs</span></div>
+            <div><strong id="monitor-count-waiting">—</strong><span>Tâches en attente</span></div>
+            <div><strong id="monitor-count-running">—</strong><span>Tâches en cours</span></div>
+            <div><strong id="monitor-count-problems">—</strong><span>Partielles / Échouées</span></div>
+        </div>
+        <div class="performance-monitor-grid">
+            <div class="monitor-pane">
+                <h3>Sessions Windows</h3>
+                <div id="monitor-worker-list" class="monitor-items">Connexion en cours…</div>
+                <h3>File des joueurs</h3>
+                <div id="monitor-task-list" class="monitor-items">Chargement…</div>
+            </div>
+            <div class="monitor-pane">
+                <div class="monitor-pane-heading">
+                    <h3>Journal en direct</h3>
+                    <label for="monitor-event-filter">Afficher
+                        <select id="monitor-event-filter" class="form-control form-control-sm">
+                            <option value="all">Tous les événements</option>
+                            <option value="warning">Avertissements</option>
+                            <option value="error">Erreurs</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="monitor-event-list" class="monitor-items monitor-event-list">Chargement…</div>
+            </div>
+        </div>
+        <details class="monitor-missing-panel">
+            <summary>Statistiques et analyses à vérifier (matchs récents)</summary>
+            <p>Échantillon des 100 matchs récemment mis à jour. Un PDF existant ne prouve pas que son analyse soit complète.</p>
+            <div id="monitor-missing-list" class="monitor-items">Chargement…</div>
+        </details>
+        <div class="monitor-footer">
+            <span id="monitor-last-refresh">En attente d'actualisation</span>
+            <span>Supervision uniquement · ni lancement distant ni modification des tâches.</span>
+        </div>
+    </section>
+
     <section class="metric-grid performance-admin-metrics">
         <article class="metric-card"><span>Abonnements</span><strong>{{ subscriptions|length }}</strong></article>
         <article class="metric-card"><span>Accès actifs</span><strong>{{ active_count }}</strong></article>
@@ -135,3 +188,4 @@
     </section>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'sportsbase_data/worker_monitor.js' %}" defer></script>{% endblock %}
