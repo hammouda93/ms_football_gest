@@ -37,6 +37,16 @@ SCRAPER_BUILD = "sportsbase-new-match-gate-v31-20260926"
 _XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
 
 
+# SportsBase renamed these four Players metrics in October 2026. Keep the
+# historical analysis/PDF contract and accept either XLSX/DOM spelling.
+PLAYERS_TABLE_HEADER_ALIASES = {
+    "headed goals": "goals by head",
+    "uncontested progressive passes": "progressive open passes",
+    "ball losses": "lost balls",
+    "ball losses in own half": "lost balls in own half",
+}
+
+
 # The table settings may expose more metrics after "Select all".  The scraper
 # validates and stores only the stable 81-column contract used by the analysis
 # engine.  Number and team are reconstructed locally rather than DOM headers.
@@ -3072,7 +3082,8 @@ class SportsBaseSubscriptionScraper:
 
     @staticmethod
     def _normalized_header(value):
-        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+        normalized = re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+        return PLAYERS_TABLE_HEADER_ALIASES.get(normalized, normalized)
 
     @classmethod
     def _missing_enriched_players_headers(cls, headers):
