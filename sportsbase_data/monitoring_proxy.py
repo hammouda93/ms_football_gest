@@ -263,12 +263,18 @@ def main():
     enabled = os.getenv("MS_PERFORMANCE_MONITOR_ENABLED", "1").strip().casefold() not in {
         "0", "false", "no", "off",
     }
-    monitor = PassiveMonitor(enabled=enabled)
     # Run the unchanged production module with the same interpreter and arguments.
     command = [sys.executable, "-X", "utf8", "-u", "-m", args.agent_module, *child_args]
     child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              bufsize=0)
-    monitor.start()
+    monitor = None
+    if enabled:
+        try:
+            monitor = PassiveMonitor(enabled=True)
+            monitor.start()
+        except Exception:
+            # Even observer startup must never prevent the agent from running.
+            monitor = None
     code = 1
     try:
         for raw in iter(child.stdout.readline, b""):
@@ -277,7 +283,12 @@ def main():
                 sys.stdout.buffer.flush()
             except (OSError, AttributeError):
                 pass
-            monitor.track(raw.decode("utf-8", errors="replace").strip())
+            if monitor is not None:
+                try:
+                    monitor.track(raw.decode("utf-8", errors="replace").strip())
+                except Exception:
+                    # No telemetry parsing error may stop an active scraping run.
+                    pass
         code = child.wait()
     except KeyboardInterrupt:
         child.terminate()
@@ -287,7 +298,11 @@ def main():
             child.kill()
             code = child.wait()
     finally:
-        monitor.close(code)
+        if monitor is not None:
+            try:
+                monitor.close(code)
+            except Exception:
+                pass
     return code
 
 
