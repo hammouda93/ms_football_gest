@@ -255,3 +255,48 @@ La branche est préparatoire : pas de déploiement implicite.
 La télémétrie est un observateur, pas un contrôleur : aucune action distante,
 aucune modification de file d'attente, aucune commande de suppression ou de
 réexécution n'est disponible depuis ce module.
+
+
+## Centre de contrôle V2 — historique, anomalies et pagination
+
+La branche `feature/performance-monitor-history-v2` ajoute quatre vues au
+panneau de supervision sans modifier `sportsbase_data/local_agent.py`,
+`sportsbase_data/scraper.py`, ni les automatisations YouTube/Dailymotion :
+
+- **Sessions** : historique paginé des lancements Windows, périodes de présence,
+  joueurs prévus au démarrage et tâches exécutées. Les sessions enregistrées
+  restent consultables après la fermeture de l'agent.
+- **Joueurs/tâches** : toutes les tâches historiques, recherche par joueur,
+  erreur et ID de match effectivement associé au résultat de la tâche. Le
+  détail montre les étapes observées et les états actuels de chaque match.
+- **Journal complet** : événements horodatés, recherche textuelle, filtres
+  par niveau et dates, pages de 20 résultats.
+- **Problèmes ouverts** : diagnostic recalculé depuis les matchs de la saison
+  des abonnements actifs (81 en-têtes attendus + lignes Players, analyse
+  disponible, vidéo si requise). Les tâches historiques échouées puis
+  corrigées ne sont plus comptées comme des anomalies. Les matchs détectés
+  mais pas encore synchronisés sont classés séparément « À synchroniser ».
+  Les données des matchs sont mises en cache durant 60 secondes.
+
+La liste d'abonnements de `/gestion/performances/` est paginée à 25 joueurs ;
+les recherches restent indépendantes de l'historique. Les quatre nouveaux
+endpoints sont **réservés aux superutilisateurs** et seulement en lecture.
+Ils ne mettent pas de tâches en file, ne lancent pas et n'arrêtent pas
+l'Agent Performance.
+
+La présence du MP4 et du PDF sur le disque Windows ne peut pas être vérifiée
+par la base Heroku. L'interface le précise au lieu de présenter un état de
+base de données comme une preuve de fichier local. Les étapes du journal
+correspondent aux messages reconnus par le moniteur ; « Non observé » ne
+signifie pas « Échoué ».
+
+Les sessions avant l'installation de l'observateur Windows ne peuvent pas
+être reconstituées. La V2 conserve la migration `0008_agent_monitoring`
+de V1 ; elle n'ajoute aucune nouvelle table ni migration. Il faut
+déployer la branche V2 sur Heroku et installer le code V2 sur le PC Windows
+pour bénéficier des nouveaux messages d'étapes. L'agent garde son bouton
+latéral `msfootball-agent://performance`.
+
+La collecte reste best-effort : si le moniteur local n'arrive pas à joindre
+Heroku, l'agent continue normalement, et certains événements de cette
+période peuvent manquer dans le journal.
