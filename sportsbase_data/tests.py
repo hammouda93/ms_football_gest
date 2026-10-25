@@ -1513,6 +1513,72 @@ class ScraperNormalizationTests(TestCase):
         )
         self.assertEqual(missing, ["Player"])
 
+    def test_renamed_sportsbase_columns_satisfy_full_81_kpi_contract(self):
+        renamed = {
+            "Goals by head": "Headed goals",
+            "Progressive open passes": "Uncontested progressive passes",
+            "Lost balls": "Ball losses",
+            "Lost balls in own half": "Ball losses in own half",
+        }
+        incoming_headers = [
+            renamed.get(header, header) for header in SPORTSBASE_PLAYER_COLUMNS
+        ]
+        scraper = SportsBaseSubscriptionScraper
+        self.assertEqual(scraper._missing_enriched_players_headers(incoming_headers), [])
+        self.assertEqual(scraper._missing_xlsx_analysis_headers(incoming_headers), [])
+        self.assertEqual(len(incoming_headers), 81)
+
+        source_row = {header: "1" for header in incoming_headers}
+        source_row.update({
+            "Player": "Test Player",
+            "Team": "Test Team",
+            "Position": "LB",
+            "Headed goals": "2",
+            "Uncontested progressive passes": "7",
+            "Ball losses": "5",
+            "Ball losses in own half": "3",
+        })
+        snapshot = scraper._normalize_players_table_snapshot({
+            "headers": [*incoming_headers, "Optional SportsBase metric"],
+            "rows": [source_row],
+        })
+        self.assertEqual(snapshot["headers"], list(SPORTSBASE_PLAYER_COLUMNS))
+        self.assertEqual(len(snapshot["rows"]), 1)
+        target = snapshot["rows"][0]
+        self.assertEqual(target["Player"], "Test Player")
+        self.assertEqual(target["Goals by head"], 2)
+        self.assertEqual(target["Progressive open passes"], 7)
+        self.assertEqual(target["Lost balls"], 5)
+        self.assertEqual(target["Lost balls in own half"], 3)
+        for renamed_header in renamed.values():
+            self.assertNotIn(renamed_header, target)
+        self.assertNotIn("Optional SportsBase metric", target)
+
+    def test_legacy_sportsbase_column_names_remain_supported(self):
+        scraper = SportsBaseSubscriptionScraper
+        headers = list(SPORTSBASE_PLAYER_COLUMNS)
+        self.assertEqual(scraper._missing_xlsx_analysis_headers(headers), [])
+        self.assertEqual(scraper._missing_enriched_players_headers(headers), [])
+        source_row = {header: "1" for header in headers}
+        source_row.update({
+            "Player": "Historical Player",
+            "Team": "Historical Team",
+            "Goals by head": "4",
+            "Progressive open passes": "8",
+            "Lost balls": "6",
+            "Lost balls in own half": "2",
+        })
+        snapshot = scraper._normalize_players_table_snapshot({
+            "headers": headers,
+            "rows": [source_row],
+        })
+        self.assertEqual(snapshot["headers"], headers)
+        self.assertEqual(snapshot["rows"][0]["Goals by head"], 4)
+        self.assertEqual(snapshot["rows"][0]["Progressive open passes"], 8)
+        self.assertEqual(snapshot["rows"][0]["Lost balls"], 6)
+        self.assertEqual(snapshot["rows"][0]["Lost balls in own half"], 2)
+
+
     def test_direct_players_table_keeps_only_analysis_contract_columns(self):
         snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
             {
