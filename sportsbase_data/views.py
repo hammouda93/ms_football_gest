@@ -642,7 +642,10 @@ def subscription_management(request):
     delivery_query = request.GET.get("delivery_q", "").strip()
     report_query = request.GET.get("report_q", "").strip()
 
-    jobs = SportsBaseSyncJob.objects.select_related("subscription__player")[:30]
+    jobs = (
+        SportsBaseSyncJob.objects.select_related("subscription__player")
+        .order_by("-created_at", "-pk")[:30]
+    )
     youtube_jobs = SportsBaseYouTubeUpload.objects.select_related(
         "match__subscription__player", "match__dailymotion_upload"
     )
