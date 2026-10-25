@@ -200,7 +200,9 @@ def monitor_snapshot(request):
         }
         for job in SportsBaseSyncJob.objects.select_related(
             "subscription__player"
-        ).order_by("-created_at", "-pk")[:75]
+        ).filter(
+            status__in=(SportsBaseSyncJob.Status.PENDING, SportsBaseSyncJob.Status.RUNNING)
+        ).order_by("created_at", "pk")[:300]
     ]
     # The match status is derived from existing stored source rows and the
     # report's analysis_payload; existence of a PDF alone is not proof of analysis.
