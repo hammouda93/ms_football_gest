@@ -243,7 +243,7 @@ def monitoring_history(request):
         if q:
             qs = qs.filter(Q(subscription__player__name__icontains=q) |
                            Q(error_message__icontains=q) |
-                           Q(subscription__matches__sportsbase_match_id__icontains=q)).distinct()
+                           Q(result_summary__match_ids__contains=[q])).distinct()
         if status in ("pending", "running", "success", "partial", "failed"):
             qs = qs.filter(status=status)
         page = Paginator(qs, PER_PAGE).get_page(request.GET.get("page", "1"))
@@ -327,9 +327,21 @@ def monitoring_session_detail(request, run_id):
         if item["kind"] == "job_started" and item["job_id"] not in seen_handled:
             handled.append({"job_id": item["job_id"], "player": item["player"]})
             seen_handled.add(item["job_id"])
+    jobs_by_id = {
+        job.pk: job for job in SportsBaseSyncJob.objects.filter(
+            pk__in=list(seen_planned | seen_handled)
+        )
+    }
+    for item in planned + handled:
+        job = jobs_by_id.get(item["job_id"])
+        item["status"] = job.status if job else "inconnu"
+        item["finished_at"] = _iso(job.finished_at) if job else None
+        item["matches_received"] = (job.result_summary or {}).get("matches_received", 0) if job else None
+    completed = sum(item["status"] in ("success", "partial", "failed") for item in handled)
     return JsonResponse({
         "session": _run_json(run), "planned_players": planned,
-        "processed_players": handled, "events_total": run.events.count(),
+        "processed_players": handled, "completed_jobs": completed,
+        "events_total": run.events.count(),
         "note": "Journal des étapes observées; anciennes sessions sans supervision non reconstituables.",
     })
 
