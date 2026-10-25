@@ -101,8 +101,7 @@
       empty(container, "Aucune tâche Performance en attente ou en cours.");
       return;
     }
-    pending.reverse();
-    for (const job of pending.slice(0, 50)) {
+    for (const job of pending.slice(0, 300)) {
       const text = span(job.player + " · " + job.type, "monitor-task-name");
       const pill = span(
         job.status === "running" ? "En cours" : "En attente",
