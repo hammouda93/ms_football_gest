@@ -12,7 +12,8 @@
     {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
 
     <section class="performance-monitor-panel" id="performance-control-center"
-             data-monitor-url="{% url 'performance:monitor_status' %}" aria-label="Centre de contrôle Performance">
+             data-monitor-url="{% url 'performance:monitor_status' %}"
+             data-history-url="{% url 'performance:monitor_history' %}" aria-label="Centre de contrôle Performance">
         <div class="performance-monitor-heading">
             <div>
                 <span class="eyebrow">MS Worker Cloud · supervision locale</span>
@@ -30,7 +31,7 @@
             <div><strong id="monitor-count-subs">—</strong><span>Abonnements actifs</span></div>
             <div><strong id="monitor-count-waiting">—</strong><span>Tâches en attente</span></div>
             <div><strong id="monitor-count-running">—</strong><span>Tâches en cours</span></div>
-            <div><strong id="monitor-count-problems">—</strong><span>Partielles / Échouées</span></div>
+            <div><strong id="monitor-count-problems">—</strong><span>Matchs à corriger · <b id="monitor-count-affected-players">—</b> joueurs</span></div>
         </div>
         <div class="performance-monitor-grid">
             <div class="monitor-pane">
@@ -54,10 +55,49 @@
             </div>
         </div>
         <details class="monitor-missing-panel">
-            <summary>Statistiques et analyses à vérifier (matchs récents)</summary>
-            <p>Échantillon des 100 matchs récemment mis à jour. Un PDF existant ne prouve pas que son analyse soit complète.</p>
+            <summary>Statistiques et analyses à vérifier (dossiers en cours)</summary>
+            <p>Matchs actuellement incomplets des abonnements actifs. Les tâches anciennes corrigées ne sont pas comptabilisées.</p>
             <div id="monitor-missing-list" class="monitor-items">Chargement…</div>
         </details>
+        <section class="performance-monitor-history" id="monitor-history">
+            <div class="performance-monitor-heading">
+                <div>
+                    <h3>Historique et recherches</h3>
+                    <p>Sessions Windows, tâches, événements et anomalies actuelles. Cliquez sur une ligne pour voir les étapes observées.</p>
+                </div>
+            </div>
+            <div class="monitor-history-tabs" role="group" aria-label="Section de l'historique">
+                <button type="button" class="monitor-history-tab is-selected" data-monitor-kind="sessions">Sessions</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="jobs">Joueurs / tâches</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="events">Journal complet</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="issues">Problèmes ouverts</button>
+            </div>
+            <form id="monitor-history-form" class="monitor-history-form">
+                <label>Rechercher
+                    <input id="monitor-search" class="form-control" type="search" placeholder="Joueur, match, erreur ou ordinateur">
+                </label>
+                <label>État
+                    <select id="monitor-status" class="form-control">
+                        <option value="">Tous les états</option>
+                    </select>
+                </label>
+                <label>Du
+                    <input type="date" id="monitor-date-from" class="form-control">
+                </label>
+                <label>Au
+                    <input type="date" id="monitor-date-to" class="form-control">
+                </label>
+                <button class="btn btn-sm btn-primary" type="submit">Rechercher</button>
+                <button class="btn btn-sm btn-outline-secondary" id="monitor-clear" type="button">Effacer</button>
+            </form>
+            <div id="monitor-history-results" class="monitor-history-results" aria-live="polite">Chargement de l'historique…</div>
+            <nav class="monitor-history-pager" aria-label="Pages de l'historique">
+                <button type="button" id="monitor-history-previous" class="btn btn-sm btn-outline-primary">Précédent</button>
+                <span id="monitor-history-page">Page 1</span>
+                <button type="button" id="monitor-history-next" class="btn btn-sm btn-outline-primary">Suivant</button>
+            </nav>
+            <div id="monitor-history-detail" class="monitor-history-detail" hidden aria-live="polite"></div>
+        </section>
         <div class="monitor-footer">
             <span id="monitor-last-refresh">En attente d'actualisation</span>
             <span>Supervision uniquement · ni lancement distant ni modification des tâches.</span>
@@ -65,7 +105,7 @@
     </section>
 
     <section class="metric-grid performance-admin-metrics">
-        <article class="metric-card"><span>Abonnements</span><strong>{{ subscriptions|length }}</strong></article>
+        <article class="metric-card"><span>Abonnements</span><strong>{{ subscription_count }}</strong></article>
         <article class="metric-card"><span>Accès actifs</span><strong>{{ active_count }}</strong></article>
         <article class="metric-card"><span>Publications vidéo</span><strong>{{ youtube_jobs|length }}</strong></article>
     </section>
@@ -76,7 +116,7 @@
         <button class="btn btn-outline-primary" type="submit"><i class="fas fa-filter"></i> Filtrer</button>
     </form>
 
-    <section class="performance-admin-list">
+    <section class="performance-admin-list" id="subscriptions">
         {% for subscription in subscriptions %}
             <article class="performance-subscription-row {% if not subscription.access_enabled %}inactive{% endif %}">
                 <div class="performance-player-identity"><span class="performance-avatar">{{ subscription.player.name|first|upper }}</span><div><strong>{{ subscription.player.name }}</strong><span>{{ subscription.player.club }} · {{ subscription.season }}</span><small>{% if subscription.player.sportsbase_url %}Profil SportsBase renseigné{% else %}Lien SportsBase manquant{% endif %}</small></div></div>
@@ -90,6 +130,18 @@
             </article>
         {% empty %}<div class="empty-state">Aucun abonnement Performance ne correspond à ces critères.</div>{% endfor %}
     </section>
+
+    {% if subscription_page.paginator.num_pages > 1 %}
+    <nav class="monitor-subscription-pager" aria-label="Pagination des abonnements">
+        {% if subscription_page.has_previous %}
+            <a class="btn btn-sm btn-outline-primary" href="?{{ request.GET.urlencode }}&subs_page={{ subscription_page.previous_page_number }}#subscriptions">Précédent</a>
+        {% endif %}
+        <span>Abonnements — page {{ subscription_page.number }} / {{ subscription_page.paginator.num_pages }} · {{ subscription_count }} au total</span>
+        {% if subscription_page.has_next %}
+            <a class="btn btn-sm btn-outline-primary" href="?{{ request.GET.urlencode }}&subs_page={{ subscription_page.next_page_number }}#subscriptions">Suivant</a>
+        {% endif %}
+    </nav>
+    {% endif %}
 
     <section class="performance-jobs-panel">
         <div class="panel-heading"><div><h2>Activité de l’agent</h2><small>Les trente dernières tâches</small></div></div>
