@@ -94,5 +94,11 @@ Write-Host ("[INFO] Python : $PythonExecutable")
 Write-Host ("[INFO] Dossier : $RepositoryRoot")
 Write-Host ''
 
-& $PythonExecutable -X utf8 -u -m $AgentModule
+# The sidebar keeps the same Windows protocol and original agent module.
+# Performance gets an optional passive stdout observer; Highlights is untouched.
+if ($AgentName -eq 'performance') {
+    & $PythonExecutable -X utf8 -u -m sportsbase_data.monitoring_proxy --agent-module sportsbase_data.local_agent
+} else {
+    & $PythonExecutable -X utf8 -u -m $AgentModule
+}
 
