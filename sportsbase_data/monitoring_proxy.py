@@ -132,6 +132,16 @@ class PassiveMonitor:
             stage, message = "XLSX analysé", _safe_message(line.split("] ", 1)[-1])
         elif "Téléchargement des statistiques Players XLSX" in line:
             stage, message = "Téléchargement XLSX", "Téléchargement des statistiques Players"
+        elif "Table Players incomplète" in line:
+            stage, message = "Colonnes SportsBase", "Colonnes Players incomplètes — configuration automatique"
+        elif "Configuration enrichie enregistrée" in line:
+            stage, message = "Colonnes configurées", "Configuration des colonnes Players enregistrée"
+        elif "Détails match " in line:
+            stage, message = "Lecture match", "Lecture des détails du match"
+        elif "All Actions classées" in line:
+            stage, message = "Vidéo classée", "All Actions récupérée et classée"
+        elif "MP4 original détecté" in line:
+            stage, message = "Vidéo téléchargée", "Fichier vidéo MP4 téléchargé"
         elif "All Actions locale déjà valide" in line:
             stage, message = "Vidéo conservée", "All Actions locale réutilisée"
         elif "All Actions ajoutée à la file" in line:
@@ -141,7 +151,7 @@ class PassiveMonitor:
         elif "Aucun nouveau match" in line:
             stage, message = "Aucun nouveau match", "Pas de nouveau match à traiter"
         elif "Téléchargement Players XLSX impossible" in line:
-            stage, kind, message = "Erreur XLSX", "warning", "Téléchargement XLSX impossible"
+            stage, kind, message = "Erreur XLSX", "warning", _safe_message(line).replace("[SPORTSBASE][WARN] ", "")
         elif "[SPORTSBASE][ERREUR" in line or "[SPORTSBASE][ERROR" in line:
             stage, kind, message = "Erreur agent", "error", _safe_message(line)
         elif "[YOUTUBE] Tâche " in line:
@@ -215,7 +225,7 @@ class PassiveMonitor:
                 continue
             last_heartbeat = now
             chunk = list(backlog)[:25]
-            state = "finished" if self._stop.is_set() and self.events.empty() and len(backlog) <= 25 else "running"
+            state = "finished" if self._stop.is_set() else "running"
             if self._send(chunk, state):
                 for _ in chunk:
                     backlog.popleft()
