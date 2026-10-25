@@ -115,19 +115,20 @@
     const container = $("monitor-missing-list");
     container.replaceChildren();
     if (!data.missing_matches.length) {
-      empty(container, "Aucune anomalie détectée parmi les matchs récemment mis à jour.");
+      empty(container, "Aucun dossier incomplet parmi les matchs de la saison des abonnements actifs.");
       return;
     }
     for (const match of data.missing_matches) {
       const body = document.createElement("div");
       body.append(
-        span(match.player + " — " + match.match, "monitor-task-name"),
+        span(match.player + " — " + match.fixture, "monitor-task-name"),
         span("Match " + match.match_id, "monitor-subtle")
       );
       const details = span(
-        (match.statistics ? "XLSX présent" : "Statistiques manquantes") + " · " +
-        (match.analysis ? "Analyse présente" : "Analyse PDF indisponible") + " · " +
-        "Vidéo : " + match.all_actions, "monitor-subtle"
+        (match.statistics_complete ? "Players complet" : "Players incomplet") + " · " +
+        (match.analysis_available ? "Analyse disponible" : "Analyse indisponible") + " · " +
+        "All Actions : " + match.video_state +
+        (match.issue_state === "pending" ? " · À synchroniser" : " · À corriger"), "monitor-subtle"
       );
       card(container, [body, details], "monitor-missing-row");
     }
@@ -138,7 +139,8 @@
     setText("monitor-count-subs", data.metrics.subscriptions);
     setText("monitor-count-waiting", data.metrics.waiting);
     setText("monitor-count-running", data.metrics.running);
-    setText("monitor-count-problems", data.metrics.partial + data.metrics.failed);
+    setText("monitor-count-problems", data.metrics.open_matches);
+    setText("monitor-count-affected-players", data.metrics.open_players);
     setText("monitor-last-refresh", "Dernière actualisation : " + time(data.now));
     drawWorkers(data);
     drawEvents(data);
