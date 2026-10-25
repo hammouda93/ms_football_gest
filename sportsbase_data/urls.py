@@ -1,11 +1,21 @@
 from django.urls import path
 
-from . import views
+from . import views, monitoring_views
 
 
 app_name = "performance"
 
 urlpatterns = [
+    path(
+        "sportsbase/automation/monitoring/ingest/",
+        monitoring_views.ingest_monitor_events,
+        name="monitor_ingest",
+    ),
+    path(
+        "gestion/performances/monitoring/status/",
+        monitoring_views.monitor_snapshot,
+        name="monitor_status",
+    ),
     path(
         "gestion/performances/",
         views.subscription_management,
