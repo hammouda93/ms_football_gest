@@ -190,11 +190,12 @@
       paragraph(box, run.worker + " · " + dateTime(run.started_at) +
         " → " + dateTime(run.ended_at) + " · " + statusLabel(run.status));
       paragraph(box, "Dernier signal : " + dateTime(run.last_seen_at) +
-        " · " + detail.events_total + " événements horodatés.");
+        " · " + detail.completed_jobs + " tâche(s) avec résultat · " + detail.events_total + " événements horodatés.");
       heading(box, "Joueurs prévus au démarrage (" + detail.planned_players.length + ")");
       if (!detail.planned_players.length) paragraph(box, "Plan initial non observé pour cette session.");
       detail.planned_players.forEach(function (player) {
-        box.appendChild(row(["#" + player.job_id + " · " + player.player], null,
+        box.appendChild(row(["#" + player.job_id + " · " + player.player,
+          "État actuel : " + statusLabel(player.status)], player.status,
           function () { showJob(player.job_id); }));
       });
       heading(box, "Joueurs pris en charge (" + detail.processed_players.length + ")");
