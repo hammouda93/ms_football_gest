@@ -128,7 +128,10 @@ def _match_info(match):
         SportsBaseMatch.ActionsState.DOWNLOADED,
         SportsBaseMatch.ActionsState.EMAILED,
     ))
-    pending = match.sync_state == SportsBaseMatch.SyncState.DISCOVERED
+    pending = (
+        match.sync_state == SportsBaseMatch.SyncState.DISCOVERED
+        and match.actions_state != SportsBaseMatch.ActionsState.FAILED
+    )
     reasons = []
     if not stats_ok:
         reasons.append("Statistiques Players incomplètes")
@@ -224,10 +227,17 @@ def monitoring_history(request):
         qs = PerformanceAgentRun.objects.order_by("-started_at", "-pk")
         qs = _date_filter(qs, request, "started_at")
         if q:
-            qs = qs.filter(Q(worker_name__icontains=q) |
-                           Q(events__player__icontains=q) |
-                           Q(events__match_id__icontains=q) |
-                           Q(events__message__icontains=q)).distinct()
+            criteria = (
+                Q(worker_name__icontains=q) |
+                Q(events__player__icontains=q) |
+                Q(events__match_id__icontains=q) |
+                Q(events__message__icontains=q)
+            )
+            try:
+                criteria |= Q(run_id=UUID(q))
+            except ValueError:
+                pass
+            qs = qs.filter(criteria).distinct()
         if status in ("active", "offline", "stopped"):
             # Presence is derived from heartbeat rather than stale state strings.
             if status == "stopped":
