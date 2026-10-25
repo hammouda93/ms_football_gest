@@ -14,10 +14,10 @@ from django.views.decorators.http import require_GET, require_POST
 
 from client_portal.decorators import portal_admin_required, production_required
 from .services import active_subscriptions
+from .monitoring_history import current_issue_digest
 from .models import (
     PerformanceAgentEvent,
     PerformanceAgentRun,
-    SportsBaseMatch,
     SportsBaseSyncJob,
 )
 
@@ -203,42 +203,8 @@ def monitor_snapshot(request):
             status__in=(SportsBaseSyncJob.Status.PENDING, SportsBaseSyncJob.Status.RUNNING)
         ).order_by("created_at", "pk")[:300]
     ]
-    # The match status is derived from existing stored source rows and the
-    # report's analysis_payload; existence of a PDF alone is not proof of analysis.
-    missing = []
-    recent_matches = SportsBaseMatch.objects.select_related(
-        "subscription__player", "player_stats", "performance_report"
-    ).only(
-        "id", "updated_at", "sportsbase_match_id", "home_team", "away_team",
-        "actions_state", "subscription__player__name",
-        "player_stats__players_statistics_headers",
-        "player_stats__players_statistics_rows",
-        "performance_report__analysis_payload",
-    ).order_by("-updated_at", "-pk")[:100]
-    for match in recent_matches:
-        try:
-            stats = match.player_stats
-            headers = stats.players_statistics_headers or []
-            rows = stats.players_statistics_rows or []
-            ready_stats = len(headers) == 81 and bool(rows)
-        except Exception:
-            ready_stats = False
-        try:
-            report = match.performance_report
-            ready_report = bool((report.analysis_payload or {}).get("available"))
-        except Exception:
-            ready_report = False
-        if not ready_stats or not ready_report:
-            missing.append({
-                "player": match.subscription.player.name,
-                "match": f"{match.home_team} – {match.away_team}",
-                "match_id": match.sportsbase_match_id,
-                "statistics": ready_stats,
-                "analysis": ready_report,
-                "all_actions": match.actions_state,
-            })
-        if len(missing) >= 25:
-            break
+    digest = current_issue_digest()
+    missing = digest['issues'][:25]
 
     return JsonResponse({
         "now": _iso(now),
@@ -253,5 +219,8 @@ def monitor_snapshot(request):
             "finished": state_counts.get(SportsBaseSyncJob.Status.SUCCESS, 0),
             "failed": state_counts.get(SportsBaseSyncJob.Status.FAILED, 0),
             "partial": state_counts.get(SportsBaseSyncJob.Status.PARTIAL, 0),
+            "open_matches": digest["open_matches"],
+            "open_players": digest["open_players"],
+            "pending_matches": digest["pending_matches"],
         },
     })
