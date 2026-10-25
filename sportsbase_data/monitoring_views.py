@@ -13,12 +13,12 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from client_portal.decorators import portal_admin_required, production_required
+from .services import active_subscriptions
 from .models import (
     PerformanceAgentEvent,
     PerformanceAgentRun,
     SportsBaseMatch,
     SportsBaseSyncJob,
-    SportsBaseSubscription,
 )
 
 
@@ -247,7 +247,7 @@ def monitor_snapshot(request):
         "jobs": jobs,
         "missing_matches": missing,
         "metrics": {
-            "subscriptions": SportsBaseSubscription.objects.filter(is_active=True).count(),
+            "subscriptions": active_subscriptions().count(),
             "waiting": state_counts.get(SportsBaseSyncJob.Status.PENDING, 0),
             "running": state_counts.get(SportsBaseSyncJob.Status.RUNNING, 0),
             "finished": state_counts.get(SportsBaseSyncJob.Status.SUCCESS, 0),
