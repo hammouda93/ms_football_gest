@@ -20,6 +20,7 @@ class Migration(migrations.Migration):
                 ("worker_name", models.CharField(max_length=100)),
                 ("state", models.CharField(default="running", max_length=16)),
                 ("planned_jobs", models.PositiveIntegerField(default=0)),
+                ("last_sequence", models.PositiveIntegerField(default=0)),
                 ("current_job_id", models.PositiveIntegerField(blank=True, null=True)),
                 ("current_player", models.CharField(blank=True, max_length=160)),
                 ("current_stage", models.CharField(blank=True, max_length=80)),
