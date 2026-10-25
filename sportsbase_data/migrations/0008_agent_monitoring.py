@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="PerformanceAgentRun",
             fields=[
-                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("run_id", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
                 ("worker_name", models.CharField(max_length=100)),
                 ("state", models.CharField(default="running", max_length=16)),
@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="PerformanceAgentEvent",
             fields=[
-                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("sequence", models.PositiveIntegerField()),
                 ("kind", models.CharField(max_length=24)),
                 ("level", models.CharField(default="info", max_length=12)),
