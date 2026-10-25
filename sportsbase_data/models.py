@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -629,3 +630,56 @@ class PerformanceReport(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class PerformanceAgentRun(models.Model):
+    """Observer session. This does not control or own the production agent."""
+
+    run_id = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
+    worker_name = models.CharField(max_length=100)
+    state = models.CharField(max_length=16, default="running")
+    planned_jobs = models.PositiveIntegerField(default=0)
+    current_job_id = models.PositiveIntegerField(null=True, blank=True)
+    current_player = models.CharField(max_length=160, blank=True)
+    current_stage = models.CharField(max_length=80, blank=True)
+    current_match_id = models.CharField(max_length=32, blank=True)
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-started_at", "-pk")
+        verbose_name = "Session supervision Performance"
+
+    def __str__(self):
+        return f"{self.worker_name} — {self.started_at}"
+
+
+class PerformanceAgentEvent(models.Model):
+    """Progress events retained independently of SportsBaseSyncJob state."""
+
+    run = models.ForeignKey(
+        PerformanceAgentRun, on_delete=models.CASCADE, related_name="events"
+    )
+    sequence = models.PositiveIntegerField()
+    kind = models.CharField(max_length=24)
+    level = models.CharField(max_length=12, default="info")
+    message = models.CharField(max_length=320)
+    player = models.CharField(max_length=160, blank=True)
+    job_id = models.PositiveIntegerField(null=True, blank=True)
+    match_id = models.CharField(max_length=32, blank=True)
+    stage = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+        constraints = [
+            models.UniqueConstraint(fields=("run", "sequence"), name="performance_monitor_event_once"),
+        ]
+        indexes = [
+            models.Index(fields=("run", "-created_at"), name="perfmon_run_date_idx"),
+        ]
+        verbose_name = "Événement supervision Performance"
+
+    def __str__(self):
+        return f"{self.run.worker_name} {self.kind}: {self.message[:60]}"
