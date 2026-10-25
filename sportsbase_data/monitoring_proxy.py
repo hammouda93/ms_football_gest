@@ -124,6 +124,14 @@ class PassiveMonitor:
         if "Agent actif — stockage" in line:
             stage, kind = "Agent démarré", "started"
             message = "Agent Performance démarré"
+        elif "Chrome connecté par CDP" in line:
+            stage, message = "Connexion SportsBase", "Connexion au navigateur SportsBase établie"
+        elif "Ouverture Google Chrome avec profil persistant" in line:
+            stage, message = "Ouverture navigateur", "Ouverture du profil Chrome SportsBase"
+        elif "Nom exact du profil" in line:
+            stage, message = "Profil joueur", "Profil SportsBase du joueur vérifié"
+        elif "Heatmap lue directement" in line or "Carte recadrée depuis le viewport" in line:
+            stage, message = "Cartes du match", "Collecte des cartes du match"
         elif "Statistiques Players XLSX enregistrées" in line:
             stage, message = "XLSX enregistré", "Statistiques Players téléchargées"
         elif "Statistiques Players XLSX déjà présentes" in line:
@@ -152,6 +160,10 @@ class PassiveMonitor:
             stage, message = "Aucun nouveau match", "Pas de nouveau match à traiter"
         elif "Téléchargement Players XLSX impossible" in line:
             stage, kind, message = "Erreur XLSX", "warning", _safe_message(line).replace("[SPORTSBASE][WARN] ", "")
+        elif "[SPORTSBASE][WARN] Copie locale du rapport PDF impossible" in line:
+            stage, kind, message = "Erreur PDF", "warning", "Échec de l'enregistrement local du PDF"
+        elif "[SPORTSBASE][WARN]" in line:
+            stage, kind, message = "Avertissement", "warning", _safe_message(line)
         elif "[SPORTSBASE][ERREUR" in line or "[SPORTSBASE][ERROR" in line:
             stage, kind, message = "Erreur agent", "error", _safe_message(line)
         elif "[YOUTUBE] Tâche " in line:
