@@ -16,7 +16,6 @@ from client_portal.decorators import portal_admin_required, production_required
 from .models import (
     PerformanceAgentEvent,
     PerformanceAgentRun,
-    PerformanceReport,
     SportsBaseMatch,
     SportsBaseSyncJob,
     SportsBaseSubscription,
@@ -209,6 +208,12 @@ def monitor_snapshot(request):
     missing = []
     recent_matches = SportsBaseMatch.objects.select_related(
         "subscription__player", "player_stats", "performance_report"
+    ).only(
+        "id", "updated_at", "sportsbase_match_id", "home_team", "away_team",
+        "actions_state", "subscription__player__name",
+        "player_stats__players_statistics_headers",
+        "player_stats__players_statistics_rows",
+        "performance_report__analysis_payload",
     ).order_by("-updated_at", "-pk")[:100]
     for match in recent_matches:
         try:
