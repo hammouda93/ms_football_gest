@@ -2,6 +2,7 @@ import json
 from collections import Counter, defaultdict
 
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse
@@ -639,6 +640,16 @@ def subscription_management(request):
         subscriptions = subscriptions.filter(last_sync_state=state)
     else:
         state = ""
+    subscription_count = subscriptions.count()
+    today = timezone.localdate()
+    active_count = subscriptions.filter(
+        is_active=True, starts_on__lte=today
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today)).count()
+    subscription_page = Paginator(subscriptions, 25).get_page(
+        request.GET.get("subs_page", "1")
+    )
+    subscriptions = subscription_page
+
     delivery_query = request.GET.get("delivery_q", "").strip()
     report_query = request.GET.get("report_q", "").strip()
 
@@ -676,6 +687,8 @@ def subscription_management(request):
         "sportsbase_data/subscription_management.html",
         {
             "subscriptions": subscriptions,
+            "subscription_count": subscription_count,
+            "subscription_page": subscription_page,
             "jobs": jobs,
             "youtube_jobs": youtube_jobs,
             "reports": reports,
@@ -684,7 +697,7 @@ def subscription_management(request):
             "query": query,
             "selected_state": state,
             "state_choices": SportsBaseSubscription.SyncState.choices,
-            "active_count": sum(item.access_enabled for item in subscriptions),
+            "active_count": active_count,
         },
     )
 
