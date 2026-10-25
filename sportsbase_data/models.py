@@ -639,6 +639,7 @@ class PerformanceAgentRun(models.Model):
     worker_name = models.CharField(max_length=100)
     state = models.CharField(max_length=16, default="running")
     planned_jobs = models.PositiveIntegerField(default=0)
+    last_sequence = models.PositiveIntegerField(default=0)
     current_job_id = models.PositiveIntegerField(null=True, blank=True)
     current_player = models.CharField(max_length=160, blank=True)
     current_stage = models.CharField(max_length=80, blank=True)
