@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import BooleanField, Case, Q, Value, When
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -109,7 +109,11 @@ def _match_info(match):
         stats = match.player_stats
         available = {str(header).casefold().strip() for header in (stats.players_statistics_headers or ())}
         kpis = len(REQUIRED_HEADERS.intersection(available))
-        stats_ok = kpis == len(REQUIRED_HEADERS) and bool(stats.players_statistics_rows)
+        # The bulk issue dashboard does not load huge Players row arrays.
+        has_rows = getattr(match, "monitor_has_rows", None)
+        if has_rows is None:
+            has_rows = bool(stats.players_statistics_rows)
+        stats_ok = kpis == len(REQUIRED_HEADERS) and bool(has_rows)
     except (AttributeError, SportsBaseMatch.player_stats.RelatedObjectDoesNotExist):
         kpis, stats_ok = 0, False
     try:
@@ -169,13 +173,17 @@ def current_issue_digest():
     matches = (
         SportsBaseMatch.objects.filter(subscription__in=active)
         .select_related("subscription__player", "player_stats", "performance_report")
+        .annotate(monitor_has_rows=Case(
+            When(player_stats__isnull=True, then=Value(False)),
+            When(player_stats__players_statistics_rows=[], then=Value(False)),
+            default=Value(True), output_field=BooleanField(),
+        ))
         .only(
             "id", "subscription_id", "sportsbase_match_id", "season", "match_date",
             "home_team", "away_team", "sync_state", "actions_state", "updated_at",
             "subscription__player__name", "subscription__player_id",
             "subscription__all_actions_enabled", "subscription__season",
             "player_stats__players_statistics_headers",
-            "player_stats__players_statistics_rows",
             "performance_report__status", "performance_report__analysis_payload",
         )
         .order_by("-updated_at", "-pk")
