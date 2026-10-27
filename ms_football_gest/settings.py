@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'prospects.apps.ProspectsConfig',
     'client_portal.apps.ClientPortalConfig',
     'sportsbase_data.apps.SportsbaseDataConfig',
+    'data_access',
     'agent_api.apps.AgentApiConfig',
     'crispy_forms',
     'crispy_bootstrap4',
@@ -89,6 +90,7 @@ CHANNEL_LAYERS = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'data_access.middleware.ReaderIsolationMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -142,6 +144,12 @@ DATABASES = {
 
 db_from_env = dj_database_url.config(conn_max_age=600)
 DATABASES['default'].update(db_from_env)
+
+# Independent Hermes reader: closed by default; no secret or new DB by default.
+from data_access.configuration import integration_settings as _data_access_settings, audit_logging as _data_access_logging
+globals().update(_data_access_settings(DATABASES, os.environ))
+LOGGING = _data_access_logging(globals().get('LOGGING', {}))
+del _data_access_settings, _data_access_logging
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 

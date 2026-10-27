@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
+    path('integrations/data/v1/', include('data_access.urls')),
     path('admin/', admin.site.urls),
     path('gestion_joueurs/', include('gestion_joueurs.urls')),
     path('', include('client_portal.urls')),
