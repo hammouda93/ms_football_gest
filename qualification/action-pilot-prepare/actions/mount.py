@@ -47,22 +47,30 @@ def _configuration():
             if type(expires) is not str or not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?[+-]\d\d:\d\d', expires):
                 raise ValueError()
             ttl = (datetime.fromisoformat(expires) - datetime.now(timezone.utc)).total_seconds()
-            if ttl <= 0 or ttl > 86400:
+            if ttl > 86400:
                 raise ValueError()
+            if ttl <= 0 or credential['revoked']:
+                continue
             clean[digest] = {'actor': actor, 'scopes': list(scopes), 'expires': expires, 'revoked': credential['revoked']}
-        return {'enabled': enabled, 'credentials': clean}
+        return {'enabled': enabled and bool(clean), 'credentials': clean}
     except (ValueError, TypeError, OverflowError, RecursionError):
         raise ValueError('actions_pilot_config_invalid') from None
 
 
 def configure(namespace):
-    value = _configuration()
+    try:
+        value = _configuration()
+        diagnostic = '' if value['enabled'] else 'actions_pilot_disabled'
+    except ValueError:
+        value = {'enabled': False, 'credentials': {}}
+        diagnostic = 'actions_pilot_config_invalid'
     namespace['INSTALLED_APPS'] = [*namespace['INSTALLED_APPS'], 'actions']
     middleware = list(namespace['MIDDLEWARE'])
     middleware.insert(middleware.index('django.middleware.security.SecurityMiddleware') + 1,
                       'actions.pilot.PrepareOnlyBoundary')
     namespace['MIDDLEWARE'] = middleware
     namespace['ACTIONS_ENABLED'] = value['enabled']
+    namespace['ACTIONS_PILOT_DIAGNOSTIC'] = diagnostic
     namespace['ACTIONS_CREDENTIALS'] = value['credentials']
     namespace['ACTIONS_EXECUTE_ENABLED'] = False
     namespace['ACTIONS_APPROVAL_KEY'] = ''

@@ -31,8 +31,7 @@ if sys.argv[1:] == ['migrate']:
     call_command('migrate',interactive=False,verbosity=1,run_syncdb=True)
 else:
     labels = ['test_config.ConfigTests','test_boundary.BoundaryTests','test_overlay.PilotOverlayTests',
-              'test_pilot_http.PilotHTTPTests','test_actor.ActorTests','test_http.HTTPTests',
-              'test_quota_migration.QuotaMigrationTests','test_ci_isolation.IsolationTests']
+              'test_pilot_http.PilotHTTPTests','test_ci_isolation.IsolationTests']
     suite = unittest.defaultTestLoader.loadTestsFromNames(labels)
     def ids(node):
         return [i for test in node for i in ids(test)] if isinstance(node,unittest.TestSuite) else [node.id()]

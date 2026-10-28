@@ -28,6 +28,20 @@ def mount(value=None):
     return namespace
 
 class ConfigTests(unittest.TestCase):
+    def test_restart_after_24_hours_soft_disables_expired_writer_only(self):
+        value = config()
+        start = datetime.now(timezone.utc)
+        digest = next(iter(value['credentials']))
+        value['credentials'][digest]['expires'] = (start + timedelta(hours=24)).isoformat()
+        with patch('actions.mount.datetime', wraps=datetime) as clock:
+            clock.now.return_value = start + timedelta(hours=24, seconds=1)
+            result = mount(value)
+        self.assertIs(result['ACTIONS_ENABLED'], False)
+        self.assertEqual(result['ACTIONS_CREDENTIALS'], {})
+        self.assertEqual(result['ACTIONS_PILOT_DIAGNOSTIC'], 'actions_pilot_disabled')
+        self.assertEqual(result['HERMES_READER']['credentials'], {'FICTION-reader-hash': 'preserved'})
+        self.assertIs(result['ACTIONS_EXECUTE_ENABLED'], False)
+
     def test_explicit_hash_only_opt_in_and_reader_intact(self):
         value = config()
         result = mount(value)
@@ -54,7 +68,6 @@ class ConfigTests(unittest.TestCase):
                              ('scopes', SCOPES + [SCOPES[0]]), ('scopes', 'prepare'),
                              ('revoked', 0), ('secret', 'FICTION-secret-do-not-echo'),
                              ('expires', '2099-01-01T00:00:00+00:00'),
-                             ('expires', '2020-01-01T00:00:00+00:00'),
                              ('expires', '2026-10-28T12:00:00')]:
             value_config = copy.deepcopy(base)
             value_config['credentials'][digest][field] = value
@@ -63,12 +76,32 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(value_type=type(value).__name__):
                 with patch.dict('os.environ', {'MSF_ACTIONS_PILOT_CONFIG': json.dumps(value)}, clear=True):
                     namespace = {'INSTALLED_APPS': [], 'MIDDLEWARE': ['django.middleware.security.SecurityMiddleware']}
-                    with self.assertRaisesRegex(ValueError, '^actions_pilot_config_invalid$'):
-                        configure(namespace)
-                    self.assertNotIn('ACTIONS_ENABLED', namespace)
-        with patch.dict('os.environ', {'MSF_ACTIONS_PILOT_CONFIG': '{"enabled":false,"enabled":true,"credentials":{}}'}, clear=True):
-            with self.assertRaisesRegex(ValueError, '^actions_pilot_config_invalid$'):
-                configure({'INSTALLED_APPS': [], 'MIDDLEWARE': []})
+                    configure(namespace)
+                    self.assertIs(namespace['ACTIONS_ENABLED'], False)
+                    self.assertEqual(namespace['ACTIONS_CREDENTIALS'], {})
+                    self.assertEqual(namespace['ACTIONS_PILOT_DIAGNOSTIC'], 'actions_pilot_config_invalid')
+                    self.assertIs(namespace['ACTIONS_EXECUTE_ENABLED'], False)
+                    self.assertEqual(namespace['ACTIONS_APPROVAL_KEY'], '')
+        for raw in ['{"enabled":false,"enabled":true,"credentials":{}}',
+                    '{FICTION-secret-do-not-echo', 'x' * 16001, '[' * 1001]:
+            with patch.dict('os.environ', {'MSF_ACTIONS_PILOT_CONFIG': raw}, clear=True):
+                namespace = {'INSTALLED_APPS': [], 'MIDDLEWARE': ['django.middleware.security.SecurityMiddleware']}
+                configure(namespace)
+                self.assertIs(namespace['ACTIONS_ENABLED'], False)
+                self.assertEqual(namespace['ACTIONS_CREDENTIALS'], {})
+                self.assertEqual(namespace['ACTIONS_PILOT_DIAGNOSTIC'], 'actions_pilot_config_invalid')
+
+    def test_revoked_and_expired_entries_never_reenable_writer(self):
+        value = config()
+        credential = next(iter(value['credentials'].values()))
+        credential['revoked'] = True
+        result = mount(value)
+        self.assertIs(result['ACTIONS_ENABLED'], False)
+        self.assertEqual(result['ACTIONS_CREDENTIALS'], {})
+        credential['actor'] = True
+        result = mount(value)
+        self.assertEqual(result['ACTIONS_PILOT_DIAGNOSTIC'], 'actions_pilot_config_invalid')
+        self.assertIs(result['ACTIONS_ENABLED'], False)
 
     def test_default_closed_without_credentials(self):
         result = mount()

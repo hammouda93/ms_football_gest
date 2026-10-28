@@ -31,7 +31,34 @@ try:
 except ModuleNotFoundError:
     PrepareOnlyBoundary = OperationalWriterBoundary
 
+from django.urls import path
+urlpatterns = [path('ordinary/', lambda request: HttpResponse('ordinary available')),
+               path('integrations/data/v1/schema/', lambda request: HttpResponse('reader dispatched'))]
+
 class BoundaryTests(unittest.TestCase):
+    def test_wsgi_restart_expired_or_malformed_config_keeps_other_routes_available(self):
+        import json
+        from datetime import datetime, timedelta, timezone
+        from django.db import connection
+        from django.test import Client
+        from test_config import config, mount
+        expired = config()
+        next(iter(expired['credentials'].values()))['expires'] = (datetime.now(timezone.utc)-timedelta(hours=24)).isoformat()
+        for value in (expired, {'enabled': 'true', 'credentials': {}}, {'enabled': True, 'credentials': []}):
+            mounted = mount(value)
+            options = {key: val for key, val in mounted.items() if key.startswith('ACTIONS_')}
+            options.update(ROOT_URLCONF=__name__, ALLOWED_HOSTS=['testserver'],
+                           MIDDLEWARE=mounted['MIDDLEWARE'][:2])
+            with self.subTest(configuration=mounted['ACTIONS_PILOT_DIAGNOSTIC']), override_settings(**options):
+                with patch.object(connection, 'get_autocommit', side_effect=AssertionError('SQL reached')):
+                    client = Client()
+                    self.assertEqual(client.get('/ordinary/').content, b'ordinary available')
+                    self.assertEqual(client.get('/integrations/data/v1/schema/').content, b'reader dispatched')
+                    refused = client.post('/actions/v1/prepare', '{}', content_type='application/json')
+                    self.assertEqual(refused.status_code, 403)
+                    self.assertEqual(json.loads(refused.content), {'error': 'writer_disabled'})
+                    self.assertEqual(client.post('/actions/v1/execute').status_code, 403)
+
     def test_execute_denied_before_auth_database_even_if_flags_or_credentials_grant_it(self):
         from django.db import connection
         request = RequestFactory().post('/actions/v1/execute', '{}', content_type='application/json')

@@ -29,19 +29,19 @@
       "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9"
     },
     "actions/mount.py": {
-      "sha256": "b9355f61d162ceffcb6432560d7d570f6414a5ffeda663043b96c34686348745"
+      "sha256": "f4102a954125624948db8058525884de6c1bbd76b519bde1e01f97d36f750d04"
     },
     "actions/pilot.py": {
       "sha256": "7358c2c5a489d1d146516d2633079bad8db9bbd9393438648491387666cc7a25"
     },
-    "hermes-plugin/__init__.py": {
-      "sha256": "6e78e18e151cd38684cb33d98197f3defdf2606aa10746ac53b6837c23628b3c"
+    "build_preview.py": {
+      "sha256": "81632ca2f5daded080ab504b431ed526e389a0067ea2368f3b6217f309c46964"
     },
-    "hermes-plugin/native_approval.py": {
-      "sha256": "6b13b254dbb80c66d30b5cf1fa89e7640526cfea768979a0d5df170be2ffa134"
+    "ci_preview.py": {
+      "sha256": "4c1c452ab323effe18d57a14ee6f17f29cc03d2eef647c5771269d548f7e18e2"
     },
-    "hermes-plugin/plugin.yaml": {
-      "sha256": "06091011181a0936de9a0825e1dffa5eba4f84653367831ade62b1dfdbd21ff8"
+    "ci_worker.py": {
+      "sha256": "465d791554fd2d52219b9c531c4e787e0577a6985ec591d6056fc74ed3ebc7c0"
     },
     "deployment-overlay/actions/__init__.py": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -71,7 +71,7 @@
       "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9"
     },
     "deployment-overlay/actions/mount.py": {
-      "sha256": "b9355f61d162ceffcb6432560d7d570f6414a5ffeda663043b96c34686348745"
+      "sha256": "f4102a954125624948db8058525884de6c1bbd76b519bde1e01f97d36f750d04"
     },
     "deployment-overlay/actions/pilot.py": {
       "sha256": "7358c2c5a489d1d146516d2633079bad8db9bbd9393438648491387666cc7a25"
@@ -88,29 +88,14 @@
     "deployment-overlay/ms_football_gest/settings.py": {
       "sha256": "d9b8b775ae461e50156eb809799e5ffca90c829ccbd80c5e831d621be2080930"
     },
-    "release327-to-pilot.patch": {
-      "sha256": "5d76a0777f4f8269297888b3b41b4c836cdea9401266ac96e266d68b9ffcfb24"
+    "hermes-plugin/__init__.py": {
+      "sha256": "6e78e18e151cd38684cb33d98197f3defdf2606aa10746ac53b6837c23628b3c"
     },
-    "test_config.py": {
-      "sha256": "ee03f33e92a64fca466a9bb25fb922af6bdf87b8575cf63a4d568da3dd23305b"
+    "hermes-plugin/native_approval.py": {
+      "sha256": "6b13b254dbb80c66d30b5cf1fa89e7640526cfea768979a0d5df170be2ffa134"
     },
-    "test_boundary.py": {
-      "sha256": "ade222acd75536f79a7ac2026f517c4e71df72beae78e25634f2b550eac80d45"
-    },
-    "test_overlay.py": {
-      "sha256": "2add8cad6d67ac825b9be805b0c31148c3518d12142476fd4dff3a8b67793ace"
-    },
-    "test_pilot_http.py": {
-      "sha256": "a84a5d453e7a443efbf9e77b1aaf3855ee1a7add095dae2ee87bdc4131cea35b"
-    },
-    "ci_worker.py": {
-      "sha256": "4b4a844b11394c66e995a9abbc854e8955822f2b00745d670c953d98f29f4275"
-    },
-    "ci_preview.py": {
-      "sha256": "4c1c452ab323effe18d57a14ee6f17f29cc03d2eef647c5771269d548f7e18e2"
-    },
-    "slug_overlay.py": {
-      "sha256": "6ece1556c742c6c88c06e7c86c3a777ef7e4442c33ecf74f616ba871243c2a1b"
+    "hermes-plugin/plugin.yaml": {
+      "sha256": "06091011181a0936de9a0825e1dffa5eba4f84653367831ade62b1dfdbd21ff8"
     },
     "isolation.py": {
       "sha256": "c7aeee51195c169b6b1535df9e4131bd39108661e12f3a3cbda31c75b0c82f9a"
@@ -120,7 +105,33 @@
     },
     "lab_urls.py": {
       "sha256": "86ee6ac68f705244b145e00a2068718b2534e5f436ab9dc82e580cc65f4fc80e"
+    },
+    "rebuild_final.py": {
+      "sha256": "42beb81a434509a385af9dc5307821161735674ebd0939bd4056a81b9e2fe2d1"
+    },
+    "release327-to-pilot.patch": {
+      "sha256": "b0efe96c1723925b5789e701f85fc5f23530168aeb7da9885e91081bdaf49531"
+    },
+    "slug_overlay.py": {
+      "sha256": "6ece1556c742c6c88c06e7c86c3a777ef7e4442c33ecf74f616ba871243c2a1b"
+    },
+    "test_boundary.py": {
+      "sha256": "f84b3b67767f8b2be14a446a648026efed7b23cf234c12394fc34e3997f9f380"
+    },
+    "test_config.py": {
+      "sha256": "76d6afc910a2ad8fc8c94717b40a2ef2a934b0c2bd4915fb5dd576b697a4a9e0"
+    },
+    "test_overlay.py": {
+      "sha256": "2add8cad6d67ac825b9be805b0c31148c3518d12142476fd4dff3a8b67793ace"
+    },
+    "test_packaged_settings.py": {
+      "sha256": "a720f24c3c614e0cf682628287bcc2e936b0bf728f321846791faaf4da3973ac"
+    },
+    "test_pilot_http.py": {
+      "sha256": "a84a5d453e7a443efbf9e77b1aaf3855ee1a7add095dae2ee87bdc4131cea35b"
     }
   },
-  "previewOnly": true
+  "previewOnly": true,
+  "previousSourceCommit": "89d4fc9f426003cd12822031bf3f2c1ad5612d17",
+  "productionAuthorized": false
 }
