@@ -1,0 +1,126 @@
+{
+  "baseCICommit": "7a2fea17dfb7d9a5f0db7845d248fd8783c2a9c4",
+  "files": {
+    "actions/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actions/effects.py": {
+      "sha256": "f2f73eb816c7d13ff7d2ae10a4dd2d4103c1c5206c49b66e10430e02e37ddc82"
+    },
+    "actions/engine.py": {
+      "sha256": "47e0f250f99cd50de1f75fdde11ca75fd762511708523dbbbe57edf20cfd4b80"
+    },
+    "actions/http.py": {
+      "sha256": "5ec0cb4f4bb090ead1dd6f5e565dd76761f1f4bb9b2f5b3952bde69feaf78c40"
+    },
+    "actions/limits.py": {
+      "sha256": "c3d06fd49552d22ace132a6f9e71998b67b9605b6803ffdacbdface1cd01b723"
+    },
+    "actions/migrations/0001_initial.py": {
+      "sha256": "deb1b8d9e877db21aef295faeb26efd18bdeabba8509bb77f29cf3c37faaa51a"
+    },
+    "actions/migrations/0002_quotabucket.py": {
+      "sha256": "0911c5864408084f0f10074104040bb30b7ee031abecb41dfa89b37f70a98296"
+    },
+    "actions/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actions/models.py": {
+      "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9"
+    },
+    "actions/mount.py": {
+      "sha256": "b9355f61d162ceffcb6432560d7d570f6414a5ffeda663043b96c34686348745"
+    },
+    "actions/pilot.py": {
+      "sha256": "7358c2c5a489d1d146516d2633079bad8db9bbd9393438648491387666cc7a25"
+    },
+    "hermes-plugin/__init__.py": {
+      "sha256": "6e78e18e151cd38684cb33d98197f3defdf2606aa10746ac53b6837c23628b3c"
+    },
+    "hermes-plugin/native_approval.py": {
+      "sha256": "6b13b254dbb80c66d30b5cf1fa89e7640526cfea768979a0d5df170be2ffa134"
+    },
+    "hermes-plugin/plugin.yaml": {
+      "sha256": "06091011181a0936de9a0825e1dffa5eba4f84653367831ade62b1dfdbd21ff8"
+    },
+    "deployment-overlay/actions/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "deployment-overlay/actions/effects.py": {
+      "sha256": "f2f73eb816c7d13ff7d2ae10a4dd2d4103c1c5206c49b66e10430e02e37ddc82"
+    },
+    "deployment-overlay/actions/engine.py": {
+      "sha256": "47e0f250f99cd50de1f75fdde11ca75fd762511708523dbbbe57edf20cfd4b80"
+    },
+    "deployment-overlay/actions/http.py": {
+      "sha256": "5ec0cb4f4bb090ead1dd6f5e565dd76761f1f4bb9b2f5b3952bde69feaf78c40"
+    },
+    "deployment-overlay/actions/limits.py": {
+      "sha256": "c3d06fd49552d22ace132a6f9e71998b67b9605b6803ffdacbdface1cd01b723"
+    },
+    "deployment-overlay/actions/migrations/0001_initial.py": {
+      "sha256": "deb1b8d9e877db21aef295faeb26efd18bdeabba8509bb77f29cf3c37faaa51a"
+    },
+    "deployment-overlay/actions/migrations/0002_quotabucket.py": {
+      "sha256": "0911c5864408084f0f10074104040bb30b7ee031abecb41dfa89b37f70a98296"
+    },
+    "deployment-overlay/actions/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "deployment-overlay/actions/models.py": {
+      "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9"
+    },
+    "deployment-overlay/actions/mount.py": {
+      "sha256": "b9355f61d162ceffcb6432560d7d570f6414a5ffeda663043b96c34686348745"
+    },
+    "deployment-overlay/actions/pilot.py": {
+      "sha256": "7358c2c5a489d1d146516d2633079bad8db9bbd9393438648491387666cc7a25"
+    },
+    "deployment-overlay/gestion_joueurs/middleware.py": {
+      "sha256": "4184da1a6ce7e45004ba618b4f6d3d00185d355b21e6929d2c459811fc6dc0d2"
+    },
+    "deployment-overlay/gestion_joueurs/signals.py": {
+      "sha256": "ce69b17b01f0c383511a02ffc1e262de4ac45d94cbeac5f9b9092504ed5e9758"
+    },
+    "deployment-overlay/gestion_joueurs/utils.py": {
+      "sha256": "c67a03b88976af2fb3c4c0956ae3e7917d34d382fda36c21aa4112ccbeabf05f"
+    },
+    "deployment-overlay/ms_football_gest/settings.py": {
+      "sha256": "d9b8b775ae461e50156eb809799e5ffca90c829ccbd80c5e831d621be2080930"
+    },
+    "release327-to-pilot.patch": {
+      "sha256": "5d76a0777f4f8269297888b3b41b4c836cdea9401266ac96e266d68b9ffcfb24"
+    },
+    "test_config.py": {
+      "sha256": "ee03f33e92a64fca466a9bb25fb922af6bdf87b8575cf63a4d568da3dd23305b"
+    },
+    "test_boundary.py": {
+      "sha256": "ade222acd75536f79a7ac2026f517c4e71df72beae78e25634f2b550eac80d45"
+    },
+    "test_overlay.py": {
+      "sha256": "51b1952d61458a0035a18b9cd15c2a7440bc7cb611f7c9a85ee6b6719ec58454"
+    },
+    "test_pilot_http.py": {
+      "sha256": "a84a5d453e7a443efbf9e77b1aaf3855ee1a7add095dae2ee87bdc4131cea35b"
+    },
+    "ci_worker.py": {
+      "sha256": "4b4a844b11394c66e995a9abbc854e8955822f2b00745d670c953d98f29f4275"
+    },
+    "ci_preview.py": {
+      "sha256": "4c1c452ab323effe18d57a14ee6f17f29cc03d2eef647c5771269d548f7e18e2"
+    },
+    "slug_overlay.py": {
+      "sha256": "6ece1556c742c6c88c06e7c86c3a777ef7e4442c33ecf74f616ba871243c2a1b"
+    },
+    "isolation.py": {
+      "sha256": "c7aeee51195c169b6b1535df9e4131bd39108661e12f3a3cbda31c75b0c82f9a"
+    },
+    "lab_settings.py": {
+      "sha256": "7d346f66f969002cd24f9af3841c21a95488e4b3d87ce60f557502d1dd26e09e"
+    },
+    "lab_urls.py": {
+      "sha256": "86ee6ac68f705244b145e00a2068718b2534e5f436ab9dc82e580cc65f4fc80e"
+    }
+  },
+  "previewOnly": true
+}

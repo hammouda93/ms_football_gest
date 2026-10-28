@@ -1,0 +1,677 @@
+diff --git a/actions/__init__.py b/actions/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/actions/effects.py b/actions/effects.py
+new file mode 100644
+index 0000000..22c513b
+--- /dev/null
++++ b/actions/effects.py
+@@ -0,0 +1,17 @@
++"""Capture newly inserted internal effects in the current execution context."""
++from contextvars import ContextVar
++from contextlib import contextmanager
++from django.db.models.signals import post_save
++from gestion_joueurs.models import VideoStatusHistory,Notification,Invoice
++_active=ContextVar('action_effects',default=None)
++_MODELS={VideoStatusHistory:'history',Notification:'notifications',Invoice:'invoices'}
++def capture(sender,instance,created,**kwargs):
++    value=_active.get()
++    if value is not None and created and sender in _MODELS:value[_MODELS[sender]].append(instance.pk)
++post_save.connect(capture,weak=False,dispatch_uid='action02_effect_capture')
++@contextmanager
++def effects_context():
++    value={k:[] for k in _MODELS.values()}
++    token=_active.set(value)
++    try:yield value
++    finally:_active.reset(token)
+diff --git a/actions/engine.py b/actions/engine.py
+new file mode 100644
+index 0000000..5f27eb6
+--- /dev/null
++++ b/actions/engine.py
+@@ -0,0 +1,195 @@
++"""Server-owned composable business adapters, not arbitrary ORM CRUD."""
++from django.db import transaction
++from django.core.exceptions import ObjectDoesNotExist,ValidationError
++from gestion_joueurs.forms import PlayerForm,VideoForm
++from gestion_joueurs.models import Player,Video,VideoEditor,Invoice
++from gestion_joueurs.views import _associate_player_organization
++from client_portal.models import Organization,OrganizationPlayer
++from .models import Plan
++
++class Engine:
++    def __init__(self,actor_id): self.actor_id=actor_id
++    def authorize(self):
++        from django.contrib.auth.models import User
++        from .models import Audit
++        if not User.objects.filter(pk=self.actor_id,is_active=True,is_superuser=True).exists():
++            Audit.objects.create(actor_id=self.actor_id,event='refused',code='permission_denied')
++            raise PermissionError('permission_denied')
++    def catalogue(self):
++        return {
++          'player.create':{'model':'gestion_joueurs.Player','fields':['name','club','league','position','date_of_birth'],'required':['name','club','league','position','date_of_birth']},
++          'organization.link':{'model':'client_portal.OrganizationPlayer','fields':['player','organization','expected_matches'],'required':['player','organization','expected_matches']},
++          'video.order':{'model':'gestion_joueurs.Video','fields':['player','editor','client_organization','whatsapp_conversation_date','deadline_from_whatsapp','match_package','season','advance_payment','info'],'required':['player','editor','client_organization','whatsapp_conversation_date','deadline_from_whatsapp','match_package','season','advance_payment','info']},
++          'player.amend':{'model':'gestion_joueurs.Player','fields':['id','club','position'],'required':['id']},
++          'video.amend':{'model':'gestion_joueurs.Video','fields':['id','info'],'required':['id','info']}}
++    def validate(self,steps):
++        import json,re
++        if not isinstance(steps,list) or not 1<=len(steps)<=12 or len(json.dumps(steps))>24000:raise ValueError('invalid_plan')
++        seen={}
++        relations={'player':'gestion_joueurs.Player'}
++        for s in steps:
++            if not isinstance(s,dict) or set(s)!={'as','op','values'}:raise ValueError('invalid_step')
++            if not isinstance(s['op'],str) or s['op'] not in self.catalogue():raise ValueError('operation_forbidden')
++            if not isinstance(s['as'],str) or not re.fullmatch('[a-z][a-z0-9_]{0,31}',s['as']) or s['as'] in seen:raise ValueError('invalid_alias')
++            rule=self.catalogue()[s['op']];v=s['values']
++            if not isinstance(v,dict) or set(v)-set(rule['fields']):raise ValueError('field_forbidden')
++            if set(rule['required'])-set(v):raise ValueError('missing_field')
++            for k,x in v.items():
++                if isinstance(x,dict):
++                    if set(x)!={'ref'} or not isinstance(x['ref'],str) or x['ref'] not in seen or k not in relations or seen[x['ref']]!=relations[k]:raise ValueError('invalid_reference')
++                elif not isinstance(x,(str,int,bool)) or x is None:raise ValueError('invalid_value')
++                else:
++                    expected=bool if k=='deadline_from_whatsapp' else (int if k in ('id','player','organization','editor','client_organization','match_package','expected_matches') else str)
++                    if type(x) is not expected:raise ValueError('invalid_type')
++                    if expected is int and x<=0:raise ValueError('invalid_type')
++                    if expected is str and len(x)>8000:raise ValueError('invalid_value')
++            if s['op']=='video.order':self.payment(v['advance_payment'])
++            seen[s['as']]=rule['model']
++    @staticmethod
++    def payment(value,require_zero=False):
++        from decimal import Decimal,InvalidOperation
++        try:
++            advance=Decimal(value)
++            if not advance.is_finite() or (require_zero and advance!=0):
++                raise ValueError('payment_not_supported')
++        except (InvalidOperation,TypeError,ValueError):
++            raise ValueError('payment_not_supported') from None
++        return advance
++    def prepare(self,key,steps):
++        self.authorize()
++        from .models import Audit
++        try:self.validate(steps)
++        except ValueError as exc:
++            Audit.objects.create(actor_id=self.actor_id,event='refused',code=str(exc));raise
++        import hashlib,json,re
++        if not isinstance(key,str) or not re.fullmatch('[A-Za-z0-9_-]{1,80}',key):raise ValueError('invalid_key')
++        digest=hashlib.sha256(json.dumps(steps,sort_keys=True,separators=(',',':')).encode()).hexdigest()
++        with transaction.atomic():
++            p,created=Plan.objects.get_or_create(actor_id=self.actor_id,key=key,defaults={'digest':digest,'steps':steps})
++            if p.steps!=steps:raise ValueError('idempotency_mismatch')
++            if created:
++                p.snapshots=self.snapshots(steps);p.digest=self.proposal_digest(p.steps,p.snapshots);p.save(update_fields=['snapshots','digest'])
++                Audit.objects.create(plan=p,actor_id=self.actor_id,event='prepared')
++        return self.status(p.pk)
++    def snapshots(self,steps,lock=False):
++        import hashlib,json
++        out={'__preview__':self.preview(steps)}
++        for s in steps:
++            if s['op'] in ('player.amend','video.amend'):
++                model=Player if s['op']=='player.amend' else Video
++                qs=model.objects.select_for_update() if lock else model.objects
++                try:row=qs.values().get(pk=s['values']['id'])
++                except model.DoesNotExist:raise ValueError('target_missing')
++                out[s['as']]=hashlib.sha256(json.dumps(row,sort_keys=True,default=str).encode()).hexdigest()
++        # Only player.create aliases are new rows; player.amend aliases name
++        # existing players and must carry the same dependencies as literal IDs.
++        existing_players={s['as']:s['values']['id'] for s in steps if s['op']=='player.amend'}
++        def concrete(value):
++            return existing_players.get(value['ref']) if isinstance(value,dict) else value
++        # Snapshot concrete players, editors/users and organizations.
++        for s in steps:
++            for field,model in [('player',Player),('organization',Organization),('client_organization',Organization),('editor',VideoEditor)]:
++                pk=concrete(s['values'].get(field))
++                if type(pk) is not int:continue
++                qs=model.objects.select_for_update() if lock else model.objects
++                row=qs.values().filter(pk=pk).first()
++                out[model._meta.label+':'+str(pk)]=hashlib.sha256(json.dumps(row,sort_keys=True,default=str).encode()).hexdigest()
++                if model is VideoEditor and row:
++                    from django.contrib.auth.models import User
++                    users=User.objects.select_for_update() if lock else User.objects
++                    u=users.values().filter(pk=row['user_id']).first()
++                    out['auth.User:'+str(row['user_id'])]=hashlib.sha256(json.dumps(u,sort_keys=True,default=str).encode()).hexdigest()
++        for s in steps:
++            if s['op'] not in ('organization.link','video.order'):continue
++            v=s['values'];player=concrete(v.get('player'));organization=v.get('organization',v.get('client_organization'))
++            if type(player) is not int or type(organization) is not int:continue
++            links=OrganizationPlayer.objects.filter(player_id=player,organization_id=organization).order_by('pk')
++            if lock:links=links.select_for_update()
++            rows=list(links.values())
++            out['membership:'+str(player)+':'+str(organization)]=hashlib.sha256(json.dumps(rows,sort_keys=True,default=str).encode()).hexdigest()
++        return out
++    def preview(self,steps):
++        from datetime import date,timedelta
++        orders=[]
++        for s in steps:
++            if s['op']=='video.order':
++                v=s['values']
++                try:deadline=(date.fromisoformat(v['whatsapp_conversation_date'])+timedelta(days=5)).isoformat()
++                except OverflowError:raise ValueError('invalid_deadline') from None
++                except ValueError:deadline=None
++                from decimal import Decimal
++                price=Video.MATCH_PACKAGE_PRICES.get(v['match_package'])
++                orders.append({'as':s['as'],'price':format(Decimal(str(price)),'.2f') if price is not None else None,'advance_payment':v['advance_payment'],'deadline':deadline,'effects':['video','invoice','history','possible_internal_notification']})
++        return {'operations':steps,'orders':orders}
++    @staticmethod
++    def proposal_digest(steps,snapshots):
++        import hashlib,json
++        return hashlib.sha256(json.dumps({'steps':steps,'preconditions':snapshots},sort_keys=True,separators=(',',':')).encode()).hexdigest()
++    def status(self,plan_id):
++        self.authorize()
++        p=Plan.objects.get(pk=plan_id,actor_id=self.actor_id)
++        return {'id':str(p.pk),'state':p.state,'results':p.results,'error':p.error,'effects':p.effects}
++    def execute(self,plan_id):
++        self.authorize()
++        from django.contrib.auth.models import User
++        actor=User.objects.get(pk=self.actor_id)
++        with transaction.atomic():
++            from django.db import connection
++            with connection.cursor() as cursor:
++                cursor.execute('SELECT pg_try_advisory_xact_lock(41001,1)')
++                if not cursor.fetchone()[0]:raise ValueError('busy')
++            p=Plan.objects.select_for_update().get(pk=plan_id,actor_id=self.actor_id)
++            if p.state!='prepared':return self.status(p.pk)
++            self.validate(p.steps)
++            import hashlib,json
++            if self.proposal_digest(p.steps,p.snapshots)!=p.digest:raise ValueError('plan_integrity')
++            try:
++                with transaction.atomic():
++                    if self.snapshots(p.steps,lock=True)!=p.snapshots:raise ValueError('conflict')
++                    from gestion_joueurs.utils import actor_context
++                    from .effects import effects_context
++                    with actor_context(actor), effects_context() as effects:
++                        results=self._apply(p.steps,actor)
++            except (ValueError,ObjectDoesNotExist,ValidationError) as exc:
++                code='target_missing' if isinstance(exc,ObjectDoesNotExist) else ('invalid_model' if isinstance(exc,ValidationError) else str(exc))
++                p.state='failed';p.error=code;p.results={};p.save()
++                from .models import Audit
++                Audit.objects.create(plan=p,actor_id=self.actor_id,event='failed',code=p.error)
++            else:
++                p.state='succeeded';p.results=results;p.effects=effects;p.save()
++                from .models import Audit
++                Audit.objects.create(plan=p,actor_id=self.actor_id,event='succeeded')
++        return self.status(p.pk)
++    def _apply(self,steps,actor):
++            results={}
++            for step in steps:
++                values={k:(results[v['ref']] if isinstance(v,dict) else v) for k,v in step['values'].items()}
++                if step['op']=='player.create':
++                    if Player.objects.filter(name__iexact=values['name'].strip(),date_of_birth=values['date_of_birth']).exists():raise ValueError('duplicate_player')
++                    f=PlayerForm(values)
++                    if not f.is_valid():raise ValueError('invalid_player')
++                    obj=f.save()
++                elif step['op']=='organization.link':
++                    if type(values['expected_matches']) is not int or values['expected_matches'] not in (3,5,10):raise ValueError('invalid_link')
++                    org=Organization.objects.get(pk=values['organization'],is_active=True,kind__in=['agent','academy'])
++                    obj=_associate_player_organization(player=Player.objects.get(pk=values['player']),organization=org,user=actor)
++                    obj.expected_matches=values['expected_matches'];obj.save()
++                elif step['op']=='video.order':
++                    advance=self.payment(values['advance_payment'],require_zero=True)
++                    if values['deadline_from_whatsapp'] is not True:raise ValueError('automatic_deadline_required')
++                    player=Player.objects.get(pk=values.pop('player'))
++                    if Video.objects.filter(player=player,season=values['season'],client_organization_id=values['client_organization']).exists():raise ValueError('duplicate_order')
++                    if not OrganizationPlayer.objects.filter(player=player,organization_id=values['client_organization'],is_active=True,expected_matches=values['match_package'],organization__is_active=True).exists():raise ValueError('organization_link_mismatch')
++                    f=VideoForm(dict(values,status='pending',total_payment='0',seasons_to_process=1,matches_processed=0),user=actor,player=player)
++                    if not f.is_valid():raise ValueError('invalid_video')
++                    obj=f.save(commit=False);obj.player=player;obj.club=player.club;obj.league=player.league;obj.save()
++                    Invoice.objects.create(video=obj,total_amount=obj.total_payment,amount_paid=obj.advance_payment,status='unpaid',created_by=actor)
++                elif step['op']=='player.amend':
++                    obj=Player.objects.get(pk=values.pop('id'))
++                    for k,v in values.items():setattr(obj,k,v)
++                    obj.full_clean(exclude=['email']);obj.save()
++                elif step['op']=='video.amend':
++                    obj=Video.objects.get(pk=values.pop('id'))
++                    obj.info=values['info'];obj.full_clean();obj.save(update_fields=['info'])
++                results[step['as']]=obj.pk
++            return results
+diff --git a/actions/http.py b/actions/http.py
+new file mode 100644
+index 0000000..1600dd8
+--- /dev/null
++++ b/actions/http.py
+@@ -0,0 +1,124 @@
++"""Dedicated writer boundary. No reader credential or session fallback."""
++import base64,hashlib,hmac,json
++from datetime import datetime
++from django.conf import settings
++from django.http import JsonResponse
++from django.utils import timezone
++from django.db import transaction
++from django.core.exceptions import ObjectDoesNotExist,ValidationError
++from .engine import Engine
++from .models import Plan
++
++def canonical(value):
++    return json.dumps(value,sort_keys=True,separators=(',',':')).encode()
++
++def issue_approval(plan_id,actor,digest,expires):
++    # Trusted approval authority only; never registered as an agent/HTTP action.
++    value={'plan':str(plan_id),'actor':actor,'digest':digest,'expires':expires.isoformat()}
++    raw=canonical(value)
++    key=getattr(settings,'ACTIONS_APPROVAL_KEY','')
++    if not isinstance(key,str) or len(key)<32:raise PermissionError('approval_unconfigured')
++    return base64.urlsafe_b64encode(raw).decode()+'.'+hmac.new(key.encode(),raw,hashlib.sha256).hexdigest()
++
++def verify_approval(token,p,actor):
++    try:
++        encoded,signature=token.split('.')
++        raw=base64.b64decode(encoded,altchars=b'-_',validate=True)
++        key=getattr(settings,'ACTIONS_APPROVAL_KEY','')
++        if not isinstance(key,str) or len(key)<32:raise ValueError()
++        if not hmac.compare_digest(signature,hmac.new(key.encode(),raw,hashlib.sha256).hexdigest()):raise ValueError()
++        value=json.loads(raw)
++        expires=datetime.fromisoformat(value['expires'])
++        if timezone.is_naive(expires) or expires<=timezone.now():raise ValueError()
++        if set(value)!={'plan','actor','digest','expires'} or type(value['actor']) is not int:raise ValueError()
++        if Engine.proposal_digest(p.steps,p.snapshots)!=p.digest:raise ValueError()
++        if (value['plan'],value['actor'],value['digest'])!=(str(p.pk),actor,p.digest):raise ValueError()
++    except (ValueError,TypeError,KeyError,AttributeError):raise PermissionError('approval_invalid')
++
++def respond(data,status=200):
++    r=JsonResponse(data,status=status);r['Cache-Control']='no-store';return r
++
++class WriterBoundary:
++    def __init__(self,get_response):self.get_response=get_response
++    def __call__(self,request):
++        if not (request.path=='/actions' or request.path.startswith('/actions/')):return self.get_response(request)
++        try:return self.dispatch(request)
++        except PermissionError as e:return respond({'error':str(e)},403)
++        except (ValueError,TypeError,KeyError,ValidationError):return respond({'error':'invalid_request'},400)
++        except ObjectDoesNotExist:return respond({'error':'not_found'},404)
++    def dispatch(self,request):
++        if getattr(settings,'ACTIONS_ENABLED',False) is not True:raise PermissionError('writer_disabled')
++        auth=request.META.get('HTTP_AUTHORIZATION','')
++        if not auth.startswith('Bearer ') or len(auth)>256:raise PermissionError('credential_invalid')
++        c=getattr(settings,'ACTIONS_CREDENTIALS',{}).get(hashlib.sha256(auth[7:].encode()).hexdigest())
++        try:
++            if not isinstance(c,dict) or set(c)!={'actor','scopes','expires','revoked'}:raise ValueError()
++            if type(c['actor']) is not int or c['actor']<=0 or c['revoked'] is not False:raise ValueError()
++            if not isinstance(c['scopes'],list) or any(type(s) is not str for s in c['scopes']):raise ValueError()
++            expiry=datetime.fromisoformat(c['expires'])
++            if timezone.is_naive(expiry) or expiry<=timezone.now():raise ValueError()
++        except (ValueError,TypeError,KeyError):raise PermissionError('credential_invalid')
++        routes={'/actions/v1/catalogue':('GET','catalogue'),'/actions/v1/prepare':('POST','prepare'),'/actions/v1/execute':('POST','execute'),'/actions/v1/status':('POST','status')}
++        if request.path not in routes:return respond({'error':'not_found'},404)
++        method,op=routes[request.path]
++        if request.method!=method:return respond({'error':'method_not_allowed'},405)
++        if op not in c['scopes']:raise PermissionError('scope_denied')
++        return self.authorized_dispatch(request,c,op)
++    def authorized_dispatch(self,request,c,op):
++        e=Engine(c['actor']);e.authorize()
++        if op=='catalogue':return respond({'catalogue':e.catalogue()})
++        length=request.META.get('CONTENT_LENGTH','0')
++        if not length.isdigit() or int(length)>32000:raise ValueError()
++        if request.content_type!='application/json':raise ValueError()
++        raw=request.body
++        if len(raw)>32000:raise ValueError()
++        data=json.loads(raw)
++        if not isinstance(data,dict):raise ValueError()
++        if op=='prepare':
++            if set(data)!={'key','steps'}:raise ValueError()
++            e.validate(data['steps'])
++            if any('op:'+s['op'] not in c['scopes'] for s in data['steps']):raise PermissionError('scope_denied')
++            result=e.prepare(data['key'],data['steps'])
++            p=Plan.objects.get(pk=result['id'],actor_id=c['actor'])
++            return respond(dict(result,digest=p.digest,preview=p.snapshots['__preview__'],preconditions=p.snapshots))
++        import uuid
++        if type(data.get('id')) is not str:raise ValueError()
++        if str(uuid.UUID(data['id']))!=data['id']:raise ValueError()
++        if op=='status':
++            if set(data)!={'id'}:raise ValueError()
++            return respond(e.status(data['id']))
++        if set(data)!={'id','approval'}:raise PermissionError('approval_invalid')
++        with transaction.atomic():
++            p=Plan.objects.select_for_update().get(pk=data['id'],actor_id=c['actor'])
++            verify_approval(data['approval'],p,c['actor'])
++            e.validate(p.steps)
++            if any('op:'+s['op'] not in c['scopes'] for s in p.steps):raise PermissionError('scope_denied')
++            return respond(e.execute(p.pk))
++
++class OperationalWriterBoundary(WriterBoundary):
++    """Deployment boundary owns commits; library stays composable in tests."""
++    def __call__(self,request):
++        if not (request.path=='/actions' or request.path.startswith('/actions/')):
++            return self.get_response(request)
++        if getattr(settings,'ACTIONS_ENABLED',False) is not True:
++            return respond({'error':'writer_disabled'},403)
++        from django.db import connection
++        if connection.in_atomic_block or not connection.get_autocommit():
++            return respond({'error':'transaction_owned_externally'},409)
++        return super().__call__(request)
++    def authorized_dispatch(self,request,c,op):
++        from .limits import reserve,QuotaExceeded,setting
++        from django.db import DatabaseError,connection
++        try:
++            statement=setting('ACTIONS_STATEMENT_TIMEOUT_MS',2000,10000)
++            lock=setting('ACTIONS_LOCK_TIMEOUT_MS',200,2000)
++            reserve(c['actor'])
++            with transaction.atomic(durable=True):
++                with connection.cursor() as cursor:
++                    cursor.execute("SELECT set_config('statement_timeout', %s, true),set_config('lock_timeout', %s, true)",[str(statement)+'ms',str(lock)+'ms'])
++                return super().authorized_dispatch(request,c,op)
++        except QuotaExceeded:
++            return respond({'error':'quota_exceeded'},429)
++        except DatabaseError:
++            return respond({'error':'writer_unavailable'},503)
++
+diff --git a/actions/limits.py b/actions/limits.py
+new file mode 100644
+index 0000000..a782f5e
+--- /dev/null
++++ b/actions/limits.py
+@@ -0,0 +1,36 @@
++"""Shared SQL quotas. Called only before the owned business transaction."""
++from datetime import timedelta
++from django.conf import settings
++from django.db import connection,transaction
++from .models import QuotaBucket
++
++class QuotaExceeded(Exception):
++    pass
++
++def setting(name,default,maximum):
++    value=getattr(settings,name,default)
++    if type(value) is not int or not 1<=value<=maximum:
++        raise ValueError('invalid_writer_limit')
++    return value
++
++def reserve(actor):
++    if connection.in_atomic_block or not connection.get_autocommit():
++        raise ValueError('transaction_owned_externally')
++    window=setting('ACTIONS_QUOTA_WINDOW_SECONDS',60,3600)
++    limits=[('global',setting('ACTIONS_QUOTA_GLOBAL',60,10000)),('actor:'+str(actor),setting('ACTIONS_QUOTA_IDENTITY',10,10000))]
++    with transaction.atomic(durable=True):
++        with connection.cursor() as cursor:
++            cursor.execute("SELECT set_config('statement_timeout', %s, true),set_config('lock_timeout', %s, true)",['1000ms','200ms'])
++            # One constant transaction lock serializes both buckets and first insertion.
++            cursor.execute('SELECT pg_advisory_xact_lock(174651,6)')
++            cursor.execute('SELECT clock_timestamp()')
++            now=cursor.fetchone()[0]
++        buckets=[]
++        for key,limit in limits:
++            bucket,_=QuotaBucket.objects.get_or_create(key=key,defaults={'window_start':now})
++            if now>=bucket.window_start+timedelta(seconds=window):
++                bucket.window_start=now;bucket.used=0
++            if bucket.used>=limit:raise QuotaExceeded()
++            buckets.append(bucket)
++        for bucket in buckets:
++            bucket.used+=1;bucket.save(update_fields=['window_start','used'])
+diff --git a/actions/migrations/0001_initial.py b/actions/migrations/0001_initial.py
+new file mode 100644
+index 0000000..254769c
+--- /dev/null
++++ b/actions/migrations/0001_initial.py
+@@ -0,0 +1,23 @@
++import uuid
++import django.db.models.deletion
++from django.db import migrations,models
++
++class Migration(migrations.Migration):
++ initial=True
++ dependencies=[]
++ operations=[
++  migrations.CreateModel(name='Plan',fields=[
++   ('id',models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False,serialize=False)),
++   ('actor_id',models.PositiveIntegerField()),('key',models.CharField(max_length=80)),
++   ('digest',models.CharField(max_length=64)),('steps',models.JSONField()),
++   ('snapshots',models.JSONField(default=dict)),('state',models.CharField(max_length=20,default='prepared')),
++   ('results',models.JSONField(default=dict)),('effects',models.JSONField(default=dict)),
++   ('error',models.CharField(max_length=60,default='')),('created_at',models.DateTimeField(auto_now_add=True))
++  ],options={'constraints':[models.UniqueConstraint(fields=('actor_id','key'),name='action01_idempotency')]}),
++  migrations.CreateModel(name='Audit',fields=[
++   ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
++   ('actor_id',models.PositiveIntegerField()),('event',models.CharField(max_length=30)),
++   ('code',models.CharField(max_length=60,default='')),('created_at',models.DateTimeField(auto_now_add=True)),
++   ('plan',models.ForeignKey(null=True,on_delete=django.db.models.deletion.PROTECT,to='actions.plan'))
++  ])
++ ]
+diff --git a/actions/migrations/0002_quotabucket.py b/actions/migrations/0002_quotabucket.py
+new file mode 100644
+index 0000000..e61392e
+--- /dev/null
++++ b/actions/migrations/0002_quotabucket.py
+@@ -0,0 +1,5 @@
++from django.db import migrations,models
++
++class Migration(migrations.Migration):
++    dependencies=[('actions','0001_initial')]
++    operations=[migrations.CreateModel(name='QuotaBucket',fields=[('key',models.CharField(max_length=80,primary_key=True,serialize=False)),('window_start',models.DateTimeField()),('used',models.PositiveIntegerField(default=0))])]
+diff --git a/actions/migrations/__init__.py b/actions/migrations/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/actions/models.py b/actions/models.py
+new file mode 100644
+index 0000000..2c58a2c
+--- /dev/null
++++ b/actions/models.py
+@@ -0,0 +1,28 @@
++import uuid
++from django.db import models
++
++class QuotaBucket(models.Model):
++    key=models.CharField(max_length=80,primary_key=True)
++    window_start=models.DateTimeField()
++    used=models.PositiveIntegerField(default=0)
++
++class Plan(models.Model):
++    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
++    actor_id=models.PositiveIntegerField()
++    key=models.CharField(max_length=80)
++    digest=models.CharField(max_length=64)
++    steps=models.JSONField()
++    snapshots=models.JSONField(default=dict)
++    state=models.CharField(max_length=20,default='prepared')
++    results=models.JSONField(default=dict)
++    effects=models.JSONField(default=dict)
++    error=models.CharField(max_length=60,default='')
++    created_at=models.DateTimeField(auto_now_add=True)
++    class Meta:
++        constraints=[models.UniqueConstraint(fields=['actor_id','key'],name='action01_idempotency')]
++class Audit(models.Model):
++    plan=models.ForeignKey(Plan,on_delete=models.PROTECT,null=True)
++    actor_id=models.PositiveIntegerField()
++    event=models.CharField(max_length=30)
++    code=models.CharField(max_length=60,default='')
++    created_at=models.DateTimeField(auto_now_add=True)
+diff --git a/actions/mount.py b/actions/mount.py
+new file mode 100644
+index 0000000..55a928b
+--- /dev/null
++++ b/actions/mount.py
+@@ -0,0 +1,68 @@
++"""Dedicated prepare-only pilot; no credentials or activation by default."""
++import json
++import os
++import re
++from datetime import datetime, timezone
++
++SCOPES = frozenset(('catalogue', 'prepare', 'status', 'op:player.create',
++                    'op:organization.link', 'op:video.order', 'op:player.amend', 'op:video.amend'))
++
++
++def _unique(pairs):
++    result = {}
++    for key, value in pairs:
++        if key in result:
++            raise ValueError()
++        result[key] = value
++    return result
++
++
++def _configuration():
++    try:
++        raw = os.environ.get('MSF_ACTIONS_PILOT_CONFIG', '{"enabled":false,"credentials":{}}')
++        if len(raw) > 16000:
++            raise ValueError()
++        value = json.loads(raw, object_pairs_hook=_unique)
++        if type(value) is not dict or set(value) != {'enabled', 'credentials'}:
++            raise ValueError()
++        enabled, credentials = value['enabled'], value['credentials']
++        if type(enabled) is not bool or type(credentials) is not dict or len(credentials) > 8:
++            raise ValueError()
++        if (not enabled and credentials) or (enabled and not credentials):
++            raise ValueError()
++        clean = {}
++        for digest, credential in credentials.items():
++            if type(digest) is not str or not re.fullmatch('[0-9a-f]{64}', digest):
++                raise ValueError()
++            if type(credential) is not dict or set(credential) != {'actor', 'scopes', 'expires', 'revoked'}:
++                raise ValueError()
++            actor, scopes = credential['actor'], credential['scopes']
++            if type(actor) is not int or not 0 < actor <= 2147483647 or type(credential['revoked']) is not bool:
++                raise ValueError()
++            if (type(scopes) is not list or any(type(scope) is not str for scope in scopes)
++                    or len(set(scopes)) != len(scopes) or not set(scopes) <= SCOPES
++                    or not {'catalogue', 'prepare', 'status'} <= set(scopes)):
++                raise ValueError()
++            expires = credential['expires']
++            if type(expires) is not str or not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?[+-]\d\d:\d\d', expires):
++                raise ValueError()
++            ttl = (datetime.fromisoformat(expires) - datetime.now(timezone.utc)).total_seconds()
++            if ttl <= 0 or ttl > 86400:
++                raise ValueError()
++            clean[digest] = {'actor': actor, 'scopes': list(scopes), 'expires': expires, 'revoked': credential['revoked']}
++        return {'enabled': enabled, 'credentials': clean}
++    except (ValueError, TypeError, OverflowError, RecursionError):
++        raise ValueError('actions_pilot_config_invalid') from None
++
++
++def configure(namespace):
++    value = _configuration()
++    namespace['INSTALLED_APPS'] = [*namespace['INSTALLED_APPS'], 'actions']
++    middleware = list(namespace['MIDDLEWARE'])
++    middleware.insert(middleware.index('django.middleware.security.SecurityMiddleware') + 1,
++                      'actions.pilot.PrepareOnlyBoundary')
++    namespace['MIDDLEWARE'] = middleware
++    namespace['ACTIONS_ENABLED'] = value['enabled']
++    namespace['ACTIONS_CREDENTIALS'] = value['credentials']
++    namespace['ACTIONS_EXECUTE_ENABLED'] = False
++    namespace['ACTIONS_APPROVAL_KEY'] = ''
+diff --git a/actions/pilot.py b/actions/pilot.py
+new file mode 100644
+index 0000000..2f48e28
+--- /dev/null
++++ b/actions/pilot.py
+@@ -0,0 +1,14 @@
++"""Pilot denies execution unconditionally, ahead of authentication and SQL."""
++from .http import OperationalWriterBoundary, respond
++
++
++class PrepareOnlyBoundary(OperationalWriterBoundary):
++    def __call__(self, request):
++        if request.path == '/actions/v1/execute':
++            return respond({'error': 'execute_disabled_pilot'}, 403)
++        return super().__call__(request)
++
++    def authorized_dispatch(self, request, credential, operation):
++        if operation == 'execute':
++            return respond({'error': 'execute_disabled_pilot'}, 403)
++        return super().authorized_dispatch(request, credential, operation)
+diff --git a/gestion_joueurs/middleware.py b/gestion_joueurs/middleware.py
+index c959244..09d66eb 100644
+--- a/gestion_joueurs/middleware.py
++++ b/gestion_joueurs/middleware.py
+@@ -1,6 +1,8 @@
+-from django.utils.deprecation import MiddlewareMixin
+-from .utils import set_current_user
++from .utils import actor_context
+ 
+-class CurrentUserMiddleware(MiddlewareMixin):
+-    def process_request(self, request):
+-        set_current_user(request.user)
+\ No newline at end of file
++class CurrentUserMiddleware:
++    def __init__(self, get_response):
++        self.get_response = get_response
++    def __call__(self, request):
++        with actor_context(request.user):
++            return self.get_response(request)
+\ No newline at end of file
+diff --git a/gestion_joueurs/signals.py b/gestion_joueurs/signals.py
+index 294dcb3..deae8b9 100644
+--- a/gestion_joueurs/signals.py
++++ b/gestion_joueurs/signals.py
+@@ -1,4 +1,4 @@
+-from django.db.models.signals import post_save
++from django.db.models.signals import post_save, pre_save
+ from django.dispatch import receiver
+ from .models import Video, VideoStatusHistory, Player, Payment, Invoice, Salary, Expense
+ from django.utils import timezone
+@@ -17,6 +17,12 @@ logging.basicConfig(
+ )
+ logger = logging.getLogger(__name__)
+ 
++@receiver(pre_save, sender=Video)
++def capture_previous_editor(sender, instance, using, update_fields=None, **kwargs):
++    instance._signal_previous_editor_id = None
++    if instance.pk and (update_fields is None or 'editor' in update_fields or 'editor_id' in update_fields):
++        instance._signal_previous_editor_id = Video.objects.using(using).filter(pk=instance.pk).values_list('editor_id', flat=True).first()
++
+ @receiver(post_save, sender=Video)
+ def create_video_status_history(sender, instance, created, **kwargs):
+     user = instance.editor.user if instance.editor and instance.editor.user else None
+@@ -55,10 +61,10 @@ def create_video_status_history(sender, instance, created, **kwargs):
+     else:
+         logger.info("we are in signals.py")
+         previous_status = VideoStatusHistory.objects.filter(video=instance).order_by('-changed_at').first()
+-        previous_editor = getattr(thread_local, 'previous_editor', None)
++        previous_editor_id = getattr(instance, '_signal_previous_editor_id', None)
+         new_editor = instance.editor
+ 
+-        if previous_editor and previous_editor != new_editor:
++        if previous_editor_id and new_editor and previous_editor_id != new_editor.pk:
+             if new_editor.user and not new_editor.user.is_superuser:
+                 create_notification(new_editor.user, f"Vous avez été assigné à une nouvelle vidéo : {instance}", video=instance,sent_by=User_Connected,player=instance.player)
+ 
+@@ -99,7 +105,7 @@ def create_video_status_history(sender, instance, created, **kwargs):
+                         super_admins = User.objects.filter(is_superuser=True)
+                         for admin in super_admins:
+                             create_notification(admin, f"la {instance} est finie, contacter le joueur via {instance.player.whatsapp_number} pour finaliser le payement livrer la vidéo", 'inter_user', video=instance,sent_by=User_Connected,player=instance.player)
+-            if not User_Connected.is_superuser:
++            if not getattr(User_Connected, 'is_superuser', False):
+                 print('user is not super admin')
+                 if instance.status == 'completed_collab':
+                     super_admins = User.objects.filter(is_superuser=True)
+diff --git a/gestion_joueurs/utils.py b/gestion_joueurs/utils.py
+index 9b694e8..c965432 100644
+--- a/gestion_joueurs/utils.py
++++ b/gestion_joueurs/utils.py
+@@ -184,11 +184,22 @@ logger = logging.getLogger(__name__)
+ # Debugging: Print when bot starts
+ logger.info("Bot is starting...")
+ _thread_locals = threading.local()
++from contextvars import ContextVar
++from contextlib import contextmanager
++_current_actor = ContextVar('msf_actor', default=None)
+ def get_current_user():
+-    return getattr(_thread_locals, 'user', None)
++    return _current_actor.get()
+ 
+ def set_current_user(user):
+-    _thread_locals.user = user
++    _current_actor.set(user if getattr(user, 'is_authenticated', False) else None)
++
++@contextmanager
++def actor_context(user):
++    token = _current_actor.set(user if getattr(user, 'is_authenticated', False) else None)
++    try:
++        yield
++    finally:
++        _current_actor.reset(token)
+ 
+ 
+ def create_notification(user, message, notification_type='update', video=None, player=None,sent_by=None):
+diff --git a/ms_football_gest/settings.py b/ms_football_gest/settings.py
+index 7c4cfe4..44a8781 100644
+--- a/ms_football_gest/settings.py
++++ b/ms_football_gest/settings.py
+@@ -295,3 +295,8 @@ CELERY_BEAT_SCHEDULE = {
+         'schedule': crontab(minute='*/3'),  # Every 1st day of the month at midnight
+     },
+ }
++
++# Dedicated prepare-only pilot, closed unless strict hash-only config is present.
++from actions.mount import configure as _actions_configure
++_actions_configure(globals())
++del _actions_configure

@@ -1,0 +1,15 @@
+name: ms-football-actions
+version: 0.2.0
+description: Prepare-only composable MS Football pilot; execution unavailable
+entrypoint: __init__.py
+provides_tools:
+  - ms_football_action_catalogue
+  - ms_football_action_prepare
+  - ms_football_action_execute
+  - ms_football_action_status
+provides_hooks:
+  - pre_approval_request
+  - post_approval_response
+  - on_human_input_request
+  - on_human_input_resolved
+  - on_session_end

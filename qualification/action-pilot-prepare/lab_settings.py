@@ -1,0 +1,23 @@
+from pathlib import Path
+ROOT=Path(__file__).resolve().parent
+SECRET_KEY='FICTION-action01-only-not-for-deployment'
+INSTALLED_APPS=['django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','gestion_joueurs.apps.GestionJoueursConfig','client_portal.apps.ClientPortalConfig','sportsbase_data.apps.SportsbaseDataConfig','prospects.apps.ProspectsConfig','crispy_forms','crispy_bootstrap4','actions']
+DATABASES={'default':{'ENGINE':'django.db.backends.postgresql','NAME':'msf_action03_fiction','USER':'msf_action01_fixture_owner','HOST':'127.0.0.1','PORT':'55440','PASSWORD':'','CONN_MAX_AGE':0,'OPTIONS':{'connect_timeout':3}}}
+USE_TZ=True
+TIME_ZONE='Africa/Tunis'
+DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
+ROOT_URLCONF='lab_urls'
+MIDDLEWARE=['django.middleware.security.SecurityMiddleware','actions.http.WriterBoundary','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','client_portal.middleware.PortalAreaIsolationMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware','gestion_joueurs.middleware.CurrentUserMiddleware']
+ACTIONS_ENABLED=False
+ACTIONS_CREDENTIALS={}
+ACTIONS_APPROVAL_KEY=''
+TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','APP_DIRS':True}]
+EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'
+STATIC_URL='/static/'
+MEDIA_ROOT=ROOT/'evidence/media'
+PUBLIC_SITE_URL='http://testserver'
+GOOGLE_SHEETS_ENABLED=False
+TELEGRAM_BOT_TOKEN=''
+CELERY_BROKER_URL='memory://'
+CELERY_BEAT_SCHEDULE={}
+ALLOWED_HOSTS=['testserver']
