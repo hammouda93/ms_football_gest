@@ -1,0 +1,598 @@
+from django.db import models
+from django.utils import timezone
+from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
+from django.core.exceptions import ValidationError
+from datetime import date, timedelta
+""" from .utils import send_whatsapp_message
+from django.dispatch import receiver """
+from django.db.models.signals import post_save
+
+from .presentation_styles import (
+    DEFAULT_PRESENTATION_STYLE,
+    PRESENTATION_STYLE_CHOICES,
+)
+
+
+class Player(models.Model):
+    LEAGUE_CHOICES = [
+        ('L1', 'Ligue 1 Tunisie'),
+        ('L2', 'Ligue 2 Tunisie'),
+        ('LY', 'Libye'),
+        ('OC', 'Other Country'),
+    ]
+    POSITION_CHOICES = [
+        ('GK', 'Goalkeeper'),
+        ('DF', 'Defender'),
+        ('MF', 'Midfielder'),
+        ('FW', 'Forward'),
+    ]
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, default="", verbose_name="Player Name")
+    club = models.CharField(max_length=100, default="", verbose_name="Club Name")
+    email = models.EmailField(default="", verbose_name="Email Address")
+    date_of_birth = models.DateField(blank=True, null=True)
+    age = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0)], verbose_name="Age")
+    whatsapp_number = models.CharField(
+        max_length=15, 
+        blank=True, 
+        null=True, 
+        validators=[RegexValidator(
+            regex=r'^\+?1?\d{9,15}$', 
+            message="Le numéro de WhatsApp doit être au format +999999999999 ou 999999999."
+        )],
+        verbose_name="WhatsApp Number",
+    )
+    league = models.CharField(
+        max_length=2,
+        choices=LEAGUE_CHOICES,
+        default='L1',  # Définir la valeur par défaut à "Ligue 1 Tunisie"
+        verbose_name="League",
+    )
+    position = models.CharField(
+        max_length=2,
+        choices=POSITION_CHOICES,
+        default='DF',
+        verbose_name="Position",
+    )
+    client_fidel = models.BooleanField(default=False, verbose_name="Client Fidèle")
+    client_vip = models.BooleanField(default=False, verbose_name="Client VIP")
+    player_creation_date = models.DateTimeField(auto_now_add=True, null=True)
+    sportsbase_url = models.URLField(blank=True, null=True, verbose_name="SportsBase URL")
+    transfermarkt_url = models.URLField(blank=True, null=True, verbose_name="Transfermarkt URL")
+
+    def save(self, *args, **kwargs):
+        # Automatically calculate age from date_of_birth before saving
+        if self.date_of_birth:
+            today = date.today()
+            self.age = today.year - self.date_of_birth.year - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+        super().save(*args, **kwargs)
+
+    def get_league_name(self):
+        """Return the name of the league based on the league code."""
+        return dict(self.LEAGUE_CHOICES).get(self.league, 'Unknown League')
+    
+    def __str__(self):
+        return f'{self.name} ({self.club})'
+
+class VideoEditor(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
+
+    def __str__(self):
+        return self.user.username
+
+
+def validate_deadline(value):
+    """Conservé pour permettre le chargement des anciennes migrations Django."""
+    if value < timezone.now().date():
+        raise ValidationError('The deadline cannot be in the past.')
+
+
+class Video(models.Model):
+    class StatusChoices(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        IN_PROGRESS = 'in_progress', 'In Progress'
+        COMPLETED_COLLAB = 'completed_collab', 'Completed Collab'
+        COMPLETED = 'completed', 'Completed'
+        DELIVERED = 'delivered', 'Delivered'
+        PROBLEMATIC = 'problematic', 'Problematic'  # New status
+    class SalaryPaidStatusChoices(models.TextChoices):
+        NOT_PAID = 'not_paid', 'Not Paid'
+        PARTIALLY_PAID = 'partially_paid', 'Partially Paid'
+        PAID = 'paid', 'Paid'
+    class SeasonsToProcessChoices(models.IntegerChoices):
+        ONE = 1, '1 saison'
+        TWO = 2, '2 saisons'
+
+    class MatchPackageChoices(models.IntegerChoices):
+        THREE = 3, '3 matchs — 300 DT'
+        FIVE = 5, '5 matchs — 350 DT'
+        TEN = 10, '10 matchs — 400 DT'
+
+    MATCH_PACKAGE_PRICES = {
+        3: 300,
+        5: 350,
+        10: 400,
+    }
+
+    class AutomationModeChoices(models.TextChoices):
+        NORMAL = 'normal', 'Normal'
+        AUTOMATION = 'automation', 'Automation'
+    LEAGUE_CHOICES = [
+        ('L1', 'Ligue 1 Tunisie'),
+        ('L2', 'Ligue 2 Tunisie'),
+        ('LY', 'Libye'),
+        ('OC', 'Other Country'),
+    ]
+    id = models.AutoField(primary_key=True)
+    player = models.ForeignKey(Player, on_delete=models.CASCADE)
+    editor = models.ForeignKey(VideoEditor, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.PENDING)
+    advance_payment = models.DecimalField(max_digits=10, decimal_places=2)
+    total_payment = models.DecimalField(max_digits=10, decimal_places=2)
+    deadline = models.DateField()
+    client_organization = models.ForeignKey(
+        "client_portal.Organization",
+        on_delete=models.SET_NULL,
+        related_name="video_orders",
+        null=True,
+        blank=True,
+        verbose_name="Académie / agence liée",
+        help_text=(
+            "Organisation cliente à l’origine de cette commande. "
+            "La relation reste enregistrée sur la vidéo même si le joueur change d’agence plus tard."
+        ),
+    )
+    whatsapp_conversation_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date de création de la conversation WhatsApp",
+    )
+    deadline_from_whatsapp = models.BooleanField(
+        default=False,
+        verbose_name="Deadline automatique : WhatsApp + 5 jours",
+    )
+    match_package = models.PositiveSmallIntegerField(
+        choices=MatchPackageChoices.choices,
+        null=True,
+        blank=True,
+        verbose_name="Nombre de matchs à traiter",
+    )
+    matches_processed = models.PositiveSmallIntegerField(
+        default=0,
+        blank=True,
+        verbose_name="Nombre de matchs déjà traités",
+    )
+    delivery_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date réelle de livraison",
+        help_text=(
+            "Renseignée automatiquement lors du passage à Livrée si elle est vide, "
+            "mais reste modifiable pour corriger une ancienne vidéo."
+        ),
+    )
+    video_link = models.URLField(blank=True, null=True)
+    client_portal_visible = models.BooleanField(
+        default=True,
+        verbose_name="Visible dans l’espace client",
+        help_text="Décochez pour conserver cette vidéo uniquement dans la gestion interne.",
+    )
+    seasons_to_process = models.PositiveSmallIntegerField(
+        choices=SeasonsToProcessChoices.choices,
+        default=SeasonsToProcessChoices.ONE,
+        verbose_name="Nombre de saisons à traiter"
+    )
+    processing_mode = models.CharField(
+        max_length=20,
+        choices=AutomationModeChoices.choices,
+        default=AutomationModeChoices.NORMAL,
+        verbose_name="Processing Mode"
+    )
+    delivery_mode = models.CharField(
+        max_length=20,
+        choices=AutomationModeChoices.choices,
+        default=AutomationModeChoices.NORMAL,
+        verbose_name="Delivery Mode"
+    )
+    automation_started = models.BooleanField(default=False)
+    automation_completed = models.BooleanField(default=False)
+    delivery_automation_started = models.BooleanField(default=False)
+    delivery_automation_completed = models.BooleanField(default=False)
+
+
+    info = models.TextField(blank=True, null=True, verbose_name="Info", help_text="Additional information about the video.")
+    SEASONS = [
+        ('2022/2023', '2022/2023'),
+        ('2023/2024', '2023/2024'),
+        ('2024/2025', '2024/2025'),
+        ('2025/2026', '2025/2026'),
+    ]
+    season = models.CharField(max_length=10, choices=SEASONS, default='2024/2025')
+    club = models.CharField(max_length=100, default="", verbose_name="Club Name")
+    intro_photo = models.ImageField(
+        upload_to='video_intro_photos/',
+        blank=True,
+        null=True,
+        verbose_name="Photo Intro"
+    )
+    intro_automation_enabled = models.BooleanField(default=False, verbose_name="Générer la présentation")
+    intro_presentation_style = models.CharField(
+        max_length=40,
+        choices=PRESENTATION_STYLE_CHOICES,
+        default=DEFAULT_PRESENTATION_STYLE,
+        verbose_name="Style de présentation",
+    )
+    intro_automation_started = models.BooleanField(default=False)
+    intro_automation_completed = models.BooleanField(default=False)
+    league = models.CharField(
+        max_length=2,
+        choices=LEAGUE_CHOICES,
+        default='L1',  # Définir la valeur par défaut à "Ligue 1 Tunisie"
+        verbose_name="League",
+    )
+    salary_paid_status = models.CharField(
+        max_length=20,
+        choices=SalaryPaidStatusChoices.choices,
+        default=SalaryPaidStatusChoices.NOT_PAID,  # Default value set to Not Paid
+        verbose_name="Salary Payment Status"
+    )
+    video_creation_date = models.DateTimeField(auto_now_add=True, null=True)  # Automatically set the date/time when a video is created
+    def remaining_balance(self):
+        """Calculates the remaining balance after advance payment."""
+        return self.total_payment - self.advance_payment
+    
+    def get_league_name(self):
+        """Return the name of the league based on the league code."""
+        return dict(self.LEAGUE_CHOICES).get(self.league, 'Unknown League')
+    
+    def __str__(self):
+        return f"Video de {self.player.name} par {self.editor.user.username} ({self.season})"
+
+
+class AutomationRun(models.Model):
+    """Durable, user-visible progress for one automation pipeline."""
+
+    class PipelineChoices(models.TextChoices):
+        HIGHLIGHTS = 'highlights', 'Highlights'
+        INTRO = 'intro', 'Présentation'
+        DELIVERY = 'delivery', 'Livraison'
+
+    class StateChoices(models.TextChoices):
+        QUEUED = 'queued', 'En attente'
+        RUNNING = 'running', 'En cours'
+        WAITING_EXTERNAL = 'waiting_external', 'Action externe attendue'
+        FAILED = 'failed', 'Échec'
+        SUCCEEDED = 'succeeded', 'Terminé'
+        CANCELLED = 'cancelled', 'Annulé'
+
+    class StageChoices(models.TextChoices):
+        QUEUED = 'queued', 'Dans la file'
+        TRANSFERMARKT = 'transfermarkt', 'Données Transfermarkt'
+        CHATGPT_IMAGE = 'chatgpt_image', 'Image ChatGPT'
+        KLING_VIDEO = 'kling_video', 'Animation Kling'
+        SPORTSBASE_DISCOVERY = 'sportsbase_discovery', 'Recherche des matchs SportsBase'
+        SPORTSBASE_GENERATION = 'sportsbase_generation', 'Génération All Actions'
+        SPORTSBASE_DOWNLOAD = 'sportsbase_download', 'Téléchargement des matchs'
+        PREMIERE_PROJECT = 'premiere_project', 'Préparation Premiere Pro'
+        HUMAN_REVIEW = 'human_review', 'Sélection des actions'
+        PREMIERE_FINAL = 'premiere_final', 'Montage final Premiere Pro'
+        EXPORT = 'export', 'Export vidéo'
+        EXPORT_VALIDATION = 'export_validation', 'Vérification du MP4'
+        YOUTUBE_UPLOAD = 'youtube_upload', 'Mise en ligne YouTube'
+        YOUTUBE_VALIDATION = 'youtube_validation', 'Vérification du lien YouTube'
+        DELIVERY_UPDATE = 'delivery_update', 'Mise à jour de la livraison'
+        WHATSAPP = 'whatsapp', 'Notification WhatsApp'
+        COMPLETED = 'completed', 'Terminé'
+
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name='automation_runs',
+    )
+    pipeline = models.CharField(max_length=20, choices=PipelineChoices.choices)
+    state = models.CharField(
+        max_length=24,
+        choices=StateChoices.choices,
+        default=StateChoices.QUEUED,
+    )
+    current_stage = models.CharField(
+        max_length=40,
+        choices=StageChoices.choices,
+        default=StageChoices.QUEUED,
+    )
+    progress_current = models.PositiveIntegerField(default=0)
+    progress_total = models.PositiveIntegerField(default=0)
+    progress_percent = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    message = models.CharField(max_length=500, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_detail = models.TextField(blank=True)
+    artifacts = models.JSONField(default=dict, blank=True)
+    claimed_by = models.CharField(max_length=120, blank=True)
+    claim_token = models.CharField(max_length=64, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    claimed_at = models.DateTimeField(blank=True, null=True)
+    last_heartbeat_at = models.DateTimeField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-updated_at', '-pk')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('video', 'pipeline'),
+                condition=models.Q(is_active=True),
+                name='unique_active_automation_pipeline',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('video', 'pipeline', 'is_active'),
+                name='gj_autorun_video_pipe_idx',
+            ),
+            models.Index(
+                fields=('state', 'updated_at'),
+                name='gj_autorun_state_time_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.video_id} · {self.get_pipeline_display()} · {self.get_current_stage_display()}"
+
+
+class AutomationEvent(models.Model):
+    """Append-only timeline displayed in the management application."""
+
+    run = models.ForeignKey(
+        AutomationRun,
+        on_delete=models.CASCADE,
+        related_name='events',
+    )
+    stage = models.CharField(
+        max_length=40,
+        choices=AutomationRun.StageChoices.choices,
+    )
+    state = models.CharField(
+        max_length=24,
+        choices=AutomationRun.StateChoices.choices,
+    )
+    progress_percent = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    message = models.CharField(max_length=500, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        indexes = [
+            models.Index(
+                fields=('run', 'created_at'),
+                name='gj_autoevent_run_time_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.run_id} · {self.get_stage_display()} · {self.get_state_display()}"
+
+
+class AutomationWorker(models.Model):
+    """Heartbeat of an automatically started desktop worker."""
+
+    class StateChoices(models.TextChoices):
+        IDLE = 'idle', 'Connecté'
+        BUSY = 'busy', 'Occupé'
+        ERROR = 'error', 'Erreur'
+        STOPPING = 'stopping', 'Arrêt en cours'
+
+    worker_id = models.CharField(max_length=120, unique=True)
+    display_name = models.CharField(max_length=160, blank=True)
+    host_name = models.CharField(max_length=160, blank=True)
+    version = models.CharField(max_length=40, blank=True)
+    state = models.CharField(
+        max_length=20,
+        choices=StateChoices.choices,
+        default=StateChoices.IDLE,
+    )
+    current_video = models.ForeignKey(
+        Video,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='automation_workers',
+    )
+    current_pipeline = models.CharField(max_length=20, blank=True)
+    current_stage = models.CharField(max_length=40, blank=True)
+    capabilities = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-last_seen_at', 'worker_id')
+
+    @property
+    def is_online(self):
+        return self.last_seen_at >= timezone.now() - timedelta(seconds=90)
+
+    def __str__(self):
+        return self.display_name or self.worker_id
+    
+
+class VideoStatusHistory(models.Model):
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='status_history')
+    editor = models.ForeignKey(VideoEditor, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20)
+    changed_at = models.DateTimeField(default=timezone.now)
+    comment = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)  # Ajout du champ
+    def __str__(self):
+        return f"{self.status} by {self.editor.user.username} on {self.changed_at} for {self.video}"
+
+    
+class Invoice(models.Model):
+    video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name='invoices')  # Ajoutez unique=True
+    invoice_date = models.DateField(auto_now_add=True)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20, choices=[
+        ('paid', 'paid'),
+        ('unpaid', 'unpaid'),
+        ('partially_paid', 'partially paid'),
+    ], default='unpaid')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Virement bancaire'),
+        ('la_poste', 'La poste'),
+    ], blank=True, null=True)
+    
+    def __str__(self):
+        return f"Facture pour {self.video} - Status: {self.status}"
+
+
+class Payment(models.Model):
+    id = models.AutoField(primary_key=True)
+    player = models.ForeignKey(Player, on_delete=models.CASCADE)
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_date = models.DateField(auto_now_add=True)
+    payment_type = models.CharField(max_length=50, choices=[
+        ('advance', 'Advance'),
+        ('final', 'Final'),
+        ('partial', 'Partial'),  # Ajout d'une option pour les paiements partiels
+    ])
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Virement bancaire'),
+        ('la_poste', 'La poste'),
+    ], blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    remaining_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    invoice = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+
+    def __str__(self):
+        return f"{self.player.name} - {self.amount} ({self.payment_type})"
+
+class PaymentHistory(models.Model):
+    id = models.AutoField(primary_key=True)
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
+    amount_before = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_after = models.DecimalField(max_digits=10, decimal_places=2)
+    changed_at = models.DateTimeField(auto_now_add=True)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"Change in Payment {self.payment.id} on {self.changed_at}"
+
+class Salary(models.Model):
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(auto_now_add=True)
+    video = models.ForeignKey('Video', on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_creator')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.amount} on {self.date}"
+
+class Expense(models.Model):
+    id = models.AutoField(primary_key=True)
+    description = models.CharField(max_length=255, null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(default=timezone.now)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    category = models.CharField(max_length=100, choices=[
+        ('Transport', 'Transport'),
+        ('Entertainement', 'Loisirs'),
+        ('Internet', 'Internet'),
+        ('marketing', 'Marketing'),
+        ('operational', 'Operational'),
+        ('salary', 'Salary'),
+        ('equipment', 'Equipment'),
+        ('other', 'Other'),
+    ], default='other')  # Catégorie de la dépense
+    salary = models.ForeignKey('Salary', on_delete=models.SET_NULL, null=True, blank=True)
+    def __str__(self):
+        return f"{self.description} - {self.amount}"
+    
+
+class FinancialReport(models.Model):
+    report_date = models.DateField(auto_now_add=True)
+    total_income = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    total_expenses = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    net_profit = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Revenu net
+    total_outstanding_income = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    net_revenue_if_all_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    global_income = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+
+    def calculate_net_profit(self):
+        self.net_profit = self.total_income - self.total_expenses
+        self.save()
+
+    def __str__(self):
+        return f"Financial Report for {self.report_date}"
+
+class PaymentCategory(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+    
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ('inter_user', 'Inter-user Notification'),
+        ('video_process', 'Video Processing Notification'),
+        ('financial', 'Financial Notification'),
+        ('alert', 'Alert'),
+        ('reminder', 'Reminder'),
+        ('update', 'Update'),
+    ]
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, null=True, blank=True)
+    notification_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='update')
+    sent_at = models.DateTimeField(null=True, blank=True)  # New field to track when sent
+    sent_by = models.ForeignKey(User, related_name="sent_notifications", on_delete=models.SET_NULL, null=True, blank=True)
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True, blank=True)
+
+
+    def __str__(self):
+        return f"Notification pour {self.user.username}: {self.message}"
+    
+
+class NonVideoIncome(models.Model):
+    category_choices = [
+        ('freelance','Freelance'),
+        ('deposit','Deposit'),
+        ('coach_cv', 'CV Coach'),
+        ('marketing','Marketing'),
+        ('sponsorship', 'Sponsorship'),
+        ('donation', 'Donation'),
+        ('partnership', 'Partnership'),
+        ('media', 'Media'),
+        ('other', 'Other'),
+    ]
+    id = models.AutoField(primary_key=True)
+    category = models.CharField(max_length=50, choices=category_choices)
+    description = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    date = models.DateField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)  # New field for user
+    def __str__(self):
+        return f"Revenu Non Video : {self.category} - {self.amount} ({self.date})"

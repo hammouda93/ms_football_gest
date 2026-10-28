@@ -1,0 +1,662 @@
+{
+  "upstreamPin": "dfa8b032597832917f812a3e7fc2126d7534cf5b",
+  "candidateCommit": "4b3a2502125c562dd977d7d1feed7d06452196b8",
+  "files": {
+    "source/client_portal/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/apps.py": {
+      "sha256": "60c78861bde2a237ac9728d5718a4a13576685adf666790af66b67f911631cca",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/middleware.py": {
+      "sha256": "22577785f608d2131cbb38ff3827db741755cef7090e81ecab69e92ca567f612",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/migrations/0001_initial.py": {
+      "sha256": "5bf35522840c2b87038d1a54a9150f51a7efada1353e764b5ba1e68e22197d25",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/migrations/0002_organizationplayer_ended_at.py": {
+      "sha256": "02f9ff49d9453d99968a4843835b7c5d2f3dddcc494dbe0ea87e2e05c77dadef",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/migrations/0003_organization_google_sheet.py": {
+      "sha256": "bc49e34ce8f3f9167d4a725caf76b872762f7ba07176edddc07b019cc57e6854",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/migrations/0004_organizationplayer_expected_matches.py": {
+      "sha256": "02c960ebab737b4ec4ae846cf39e74a1e950d0dc19f8ed4f4c540f23b7ad5f5c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/models.py": {
+      "sha256": "bf091c25adfaf1b1af0c21c28e9e4064159af47149a958bb3b78d1fcdacd1de9",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/portal_i18n.py": {
+      "sha256": "0d99dbe781c75ea6b484055aed413b080d65ac9ed6f7894224d18d21b8bb569c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/client_portal/services.py": {
+      "sha256": "fa7db8dd0d474872e41de99566e4aedea165f642ec188eb9700a2c20071aff61",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/__init__.py": {
+      "sha256": "57333e7ac3e0e407166f36b0b12a9ed7415554d71b90820b763530efc87d482f",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/apps.py": {
+      "sha256": "5bfa763eb6067d131aa56165f1fe4808c54a3cac800daf19135de8bfc82e7a7c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/automation_progress.py": {
+      "sha256": "9ca79f5c41a371a2378df4908f39ee877fc2a550450a1b8e5cbdab0a5fa13b76",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/decorators.py": {
+      "sha256": "4eedb1ad85dc7fa33ea97797a1004bbfaa5a8c62b817bba1534530558431469c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/forms.py": {
+      "sha256": "6d41f636c9bcbc118615eef3a1e8cb89a4c768b8a7a5e00d2233dec492c7df0e",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/middleware.py": {
+      "sha256": "4184da1a6ce7e45004ba618b4f6d3d00185d355b21e6929d2c459811fc6dc0d2",
+      "upstreamIdentical": false,
+      "origin": "action06 reviewed candidate"
+    },
+    "source/gestion_joueurs/migrations/0001_initial.py": {
+      "sha256": "f44a6e3d86c9ba0d610bebb838da9f3d80508b7023afd5fa6040bbb8758a3419",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0002_remove_videoeditor_email_remove_videoeditor_name_and_more.py": {
+      "sha256": "2872e9828f8eddbd59edd387921dad0856b30110c68516a83c09a75ca3a30659",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0003_remove_player_email_remove_player_name_player_age_and_more.py": {
+      "sha256": "ab5625b7e2f741db77068c0a3029a04f1c1789d9b838db0fa9a6659f46c41a14",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0004_remove_player_age_remove_player_first_name_and_more.py": {
+      "sha256": "c4fcaecd3a8045049d9d9810ad51417206de8da3d8d7bdf80310d2f2e4377809",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0005_player_age_player_whatsapp_number_and_more.py": {
+      "sha256": "6364e3c604d8ef262d0158bf5b4cc145ea089febcdc1fc2bcf72792f10a9c22a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0006_alter_player_age_alter_player_email_and_more.py": {
+      "sha256": "790fb798b743229db91ec6bd63a02c5efb1d6bc6b152974b1339530d63bf6865",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0007_alter_player_email.py": {
+      "sha256": "6d9cfa37130f5325320fb5916017f7fc0de6ad439066341e0c13c179ceaba5bb",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0008_alter_player_age_alter_player_club_and_more.py": {
+      "sha256": "252e2dc4039f1a4c936a68680ad5c9cb86d969d512dbc41020c44880212fd4bc",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0009_alter_player_email.py": {
+      "sha256": "f09e5dc1b0f2bb626d4b9d26bd4bacae45f80c0c34251de4e9413ab75346d277",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0010_player_league_alter_player_email.py": {
+      "sha256": "e59cb06f98dd6e331595f9dd673140e88117e8110d91540eaf0dafdba30c1344",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0011_alter_player_email.py": {
+      "sha256": "a840885e2e003e5a7219e9a9a7a09f02b27036c459f6625fda50c8520ef9dbfb",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0012_video_info.py": {
+      "sha256": "4d32d6eb8bfd298cdd3c7edbe36e266ff1460a82ca2ec39e082da4b5dc9fac35",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0013_alter_player_age_alter_player_club_and_more.py": {
+      "sha256": "529ed60126b22dc24c56ab2be986e61db4bc8138e68f723c89a094358a643dbb",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0014_payment_remaining_balance.py": {
+      "sha256": "fe7eb323488d256ce05a4fb5a2c5c6312e6a85394377d936f021f59d8154c8c7",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0015_video_season_alter_payment_video.py": {
+      "sha256": "d94a65cfe54d126081b2e99c7b797bb02c2f55de9e626a1662a05a2e5264fbd5",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0016_player_date_of_birth.py": {
+      "sha256": "81ea0f29151c68aa62e2f94cc2e204b18a964db43072d7b81a3c01f81065f8bc",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0017_video_club_video_league.py": {
+      "sha256": "2bd4e9cccd0242ca995a59ad83ef274e038661b6c273008978ca027cda78323a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0018_videostatushistory_created_by.py": {
+      "sha256": "d20caa55bc1c3a4fc15c3eefc3c6d4f5ededea0049682f706ffa1175ee5a866f",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0019_paymentcategory_payment_method_and_more.py": {
+      "sha256": "fa992ed8404b8901a08875a15e596972c5a35168e60ff526256d27a68bfea0a8",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0020_remove_invoice_due_date_remove_payment_method_and_more.py": {
+      "sha256": "6350ba7d0e6ef16fb6517e2dedd1ea4e9c174cc573ca1a058785a5c99a1ab3f6",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0021_alter_invoice_video.py": {
+      "sha256": "34fd02f2c0545d12e9847d2a08baf760844d33837a38a1a2f5035e9884b67563",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0022_alter_invoice_video.py": {
+      "sha256": "a747b73a2d3d8dbd23f1e850d8d927343bc9a9e274f6db00c41a597345dd156f",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0023_alter_invoice_total_amount.py": {
+      "sha256": "3058c736fdcaa9f75563f96399c7c4da4947bdba24e7039e57b968a4a323e996",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0024_payment_payment_method.py": {
+      "sha256": "9a1670c06f8a346e8aef54a8dbf159de93279575014a3c4bd0d53f889dd3665b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0025_salary_expense_salary.py": {
+      "sha256": "681fe554787d19c1580e8ece9f13164bfc7840a6e6e0f9909003413bcbe0ee1e",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0026_video_salary_paid_status.py": {
+      "sha256": "de5c6a0d7cd44dc3f7fd5d2b94802dea66fc8d46c69b6f7a012179c634c9cfe4",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0027_remove_expense_description.py": {
+      "sha256": "8589c0a1ca277157a811288349a1adb5fbb56a6385d524ca8d29b35d3da96034",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0028_expense_description.py": {
+      "sha256": "4e28e6e2c2154b4d7b0d2e068ef12165f9b110fbae45e1958091f0026a851f45",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0029_alter_expense_category.py": {
+      "sha256": "168399968a60884e517f95235b4983cc4456054d0e6f0d3e5b1d0452f8d02f60",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0030_video_video_creation_date.py": {
+      "sha256": "cc507993a41b535d0c234ca4a91e830d22fa9fba85568f855fa49a32845b01d1",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0031_alter_video_status.py": {
+      "sha256": "974a8f455f3a52f6d7e2b1c210b7f8e4d85258b5214e91e6e3f8739605476ede",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0032_player_player_creation_date.py": {
+      "sha256": "e0fea6f9a831a1b35760e69e2cfdfd85b8dfddb7018896405aa51b6c4a83ab64",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0033_player_client_fidel_player_client_vip_and_more.py": {
+      "sha256": "63d04ccc4f3d7a07b0db367cec0b5292954d74a34cd544291a591eac471052da",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0034_notification.py": {
+      "sha256": "00a6c8a06edee55750b251a418cfe4e2d94c0be65f82fb05dca474efc522641a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0035_notification_video.py": {
+      "sha256": "ce0dc4556a2aeb54dc2c2fe22b26099e621d1771613cfaef5c068b766f9391c9",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0036_notification_type_alter_invoice_status.py": {
+      "sha256": "f9f52350e7e5c353f4afe189eaceebe071827f66549666133f1d623c54c2e9e6",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0037_alter_invoice_status.py": {
+      "sha256": "d3b3984f9a405faca6b4850fe9dbb56c6716b3b0e916852ab6fd59ad77fbf3b3",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0038_rename_type_notification_notification_type.py": {
+      "sha256": "2409a25b523f7b8aaac96736c003e7a1ca03088dc0249ef993cd0613df507b51",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0039_notification_sent_at.py": {
+      "sha256": "8177bd75e37ce0cb827b8c584827761adfa54c639c3077382cb799d4cb0440fe",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0040_notification_player.py": {
+      "sha256": "14ee8707fedac121effef152d1f0da854dc58408521f82b62442a096bd947b7a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0041_nonvideoincome.py": {
+      "sha256": "f496c3c9f0a3469b697f72c0f335b7b6bf9d41645051c0417dd044b291733072",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0042_alter_nonvideoincome_amount_and_more.py": {
+      "sha256": "4f22908273aef95776d5a9f5c38f392beb183ddc463a2a167bee93ef0d586207",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0043_financialreport_total_outstanding_income.py": {
+      "sha256": "3d8057188d36bb54f73a5e9b551d5e03f00fcb98be31bbd17adb2d01ddf2dc32",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0044_financialreport_net_revenue_if_all_paid.py": {
+      "sha256": "b91b1bf485142e9a010792e7a2359146fd1949dcf9dab4232a0a087d5f125af4",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0045_financialreport_global_income.py": {
+      "sha256": "6110f787eb8c6cd46331a476b7f4b09c893be74c4167823a84eb5825044ffb7a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0046_rename_global_income_financialreport_global_income.py": {
+      "sha256": "f1d2e787ebde591d62b223478e6842dfbb20001c9abf2ca77a542c09cf9197e9",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0047_notification_sent_by.py": {
+      "sha256": "bc764e1a1669eb2d02395ba1e72bca654f6e877edbfa55560a72752ff9922694",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0048_alter_expense_id_alter_invoice_id_and_more.py": {
+      "sha256": "34782f6f20d9298715209469f14bd713018c8ee86b43b2138a937ee11176afad",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0049_alter_invoice_id_alter_nonvideoincome_id_and_more.py": {
+      "sha256": "01a4c3af03587215d7b05febd5a1cc60c2de78655f1149d2325adc453d67851d",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0050_player_sportsbase_url_player_transfermarkt_url_and_more.py": {
+      "sha256": "bc7a93f4017196a2fcde34204ad03ccd6d5efe9ca4930c24e3a9d298ab2805e4",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0051_video_delivery_automation_completed_and_more.py": {
+      "sha256": "8fa34ce07c984af9fd79d073d6015453fc49e845eb4fd6a9bc721a8a32288b64",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0052_video_seasons_to_process.py": {
+      "sha256": "58972806389b8c1b51ce68d8d171b2f84d6ae90b42366b3961da94444d444386",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0053_video_intro_automation_completed_and_more.py": {
+      "sha256": "2951b2fddefd760d03d2a01f8e6e4024aea403bfa50c32d66d158f23740a6480",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0054_video_intro_automation_enabled.py": {
+      "sha256": "1a5db4f2b026bccf2c87fe10d24a40a79499bacd22c5c09a84a69c999349cb39",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0055_video_client_portal_visible.py": {
+      "sha256": "647d711148de7dce402266058983310fdf094f5dfe2adef1af550b8787273c0d",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0056_alter_video_deadline.py": {
+      "sha256": "a1c9dd414b77f1cd633f8abcc116203984ac5cd2f8b21a531352e8b82badd11b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0057_automationrun_automationevent.py": {
+      "sha256": "15259e86f4458f2d3eee760e189487bae9a1b9c1da0d309cafbaa36013de4449",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0058_video_intro_presentation_style.py": {
+      "sha256": "396c6d0c845d6c8b41de78c4d3a35589104f1c24c8e6011dda1caed0e3f032d1",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/0059_video_academy_order_fields.py": {
+      "sha256": "83f79f039ee38d4eaae5403ff3d207d79f317bcbf3f6f1f3732c16f4c5d15c5a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/models.py": {
+      "sha256": "384658d14c317c24ecf8bf3c088889e5bc2fd8b1f9006213de548b2aec0a8143",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/presentation_styles.py": {
+      "sha256": "52399c446730cab8e8e694a862e5a75c587cc344145d7278d45b63f3c8a86b90",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/signals.py": {
+      "sha256": "ce69b17b01f0c383511a02ffc1e262de4ac45d94cbeac5f9b9092504ed5e9758",
+      "upstreamIdentical": false,
+      "origin": "action06 reviewed candidate"
+    },
+    "source/gestion_joueurs/tasks.py": {
+      "sha256": "6fe0a95100ac9e983cad276261be3849f283cd5c100b4b3f2c8cf6716c79dec5",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/utils.py": {
+      "sha256": "c67a03b88976af2fb3c4c0956ae3e7917d34d382fda36c21aa4112ccbeabf05f",
+      "upstreamIdentical": false,
+      "origin": "action06 reviewed candidate"
+    },
+    "source/gestion_joueurs/video_status_whatsapp.py": {
+      "sha256": "eafce2d3c8e5bff8d2583494850fd6225e1541e74e5d0bb002ff433e55ffb9d3",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/views.py": {
+      "sha256": "1d44396ae540c5d79ecacdb156f9792adc4d06b201c0f242bf8f89e8384c18b7",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/gestion_joueurs/whatsapp_delivery.py": {
+      "sha256": "b112e81799e474cf497ece69c55f0f33dd1c28c01cc32a6e92d7711b10f7db37",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/ms_football_gest/__init__.py": {
+      "sha256": "cccfb8e756e70f568f9acb192d0cf675f822d54021c3364c8f1a9a610506ecee",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/ms_football_gest/celery.py": {
+      "sha256": "437a4c36258205551b5b2595b79f289169be221659019363a0d5e02fd75f5cdd",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/apps.py": {
+      "sha256": "09292b79fd3a2d6f4d8b652c3578085bad8309634b928feda0edecf5ceb30526",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/migrations/0001_initial.py": {
+      "sha256": "e62f1f6522e9c45ff445331b5146bb98f8ac83752152cef703f995a558f44795",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/migrations/0002_prospect_date_of_birth_prospect_league_and_more.py": {
+      "sha256": "903703c159664b21f08ee98b9a5a79b7e22dd3c754863fa48f86f01fe6de0ce8",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/migrations/0003_alter_prospect_country_alter_prospect_match_links.py": {
+      "sha256": "3ca31fa3e098dd3c479810847557f0da14e9c78c7214bc4ff1927916bdc78c7b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/prospects/models.py": {
+      "sha256": "8f9f635cec82eef7b0c7c1b17697c9f9abc1d35189031a1dff347c0776018b1f",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/analysis_engine.py": {
+      "sha256": "04e0c8d94a17f8fbf90063bc54b35ca50cd5191541e81c789313f8d0218b677c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/apps.py": {
+      "sha256": "0931f6237081742f029fec58be50bbc6235c457a3a76af09265cddc21cb5811c",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/dailymotion_links.py": {
+      "sha256": "bf299b19ebc11e7421ff905cc8d697017857279df1aff5ef0029940edf31746b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/forms.py": {
+      "sha256": "8620974c843350ba4e1825f4fa9e36868eb9c144a1f65101ebc8604307e0b997",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0001_initial.py": {
+      "sha256": "ebe498f32dfc9271ac618742467c0a4ca07c5db930e883f3442c99ba289af8e7",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0002_youtube_all_actions_delivery.py": {
+      "sha256": "cd35bdde41eb63964caa7bded01858710d003696c57512c9380af9784be61d99",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0003_performance_report_notification.py": {
+      "sha256": "bef7efecb7d6757f03ac6dbfd57166a151b0f285fddfd68686ca40e93846df4a",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0004_match_analysis_payload.py": {
+      "sha256": "9d672e8dced1bfa07330bb2aa72b699003902ae65190b8459f1fa287a98eb9f9",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0005_performance_subscription_payments.py": {
+      "sha256": "3b9a7d80c185d2b4cf055d70fbcccd69c750bc3af9adab42c4b86f75cda6264e",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0006_dailymotion_all_actions_fallback.py": {
+      "sha256": "6786e22dae0331eed264671d85e17bb69c3487b820f85b4e5674089536ec161b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0007_dailymotion_manual_link.py": {
+      "sha256": "65e3adc5279f6633b91b32ceed746b010666dcbcbf17e66487e65fe8cdec844f",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/0008_agent_monitoring.py": {
+      "sha256": "4c6e7a8b989a144d7139cb6072ea455cc7af58b70ce618b5458c324c6ab2cb7e",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/models.py": {
+      "sha256": "749b45bf0018adcbfaff881fd76255d7ad6ab009d9e1fdf883418df5ccf4fa72",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/report_pdf.py": {
+      "sha256": "466a59c1e2fd67018162af9af69f7fbcc14d093d57c910260f0c8a8797f02367",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/reports.py": {
+      "sha256": "80b06424734bc414ce06fbc0bc8d46fb6ecd6cdf2a1995b3481a88718c1c6595",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "source/sportsbase_data/services.py": {
+      "sha256": "2f163f5d5a5d0d8d52d97d2bc5494bb33d421e747f14c4304a39e5d9b8d008da",
+      "upstreamIdentical": true,
+      "origin": "dfa8b032597832917f812a3e7fc2126d7534cf5b"
+    },
+    "actions/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/effects.py": {
+      "sha256": "f2f73eb816c7d13ff7d2ae10a4dd2d4103c1c5206c49b66e10430e02e37ddc82",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/engine.py": {
+      "sha256": "47e0f250f99cd50de1f75fdde11ca75fd762511708523dbbbe57edf20cfd4b80",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/http.py": {
+      "sha256": "5ec0cb4f4bb090ead1dd6f5e565dd76761f1f4bb9b2f5b3952bde69feaf78c40",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/limits.py": {
+      "sha256": "c3d06fd49552d22ace132a6f9e71998b67b9605b6803ffdacbdface1cd01b723",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/migrations/0001_initial.py": {
+      "sha256": "deb1b8d9e877db21aef295faeb26efd18bdeabba8509bb77f29cf3c37faaa51a",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/migrations/0002_quotabucket.py": {
+      "sha256": "0911c5864408084f0f10074104040bb30b7ee031abecb41dfa89b37f70a98296",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/models.py": {
+      "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9",
+      "origin": "action06 reviewed candidate"
+    },
+    "actions/mount.py": {
+      "sha256": "ea18c541344fd68590d8cf97346696e70d5a6a7bc4bb18a63ff06b5c04ee9e6d",
+      "origin": "action06 reviewed candidate"
+    },
+    "test_actions.py": {
+      "sha256": "c2868e0a46cbd4464c1dca9ca9f28d53cd1eb4ebd80dcdd769ac1ee7bd56252f",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_http.py": {
+      "sha256": "852d41a196575c92590460d5f5948ea5f41d2391ffbfad5111bd1598621e7c3c",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_actor.py": {
+      "sha256": "ed70701f38d2b8e25a40c76b1fa0b1ad17d698359fbf2ffc1575df52649edfdf",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_socket.py": {
+      "sha256": "7ab61b6bb92a296f0ed1cfabf19251ed37f0dd16dafed5faa793cc2162c84a0e",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_validation.py": {
+      "sha256": "31d524659be22f0955a37c30380c06dd6e22a899ac6e38ddf62b3afbeac1418e",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_migrations.py": {
+      "sha256": "f0c656193e4bab896a70f316c652ef3b2a72242e222439629c716aa214a66bcd",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_approval.py": {
+      "sha256": "d2d3b2545950881ee2476b3ed22605728d90da72feebe0265aa7caff5879b089",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_dependencies.py": {
+      "sha256": "6d6abe7183e648f0bef0ad8016c794cfb614e0661373828b1c6c46daf995883f",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_migration_committed.py": {
+      "sha256": "7bff2878480d2703ca06e8ee3638b4d63267f20510027886d0793fe71a61e8b9",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_review04.py": {
+      "sha256": "7d075c82cc9ef6b90465a97acaa7a43989f0ac44e0729997315cbc388805de91",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_operational.py": {
+      "sha256": "f291fa3ba401eb53338e1d9c95300501dc3a84abfb48d180144ec2bff4ed5c6c",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_limits.py": {
+      "sha256": "fa62d6425e5f5da423c76612ec442d3ffdfed4f5ee33ce27b4819469d9c357a1",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_quota_migration.py": {
+      "sha256": "08851e14b88f30f0bc90c080d68f6e33f84f1689fb87503f559dd35c39be4f72",
+      "origin": "action06 unchanged test assertions"
+    },
+    "test_operational_socket.py": {
+      "sha256": "a8d8bb6f61f9960997205f9d2863e380cd140f0419312c9b07cd27b2e0f56966",
+      "origin": "action06 unchanged test assertions"
+    }
+  }
+}
