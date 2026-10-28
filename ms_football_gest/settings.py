@@ -295,3 +295,8 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/3'),  # Every 1st day of the month at midnight
     },
 }
+
+# Dedicated prepare-only pilot, closed unless strict hash-only config is present.
+from actions.mount import configure as _actions_configure
+_actions_configure(globals())
+del _actions_configure

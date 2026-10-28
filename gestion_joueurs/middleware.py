@@ -1,6 +1,8 @@
-from django.utils.deprecation import MiddlewareMixin
-from .utils import set_current_user
+from .utils import actor_context
 
-class CurrentUserMiddleware(MiddlewareMixin):
-    def process_request(self, request):
-        set_current_user(request.user)
+class CurrentUserMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+    def __call__(self, request):
+        with actor_context(request.user):
+            return self.get_response(request)

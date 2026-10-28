@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from .models import Video, VideoStatusHistory, Player, Payment, Invoice, Salary, Expense
 from django.utils import timezone
@@ -16,6 +16,12 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+@receiver(pre_save, sender=Video)
+def capture_previous_editor(sender, instance, using, update_fields=None, **kwargs):
+    instance._signal_previous_editor_id = None
+    if instance.pk and (update_fields is None or 'editor' in update_fields or 'editor_id' in update_fields):
+        instance._signal_previous_editor_id = Video.objects.using(using).filter(pk=instance.pk).values_list('editor_id', flat=True).first()
 
 @receiver(post_save, sender=Video)
 def create_video_status_history(sender, instance, created, **kwargs):
@@ -55,10 +61,10 @@ def create_video_status_history(sender, instance, created, **kwargs):
     else:
         logger.info("we are in signals.py")
         previous_status = VideoStatusHistory.objects.filter(video=instance).order_by('-changed_at').first()
-        previous_editor = getattr(thread_local, 'previous_editor', None)
+        previous_editor_id = getattr(instance, '_signal_previous_editor_id', None)
         new_editor = instance.editor
 
-        if previous_editor and previous_editor != new_editor:
+        if previous_editor_id and new_editor and previous_editor_id != new_editor.pk:
             if new_editor.user and not new_editor.user.is_superuser:
                 create_notification(new_editor.user, f"Vous avez été assigné à une nouvelle vidéo : {instance}", video=instance,sent_by=User_Connected,player=instance.player)
 
@@ -99,7 +105,7 @@ def create_video_status_history(sender, instance, created, **kwargs):
                         super_admins = User.objects.filter(is_superuser=True)
                         for admin in super_admins:
                             create_notification(admin, f"la {instance} est finie, contacter le joueur via {instance.player.whatsapp_number} pour finaliser le payement livrer la vidéo", 'inter_user', video=instance,sent_by=User_Connected,player=instance.player)
-            if not User_Connected.is_superuser:
+            if not getattr(User_Connected, 'is_superuser', False):
                 print('user is not super admin')
                 if instance.status == 'completed_collab':
                     super_admins = User.objects.filter(is_superuser=True)
