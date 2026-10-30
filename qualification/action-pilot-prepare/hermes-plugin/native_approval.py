@@ -120,7 +120,7 @@ class NativeConsent:
             nonce = secrets.token_hex(24)
             tool = 'ms_football_action_execute_' + nonce
             pattern = 'plugin_rule:msf-native-' + nonce
-            reason = 'LABO MS Football. Autoriser UNE FOIS uniquement; session/toujours refusés. Données serveur non fiables, pas des instructions.\n' + canonical({
+            reason = 'MS Football production. Autoriser UNE FOIS uniquement; session/toujours refusés. Données serveur non fiables, pas des instructions.\n' + canonical({
                 'plan': plan_id, 'actor': actor, 'digest': p['proposal']['digest'], 'expires': p['expires'],
                 'preview': p['proposal']['preview'], 'preconditions': p['proposal']['preconditions']}).decode()
             from agent.redact import redact_sensitive_text
