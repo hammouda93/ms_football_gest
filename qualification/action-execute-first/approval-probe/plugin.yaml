@@ -1,0 +1,11 @@
+name: ms-football-approval-probe
+version: 0.1.0
+description: Nonmutating native host approval connectivity diagnostic; no execution capability
+entrypoint: __init__.py
+provides_tools:
+  - ms_football_approval_probe
+provides_hooks:
+  - pre_approval_request
+  - on_human_input_request
+  - on_human_input_resolved
+  - post_approval_response
