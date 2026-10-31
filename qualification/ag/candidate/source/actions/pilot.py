@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db.models.signals import post_init
 from .http import OperationalWriterBoundary, respond, Engine
 from .models import Plan
+from .mount import valid_binding, _configuration, APPROVED_OPERATIONS
 
 _active_binding = ContextVar('actions_execute_binding', default=None)
 
@@ -13,18 +14,13 @@ def _check_plan(plan, binding):
     # Never invoke deferred descriptors: refresh hydration re-emits post_init.
     if {'id', 'actor_id', 'digest', 'steps', 'snapshots'} & plan.get_deferred_fields():
         raise PermissionError('execute_binding_denied')
+    if not valid_binding(binding):
+        raise PermissionError('execute_binding_denied')
     if (str(plan.pk), plan.actor_id, plan.digest) != (binding['plan_id'], binding['actor'], binding['digest']):
         raise PermissionError('execute_binding_denied')
     steps = plan.steps
-    if type(steps) is not list or len(steps) != 1:
-        raise PermissionError('execute_binding_denied')
-    step = steps[0]
-    if type(step) is not dict or set(step) != {'as', 'op', 'values'} or step['op'] != 'video.amend':
-        raise PermissionError('execute_binding_denied')
-    values = step['values']
-    if (type(values) is not dict or set(values) != {'id', 'info'}
-            or type(values['id']) is not int or values['id'] != 1980
-            or type(values['info']) is not str
+    if (not valid_binding(binding) or type(steps) is not list
+            or [s.get('op') if type(s) is dict else None for s in steps] != binding['operations']
             or Engine.proposal_digest(steps, plan.snapshots) != binding['digest']):
         raise PermissionError('execute_binding_denied')
 
@@ -42,8 +38,23 @@ post_init.connect(_guard_hydrated_plan, sender=Plan, weak=False,
 
 class PrepareOnlyBoundary(OperationalWriterBoundary):
     def __call__(self, request):
-        if request.path == '/actions/v1/execute' and getattr(settings, 'ACTIONS_EXECUTE_ENABLED', False) is not True:
+        if request.path == '/actions/v1/execute' and (
+                getattr(settings, 'ACTIONS_EXECUTE_ENABLED', False) is not True
+                or not valid_binding(getattr(settings, 'ACTIONS_EXECUTE_BINDING', {}))
+                or not isinstance(getattr(settings, 'ACTIONS_APPROVAL_KEY', ''), str)
+                or len(getattr(settings, 'ACTIONS_APPROVAL_KEY', '')) < 32):
             return respond({'error': 'execute_disabled_pilot'}, 403)
+        if request.path == '/actions' or request.path.startswith('/actions/'):
+            try:
+                config = _configuration(json.dumps({'enabled':getattr(settings, 'ACTIONS_ENABLED', False),
+                    'credentials':getattr(settings, 'ACTIONS_CREDENTIALS', {})}))
+                from .registry import catalogue
+                reader_hashes = {c['token_hash'] for c in getattr(settings, 'DATA_ACCESS_CREDENTIALS', [])}
+                if (not config['enabled'] or set(catalogue()) != APPROVED_OPERATIONS
+                        or reader_hashes & set(config['credentials'])):
+                    raise ValueError()
+            except (ValueError, TypeError, KeyError, AttributeError):
+                return respond({'error': 'writer_disabled'}, 403)
         return super().__call__(request)
 
     def authorized_dispatch(self, request, credential, operation):
@@ -52,10 +63,8 @@ class PrepareOnlyBoundary(OperationalWriterBoundary):
         if getattr(settings, 'ACTIONS_EXECUTE_ENABLED', False) is not True:
             return respond({'error': 'execute_disabled_pilot'}, 403)
         binding = getattr(settings, 'ACTIONS_EXECUTE_BINDING', {})
-        if (type(binding) is not dict or set(binding) != {'plan_id', 'digest', 'actor', 'video_id'}
-                or type(binding['actor']) is not int or binding['actor'] != 1
-                or type(binding['video_id']) is not int or binding['video_id'] != 1980
-                or credential['actor'] != binding['actor']):
+        if (not valid_binding(binding) or credential['actor'] != binding['actor']
+                or any('op:' + op not in credential['scopes'] for op in binding['operations'])):
             raise PermissionError('execute_binding_denied')
         if request.content_type != 'application/json' or len(request.body) > 32000:
             raise ValueError()

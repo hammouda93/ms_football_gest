@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """Bounded regressions for review-integration SEC-01 and LOG-01."""
 import unittest,uuid,json,hashlib,threading,importlib.util
 from datetime import timedelta,date
@@ -24,7 +25,7 @@ class FinalTests(unittest.TestCase):
         from urllib.request import Request,urlopen
         from urllib.error import HTTPError
         org=Organization.objects.create(name='FICTION_FINAL_SCOPE',kind='agent')
-        p=self.engine.prepare(uuid.uuid4().hex,[{'as':'o','op':'organization.details.amend','values':{'id':org.pk,'name':'DENIED'}}])
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,[{'as':'o','op':'organization.details.amend','values':{'id':org.pk,'name':'DENIED'}}]))
         saved=Plan.objects.get(pk=p['id']);before=(saved.digest,saved.snapshots,saved.state)
         token=uuid.uuid4().hex;queries=[];attempts=[]
         credential={'actor':self.actor.pk,'scopes':['execute'],'expires':(timezone.now()+timedelta(minutes=5)).isoformat(),'revoked':False}
@@ -38,14 +39,14 @@ class FinalTests(unittest.TestCase):
             app=get_wsgi_application()
             def traced_app(environ,start_response):
                 with connection.execute_wrapper(trace):return app(environ,start_response)
-            server=make_server('127.0.0.1',55573,traced_app,handler_class=Quiet)
+            server=make_server('127.0.0.1',55841,traced_app,handler_class=Quiet)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 for state in ['active','inactive','missing']:
                     if state=='inactive':Organization.objects.filter(pk=org.pk).update(is_active=False)
                     if state=='missing':Organization.objects.filter(pk=org.pk).delete()
                     queries.clear()
-                    req=Request('http://127.0.0.1:55573/actions/v1/execute',data=json.dumps({'id':p['id'],'approval':approval}).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                    req=Request('http://127.0.0.1:55841/actions/v1/execute',data=json.dumps({'id':p['id'],'approval':approval}).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                     try:
                         with urlopen(req,timeout=5) as r:status,body=r.status,json.load(r)
                     except HTTPError as r:status,body=r.code,json.load(r)
@@ -63,7 +64,7 @@ class FinalTests(unittest.TestCase):
         original=importlib.util.module_from_spec(spec);spec.loader.exec_module(original)
         player=Player.objects.create(name='FICTION_LEGACY_'+uuid.uuid4().hex,club='BEFORE',league='OC',position='MF',date_of_birth=date(2002,1,2))
         steps=[{'as':'p','op':'player.amend','values':{'id':player.pk,'club':'AFTER'}}]
-        p=original.Engine(self.actor.pk).prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(original.Engine(self.actor.pk).prepare(uuid.uuid4().hex,steps))
         saved=Plan.objects.get(pk=p['id'])
         self.assertNotIn('changes',saved.snapshots['__preview__'])
         snapshot=saved.snapshots;digest=saved.digest

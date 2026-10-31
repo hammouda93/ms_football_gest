@@ -2,7 +2,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 SECRET_KEY='FICTION-action01-only-not-for-deployment'
 INSTALLED_APPS=['django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','gestion_joueurs.apps.GestionJoueursConfig','client_portal.apps.ClientPortalConfig','sportsbase_data.apps.SportsbaseDataConfig','prospects.apps.ProspectsConfig','crispy_forms','crispy_bootstrap4','actions']
-DATABASES={'default':{'ENGINE':'django.db.backends.postgresql','NAME':'msf_unified_fixed_fiction','USER':'msf_unified_fixed_fixture','HOST':'127.0.0.1','PORT':'55572','PASSWORD':'','CONN_MAX_AGE':0,'OPTIONS':{'connect_timeout':3}}}
+DATABASES={'default':{'ENGINE':'django.db.backends.postgresql','NAME':'msf_service_final_fiction','USER':'msf_service_final_fixture','HOST':'127.0.0.1','PORT':'55840','PASSWORD':'','CONN_MAX_AGE':0,'OPTIONS':{'connect_timeout':3}}}
 USE_TZ=True
 TIME_ZONE='Africa/Tunis'
 DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
@@ -21,3 +21,7 @@ TELEGRAM_BOT_TOKEN=''
 CELERY_BROKER_URL='memory://'
 CELERY_BEAT_SCHEDULE={}
 ALLOWED_HOSTS=['testserver']
+
+from copy import deepcopy
+DATABASES['verification']=deepcopy(DATABASES['default'])
+ACTIONS_VERIFICATION_KEY='FICTION_UNIFIED_VERIFY_KEY_001_NOT_LIVE'

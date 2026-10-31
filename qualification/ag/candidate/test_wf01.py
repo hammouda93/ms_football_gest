@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """WF-01: real unchanged signals and full persisted effect oracles."""
 import unittest, uuid
 from django.utils import timezone
@@ -52,32 +53,32 @@ class WF01Tests(unittest.TestCase):
         self.tie(); before=business_rows(self.video.pk); plans=Plan.objects.count()
         with patch.object(ProductionTransition,'preview',side_effect=AssertionError('ambiguous preview reached')):
             with self.assertRaisesRegex(ValueError,'workflow_history_ambiguous'):
-                self.engine.prepare(uuid.uuid4().hex,self.steps())
+                compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()))
         self.assertEqual(business_rows(self.video.pk),before)
         self.assertEqual(Plan.objects.count(),plans)
     def test_tie_added_between_prepare_execute_is_refused_without_business_mutation(self):
-        p=self.engine.prepare(uuid.uuid4().hex,self.steps())
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()))
         self.tie(); before=business_rows(self.video.pk)
         with self.assertRaisesRegex(ValueError,'workflow_history_ambiguous'):self.engine.execute(p['id'])
         self.assertEqual(business_rows(self.video.pk),before)
         plan=Plan.objects.get(pk=p['id']);self.assertEqual(plan.state,'prepared');self.assertEqual(plan.effects,{})
     def test_same_status_latest_tie_also_closed(self):
         self.tie(same_status=True)
-        with self.assertRaisesRegex(ValueError,'workflow_history_ambiguous'):self.engine.prepare(uuid.uuid4().hex,self.steps())
+        with self.assertRaisesRegex(ValueError,'workflow_history_ambiguous'):compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()))
     def test_older_tie_with_unique_latest_preserves_real_signal(self):
         self.tie(older=True)
         before={self.video.pk:business_rows(self.video.pk)}
-        p=self.engine.prepare(uuid.uuid4().hex,self.steps())
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()))
         plan=Plan.objects.get(pk=p['id']);r=self.engine.execute(p['id'])
         self.assertEqual(r['state'],'succeeded');assert_effects(self,plan,r,before)
     def test_effect_oracle_rejects_unrecorded_extra_history(self):
         before={self.video.pk:business_rows(self.video.pk)}
-        p=self.engine.prepare(uuid.uuid4().hex,self.steps());plan=Plan.objects.get(pk=p['id'])
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()));plan=Plan.objects.get(pk=p['id'])
         r=self.engine.execute(p['id']);assert_effects(self,plan,r,before)
         VideoStatusHistory.objects.create(video=self.video,status='in_progress',editor=self.ve)
         with self.assertRaisesRegex(AssertionError,'history count versus preview'):assert_effects(self,plan,r,before)
     def test_effect_oracle_rejects_missing_history(self):
         before={self.video.pk:business_rows(self.video.pk)}
-        p=self.engine.prepare(uuid.uuid4().hex,self.steps());plan=Plan.objects.get(pk=p['id'])
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()));plan=Plan.objects.get(pk=p['id'])
         r=self.engine.execute(p['id']);VideoStatusHistory.objects.filter(pk__in=r['effects']['history']).delete()
         with self.assertRaisesRegex(AssertionError,'history count versus preview'):assert_effects(self,plan,r,before)

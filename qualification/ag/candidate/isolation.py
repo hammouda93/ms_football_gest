@@ -11,9 +11,9 @@ class Excluded(importlib.abc.MetaPathFinder):
         if 'jarvis' in fullname.lower() or fullname.split('.')[0]=='agent_api': deny('historical integration')
 def audit(event,args):
     if event in ('subprocess.Popen','os.system','os.startfile','os.posix_spawn'): deny('process')
-    if event in ('socket.bind','socket.sendto') and (not isinstance(args[-1],tuple) or args[-1][:2]!=('127.0.0.1',55441)): deny('network endpoint')
-    if event=='socket.connect' and args[1][:2] not in [('127.0.0.1',55440),('127.0.0.1',55441)]: deny('network')
-    if event=='socket.getaddrinfo' and (args[0]!='127.0.0.1' or str(args[1]) not in ('55440','55441')): deny('dns')
+    if event in ('socket.bind','socket.sendto') and (not isinstance(args[-1],tuple) or args[-1][:2] not in [('127.0.0.1',55841),('127.0.0.1',55842),('127.0.0.1',55843),('127.0.0.1',55851),('127.0.0.1',55852),('127.0.0.1',55853)]): deny('network endpoint')
+    if event=='socket.connect' and args[1][:2] not in [('127.0.0.1',55840),('127.0.0.1',55841),('127.0.0.1',55842),('127.0.0.1',55843),('127.0.0.1',55851),('127.0.0.1',55852),('127.0.0.1',55853)]: deny('network')
+    if event=='socket.getaddrinfo' and (args[0]!='127.0.0.1' or str(args[1]) not in ('55840','55841','55842','55843','55851','55852','55853')): deny('dns')
     if event=='smtplib.connect': deny('smtp')
     if event=='open' and isinstance(args[0],(str,bytes,os.PathLike)):
         p=Path(os.fsdecode(args[0]))
@@ -28,7 +28,7 @@ def install():
         from psycopg2.extensions import parse_dsn
         cfg=parse_dsn(dsn) if dsn else {}
         cfg.update(kw)
-        if cfg.get('host')!='127.0.0.1' or str(cfg.get('port'))!='55440' or cfg.get('user')!='msf_action01_fixture_owner' or cfg.get('dbname',cfg.get('database'))!='msf_action03_fiction': deny('database target')
+        if cfg.get('host')!='127.0.0.1' or str(cfg.get('port'))!='55840' or cfg.get('user')!='msf_service_final_fixture' or cfg.get('dbname',cfg.get('database'))!='msf_service_final_fiction': deny('database target')
         return original(dsn,*args,**kw)
     psycopg2.connect=connect
     dotenv.load_dotenv=lambda *a,**kw:False

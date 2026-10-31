@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 import uuid,json,hashlib,unittest
 from test_actions import ActionsTests
 from django.apps import apps
@@ -11,7 +12,7 @@ class CompatibilityTests(ActionsTests):
     def refused(self,steps,code):
         before=self.footprint();plans=Plan.objects.count();outbox=len(getattr(mail,'outbox',[]));key=uuid.uuid4().hex
         with self.assertRaisesRegex(ValueError,'^'+code+'$'):
-            self.engine().prepare(key,steps)
+            compat_pre(self.engine().prepare(key,steps))
         self.assertEqual(Plan.objects.count(),plans)
         self.assertEqual(self.footprint(),before)
         self.assertEqual(len(getattr(mail,'outbox',[])),outbox)
@@ -32,7 +33,7 @@ class CompatibilityTests(ActionsTests):
         from datetime import date,timedelta
         from actions.models import Plan
         steps=self.plan();steps[-1]['values']['whatsapp_conversation_date']=date.today().strftime('%m/%d/%Y')
-        p=self.engine().prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine().prepare(uuid.uuid4().hex,steps))
         self.assertEqual(Plan.objects.get(pk=p['id']).snapshots['__preview__']['orders'][0]['deadline'],(date.today()+timedelta(days=5)).isoformat())
         self.assertEqual(self.engine().execute(p['id'])['state'],'succeeded')
 
@@ -47,7 +48,7 @@ class CompatibilityTests(ActionsTests):
         self.refused(steps,'invalid_deadline')
         for value in ['0','0.00','-0.00','0E+2']:
             steps=self.plan();steps[-1]['values']['advance_payment']=value
-            before=self.footprint();p=self.engine().prepare(uuid.uuid4().hex,steps)
+            before=self.footprint();p=compat_pre(self.engine().prepare(uuid.uuid4().hex,steps))
             self.assertEqual(self.footprint(),before)
             self.assertEqual(self.engine().status(p['id'])['state'],'prepared')
     def test_prepare_never_calls_save_or_business_apply(self):
@@ -56,7 +57,7 @@ class CompatibilityTests(ActionsTests):
         from actions.engine import Engine
         # Spies only on forbidden mutation entrances, real validation/ORM reads.
         with patch.object(VideoForm,'save',side_effect=AssertionError('save during prepare')),patch.object(Engine,'_apply',side_effect=AssertionError('apply during prepare')):
-            self.engine().prepare(uuid.uuid4().hex,self.plan())
+            compat_pre(self.engine().prepare(uuid.uuid4().hex,self.plan()))
 
     def test_invalid_player_form_refused_before_plan(self):
         steps=self.plan();steps[0]['values']['position']='ZZ'
@@ -99,11 +100,11 @@ class HttpCompatibilityTests(unittest.TestCase):
             def log_message(self,*args):pass
         options={'ACTIONS_ENABLED':True,'ACTIONS_APPROVAL_KEY':'FICTION-'+uuid.uuid4().hex,'ACTIONS_CREDENTIALS':{hashlib.sha256(token.encode()).hexdigest():credential},'MIDDLEWARE':['actions.http.OperationalWriterBoundary'],'ACTIONS_GLOBAL_LIMIT':1000,'ACTIONS_ACTOR_LIMIT':1000,'ALLOWED_HOSTS':['127.0.0.1']}
         with override_settings(**options):
-            server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=QuietHandler)
+            server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=QuietHandler)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 def call(op,data=None):
-                    request=Request('http://127.0.0.1:55573/actions/v1/'+op,data=json.dumps(data).encode() if data is not None else None,headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                    request=Request('http://127.0.0.1:55841/actions/v1/'+op,data=json.dumps(data).encode() if data is not None else None,headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                     try:
                         with urlopen(request,timeout=5) as r:return r.status,json.load(r)
                     except HTTPError as r:return r.code,json.load(r)
@@ -112,11 +113,11 @@ class HttpCompatibilityTests(unittest.TestCase):
                 for field,value in [('advance_payment','1'),('deadline_from_whatsapp',False),('season','INVALID')]:
                     bad=deepcopy(steps);bad[-1]['values'][field]=value
                     key=uuid.uuid4().hex;before=CompatibilityTests.footprint(self)
-                    code,result=call('prepare',{'key':key,'steps':bad})
+                    code,result=compat_pre(call('prepare',{'key':key,'steps':bad}))
                     self.assertEqual((code,result),(400,{'error':'invalid_request'}))
                     self.assertFalse(Plan.objects.filter(actor_id=actor.pk,key=key).exists())
                     self.assertEqual(CompatibilityTests.footprint(self),before)
-                code,p=call('prepare',{'key':uuid.uuid4().hex,'steps':steps});self.assertEqual(code,200)
+                code,p=compat_pre(call('prepare',{'key':uuid.uuid4().hex,'steps':steps}));self.assertEqual(code,200)
                 self.assertFalse(Player.objects.filter(name=name).exists())
                 self.assertEqual(p['preview']['orders'][0]['price'],'350.00')
                 self.assertEqual(call('execute',{'id':p['id'],'approval':'invalid'})[0],403)

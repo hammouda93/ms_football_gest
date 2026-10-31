@@ -20,6 +20,7 @@ def verify():
   'lookup-result.json','mixed-missions.json','negative-cases.json',
   'player-create-mission.json','refusal-records.jsonl','security-probe-result.json',
   'socket-result.json','unified01-records.jsonl',
+  'events.json','composed-proof.json','matrix.json','native-fixture.json','http-fixture.json','http-proof.json','readback.json','durable-readback.json','ready-55451.json','ready-55452.json','ready-55453.json','stop.txt',
  }
  evidence={'qualification/ag/candidate/'+name for name in generated}
  assert not evidence&allowed,'generated evidence overlaps immutable sources'

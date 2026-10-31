@@ -5,8 +5,8 @@ import ast, io, tokenize, sys, subprocess, importlib.machinery
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 ORIGINAL=ROOT
-MAPPING={'55572':'55440','55573':'55441','msf_unified_fixed_fixture':'msf_action01_fixture_owner','msf_unified_fixed_fiction':'msf_action03_fiction'}
-MODES={'lab_control','worker','replay','run_union','readback_unified01','fixture_snapshot','extra_http','fixture_snapshot'}
+MAPPING={'55840':'55440','55841':'55441','55842':'55442','55843':'55443','55851':'55451','55852':'55452','55853':'55453','msf_service_final_fixture':'msf_action01_fixture_owner','msf_service_final_fiction':'msf_action03_fiction'}
+MODES={'lab_control','worker','replay','run_union','readback_unified01','fixture_snapshot','extra_http','fixture_snapshot','server','readback','readback_durable'}
 def eligible(path):
  p=Path(path).resolve()
  return p.parent==ROOT and ((ORIGINAL/p.name).is_file() and p.suffix=='.py')

@@ -4,8 +4,14 @@ import os
 import re
 from datetime import datetime, timezone
 
-SCOPES = frozenset(('catalogue', 'prepare', 'status', 'execute', 'op:player.create',
-                    'op:organization.link', 'op:video.order', 'op:player.amend', 'op:video.amend'))
+# Closed reviewed allowlist; registry imports require Django's populated app registry.
+APPROVED_OPERATIONS = frozenset(('player.create', 'organization.link', 'video.order',
+    'player.amend', 'video.amend', 'organization.details.amend', 'prospect.details.amend',
+    'player.profile.create', 'organization.profile.create', 'organization.profile.amend',
+    'prospect.profile.amend', 'player.profile.amend', 'video.status.transition',
+    'video.workflow.transition'))
+SCOPES = frozenset(('catalogue', 'prepare', 'status', 'execute', 'verify')) | frozenset(
+    'op:' + name for name in APPROVED_OPERATIONS)
 
 
 def _unique(pairs):
@@ -17,9 +23,10 @@ def _unique(pairs):
     return result
 
 
-def _configuration():
+def _configuration(raw=None):
     try:
-        raw = os.environ.get('MSF_ACTIONS_PILOT_CONFIG', '{"enabled":false,"credentials":{}}')
+        if raw is None:
+            raw = os.environ.get('MSF_ACTIONS_PILOT_CONFIG', '{"enabled":false,"credentials":{}}')
         if len(raw) > 16000:
             raise ValueError()
         value = json.loads(raw, object_pairs_hook=_unique)
@@ -57,6 +64,20 @@ def _configuration():
         raise ValueError('actions_pilot_config_invalid') from None
 
 
+def valid_binding(binding):
+    """Exact per-mission permit, never a wildcard service permission."""
+    import uuid
+    try:
+        return (type(binding) is dict and set(binding) == {'plan_id', 'digest', 'actor', 'operations'}
+            and type(binding['plan_id']) is str and str(uuid.UUID(binding['plan_id'])) == binding['plan_id']
+            and type(binding['digest']) is str and re.fullmatch('[0-9a-f]{64}', binding['digest']) is not None
+            and type(binding['actor']) is int and 0 < binding['actor'] <= 2147483647
+            and type(binding['operations']) is list and 1 <= len(binding['operations']) <= 12
+            and all(type(op) is str and op in APPROVED_OPERATIONS for op in binding['operations']))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def execute_configuration():
     """Dedicated opt-in; malformed or incomplete configuration closes execute only."""
     import uuid
@@ -70,15 +91,7 @@ def execute_configuration():
         if len(raw) > 1000:
             raise ValueError()
         binding = json.loads(raw, object_pairs_hook=_unique)
-        if type(binding) is not dict or set(binding) != {'plan_id', 'digest', 'actor', 'video_id'}:
-            raise ValueError()
-        if type(binding['plan_id']) is not str or str(uuid.UUID(binding['plan_id'])) != binding['plan_id']:
-            raise ValueError()
-        if type(binding['digest']) is not str or not re.fullmatch('[0-9a-f]{64}', binding['digest']):
-            raise ValueError()
-        if type(binding['actor']) is not int or binding['actor'] != 1:
-            raise ValueError()
-        if type(binding['video_id']) is not int or binding['video_id'] != 1980:
+        if not valid_binding(binding):
             raise ValueError()
         return True, key, binding
     except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
@@ -105,3 +118,9 @@ def configure(namespace):
     namespace['ACTIONS_EXECUTE_ENABLED'] = enabled
     namespace['ACTIONS_APPROVAL_KEY'] = key if enabled else ''
     namespace['ACTIONS_EXECUTE_BINDING'] = binding if enabled else {}
+    from copy import deepcopy
+    verification = deepcopy(namespace['DATABASES']['default'])
+    verification.update(ATOMIC_REQUESTS=False, CONN_MAX_AGE=0)
+    namespace['DATABASES']['verification'] = verification
+    verification_key = os.environ.get('MSF_ACTIONS_VERIFICATION_KEY', '')
+    namespace['ACTIONS_VERIFICATION_KEY'] = verification_key if len(verification_key) >= 32 else ''

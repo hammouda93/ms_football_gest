@@ -20,6 +20,15 @@ class Plan(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['actor_id','key'],name='action01_idempotency')]
+class Verification(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    plan=models.ForeignKey(Plan,on_delete=models.PROTECT)
+    actor_id=models.PositiveIntegerField()
+    body=models.JSONField()
+    mac=models.CharField(max_length=64)
+    expires_at=models.DateTimeField()
+    created_at=models.DateTimeField(auto_now_add=True)
+
 class Audit(models.Model):
     plan=models.ForeignKey(Plan,on_delete=models.PROTECT,null=True)
     actor_id=models.PositiveIntegerField()

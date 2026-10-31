@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """Cross-family integration assertions; no new business capability."""
 import unittest
 from actions.registry import catalogue,LEGACY,SIMPLE
@@ -9,7 +10,7 @@ class MergeTests(unittest.TestCase):
         import uuid
         t=DeclarativeTests();t.setUp()
         result=None
-        try:result=t.engine.prepare(uuid.uuid4().hex,[t.step('organization.profile.create',{'name':'FICTION_MERGE_'+uuid.uuid4().hex,'kind':'club'})])
+        try:result=compat_pre(t.engine.prepare(uuid.uuid4().hex,[t.step('organization.profile.create',{'name':'FICTION_MERGE_'+uuid.uuid4().hex,'kind':'club'})]))
         except KeyError:pass
         self.assertIsNotNone(result,'reviewed create contract must prepare without id')
     def test_mixed_profile_and_transition_real_http_exact_commit(self):
@@ -37,16 +38,16 @@ class MergeTests(unittest.TestCase):
             class Quiet(WSGIRequestHandler):
                 def log_message(self,*a):pass
             with override_settings(ACTIONS_ENABLED=True,ACTIONS_APPROVAL_KEY='FICTION-'+uuid.uuid4().hex,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():cred},MIDDLEWARE=['actions.http.OperationalWriterBoundary'],ALLOWED_HOSTS=['127.0.0.1']):
-                server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=Quiet)
+                server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=Quiet)
                 thread=threading.Thread(target=server.serve_forever);thread.start()
                 try:
                     def call(route,data=None):
-                        request=Request('http://127.0.0.1:55573/actions/v1/'+route,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                        request=Request('http://127.0.0.1:55841/actions/v1/'+route,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                         with urlopen(request,timeout=10) as response:return json.load(response)
                     self.assertEqual(set(call('catalogue')['catalogue']),{s['op'] for s in steps})
                     before={t.video.pk:business_rows(t.video.pk)}
                     old_player=Player.objects.values().get(pk=t.player.pk);org_count=Organization.objects.count()
-                    key=uuid.uuid4().hex;p=call('prepare',{'key':key,'steps':steps})
+                    key=uuid.uuid4().hex;p=compat_pre(call('prepare',{'key':key,'steps':steps}))
                     self.assertEqual(Player.objects.values().get(pk=t.player.pk),old_player)
                     self.assertEqual(business_rows(t.video.pk),before[t.video.pk]);self.assertEqual(Organization.objects.count(),org_count)
                     plan=Plan.objects.get(pk=p['id'])
@@ -54,7 +55,7 @@ class MergeTests(unittest.TestCase):
                     result=call('execute',{'id':p['id'],'approval':approval});self.assertEqual(result['state'],'succeeded',result)
                     self.assertEqual(call('execute',{'id':p['id'],'approval':approval}),result)
                     self.assertEqual(call('status',{'id':p['id']}),result)
-                    self.assertEqual(call('prepare',{'key':key,'steps':steps})['id'],p['id'])
+                    self.assertEqual(compat_pre(call('prepare',{'key':key,'steps':steps}))['id'],p['id'])
                     assert_effects(self,plan,result,before)
                     profile=plan.snapshots['__preview__']['changes'][1]
                     expected=dict(old_player,**profile['new'])
@@ -72,8 +73,8 @@ class MergeTests(unittest.TestCase):
         t=WorkflowTests();t.setUp()
         steps=[{'as':'p','op':'player.profile.amend','values':{'id':t.player.pk,'club':'DENIED'}}]+t.steps()
         old=Player.objects.values().get(pk=t.player.pk)
-        with self.assertRaisesRegex(PermissionError,'permission_denied'):Engine(t.editor.pk).prepare(uuid.uuid4().hex,steps)
-        p=t.engine.prepare(uuid.uuid4().hex,steps)
+        with self.assertRaisesRegex(PermissionError,'permission_denied'):compat_pre(Engine(t.editor.pk).prepare(uuid.uuid4().hex,steps))
+        p=compat_pre(t.engine.prepare(uuid.uuid4().hex,steps))
         from django.contrib.auth.models import User
         User.objects.filter(pk=t.admin.pk).update(is_superuser=False)
         from gestion_joueurs.models import VideoEditor
@@ -85,7 +86,7 @@ class MergeTests(unittest.TestCase):
         import uuid
         t=WorkflowTests();t.setUp()
         steps=[{'as':'v','op':'video.amend','values':{'id':t.video.pk,'info':'FICTION'}}]+t.steps()
-        with self.assertRaisesRegex(ValueError,'duplicate_target'):t.engine.prepare(uuid.uuid4().hex,steps)
+        with self.assertRaisesRegex(ValueError,'duplicate_target'):compat_pre(t.engine.prepare(uuid.uuid4().hex,steps))
     def test_registry_contains_exact_union_of_reviewed_contracts(self):
         self.assertEqual(set(catalogue()),set(LEGACY)|set(SIMPLE)|set(DEFINITIONS)|set(WORKFLOWS))
         for op,adapter in DEFINITIONS.items():self.assertEqual(catalogue()[op],adapter.contract())

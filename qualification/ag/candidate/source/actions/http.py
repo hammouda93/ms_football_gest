@@ -61,11 +61,29 @@ class WriterBoundary:
             expiry=datetime.fromisoformat(c['expires'])
             if timezone.is_naive(expiry) or expiry<=timezone.now():raise ValueError()
         except (ValueError,TypeError,KeyError):raise PermissionError('credential_invalid')
-        routes={'/actions/v1/lookup':('POST','lookup'),'/actions/v1/catalogue':('GET','catalogue'),'/actions/v1/prepare':('POST','prepare'),'/actions/v1/execute':('POST','execute'),'/actions/v1/status':('POST','status')}
+        routes={'/actions/v1/verify':('POST','verify'),'/actions/v1/lookup':('POST','lookup'),'/actions/v1/catalogue':('GET','catalogue'),'/actions/v1/prepare':('POST','prepare'),'/actions/v1/execute':('POST','execute'),'/actions/v1/status':('POST','status')}
         if request.path not in routes:return respond({'error':'not_found'},404)
         method,op=routes[request.path]
         if request.method!=method:return respond({'error':'method_not_allowed'},405)
         if op not in c['scopes']:raise PermissionError('scope_denied')
+        if op=='verify':
+            from .readback import before,after,readonly,plan
+            from .limits import reserve,QuotaExceeded
+            length=request.META.get('CONTENT_LENGTH','0')
+            if not length.isdigit() or int(length)>512 or request.content_type!='application/json':raise ValueError()
+            data=json.loads(request.body)
+            if type(data) is not dict or set(data)!= {'id','phase'} or data['phase'] not in ('before','after'):raise ValueError()
+            import uuid
+            if type(data['id']) is not str or str(uuid.UUID(data['id']))!=data['id']:raise ValueError()
+            # Verification owns a different alias and its READ ONLY transaction;
+            # never nest it inside OperationalWriterBoundary's execute atomic.
+            from django.db import DatabaseError
+            try:
+                reserve(c['actor'])
+                if data['phase']=='before':return respond(before(c['actor'],data['id'],c['scopes']))
+                return respond(after(c['actor'],data['id'],c['scopes']))
+            except QuotaExceeded:return respond({'error':'quota_exceeded'},429)
+            except DatabaseError:return respond({'error':'verification_unavailable'},503)
         return self.authorized_dispatch(request,c,op)
     def authorized_dispatch(self,request,c,op):
         e=Engine(c['actor']);e.authorize()

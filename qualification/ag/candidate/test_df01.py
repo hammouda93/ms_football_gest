@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """DF-01 real HTTP/PostgreSQL regression; fixture-only approval authority."""
 import contextlib,hashlib,json,threading,unittest,uuid
 from datetime import date,timedelta
@@ -47,10 +48,10 @@ class DF01Tests(unittest.TestCase):
         class Quiet(WSGIRequestHandler):
             def log_message(self,*args):pass
         with override_settings(ACTIONS_ENABLED=True,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():cred},ACTIONS_APPROVAL_KEY='FICTION-'+uuid.uuid4().hex,MIDDLEWARE=['actions.http.OperationalWriterBoundary'],ALLOWED_HOSTS=['127.0.0.1'],ACTIONS_QUOTA_GLOBAL=10000,ACTIONS_QUOTA_IDENTITY=10000):
-            server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=Quiet)
+            server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=Quiet)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             def call(route,payload):
-                req=Request('http://127.0.0.1:55573/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                req=Request('http://127.0.0.1:55841/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                 try:
                     with urlopen(req,timeout=10) as response:return response.status,json.load(response)
                 except HTTPError as response:return response.code,json.load(response)
@@ -63,7 +64,7 @@ class DF01Tests(unittest.TestCase):
                 with self.subTest(mode=mode,birth=birth):
                     before=self.footprint();plans=list(Plan.objects.order_by('pk').values());self.signals.clear();outbox=len(getattr(mail,'outbox',[]))
                     key=uuid.uuid4().hex;step=self.step(mode,birth)
-                    status,body=call('prepare',{'key':key,'steps':[step]})
+                    status,body=compat_pre(call('prepare',{'key':key,'steps':[step]}))
                     self.assertEqual(status,400,(mode,birth,body))
                     self.assertEqual(body,{'error':'invalid_request'})
                     self.assertEqual(self.footprint(),before)
@@ -100,7 +101,7 @@ class DF01Tests(unittest.TestCase):
                         before=self.footprint();old=Player.objects.values().get(pk=self.player.pk) if mode=='amend' else None
                         expected_age=(date.today().year-birth.year-((date.today().month,date.today().day)<(birth.month,birth.day))) if birth else (old['age'] if old else None)
                         self.signals.clear()
-                        status,p=call('prepare',{'key':uuid.uuid4().hex,'steps':[step]});self.assertEqual(status,200,p)
+                        status,p=compat_pre(call('prepare',{'key':uuid.uuid4().hex,'steps':[step]}));self.assertEqual(status,200,p)
                         self.assertEqual(self.footprint(),before)
                         self.assertFalse(any(label!='actions.Plan' for label,pk in self.signals))
                         change=p['preview']['changes'][0]
@@ -138,7 +139,7 @@ class DF01Tests(unittest.TestCase):
         with self.http() as call:
             for mode in ['create','amend']:
                 step=self.step(mode,'2004-02-29')
-                status,p=call('prepare',{'key':uuid.uuid4().hex,'steps':[step]});self.assertEqual(status,200,p)
+                status,p=compat_pre(call('prepare',{'key':uuid.uuid4().hex,'steps':[step]}));self.assertEqual(status,200,p)
                 before=self.footprint();plans=list(Plan.objects.order_by('pk').values());self.signals.clear()
                 approval=issue_approval(p['id'],self.actor.pk,p['digest'],timezone.now()+timedelta(minutes=2))
                 # Real model validator becomes stricter after approval; no engine or adapter mocking.

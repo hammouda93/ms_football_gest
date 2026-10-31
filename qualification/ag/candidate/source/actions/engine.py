@@ -200,13 +200,16 @@ class Engine:
                 cursor.execute('SELECT pg_try_advisory_xact_lock(41001,1)')
                 if not cursor.fetchone()[0]:raise ValueError('busy')
             p=Plan.objects.select_for_update().get(pk=plan_id,actor_id=self.actor_id)
+            if self.proposal_digest(p.steps,p.snapshots)!=p.digest:raise ValueError('plan_integrity')
+            from .readback import validate_locked_pre
+            pre=validate_locked_pre(p,self.actor_id)
             if p.state!='prepared':return self.status(p.pk)
             self.validate(p.steps)
-            import hashlib,json
-            if self.proposal_digest(p.steps,p.snapshots)!=p.digest:raise ValueError('plan_integrity')
             try:
                 with transaction.atomic():
                     if self.snapshots(p.steps,lock=True)!=p.snapshots:raise ValueError('conflict')
+                    from .readback import graph
+                    if graph(p,{},_alias='default')!=pre.body['baseline']:raise ValueError('verification_conflict')
                     from gestion_joueurs.utils import actor_context
                     from .effects import effects_context
                     with actor_context(actor), effects_context(workflow=any(s['op'] in WORKFLOWS for s in p.steps)) as effects:
@@ -219,6 +222,7 @@ class Engine:
             else:
                 p.state='succeeded';p.results=results;p.effects=effects;p.save()
                 from .models import Audit
+                Audit.objects.create(plan=p,actor_id=self.actor_id,event='verification_bound',code=str(pre.pk))
                 Audit.objects.create(plan=p,actor_id=self.actor_id,event='succeeded')
         return self.status(p.pk)
     def _apply(self,steps,actor):

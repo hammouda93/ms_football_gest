@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 import unittest,uuid,json
 from django.contrib.auth.models import User
 from django.db import connection
@@ -22,7 +23,7 @@ class IntegrationTests(unittest.TestCase):
         credential={'actor':self.actor.pk,'scopes':['prepare'],'expires':(timezone.now()+timedelta(minutes=10)).isoformat(),'revoked':False}
         with override_settings(ACTIONS_ENABLED=True,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():credential},MIDDLEWARE=['actions.http.WriterBoundary']):
             with CaptureQueriesContext(connection) as queries:
-                response=Client(HTTP_AUTHORIZATION='Bearer '+token).post('/actions/v1/prepare',data=json.dumps({'key':uuid.uuid4().hex,'steps':[{'as':'p','op':'prospect.details.amend','values':{'id':99999999,'country':'France'}}]}),content_type='application/json')
+                response=compat_pre(Client(HTTP_AUTHORIZATION='Bearer '+token).post('/actions/v1/prepare',data=json.dumps({'key':uuid.uuid4().hex,'steps':[{'as':'p','op':'prospect.details.amend','values':{'id':99999999,'country':'France'}}]}),content_type='application/json'))
             self.assertEqual(response.status_code,403,response.content)
             self.assertFalse(any('prospects_prospect' in q['sql'] for q in queries))
 
@@ -43,16 +44,16 @@ class IntegrationTests(unittest.TestCase):
         class QuietHandler(WSGIRequestHandler):
             def log_message(self,*args):pass
         with override_settings(**overrides):
-            server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=QuietHandler)
+            server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=QuietHandler)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 def call(operation,data=None):
                     raw=json.dumps(data).encode() if data is not None else None
-                    request=Request('http://127.0.0.1:55573/actions/v1/'+operation,data=raw,headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                    request=Request('http://127.0.0.1:55841/actions/v1/'+operation,data=raw,headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                     with urlopen(request,timeout=5) as response:return json.load(response)
                 catalogue=call('catalogue')['catalogue'];self.assertEqual(len(catalogue),2)
                 steps=[self.step(name='FICTION_SOCKET_NEW'),{'as':'p','op':'prospect.details.amend','values':{'id':prospect.pk,'internal_notes':'SOCKET_NOTE'}}]
-                p=call('prepare',{'key':uuid.uuid4().hex,'steps':steps})
+                p=compat_pre(call('prepare',{'key':uuid.uuid4().hex,'steps':steps}))
                 self.assertEqual(len(p['preview']['changes']),2)
                 approval=issue_approval(p['id'],self.actor.pk,p['digest'],timezone.now()+timedelta(minutes=2))
                 result=call('execute',{'id':p['id'],'approval':approval})
@@ -74,15 +75,15 @@ class IntegrationTests(unittest.TestCase):
         def footprint():return {m._meta.label:json.dumps(list(m.objects.order_by('pk').values()),sort_keys=True,default=str) for m in models if m not in (Organization,Prospect)}
         before=footprint();outbox=len(getattr(mail,'outbox',[]))
         steps=[self.step(contact_name='FICTION_CONTACT'),{'as':'prospect','op':'prospect.details.amend','values':{'id':prospect.pk,'club':'FICTION_CLUB'}}]
-        key=uuid.uuid4().hex;p=self.engine.prepare(key,steps)
+        key=uuid.uuid4().hex;p=compat_pre(self.engine.prepare(key,steps))
         self.assertEqual(footprint(),before)
         r=self.engine.execute(p['id']);self.assertEqual(r['state'],'succeeded')
         self.assertEqual(r['effects'],{'history':[],'notifications':[],'invoices':[]})
         self.assertEqual(footprint(),before);self.assertEqual(len(getattr(mail,'outbox',[])),outbox)
-        self.assertEqual(self.engine.prepare(key,steps)['id'],p['id'])
+        self.assertEqual(compat_pre(self.engine.prepare(key,steps))['id'],p['id'])
         self.assertEqual(self.engine.execute(p['id']),r)
         altered=[self.step(contact_name='DIFFERENT')]
-        with self.assertRaisesRegex(ValueError,'idempotency_mismatch'):self.engine.prepare(key,altered)
+        with self.assertRaisesRegex(ValueError,'idempotency_mismatch'):compat_pre(self.engine.prepare(key,altered))
         self.assertEqual(Organization.objects.get(pk=self.org.pk).contact_name,'FICTION_CONTACT')
         self.assertEqual(Prospect.objects.get(pk=prospect.pk).club,'FICTION_CLUB')
 
@@ -91,27 +92,27 @@ class IntegrationTests(unittest.TestCase):
         for values,code in cases:
             key=uuid.uuid4().hex
             with self.subTest(code=code):
-                with self.assertRaisesRegex(ValueError,code):self.engine.prepare(key,[self.step(**values)])
+                with self.assertRaisesRegex(ValueError,code):compat_pre(self.engine.prepare(key,[self.step(**values)]))
                 self.assertFalse(Plan.objects.filter(actor_id=self.actor.pk,key=key).exists())
         self.assertEqual(Organization.objects.get(pk=self.org.pk).name,'FICTION_ORG')
 
     def test_permissions_and_snapshots_rechecked(self):
         steps=[self.step(name='FICTION_PENDING')]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         Organization.objects.filter(pk=self.org.pk).update(contact_name='HUMAN_EDIT')
         r=self.engine.execute(p['id']);self.assertEqual((r['state'],r['error']),('failed','conflict'))
         self.assertEqual(Organization.objects.get(pk=self.org.pk).name,'FICTION_ORG')
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         Organization.objects.filter(pk=self.org.pk).update(is_active=False)
         with self.assertRaisesRegex(PermissionError,'object_permission_denied'):self.engine.execute(p['id'])
-        with self.assertRaisesRegex(PermissionError,'object_permission_denied'):self.engine.prepare(uuid.uuid4().hex,steps)
+        with self.assertRaisesRegex(PermissionError,'object_permission_denied'):compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         User.objects.filter(pk=self.actor.pk).update(is_superuser=False)
         with self.assertRaisesRegex(PermissionError,'permission_denied'):self.engine.status(p['id'])
 
     def test_approval_digest_covers_old_new_exclusions_and_contract(self):
         from copy import deepcopy
         steps=[self.step(country='France')]
-        p=self.engine.prepare(uuid.uuid4().hex,steps);saved=Plan.objects.get(pk=p['id'])
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps));saved=Plan.objects.get(pk=p['id'])
         for field in ['old','new','excluded','contract']:
             snapshot=deepcopy(saved.snapshots)
             snapshot['__preview__']['changes'][0][field]='TAMPERED'
@@ -123,7 +124,7 @@ class IntegrationTests(unittest.TestCase):
     def test_duplicate_target_in_simple_family_is_refused_before_plan_creation(self):
         key=uuid.uuid4().hex
         with self.assertRaisesRegex(ValueError,'duplicate_target'):
-            self.engine.prepare(key,[self.step(name='FIRST'),{'as':'second','op':'organization.details.amend','values':{'id':self.org.pk,'name':'SECOND'}}])
+            compat_pre(self.engine.prepare(key,[self.step(name='FIRST'),{'as':'second','op':'organization.details.amend','values':{'id':self.org.pk,'name':'SECOND'}}]))
         self.assertFalse(Plan.objects.filter(actor_id=self.actor.pk,key=key).exists())
 
     def test_http_catalogue_scopes_and_approved_durable_execution(self):
@@ -140,9 +141,9 @@ class IntegrationTests(unittest.TestCase):
         with override_settings(**settings):
             cat=client.get('/actions/v1/catalogue').json()['catalogue']
             self.assertEqual(set(cat),{'organization.details.amend'})
-            denied=post('prepare',{'key':uuid.uuid4().hex,'steps':[{'as':'p','op':'prospect.details.amend','values':{'id':1,'country':'X'}}]})
+            denied=compat_pre(post('prepare',{'key':uuid.uuid4().hex,'steps':[{'as':'p','op':'prospect.details.amend','values':{'id':1,'country':'X'}}]}))
             self.assertEqual(denied.status_code,403)
-            response=post('prepare',{'key':uuid.uuid4().hex,'steps':[self.step(name='FICTION_HTTP')]})
+            response=compat_pre(post('prepare',{'key':uuid.uuid4().hex,'steps':[self.step(name='FICTION_HTTP')]}))
             self.assertEqual(response.status_code,200,response.content)
             p=response.json()
             self.assertEqual(post('execute',{'id':p['id'],'approval':'invalid'}).status_code,403)
@@ -154,7 +155,7 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(post('status',{'id':p['id']}).json(),result.json())
             self.assertEqual(post('execute',{'id':p['id'],'approval':approval}).json(),result.json())
             import psycopg2
-            c=psycopg2.connect(host='127.0.0.1',port=55572,user='msf_unified_fixed_fixture',dbname='msf_unified_fixed_fiction')
+            c=psycopg2.connect(host='127.0.0.1',port=55840,user='msf_service_final_fixture',dbname='msf_service_final_fiction')
             try:
                 with c.cursor() as q:
                     q.execute('SELECT name FROM client_portal_organization WHERE id=%s',(self.org.pk,))
@@ -166,7 +167,7 @@ class IntegrationTests(unittest.TestCase):
         prospect=Prospect.objects.create(full_name='FICTION_PROSPECT',whatsapp_number='+21620123456',position='midfielder',league='OC',season='2025/2026',service_type='highlights',match_links='https://example.org/match',internal_notes='before')
         before=Prospect.objects.values().get(pk=prospect.pk)
         steps=[{'as':'p','op':'prospect.details.amend','values':{'id':prospect.pk,'internal_notes':' after ','country':' France '}}]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         self.assertEqual(Prospect.objects.values().get(pk=prospect.pk),before)
         r=self.engine.execute(p['id']);self.assertEqual(r['state'],'succeeded')
         after=Prospect.objects.values().get(pk=prospect.pk)
@@ -178,7 +179,7 @@ class IntegrationTests(unittest.TestCase):
     def test_organization_form_amendment_prepare_execute_status_readback(self):
         before=Organization.objects.values().get(pk=self.org.pk)
         steps=[self.step(name='FICTION_NEW',country=' France ')]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         self.assertEqual(Organization.objects.values().get(pk=self.org.pk),before)
         saved=Plan.objects.get(pk=p['id'])
         change=saved.snapshots['__preview__']['changes'][0]

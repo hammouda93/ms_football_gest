@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """Real PostgreSQL, forms, middleware and HTTP; fixture records only."""
 import unittest,uuid,json,hashlib,threading
 from datetime import date,timedelta
@@ -33,7 +34,7 @@ class DeclarativeTests(unittest.TestCase):
         from urllib.request import Request,urlopen
         name='FICTION_CONCURRENT_'+uuid.uuid4().hex
         steps=[self.step('organization.profile.create',{'name':name,'kind':'club'})]
-        plan=self.engine.prepare(uuid.uuid4().hex,steps);p=Plan.objects.get(pk=plan['id'])
+        plan=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps));p=Plan.objects.get(pk=plan['id'])
         token=uuid.uuid4().hex;cred={'actor':self.actor.pk,'scopes':['execute','op:organization.profile.create'],'expires':(timezone.now()+timedelta(minutes=5)).isoformat(),'revoked':False}
         class Server(ThreadingMixIn,WSGIServer):daemon_threads=True
         class Quiet(WSGIRequestHandler):
@@ -42,12 +43,12 @@ class DeclarativeTests(unittest.TestCase):
         results=[];errors=[];barrier=threading.Barrier(3)
         with override_settings(**opts):
             approval=issue_approval(p.pk,self.actor.pk,p.digest,timezone.now()+timedelta(minutes=2))
-            server=make_server('127.0.0.1',55573,get_wsgi_application(),server_class=Server,handler_class=Quiet)
+            server=make_server('127.0.0.1',55841,get_wsgi_application(),server_class=Server,handler_class=Quiet)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             def worker():
                 try:
                     barrier.wait(5)
-                    req=Request('http://127.0.0.1:55573/actions/v1/execute',data=json.dumps({'id':plan['id'],'approval':approval}).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                    req=Request('http://127.0.0.1:55841/actions/v1/execute',data=json.dumps({'id':plan['id'],'approval':approval}).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                     with urlopen(req,timeout=10) as r:results.append(json.load(r))
                 except Exception as e:errors.append(type(e).__name__)
             workers=[threading.Thread(target=worker) for _ in range(2)]
@@ -70,7 +71,7 @@ class DeclarativeTests(unittest.TestCase):
         org=Organization.objects.create(name='FICTION_ALIAS',kind='academy')
         link=OrganizationPlayer.objects.create(player=self.player,organization=org,expected_matches=3,is_active=True)
         steps=[self.step('player.profile.amend',{'id':self.player.pk,'club':'ALIAS_NEW'},'p'),self.step('video.order',{'player':{'ref':'p'},'editor':editor.pk,'client_organization':org.pk,'whatsapp_conversation_date':date.today().isoformat(),'deadline_from_whatsapp':True,'match_package':3,'season':'2025/2026','advance_payment':'0','info':'FICTION_ALIAS'},'v')]
-        prepared=self.engine.prepare(uuid.uuid4().hex,steps)
+        prepared=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         # Human changes and restores relevant visible fields but membership metadata drifts.
         OrganizationPlayer.objects.filter(pk=link.pk).update(expected_matches=5)
         result=self.engine.execute(prepared['id'])
@@ -81,14 +82,14 @@ class DeclarativeTests(unittest.TestCase):
     def test_player_profile_creation_shared_family_and_duplicate_guard(self):
         values={'name':'FICTION_CREATE_'+uuid.uuid4().hex,'club':' Club ','league':'OC','position':'MF','date_of_birth':'2004-05-06','whatsapp_number':'+21620123456'}
         before=Player.objects.count();steps=[self.step('player.profile.create',values)]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         self.assertEqual(Player.objects.count(),before)
         change=Plan.objects.get(pk=p['id']).snapshots['__preview__']['changes'][0]
         self.assertEqual(change['old'],None);self.assertIn('age',change['new'])
         result=self.engine.execute(p['id']);self.assertEqual(result['state'],'succeeded',result)
         player=Player.objects.get(pk=result['results']['record'])
         self.assertEqual(player.club,'Club');self.assertEqual(player.age,change['new']['age'])
-        duplicate=self.engine.prepare(uuid.uuid4().hex,steps)
+        duplicate=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         refused=self.engine.execute(duplicate['id']);self.assertEqual((refused['state'],refused['error']),('failed','duplicate_record'))
         self.assertEqual(Player.objects.count(),before+1)
         ROOT.joinpath('player-create-mission.json').write_text(json.dumps({'plan':p,'result':result,'duplicate':refused,'preview':change,'row':Player.objects.values().get(pk=player.pk)},default=str,indent=2))
@@ -105,9 +106,9 @@ class DeclarativeTests(unittest.TestCase):
             old=obj.__class__.objects.values().get(pk=obj.pk)
             for values in [{'id':obj.pk,'email':'x@example.org'},{'id':obj.pk,'status':'converted'},{'id':obj.pk,field:True},{'id':obj.pk,'model':'auth.User'},{'id':obj.pk}]:
                 key=uuid.uuid4().hex
-                with self.assertRaises(ValueError):self.engine.prepare(key,[self.step(op,values)])
+                with self.assertRaises(ValueError):compat_pre(self.engine.prepare(key,[self.step(op,values)]))
                 self.assertFalse(Plan.objects.filter(actor_id=self.actor.pk,key=key).exists())
-            p=self.engine.prepare(uuid.uuid4().hex,[self.step(op,{'id':obj.pk,field:'FICTION_REQUESTED'})])
+            p=compat_pre(self.engine.prepare(uuid.uuid4().hex,[self.step(op,{'id':obj.pk,field:'FICTION_REQUESTED'})]))
             obj.__class__.objects.filter(pk=obj.pk).update(**{field:'FICTION_HUMAN_EDIT'})
             result=self.engine.execute(p['id']);self.assertEqual((result['state'],result['error']),('failed','conflict'))
             self.assertEqual(obj.__class__.objects.values().get(pk=obj.pk),dict(old,**{field:'FICTION_HUMAN_EDIT'}))
@@ -116,7 +117,7 @@ class DeclarativeTests(unittest.TestCase):
             cred={'actor':self.actor.pk,'scopes':['prepare','execute'],'expires':(timezone.now()+timedelta(minutes=5)).isoformat(),'revoked':False}
             opts=dict(ACTIONS_ENABLED=True,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():cred},ACTIONS_APPROVAL_KEY='FICTION-'+uuid.uuid4().hex,MIDDLEWARE=['actions.http.OperationalWriterBoundary'],ACTIONS_GLOBAL_LIMIT=10000,ACTIONS_ACTOR_LIMIT=10000)
             steps=[self.step(op,{'id':obj.pk,field:'FICTION_SCOPE'})]
-            prepared=self.engine.prepare(uuid.uuid4().hex,steps);plan=Plan.objects.get(pk=prepared['id'])
+            prepared=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps));plan=Plan.objects.get(pk=prepared['id'])
             with override_settings(**opts):
                 client=Client(HTTP_AUTHORIZATION='Bearer '+token)
                 approval=issue_approval(plan.pk,self.actor.pk,plan.digest,timezone.now()+timedelta(minutes=2))
@@ -129,13 +130,13 @@ class DeclarativeTests(unittest.TestCase):
             Plan.objects.filter(pk=plan.pk).update(snapshots=snap)
             with self.assertRaisesRegex(ValueError,'plan_integrity'):self.engine.execute(plan.pk)
         for op,values in [('player.profile.amend',{'id':self.player.pk,'date_of_birth':'not-date'}),('prospect.profile.amend',{'id':prospect.pk,'position':'FW'}),('organization.profile.create',{'name':'FICTION_BAD','kind':'not-kind'})]:
-            with self.assertRaisesRegex(ValueError,'invalid_form'):self.engine.prepare(uuid.uuid4().hex,[self.step(op,values)])
+            with self.assertRaisesRegex(ValueError,'invalid_form'):compat_pre(self.engine.prepare(uuid.uuid4().hex,[self.step(op,values)]))
         steps=[self.step('organization.profile.create',{'name':'FICTION_PERMISSIONS','kind':'club'})]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         with self.assertRaisesRegex(ValueError,'idempotency_mismatch'):
-            self.engine.prepare(Plan.objects.get(pk=p['id']).key,[self.step('organization.profile.create',{'name':'DIFFERENT','kind':'club'})])
+            compat_pre(self.engine.prepare(Plan.objects.get(pk=p['id']).key,[self.step('organization.profile.create',{'name':'DIFFERENT','kind':'club'})]))
         User.objects.filter(pk=self.actor.pk).update(is_superuser=False)
-        for action in [lambda:self.engine.prepare(uuid.uuid4().hex,steps),lambda:self.engine.execute(p['id'])]:
+        for action in [lambda:compat_pre(self.engine.prepare(uuid.uuid4().hex,steps)),lambda:self.engine.execute(p['id'])]:
             with self.assertRaisesRegex(PermissionError,'permission_denied'):action()
         ROOT.joinpath('negative-cases.json').write_text(json.dumps(records,indent=2))
 
@@ -154,7 +155,7 @@ class DeclarativeTests(unittest.TestCase):
         missions=[]
         for combo in combos:
             steps=[self.step(op,values,'s'+str(i)) for i,(op,values) in enumerate(combo)]
-            before=footprint();mail_before=len(getattr(mail,'outbox',[]));p=self.engine.prepare(uuid.uuid4().hex,steps)
+            before=footprint();mail_before=len(getattr(mail,'outbox',[]));p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
             self.assertEqual(footprint(),before)
             saved=Plan.objects.get(pk=p['id']);changes=saved.snapshots['__preview__']['changes']
             for change in changes:
@@ -204,16 +205,16 @@ class DeclarativeTests(unittest.TestCase):
         class Quiet(WSGIRequestHandler):
             def log_message(self,*a):pass
         with override_settings(**overrides):
-            server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=Quiet)
+            server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=Quiet)
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 def call(route,payload=None):
-                    req=Request('http://127.0.0.1:55573/actions/v1/'+route,data=None if payload is None else json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+                    req=Request('http://127.0.0.1:55841/actions/v1/'+route,data=None if payload is None else json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
                     with urlopen(req,timeout=10) as r:return json.load(r)
                 cat=call('catalogue')['catalogue'];self.assertEqual(set(cat),set(ops))
                 steps=[self.step('organization.profile.create',{'name':' FICTION_ACADEMY_'+uuid.uuid4().hex,'kind':'academy','country':' Tunisie ','contact_name':' Contact ','whatsapp_number':'+21620123456'},'org'),self.step('player.profile.amend',{'id':self.player.pk,'club':'CLUB_NEW','league':'LY'},'player'),self.step('prospect.profile.amend',{'id':prospect.pk,'full_name':' FICTION_PROFILE ','date_of_birth':'2005-03-04','country':' France ','league':'L2','position':'forward','whatsapp_number':'+216 20 123 456','message':' Nouvelle précision ','internal_notes':' Note interne '},'prospect')]
                 old_player=Player.objects.values().get(pk=self.player.pk);old_prospect=Prospect.objects.values().get(pk=prospect.pk);count=Organization.objects.count()
-                key=uuid.uuid4().hex;p=call('prepare',{'key':key,'steps':steps})
+                key=uuid.uuid4().hex;p=compat_pre(call('prepare',{'key':key,'steps':steps}))
                 self.assertEqual(Organization.objects.count(),count)
                 self.assertEqual(Player.objects.values().get(pk=self.player.pk),old_player)
                 self.assertEqual(Prospect.objects.values().get(pk=prospect.pk),old_prospect)
@@ -223,7 +224,7 @@ class DeclarativeTests(unittest.TestCase):
                 result=call('execute',{'id':p['id'],'approval':approval});self.assertEqual(result['state'],'succeeded',result)
                 self.assertEqual(call('status',{'id':p['id']}),result)
                 self.assertEqual(call('execute',{'id':p['id'],'approval':approval}),result)
-                self.assertEqual(call('prepare',{'key':key,'steps':steps})['id'],p['id'])
+                self.assertEqual(compat_pre(call('prepare',{'key':key,'steps':steps}))['id'],p['id'])
                 org=Organization.objects.get(pk=result['results']['org']);self.assertEqual((org.kind,org.country,org.created_by_id),('academy','Tunisie',self.actor.pk))
                 self.assertEqual(Organization.objects.count(),count+1)
                 row=Prospect.objects.values().get(pk=prospect.pk)
@@ -236,7 +237,7 @@ class DeclarativeTests(unittest.TestCase):
     def test_player_profile_dynamic_form_preview_and_calculated_age(self):
         before=Player.objects.values().get(pk=self.player.pk)
         steps=[self.step('player.profile.amend',{'id':self.player.pk,'name':' FICTION_NEW ','date_of_birth':'2003-07-15','league':'L2','position':'FW','whatsapp_number':'+21620123456'})]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         self.assertEqual(Player.objects.values().get(pk=self.player.pk),before)
         saved=Plan.objects.get(pk=p['id']);change=saved.snapshots['__preview__']['changes'][0]
         today=date.today();age=today.year-2003-((today.month,today.day)<(7,15))

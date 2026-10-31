@@ -1,8 +1,8 @@
-name: unified-fixed Linux qualification
+name: service-final Linux qualification candidate
 
 on:
   push:
-    branches: [ci/hermes-actions-linux-20261028]
+    branches: [ci/hermes-service-linux-20261031]
 
 permissions:
   contents: read
@@ -60,7 +60,7 @@ jobs:
           docker inspect "$CI_POSTGRES_CONTAINER" --format '{{json .NetworkSettings.Networks}}' > ci-networks.json
           docker inspect "$CI_POSTGRES_CONTAINER" --format '{{.Config.Image}}'
           python -s -B -c 'import json,pathlib; p=pathlib.Path("ci-networks.json"); networks=json.loads(p.read_text()); ips=[n["IPAddress"] for n in networks.values()]; assert len(ips)==1; pathlib.Path("ci-target.json").write_text(json.dumps({"serverAddress":ips[0]}))'
-      - name: Offline imports and exact 90 test IDs without business I/O
+      - name: Offline imports and exact 139 test IDs without business I/O
         run: .venv/bin/python -s -B ci_run.py offline-preflight
-      - name: Fresh database, exact 90 IDs, separate-process readback
+      - name: Fresh database, exact 139 IDs, separate-process readback
         run: .venv/bin/python -s -B ci_run.py

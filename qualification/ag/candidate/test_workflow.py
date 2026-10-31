@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 import unittest,uuid,json,hashlib,threading
 from datetime import date,timedelta
 from django.contrib.auth.models import User
@@ -22,7 +23,7 @@ class WorkflowTests(unittest.TestCase):
         return [{'as':'transition','op':'video.status.transition','values':{'id':self.video.pk,'status':status}}]
     def test_status_vertical_prepare_execute_readback(self):
         before=VideoStatusHistory.objects.filter(video=self.video).count()
-        p=self.engine.prepare(uuid.uuid4().hex,self.steps())
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,self.steps()))
         plan=Plan.objects.get(pk=p['id'])
         self.assertIn('transitions',plan.snapshots['__preview__'])
         self.video.refresh_from_db();self.assertEqual(self.video.status,'pending')
@@ -35,11 +36,11 @@ class WorkflowTests(unittest.TestCase):
 
     def test_editor_cannot_use_legacy_amendment(self):
         with self.assertRaisesRegex(PermissionError,'permission_denied'):
-            Engine(self.editor.pk).prepare(uuid.uuid4().hex,[{'as':'p','op':'player.amend','values':{'id':self.player.pk,'club':'DENIED'}}])
+            compat_pre(Engine(self.editor.pk).prepare(uuid.uuid4().hex,[{'as':'p','op':'player.amend','values':{'id':self.player.pk,'club':'DENIED'}}]))
 
     def test_workflow_vertical_effects_readback(self):
         steps=[{'as':'w','op':'video.workflow.transition','values':{'id':self.video.pk,'stage':'blocked','priority':'urgent','progress':0,'next_action':'Attendre','blocked_reason':'FICTION motif'}}]
-        p=self.engine.prepare(uuid.uuid4().hex,steps)
+        p=compat_pre(self.engine.prepare(uuid.uuid4().hex,steps))
         preview=Plan.objects.get(pk=p['id']).snapshots['__preview__']['transitions'][0]
         self.assertFalse(VideoWorkflow.objects.filter(video=self.video).exists())
         result=self.engine.execute(p['id']);self.assertEqual(result['state'],'succeeded',result)

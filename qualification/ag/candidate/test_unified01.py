@@ -1,3 +1,4 @@
+from adapter import prepared as compat_pre
 """UNIFIED01 real signed HTTP; full effects and readback evidence."""
 import unittest,uuid,json,hashlib,threading,os
 from pathlib import Path
@@ -27,13 +28,13 @@ class Unified01Tests(unittest.TestCase):
   token=uuid.uuid4().hex
   cred={'actor':t.admin.pk,'scopes':['prepare','execute','status',*['op:'+s['op'] for s in steps]],'expires':(timezone.now()+timedelta(minutes=5)).isoformat(),'revoked':False}
   with override_settings(ACTIONS_ENABLED=True,ACTIONS_APPROVAL_KEY='FICTION-'+uuid.uuid4().hex,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():cred},MIDDLEWARE=['actions.http.OperationalWriterBoundary'],ALLOWED_HOSTS=['127.0.0.1']):
-   server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=Quiet);thread=threading.Thread(target=server.serve_forever);thread.start()
+   server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=Quiet);thread=threading.Thread(target=server.serve_forever);thread.start()
    try:
     def call(route,payload):
-     req=Request('http://127.0.0.1:55573/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+     req=Request('http://127.0.0.1:55841/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
      with urlopen(req,timeout=20) as response:self.assertEqual(response.status,200);return json.load(response)
     before={t.video.pk:business_rows(t.video.pk)};old=Player.objects.values().get(pk=pk)
-    p=call('prepare',{'key':uuid.uuid4().hex,'steps':steps});plan=Plan.objects.get(pk=p['id'])
+    p=compat_pre(call('prepare',{'key':uuid.uuid4().hex,'steps':steps}));plan=Plan.objects.get(pk=p['id'])
     self.assertEqual(before[t.video.pk],business_rows(t.video.pk));self.assertEqual(old,Player.objects.values().get(pk=pk))
     approval=issue_approval(p['id'],t.admin.pk,p['digest'],timezone.now()+timedelta(minutes=2))
     result=call('execute',{'id':p['id'],'approval':approval});self.assertEqual(result['state'],'succeeded',result)
@@ -67,16 +68,16 @@ class Unified01Tests(unittest.TestCase):
   from actions.engine import Engine
   t=WorkflowTests();t.setUp()
   steps=[{'as':'a','op':'player.amend','values':{'id':t.player.pk,'club':'FICTION_A'}},{'as':'b','op':'player.profile.amend','values':{'id':t.player.pk,'name':'FICTION_B'}}]+t.steps('completed')
-  spec=importlib.util.spec_from_file_location('actions.unified_prior',R.parent/'unified/source/actions/engine.py');prior=importlib.util.module_from_spec(spec);spec.loader.exec_module(prior)
+  spec=importlib.util.spec_from_file_location('actions.unified_prior',R/'prior/actions/engine.py');prior=importlib.util.module_from_spec(spec);spec.loader.exec_module(prior)
   historical=prior.Engine(t.admin.pk).prepare(uuid.uuid4().hex,steps);p=Plan.objects.get(pk=historical['id'])
   before=business_rows(t.video.pk);old=Player.objects.values().get(pk=t.player.pk);count=Plan.objects.count();frozen=(p.digest,p.snapshots,p.state,p.effects)
   token=uuid.uuid4().hex;cred={'actor':t.admin.pk,'scopes':['prepare','execute','status',*['op:'+s['op'] for s in steps]],'expires':(timezone.now()+timedelta(minutes=5)).isoformat(),'revoked':False}
   with override_settings(ACTIONS_ENABLED=True,ACTIONS_APPROVAL_KEY='FICTION-'+uuid.uuid4().hex,ACTIONS_CREDENTIALS={hashlib.sha256(token.encode()).hexdigest():cred},MIDDLEWARE=['actions.http.OperationalWriterBoundary'],ALLOWED_HOSTS=['127.0.0.1']):
    approval=issue_approval(p.pk,t.admin.pk,p.digest,timezone.now()+timedelta(minutes=2))
-   server=make_server('127.0.0.1',55573,get_wsgi_application(),handler_class=Quiet);thread=threading.Thread(target=server.serve_forever);thread.start()
+   server=make_server('127.0.0.1',55841,get_wsgi_application(),handler_class=Quiet);thread=threading.Thread(target=server.serve_forever);thread.start()
    try:
     for route,payload in [('prepare',{'key':uuid.uuid4().hex,'steps':steps}),('execute',{'id':str(p.pk),'approval':approval})]:
-     req=Request('http://127.0.0.1:55573/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+     req=Request('http://127.0.0.1:55841/actions/v1/'+route,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
      with self.assertRaises(HTTPError) as caught:urlopen(req,timeout=20)
      error=caught.exception;self.assertEqual(error.code,400);self.assertEqual(json.load(error),{'error':'plan_dependency_not_simulable'})
     p.refresh_from_db();self.assertEqual((p.digest,p.snapshots,p.state,p.effects),frozen)
@@ -91,5 +92,5 @@ class Unified01Tests(unittest.TestCase):
    producers=[{'as':'a','op':'player.amend','values':{'id':t.player.pk,'club':'FICTION_A'}},{'as':'b','op':'player.profile.amend','values':{'id':t.player.pk,'name':'FICTION_B'}}]
    if reverse:producers.reverse()
    steps=producers+t.steps('completed');before=business_rows(t.video.pk);old=Player.objects.values().get(pk=t.player.pk);count=Plan.objects.count()
-   with self.assertRaisesRegex(ValueError,'plan_dependency_not_simulable'):t.engine.prepare(uuid.uuid4().hex,steps)
+   with self.assertRaisesRegex(ValueError,'plan_dependency_not_simulable'):compat_pre(t.engine.prepare(uuid.uuid4().hex,steps))
    self.assertEqual(Plan.objects.count(),count);self.assertEqual(business_rows(t.video.pk),before);self.assertEqual(Player.objects.values().get(pk=t.player.pk),old)
