@@ -1,0 +1,4091 @@
+import base64
+import json
+import math
+import os
+import re
+import shutil
+import socket
+import subprocess
+import textwrap
+import time
+import traceback
+from datetime import datetime, timezone
+from http.client import HTTPConnection
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import urljoin
+
+from PIL import Image, ImageDraw, ImageFont
+from playwright.sync_api import sync_playwright
+
+from gestion_joueurs.sportsbase_playwright import SportsBaseAutomation
+from sportsbase_data.analysis_engine import SPORTSBASE_PLAYER_COLUMNS
+from sportsbase_data.local_delivery import resolve_existing_actions_file
+from sportsbase_data.xlsx_statistics import read_players_statistics_xlsx
+SPORTSBASE_ROOT = "https://football.sportsbase.world"
+MATCH_ID_RE = re.compile(r"/matches/(\d+)")
+PLAYER_ID_RE = re.compile(r"/players/(\d+)")
+DATE_RE = re.compile(
+    r"(?<!\d)(\d{2})[./-](\d{2})[./-](\d{4}|\d{2})(?!\d)"
+)
+SCORE_RE = re.compile(r"\b(\d+)\s*[:–-]\s*(\d+)\b")
+PLAYER_ACTIONS_BUTTON_RE = re.compile(
+    r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
+    re.IGNORECASE,
+)
+SCRAPER_BUILD = "sportsbase-new-match-gate-v31-20260926"
+_XLSX_BROWSER_RETRY_KEY = "_retryable_xlsx_browser_closed"
+
+
+# SportsBase renamed these four Players metrics in October 2026. Keep the
+# historical analysis/PDF contract and accept either XLSX/DOM spelling.
+PLAYERS_TABLE_HEADER_ALIASES = {
+    "headed goals": "goals by head",
+    "uncontested progressive passes": "progressive open passes",
+    "ball losses": "lost balls",
+    "ball losses in own half": "lost balls in own half",
+}
+
+
+# The table settings may expose more metrics after "Select all".  The scraper
+# validates and stores only the stable 81-column contract used by the analysis
+# engine.  Number and team are reconstructed locally rather than DOM headers.
+PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS = tuple(
+    header
+    for header in SPORTSBASE_PLAYER_COLUMNS
+    if header not in {"№", "Player", "Team"}
+)
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _b64(png):
+    return base64.b64encode(png).decode("ascii") if png else ""
+
+
+def _safe_int(value):
+    if value is None:
+        return None
+    match = re.search(r"-?\d+", str(value).replace(" ", ""))
+    return int(match.group()) if match else None
+
+
+def _iso_date(text):
+    match = DATE_RE.search(text or "")
+    if not match:
+        return None
+    day, month, year = match.groups()
+    if len(year) == 2:
+        year = f"20{year}"
+    return f"{year}-{month}-{day}"
+
+
+def _clean_label(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip(" :\n\t")
+
+
+class _RetryableXlsxBrowserClosed(RuntimeError):
+    """Signal that the whole Chrome context vanished during the XLSX download."""
+
+
+def _browser_target_was_closed(exc):
+    message = str(exc or "").casefold()
+    return any(
+        marker in message
+        for marker in (
+            "target page, context or browser has been closed",
+            "target closed",
+            "browser has been closed",
+            "browser closed",
+            "context has been closed",
+            "page has been closed",
+        )
+    )
+
+
+class SportsBaseSubscriptionScraper:
+    """Read subscription data while reusing the project's proven SportsBase workflow."""
+
+    def __init__(self, storage_root):
+        self.storage_root = Path(storage_root)
+        self.storage_root.mkdir(parents=True, exist_ok=True)
+        self.automation = SportsBaseAutomation(base_download_dir=str(self.storage_root))
+        self.profile_dir = Path(
+            os.getenv(
+                "SPORTSBASE_SUBSCRIPTION_PROFILE_DIR",
+                os.getenv(
+                    "SPORTSBASE_PROFILE_DIR",
+                    r"D:\SportsBase_Playwright_Profile",
+                ),
+            )
+        )
+        self.browser_channel = (
+            os.getenv("SPORTSBASE_BROWSER_CHANNEL", "chrome").strip() or "chrome"
+        )
+        self._sportsbase_player_name = ""
+        self._cdp_browser = None
+        self._cdp_process = None
+        self._cdp_port = None
+
+    def _uses_cdp_port_transport(self):
+        configured = os.getenv("SPORTSBASE_CHROME_TRANSPORT", "").strip().lower()
+        if configured in {"pipe", "playwright"}:
+            return False
+        if configured in {"cdp", "port", "cdp-port"}:
+            return True
+        return os.name == "nt" and self.browser_channel.startswith(
+            ("chrome", "msedge")
+        )
+
+    def _browser_executable(self):
+        override = (
+            os.getenv("SPORTSBASE_BROWSER_EXECUTABLE", "").strip()
+            or os.getenv("SPORTSBASE_CHROME_EXECUTABLE", "").strip()
+        )
+        candidates = [Path(override)] if override else []
+
+        if os.name == "nt":
+            executable_name = (
+                "msedge.exe"
+                if self.browser_channel.startswith("msedge")
+                else "chrome.exe"
+            )
+            try:
+                import winreg
+
+                registry_path = (
+                    "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\"
+                    + executable_name
+                )
+                for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                    try:
+                        with winreg.OpenKey(hive, registry_path) as key:
+                            candidates.append(Path(winreg.QueryValue(key, None)))
+                    except OSError:
+                        continue
+            except ImportError:
+                pass
+
+            local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+            program_files = os.getenv("PROGRAMFILES", "").strip()
+            program_files_x86 = os.getenv("PROGRAMFILES(X86)", "").strip()
+            if self.browser_channel.startswith("msedge"):
+                relative_paths = (
+                    Path("Microsoft/Edge/Application/msedge.exe"),
+                )
+            else:
+                relative_paths = (
+                    Path("Google/Chrome/Application/chrome.exe"),
+                    Path("Google/Chrome Beta/Application/chrome.exe"),
+                    Path("Google/Chrome Dev/Application/chrome.exe"),
+                    Path("Google/Chrome SxS/Application/chrome.exe"),
+                )
+            for root in (program_files, program_files_x86, local_app_data):
+                if root:
+                    candidates.extend(Path(root) / item for item in relative_paths)
+        else:
+            executable_names = (
+                ("microsoft-edge", "microsoft-edge-stable")
+                if self.browser_channel.startswith("msedge")
+                else ("google-chrome", "google-chrome-stable", "chrome")
+            )
+            for executable_name in executable_names:
+                resolved = shutil.which(executable_name)
+                if resolved:
+                    candidates.append(Path(resolved))
+
+        for candidate in candidates:
+            try:
+                if candidate.is_file():
+                    return candidate.resolve()
+            except OSError:
+                continue
+        raise RuntimeError(
+            "Google Chrome est introuvable. Définissez "
+            "SPORTSBASE_BROWSER_EXECUTABLE avec le chemin de chrome.exe."
+        )
+
+    @staticmethod
+    def _reserve_cdp_port():
+        configured = os.getenv("SPORTSBASE_CDP_PORT", "").strip()
+        if configured:
+            try:
+                port = int(configured)
+            except ValueError as exc:
+                raise RuntimeError("SPORTSBASE_CDP_PORT doit être un nombre.") from exc
+            if not 1024 <= port <= 65535:
+                raise RuntimeError(
+                    "SPORTSBASE_CDP_PORT doit être compris entre 1024 et 65535."
+                )
+            return port
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _wait_for_cdp_endpoint(process, port, timeout_seconds=30):
+        deadline = time.monotonic() + timeout_seconds
+        last_error = ""
+        while time.monotonic() < deadline:
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise RuntimeError(
+                    "Chrome s’est arrêté avant la connexion CDP "
+                    f"(code {exit_code}). Vérifiez que le profil n’est pas déjà ouvert."
+                )
+            connection = None
+            try:
+                connection = HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/json/version")
+                response = connection.getresponse()
+                payload = response.read()
+                if response.status == 200:
+                    metadata = json.loads(payload.decode("utf-8"))
+                    if metadata.get("webSocketDebuggerUrl"):
+                        return f"http://127.0.0.1:{port}"
+            except Exception as exc:
+                last_error = str(exc)
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+            time.sleep(0.2)
+        raise RuntimeError(
+            "Chrome n’a pas ouvert son port CDP dans les "
+            f"{timeout_seconds} secondes. {last_error}".strip()
+        )
+
+    def _launch_context_over_cdp_port(self, playwright, _downloads_dir):
+        """Launch the installed browser directly and attach without a CDP pipe."""
+        executable = self._browser_executable()
+        port = self._reserve_cdp_port()
+        command = [
+            str(executable),
+            f"--remote-debugging-port={port}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={self.profile_dir.resolve()}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-mode",
+            "--start-maximized",
+            "about:blank",
+        ]
+        if self.automation.headless:
+            command.insert(-1, "--headless=new")
+
+        print(
+            "[SPORTSBASE] Transport navigateur : port CDP local "
+            "(correctif Chrome 152)"
+        )
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._cdp_process = process
+        self._cdp_port = port
+        try:
+            endpoint = self._wait_for_cdp_endpoint(process, port)
+            browser = playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=30_000,
+                is_local=True,
+                no_defaults=False,
+            )
+            if not browser.contexts:
+                raise RuntimeError("Chrome n’a exposé aucun contexte navigateur.")
+            self._cdp_browser = browser
+            print(f"[SPORTSBASE] Chrome connecté par CDP : {browser.version}")
+            return browser.contexts[0]
+        except Exception:
+            self._stop_cdp_browser()
+            raise
+
+    def _stop_cdp_browser(self):
+        browser = self._cdp_browser
+        process = self._cdp_process
+        self._cdp_browser = None
+        self._cdp_process = None
+        self._cdp_port = None
+
+        if browser is not None:
+            try:
+                session = browser.new_browser_cdp_session()
+                session.send("Browser.close")
+            except Exception:
+                pass
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+        if process is None:
+            return
+        try:
+            process.wait(timeout=10)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+    def _close_browser_context(self, context):
+        if self._cdp_process is not None or self._cdp_browser is not None:
+            self._stop_cdp_browser()
+            return
+        if context is not None:
+            context.close()
+
+    def _launch_persistent_context(self, playwright, downloads_dir):
+        """Open the same persistent Chrome profile used by the legacy agent."""
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        print(
+            "[SPORTSBASE] Ouverture Google Chrome avec profil persistant : "
+            f"{self.profile_dir}"
+        )
+        print(f"[SPORTSBASE] Canal navigateur : {self.browser_channel}")
+        try:
+            if self._uses_cdp_port_transport():
+                return self._launch_context_over_cdp_port(
+                    playwright,
+                    downloads_dir,
+                )
+            return playwright.chromium.launch_persistent_context(
+                user_data_dir=str(self.profile_dir),
+                channel=self.browser_channel,
+                headless=self.automation.headless,
+                accept_downloads=True,
+                downloads_path=str(downloads_dir),
+                no_viewport=True,
+                args=["--start-maximized"],
+            )
+        except Exception as exc:
+            message = str(exc)
+            if "ProcessSingleton" in message or "profile" in message.lower():
+                raise RuntimeError(
+                    "Le profil Chrome SportsBase est déjà utilisé. Fermez Chrome et "
+                    "arrêtez automation_agent.py avant de lancer local_agent.py."
+                ) from exc
+            raise
+
+    @staticmethod
+    def _xlsx_browser_max_attempts():
+        try:
+            configured = int(
+                os.getenv("SPORTSBASE_XLSX_BROWSER_MAX_ATTEMPTS", "3")
+            )
+        except (TypeError, ValueError):
+            configured = 3
+        return max(1, min(configured, 5))
+
+    @staticmethod
+    def _xlsx_browser_retry_delay():
+        try:
+            configured = float(
+                os.getenv("SPORTSBASE_XLSX_BROWSER_RETRY_DELAY_SECONDS", "3")
+            )
+        except (TypeError, ValueError):
+            configured = 3.0
+        return max(0.0, min(configured, 30.0))
+
+    def run(self, job):
+        print(f"[SPORTSBASE] Version scraper : {SCRAPER_BUILD}")
+        max_attempts = self._xlsx_browser_max_attempts()
+        last_result = None
+
+        for attempt in range(1, max_attempts + 1):
+            result = self._run_browser_attempt(job)
+            retry_reason = str(result.pop(_XLSX_BROWSER_RETRY_KEY, "") or "")
+            if not retry_reason:
+                return result
+
+            last_result = result
+            if attempt >= max_attempts:
+                result["error"] = (
+                    f"{retry_reason} Échec après {max_attempts} tentative(s) "
+                    "automatiques. Les fichiers et l’abonnement ont été conservés."
+                )
+                print(f"[SPORTSBASE][ERREUR REPRISE XLSX] {result['error']}")
+                return result
+
+            next_attempt = attempt + 1
+            print(
+                "[SPORTSBASE][REPRISE XLSX] Chrome s’est fermé pendant le "
+                f"téléchargement. Relance automatique {next_attempt}/{max_attempts} "
+                "— aucune donnée locale ne sera supprimée."
+            )
+            delay = self._xlsx_browser_retry_delay()
+            if delay:
+                time.sleep(delay)
+
+        return last_result
+
+    def _run_browser_attempt(self, job):
+        player = job["player"]
+        player_root = self.storage_root / player["storage_key"]
+        downloads_dir = player_root / "_downloads"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        known = {
+            str(item["sportsbase_match_id"]): item
+            for item in job.get("known_matches", [])
+        }
+        result = {
+            "status": "success",
+            "profile": {},
+            "matches": [],
+            "summary": {},
+            "error": "",
+        }
+
+        with sync_playwright() as playwright:
+            context = None
+            try:
+                context = self._launch_persistent_context(playwright, downloads_dir)
+                page = context.new_page()
+                self.automation.ensure_logged_in_and_open_player(
+                    page, player["sportsbase_url"]
+                )
+                self._sportsbase_player_name = self._read_profile_player_name(
+                    page,
+                    fallback=player.get("name", ""),
+                )
+                if self._sportsbase_player_name != _clean_label(
+                    player.get("name", "")
+                ):
+                    print(
+                        "[SPORTSBASE] Nom exact du profil : "
+                        f"{self._sportsbase_player_name} "
+                        f"(nom local : {player.get('name', '')})"
+                    )
+
+                # Periodic FULL jobs only need the expensive season refresh when
+                # SportsBase has something new (or an older match still needs
+                # the existing recovery pipeline). The first synchronization has
+                # no known matches and therefore keeps the historical FULL flow.
+                if job["job_type"] == "full" and known:
+                    preflight = None
+                    try:
+                        self.automation.open_player_statistics(page)
+                        preflight = self._full_sync_preflight(
+                            page=page,
+                            job=job,
+                            known=known,
+                        )
+                    except Exception as exc:
+                        print(
+                            "[SPORTSBASE][WARN] Vérification légère des matchs "
+                            f"impossible — pipeline complet conservé : {exc}"
+                        )
+
+                    if preflight and preflight["reliable"]:
+                        if not preflight["needs_processing"]:
+                            print(
+                                "[SPORTSBASE] Aucun nouveau match — "
+                                f"{preflight['discovered_count']} match(s) vérifié(s), "
+                                "données saison inchangées — passage au joueur suivant."
+                            )
+                            result["summary"] = {
+                                "matches_imported": 0,
+                                "all_actions_downloaded": 0,
+                                "matches_checked": preflight["discovered_count"],
+                                "new_matches_detected": 0,
+                                "season_refresh_skipped": True,
+                            }
+                            return result
+
+                        if preflight["new_match_ids"]:
+                            print(
+                                "[SPORTSBASE] Nouveau(x) match(s) détecté(s) : "
+                                + ", ".join(preflight["new_match_ids"])
+                                + " — pipeline complet déclenché."
+                            )
+                        else:
+                            print(
+                                "[SPORTSBASE] Aucun nouveau match, mais un traitement "
+                                "existant reste incomplet — reprise du pipeline actuel."
+                            )
+
+                    # The preflight opens the statistics area. Reopen the player
+                    # profile before continuing so the proven FULL pipeline below
+                    # starts from exactly the same page state as before.
+                    self.automation.ensure_logged_in_and_open_player(
+                        page,
+                        player["sportsbase_url"],
+                    )
+
+                if job["job_type"] in {"full", "profile"}:
+                    result["profile"] = self._read_profile(page, job)
+
+                if job["job_type"] in {"full", "profile", "matches"}:
+                    self.automation.open_player_statistics(page)
+                    season_data = self._read_season_statistics(page)
+                    self._season_table_headers = season_data.get(
+                        "season_table_headers", []
+                    )
+                    self._season_match_rows = {
+                        str(item.get("sportsbase_match_id") or ""): item.get(
+                            "values", []
+                        )
+                        for item in season_data.get("season_match_rows", [])
+                        if item.get("sportsbase_match_id")
+                    }
+                    if result["profile"]:
+                        result["profile"].update(season_data)
+                        self._write_season_artifacts(
+                            player_root=player_root,
+                            profile=result["profile"],
+                        )
+
+                if job["job_type"] in {"full", "matches", "all_actions"}:
+                    result["matches"] = self._read_matches(
+                        page=page,
+                        context=context,
+                        job=job,
+                        known=known,
+                        player_root=player_root,
+                        downloads_dir=downloads_dir,
+                    )
+                    if job.get("all_actions_enabled"):
+                        unfinished_actions = [
+                            item
+                            for item in result["matches"]
+                            if item.get("actions_state") not in {"downloaded", "emailed"}
+                        ]
+                        if unfinished_actions and result["status"] == "success":
+                            result["status"] = "partial"
+                            result["error"] = (
+                                "Les statistiques sont enregistrées, mais au moins un "
+                                "fichier All Actions reste à télécharger."
+                            )
+            except _RetryableXlsxBrowserClosed as exc:
+                result["status"] = (
+                    "partial" if result["profile"] or result["matches"] else "failed"
+                )
+                result["error"] = str(exc)
+                result[_XLSX_BROWSER_RETRY_KEY] = str(exc)
+            except Exception as exc:
+                result["status"] = (
+                    "partial" if result["profile"] or result["matches"] else "failed"
+                )
+                result["error"] = str(exc)
+                print(f"[SPORTSBASE][ERREUR SCRAPER] {exc}")
+                traceback.print_exc()
+            finally:
+                if context is not None:
+                    try:
+                        self._close_browser_context(context)
+                    except Exception:
+                        pass
+
+        result["summary"] = {
+            "matches_imported": len(result["matches"]),
+            "all_actions_downloaded": sum(
+                item.get("actions_state") in {"downloaded", "emailed"}
+                for item in result["matches"]
+            ),
+        }
+        return result
+
+    @staticmethod
+    def _read_profile_player_name(page, fallback=""):
+        """Return the exact name displayed by SportsBase on the player profile."""
+        try:
+            title = page.locator('[class*="ProfileTitle"]').first
+            if title.count():
+                profile_name = _clean_label(title.inner_text())
+                if profile_name:
+                    return profile_name
+        except Exception:
+            pass
+        return _clean_label(fallback)
+
+    def _read_profile(self, page, job):
+        raw = page.evaluate(
+            r"""
+            () => {
+              const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
+              const cleanText = (node) => {
+                if (!node) return '';
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('[class*="Tooltip"], [role="tooltip"]').forEach(
+                  (item) => item.remove()
+                );
+                return text(clone);
+              };
+              const headerText = (node) => {
+                if (!node) return '';
+                const tooltip = node.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
+                if (tooltip) return text(tooltip);
+                const labels = [...node.querySelectorAll('[class*="LexicWrapper"]')].map(text).filter(Boolean);
+                return labels.length ? labels[labels.length - 1] : text(node);
+              };
+              const passport = {};
+              document.querySelectorAll('[class*="PassportItem"]').forEach((row) => {
+                const key = cleanText(row.querySelector('[class*="ParamName"]'));
+                const values = [...row.querySelectorAll('[class*="ParamValueContainer"]')].map((node) => ({
+                  main: cleanText(node.querySelector('[class*="ParamValueMain"]')),
+                  second: cleanText(node.querySelector('[class*="ParamValueSecond"]')),
+                  full: cleanText(node),
+                  tooltip: text(node.querySelector('[class*="Tooltip"]')),
+                }));
+                if (key) passport[key] = values;
+              });
+              const clubLink = document.querySelector('a[href*="/teams/"]');
+              const image = document.querySelector('[class*="ProfileLogo"]');
+              return {
+                name: text(document.querySelector('[class*="ProfileTitle"]')),
+                nativeName: text(document.querySelector('[class*="NativeName"]')),
+                club: text(clubLink),
+                clubHref: clubLink?.getAttribute('href') || '',
+                imageUrl: image?.getAttribute('src') || '',
+                passport,
+              };
+            }
+            """
+        )
+        passport = raw.get("passport", {})
+
+        def first(label):
+            normalized_label = _clean_label(label).casefold()
+            rows = next(
+                (
+                    values
+                    for key, values in passport.items()
+                    if _clean_label(key).casefold() == normalized_label
+                    or _clean_label(key).casefold().startswith(normalized_label)
+                ),
+                [],
+            )
+            return rows[0].get("main", "") if rows else ""
+
+        positions = []
+        for item in passport.get("Position", []):
+            percent = _safe_int(item.get("second"))
+            positions.append(
+                {
+                    "code": item.get("main", ""),
+                    "name": item.get("tooltip") or item.get("main", ""),
+                    "percent": percent,
+                }
+            )
+
+        player_id = PLAYER_ID_RE.search(page.url)
+        club_id = re.search(r"/teams/(\d+)", raw.get("clubHref", ""))
+        heatmap = self._capture_named_map(page, "Heatmap")
+        touches = self._capture_named_map(page, "Ball touches map")
+        ball_touches_points = list(
+            getattr(self, "_last_ball_touches_points", [])
+        )
+        radar = self._capture_radar(
+            page,
+            player_name=raw.get("name") or job["player"]["name"],
+            position_label=(positions[0].get("name") if positions else ""),
+        )
+        return {
+            "season": job["season"],
+            "sportsbase_player_id": player_id.group(1) if player_id else "",
+            "sportsbase_player_name": raw.get("name") or job["player"]["name"],
+            "native_name": raw.get("nativeName", ""),
+            "club_name": raw.get("club", ""),
+            "club_sportsbase_id": club_id.group(1) if club_id else "",
+            "profile_image_url": raw.get("imageUrl", ""),
+            "date_of_birth": _iso_date(first("Date of birth")),
+            "nationality": first("Nationality"),
+            "contract_expires": _iso_date(first("Contract expires")),
+            "height_weight": first("Height, Weight"),
+            "national_team": first("National team"),
+            "strong_foot": first("Strong foot"),
+            "time_on_field_percent": _safe_int(
+                first("Time on the field, %") or first("Time on the field")
+            ),
+            "positions": positions,
+            "radar_metrics": radar.get("metrics", []),
+            "radar_png_base64": _b64(radar.get("png", b"")),
+            "heatmap_png_base64": _b64(heatmap),
+            "ball_touches_png_base64": _b64(touches),
+            "source_metadata": {
+                "profile_url": page.url,
+                "captured_at": _now_iso(),
+                "ball_touches_scope": "last_5_matches",
+                "ball_touches_count": len(ball_touches_points),
+                "ball_touches_points": ball_touches_points,
+            },
+        }
+
+    def _capture_named_map(self, page, label):
+        return self._capture_map_field(page, page, label)
+
+    def _capture_radar(self, page, *, player_name="", position_label=""):
+        """Read SportsBase radar values and draw a clear positional comparison."""
+        try:
+            radar_tab = page.get_by_text("Radar", exact=True).first
+            radar_tab.scroll_into_view_if_needed(timeout=10_000)
+            radar_tab.click(timeout=10_000)
+            page.wait_for_timeout(900)
+            candidates = page.locator('svg[width][height]')
+            best = None
+            best_score = 0
+            for index in range(candidates.count()):
+                candidate = candidates.nth(index)
+                box = candidate.bounding_box()
+                if not box or box["width"] < 300 or box["height"] < 300:
+                    continue
+                signature = candidate.evaluate(
+                    r"""
+                    (svg) => ({
+                      labels: [...svg.querySelectorAll('text')].filter((node) =>
+                        Number(node.getAttribute('font-size') || 0) >= 10
+                      ).length,
+                      points: svg.querySelectorAll('circle[cx][cy]').length,
+                      paths: svg.querySelectorAll('path[d]').length,
+                      text: (svg.textContent || '').replace(/\s+/g, ' ').trim(),
+                    })
+                    """
+                )
+                radar_words = (
+                    "chances",
+                    "shots",
+                    "dribbling",
+                    "defensive",
+                    "interceptions",
+                )
+                semantic_hits = sum(
+                    word in signature.get("text", "").casefold()
+                    for word in radar_words
+                )
+                score = (
+                    box["width"] * box["height"]
+                    + signature.get("labels", 0) * 12_000
+                    + signature.get("points", 0) * 2_000
+                    + semantic_hits * 100_000
+                )
+                if semantic_hits >= 2 and signature.get("paths", 0) >= 2 and score > best_score:
+                    best, best_score = candidate, score
+            if best is None:
+                print("[SPORTSBASE][WARN] SVG du radar de performance non détecté.")
+                return {"png": b"", "metrics": []}
+
+            best.scroll_into_view_if_needed(timeout=10_000)
+            page.wait_for_timeout(300)
+            metrics = best.evaluate(
+                r"""
+                async (svg) => {
+                  const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                  const number = (value) => {
+                    const match = clean(value).replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+                    return match ? Number(match[0]) : null;
+                  };
+                  const labels = [...svg.querySelectorAll('text')]
+                    .filter((node) => Number(node.getAttribute('font-size') || 0) >= 10)
+                    .map((node) => clean([...node.querySelectorAll('tspan')]
+                      .map((item) => item.textContent).join(' ') || node.textContent))
+                    .filter(Boolean);
+                  const circles = [...svg.querySelectorAll('circle[cx][cy]')];
+                  const byColour = (rgb) => circles.filter((node) => {
+                    const stroke = clean(
+                      node.getAttribute('stroke') || getComputedStyle(node).stroke
+                    ).replace(/\s+/g, '');
+                    return stroke.includes(rgb);
+                  });
+                  const player = byColour('11,69,110');
+                  const average = byColour('178,0,0');
+                  const viewBox = svg.viewBox && svg.viewBox.baseVal;
+                  const width = viewBox?.width || Number(svg.getAttribute('width')) || 540;
+                  const height = viewBox?.height || Number(svg.getAttribute('height')) || 540;
+                  const centreX = (viewBox?.x || 0) + width / 2;
+                  const centreY = (viewBox?.y || 0) + height / 2;
+                  const axes = [...svg.querySelectorAll('line[x1][y1][x2][y2]')]
+                    .map((node) => ({
+                      inner: Math.hypot(
+                        Number(node.getAttribute('x1')),
+                        Number(node.getAttribute('y1'))
+                      ),
+                      outer: Math.hypot(
+                        Number(node.getAttribute('x2')),
+                        Number(node.getAttribute('y2'))
+                      ),
+                    }))
+                    .filter((item) => item.outer > 0);
+                  const innerRadius = Math.min(...axes.map((item) => item.inner));
+                  const outerRadius = Math.max(...axes.map((item) => item.outer));
+                  const axisCount = labels.length;
+                  const tickGroups = Array.from({length: axisCount}, () => []);
+                  [...svg.querySelectorAll('text')]
+                    .filter((node) => Number(node.getAttribute('font-size') || 0) < 10)
+                    .forEach((node) => {
+                      const raw = clean(node.textContent);
+                      const tick = number(raw);
+                      const x = Number(node.getAttribute('x'));
+                      const y = Number(node.getAttribute('y'));
+                      if (tick === null || !Number.isFinite(x) || !Number.isFinite(y)) return;
+                      const angle = (Math.atan2(y, x) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+                      const index = Math.round(angle / (Math.PI * 2 / axisCount)) % axisCount;
+                      tickGroups[index].push({value: tick, raw});
+                    });
+                  const scaleFor = (index) => {
+                    const ticks = tickGroups[index] || [];
+                    return ticks.reduce((maximum, item) => Math.max(maximum, item.value), 0);
+                  };
+                  const precisionFor = (index) => {
+                    const ticks = tickGroups[index] || [];
+                    return Math.min(2, ticks.reduce((maximum, item) => {
+                      const decimal = item.raw.replace(',', '.').split('.')[1] || '';
+                      return Math.max(maximum, decimal.length);
+                    }, 0));
+                  };
+                  const point = (node, index) => {
+                    if (!node) return 0;
+                    const svgPoint = svg.createSVGPoint();
+                    svgPoint.x = Number(node.getAttribute('cx'));
+                    svgPoint.y = Number(node.getAttribute('cy'));
+                    const absolute = svgPoint.matrixTransform(node.getCTM());
+                    const dx = absolute.x - centreX;
+                    const dy = absolute.y - centreY;
+                    const normalized = Math.max(0, Math.min(100,
+                      (Math.hypot(dx, dy) - innerRadius) /
+                      Math.max(1, outerRadius - innerRadius) * 100
+                    ));
+                    const scaleMax = scaleFor(index);
+                    const precision = precisionFor(index);
+                    return {
+                      normalized: Math.round(normalized * 10) / 10,
+                      value: Number((normalized / 100 * scaleMax).toFixed(precision)),
+                      scaleMax,
+                      precision,
+                    };
+                  };
+
+                  const tooltipValue = async (node) => {
+                    if (!node) return null;
+                    const rect = node.getBoundingClientRect();
+                    const options = {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                      clientX: rect.left + rect.width / 2,
+                      clientY: rect.top + rect.height / 2,
+                    };
+                    node.dispatchEvent(new MouseEvent('mouseenter', options));
+                    node.dispatchEvent(new MouseEvent('mouseover', options));
+                    node.dispatchEvent(new MouseEvent('mousemove', options));
+                    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+                    const root = svg.parentElement || svg;
+                    const tooltip = [...root.querySelectorAll('div')].find((item) => {
+                      const style = getComputedStyle(item);
+                      return style.visibility !== 'hidden' && style.display !== 'none' &&
+                        /:\s*-?\d/.test(clean(item.textContent));
+                    });
+                    if (!tooltip) return null;
+                    const text = clean(tooltip.textContent);
+                    const rawValue = clean(text.slice(text.lastIndexOf(':') + 1)).replace(',', '.');
+                    const value = number(rawValue);
+                    if (value === null) return null;
+                    return {
+                      value,
+                      precision: Math.min(2, (rawValue.split('.')[1] || '').replace(/\D/g, '').length),
+                    };
+                  };
+
+                  const count = Math.min(labels.length, player.length, average.length);
+                  const metrics = [];
+                  for (let index = 0; index < count; index += 1) {
+                    const playerPoint = point(player[index], index);
+                    const averagePoint = point(average[index], index);
+                    const rawPlayerTooltip = await tooltipValue(player[index]);
+                    const rawAverageTooltip = await tooltipValue(average[index]);
+                    const verifiedTooltip = (tooltip, geometry) => {
+                      if (!tooltip) return null;
+                      const tolerance = Math.max(
+                        geometry.scaleMax * 0.12,
+                        2 / Math.pow(10, geometry.precision)
+                      );
+                      return Math.abs(tooltip.value - geometry.value) <= tolerance
+                        ? tooltip
+                        : null;
+                    };
+                    const playerTooltip = verifiedTooltip(rawPlayerTooltip, playerPoint);
+                    const averageTooltip = verifiedTooltip(rawAverageTooltip, averagePoint);
+                    const label = labels[index];
+                    const isPercentage = /%|accurate|successf/i.test(label);
+                    metrics.push({
+                      name: label,
+                      label,
+                      value: playerTooltip?.value ?? playerPoint.value,
+                      player: playerTooltip?.value ?? playerPoint.value,
+                      average: averageTooltip?.value ?? averagePoint.value,
+                      player_normalized: playerPoint.normalized,
+                      average_normalized: averagePoint.normalized,
+                      scale_min: 0,
+                      scale_max: playerPoint.scaleMax,
+                      precision: Math.max(
+                        playerPoint.precision,
+                        averagePoint.precision,
+                        playerTooltip?.precision || 0,
+                        averageTooltip?.precision || 0
+                      ),
+                      unit: isPercentage ? '%' : 'per_90',
+                      scope: 'season_per_90',
+                      value_source: playerTooltip !== null && averageTooltip !== null
+                        ? 'sportsbase_tooltip'
+                        : 'sportsbase_axis_scale',
+                    });
+                  }
+                  return metrics;
+                }
+                """
+            )
+            print(
+                "[SPORTSBASE] Radar positionnel détecté — "
+                f"{len(metrics)} axe(s) — valeurs réelles joueur vs moyenne du poste."
+            )
+            comparison_png = self._build_position_comparison_radar(
+                metrics,
+                player_name=player_name,
+                position_label=position_label,
+            )
+            return {
+                "png": comparison_png or best.screenshot(type="png"),
+                "metrics": metrics,
+            }
+        except Exception as exc:
+            print(f"[SPORTSBASE][WARN] Capture radar impossible : {exc}")
+            return {"png": b"", "metrics": []}
+
+    @staticmethod
+    def _radar_font(size, *, bold=False):
+        candidates = (
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            if bold
+            else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path(r"C:\Windows\Fonts\arialbd.ttf")
+            if bold
+            else Path(r"C:\Windows\Fonts\arial.ttf"),
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return ImageFont.truetype(str(candidate), size=size)
+        return ImageFont.load_default()
+
+    @classmethod
+    def _build_position_comparison_radar(
+        cls, metrics, *, player_name="", position_label=""
+    ):
+        """Create a portal-ready graph: player against the same-position average."""
+        metrics = [
+            item
+            for item in metrics
+            if item.get("label")
+            and item.get("player") is not None
+            and item.get("average") is not None
+        ][:12]
+        if len(metrics) < 3:
+            return b""
+
+        width, height = 1400, 1150
+        centre_x, centre_y = width // 2, 590
+        radius = 315
+        image = Image.new("RGBA", (width, height), (247, 250, 252, 255))
+        draw = ImageDraw.Draw(image, "RGBA")
+        navy = (7, 24, 39, 255)
+        teal = (13, 148, 136, 255)
+        teal_fill = (19, 184, 166, 76)
+        red = (196, 66, 76, 255)
+        red_fill = (217, 93, 102, 58)
+        grid = (199, 214, 224, 255)
+        muted = (97, 116, 139, 255)
+
+        title_font = cls._radar_font(38, bold=True)
+        subtitle_font = cls._radar_font(23)
+        label_font = cls._radar_font(19, bold=True)
+        value_font = cls._radar_font(17)
+        legend_font = cls._radar_font(20, bold=True)
+        small_font = cls._radar_font(16)
+
+        draw.text(
+            (70, 55),
+            player_name or "Player",
+            font=title_font,
+            fill=navy,
+        )
+        subtitle = "Comparaison avec la moyenne des joueurs du même poste"
+        if position_label:
+            subtitle += f" · {position_label}"
+        draw.text((70, 108), subtitle, font=subtitle_font, fill=muted)
+        draw.line((70, 158, width - 70, 158), fill=(216, 227, 234, 255), width=2)
+
+        count = len(metrics)
+        angles = [
+            -math.pi / 2 + 2 * math.pi * index / count
+            for index in range(count)
+        ]
+
+        def polygon(scale):
+            return [
+                (
+                    centre_x + math.cos(angle) * radius * scale,
+                    centre_y + math.sin(angle) * radius * scale,
+                )
+                for angle in angles
+            ]
+
+        for ring in (0.2, 0.4, 0.6, 0.8, 1.0):
+            points = polygon(ring)
+            draw.line(points + [points[0]], fill=grid, width=2)
+        for angle in angles:
+            draw.line(
+                (
+                    centre_x,
+                    centre_y,
+                    centre_x + math.cos(angle) * radius,
+                    centre_y + math.sin(angle) * radius,
+                ),
+                fill=grid,
+                width=2,
+            )
+
+        def normalized_value(item, key):
+            direct = item.get(f"{key}_normalized")
+            if direct is not None:
+                return max(0.0, min(100.0, float(direct)))
+            scale_max = float(item.get("scale_max") or 0)
+            if scale_max > 0:
+                return max(0.0, min(100.0, float(item.get(key) or 0) / scale_max * 100))
+            return max(0.0, min(100.0, float(item.get(key) or 0)))
+
+        def series_points(key):
+            points = []
+            for angle, item in zip(angles, metrics):
+                value = normalized_value(item, key) / 100
+                points.append(
+                    (
+                        centre_x + math.cos(angle) * radius * value,
+                        centre_y + math.sin(angle) * radius * value,
+                    )
+                )
+            return points
+
+        average_points = series_points("average")
+        player_points = series_points("player")
+        draw.polygon(average_points, fill=red_fill)
+        draw.line(
+            average_points + [average_points[0]], fill=red, width=5, joint="curve"
+        )
+        draw.polygon(player_points, fill=teal_fill)
+        draw.line(
+            player_points + [player_points[0]], fill=teal, width=6, joint="curve"
+        )
+        for point in average_points:
+            draw.ellipse(
+                (point[0] - 5, point[1] - 5, point[0] + 5, point[1] + 5),
+                fill=red,
+            )
+        for point in player_points:
+            draw.ellipse(
+                (point[0] - 6, point[1] - 6, point[0] + 6, point[1] + 6),
+                fill=teal,
+            )
+
+        label_radius = radius + 74
+        for angle, item in zip(angles, metrics):
+            label = "\n".join(
+                textwrap.wrap(str(item.get("label") or ""), width=24)
+            )
+            x = centre_x + math.cos(angle) * label_radius
+            y = centre_y + math.sin(angle) * label_radius
+            box = draw.multiline_textbbox(
+                (0, 0), label, font=label_font, spacing=3, align="center"
+            )
+            label_width = box[2] - box[0]
+            label_height = box[3] - box[1]
+            if math.cos(angle) > 0.2:
+                x -= 4
+            elif math.cos(angle) < -0.2:
+                x -= label_width
+            else:
+                x -= label_width / 2
+            if math.sin(angle) > 0.2:
+                y -= 2
+            elif math.sin(angle) < -0.2:
+                y -= label_height
+            else:
+                y -= label_height / 2
+            draw.multiline_text(
+                (x, y),
+                label,
+                font=label_font,
+                fill=navy,
+                spacing=3,
+                align="center",
+            )
+            precision = max(0, min(2, int(item.get("precision") or 0)))
+            suffix = "%" if item.get("unit") == "%" else " /90"
+            player_value = f"{float(item.get('player') or 0):.{precision}f}".rstrip("0").rstrip(".")
+            average_value = f"{float(item.get('average') or 0):.{precision}f}".rstrip("0").rstrip(".")
+            values = f"J {player_value}{suffix}  ·  Moy {average_value}{suffix}"
+            value_box = draw.textbbox((0, 0), values, font=value_font)
+            value_width = value_box[2] - value_box[0]
+            value_x = x if math.cos(angle) > 0.2 else x + label_width - value_width if math.cos(angle) < -0.2 else x + (label_width - value_width) / 2
+            value_y = y + label_height + 5
+            draw.text((value_x, value_y), values, font=value_font, fill=muted)
+
+        legend_y = height - 76
+        draw.line((365, legend_y, 425, legend_y), fill=teal, width=7)
+        draw.text((440, legend_y - 14), player_name or "Joueur", font=legend_font, fill=navy)
+        draw.line((790, legend_y, 850, legend_y), fill=red, width=7)
+        draw.text(
+            (865, legend_y - 14),
+            "Moyenne du poste",
+            font=legend_font,
+            fill=navy,
+        )
+        draw.text(
+            (70, height - 30),
+            "Valeurs réelles SportsBase par 90 minutes. La forme est normalisée séparément sur chaque axe.",
+            font=value_font,
+            fill=muted,
+        )
+
+        buffer = BytesIO()
+        image.convert("RGB").save(buffer, format="PNG", optimize=True)
+        return buffer.getvalue()
+
+    def _read_season_statistics(self, page):
+        try:
+            opened = page.evaluate(
+                r"""
+                () => {
+                  const clean = (node) => (node?.textContent || '').replace(/\s+/g, ' ').trim();
+                  const statistics = [...document.querySelectorAll('span')].find((node) =>
+                    clean(node) === 'Statistics' &&
+                    [...(node.closest('ul')?.querySelectorAll('span') || [])]
+                      .some((item) => clean(item) === 'Radar')
+                  );
+                  if (!statistics) return false;
+                  (statistics.closest('[class*="Tab-sc-"]') || statistics).click();
+                  return true;
+                }
+                """
+            )
+            if opened:
+                page.wait_for_timeout(450)
+        except Exception:
+            pass
+        data = page.evaluate(
+            r"""
+            () => {
+              const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
+              const cleanValue = (node) => {
+                if (!node) return '';
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('[class*="Tooltip"], [role="tooltip"]').forEach((item) => item.remove());
+                return text(clone);
+              };
+              const tooltipLabel = (node) => text(
+                node?.querySelector('[class*="Tooltip"] [class*="LexicWrapper"], [class*="Tooltip"], [role="tooltip"]')
+              );
+              const headerText = (node) => {
+                if (!node) return '';
+                const tooltip = tooltipLabel(node);
+                if (tooltip) return tooltip;
+                const labels = [...node.querySelectorAll('[class*="LexicWrapper"]')].map(text).filter(Boolean);
+                return labels.length ? labels[labels.length - 1] : text(node);
+              };
+              const addRows = (block, result) => {
+                if (!block) return;
+                block.querySelectorAll('li').forEach((row) => {
+                  const label = text(row.querySelector(
+                    '[class*="Name-sc-"], [class*="StatsName"], [class*="StatName"], [class*="ParamName"]'
+                  ));
+                  const values = [...row.querySelectorAll(
+                    '[class*="StatValue-sc-"], [class*="StatValue"]'
+                  )];
+                  if (!label || !values.length) return;
+                  const primary = cleanValue(values[0]);
+                  if (primary) result[label] = primary;
+                  values.slice(1).forEach((valueNode) => {
+                    const secondaryLabel = tooltipLabel(valueNode);
+                    const secondaryValue = cleanValue(valueNode);
+                    if (secondaryLabel && secondaryValue) {
+                      result[secondaryLabel] = secondaryValue;
+                    }
+                  });
+                });
+              };
+
+              const season = {};
+              const averages = {};
+              const sectionTitles = [
+                ...document.querySelectorAll(
+                  '[class*="StatsTitle-sc-"], [class*="StatsTitle"]'
+                )
+              ];
+              sectionTitles.forEach((titleNode) => {
+                const title = text(titleNode).toLowerCase();
+                const titleRow = titleNode.closest('[class*="Titles-sc-"]') || titleNode.parentElement;
+                const block = titleRow?.nextElementSibling;
+                if (title === 'season') addRows(block, season);
+                if (title === 'average per match') addRows(block, averages);
+              });
+              if (!Object.keys(season).length || !Object.keys(averages).length) {
+                const blocks = [...document.querySelectorAll('ul[class*="LeftStatBlock"]')];
+                if (!Object.keys(season).length) addRows(blocks[0], season);
+                if (!Object.keys(averages).length) addRows(blocks[1], averages);
+              }
+              let bestTable = {headers: [], rows: []};
+              document.querySelectorAll('[role="table"]').forEach((table) => {
+                const headers = [...table.querySelectorAll('[role="headercell"], [role="columnheader"]')].map(headerText);
+                const rows = [...table.querySelectorAll('[role="row"]')].map((row) => {
+                  const cells = [...row.querySelectorAll('[role="bodycell"], [role="cell"]')].map(text);
+                  const href = row.querySelector('a[href*="/matches/"]')?.getAttribute('href') || '';
+                  return cells.length ? {cells, href} : null;
+                }).filter(Boolean);
+                if (headers.length > bestTable.headers.length && rows.length) bestTable = {headers, rows};
+              });
+              return {season, averages, table: bestTable};
+            }
+            """
+        )
+        headers = [_clean_label(value) for value in data.get("table", {}).get("headers", [])]
+        rows = []
+        numeric_columns = {header: [] for header in headers}
+        for raw_row in data.get("table", {}).get("rows", []):
+            values = [_clean_label(value) for value in raw_row.get("cells", [])]
+            href_match = MATCH_ID_RE.search(raw_row.get("href", ""))
+            rows.append(
+                {
+                    "sportsbase_match_id": href_match.group(1) if href_match else "",
+                    "values": values,
+                }
+            )
+            for header, value in zip(headers, values):
+                normalized = value.replace("%", "").replace(",", ".").strip()
+                if re.fullmatch(r"-?\d+(?:\.\d+)?", normalized):
+                    numeric_columns[header].append(float(normalized))
+
+        season = data.get("season", {})
+        averages = data.get("averages", {})
+        for header, values in numeric_columns.items():
+            if not values or header in season:
+                continue
+            average = sum(values) / len(values)
+            total = average if "%" in header else sum(values)
+            season[header] = self._format_number(total, percent="%" in header)
+            averages.setdefault(header, self._format_number(average, percent="%" in header))
+        return {
+            "season_statistics": season,
+            "average_statistics": averages,
+            "season_table_headers": headers,
+            "season_match_rows": rows,
+        }
+
+    @staticmethod
+    def _format_number(value, percent=False):
+        formatted = f"{value:.2f}".rstrip("0").rstrip(".")
+        return f"{formatted}%" if percent else formatted
+
+    def _discover_job_matches(self, page, job):
+        """Discover only the match list needed to decide whether work exists."""
+        try:
+            matches_played = self.automation.get_matches_played(
+                page,
+                seasons_to_process=1,
+            )
+        except Exception:
+            matches_played = 100
+        self.automation.expand_matches_list(page, matches_played)
+        discovered = self._discover_matches(page)
+        return self._apply_season_boundary(discovered, job)
+
+    def _match_requires_processing(self, match_data, known, job):
+        """Mirror the existing _read_matches skip rule without opening a match."""
+        previous = known.get(match_data["sportsbase_match_id"], {})
+        statistics_are_complete = not self._missing_enriched_players_headers(
+            previous.get("players_statistics_headers")
+        )
+        return not (
+            previous.get("complete")
+            and (
+                job["job_type"] == "all_actions"
+                or statistics_are_complete
+            )
+        )
+
+    def _full_sync_preflight(self, *, page, job, known):
+        """Return a fail-safe lightweight decision for a periodic FULL sync."""
+        discovered = self._discover_job_matches(page, job)
+        if not discovered:
+            # A player that already has known matches should not suddenly expose
+            # an empty list. Treat that as an unreliable preflight and preserve
+            # the historical FULL behavior.
+            return {
+                "reliable": False,
+                "discovered_count": 0,
+                "new_match_ids": [],
+                "pending_match_ids": [],
+                "needs_processing": True,
+            }
+
+        new_match_ids = [
+            item["sportsbase_match_id"]
+            for item in discovered
+            if item["sportsbase_match_id"] not in known
+        ]
+        pending_match_ids = [
+            item["sportsbase_match_id"]
+            for item in discovered
+            if self._match_requires_processing(item, known, job)
+        ]
+        return {
+            "reliable": True,
+            "discovered_count": len(discovered),
+            "new_match_ids": new_match_ids,
+            "pending_match_ids": pending_match_ids,
+            "needs_processing": bool(pending_match_ids),
+        }
+
+    def _read_matches(self, *, page, context, job, known, player_root, downloads_dir):
+        discovered = self._discover_job_matches(page, job)
+        output = []
+        generation_queue = []
+
+        for match_data in discovered:
+            previous = known.get(match_data["sportsbase_match_id"], {})
+            if not self._match_requires_processing(match_data, known, job):
+                continue
+            match_item = self._match_item(page, match_data["sportsbase_match_id"])
+            if job["job_type"] != "all_actions":
+                try:
+                    match_data["stats"] = self._read_match_details(
+                        page,
+                        context,
+                        match_item,
+                        match_data,
+                        job,
+                        player_root=player_root,
+                    )
+                    match_data["sync_state"] = "synced"
+                except _RetryableXlsxBrowserClosed:
+                    # The main player page belongs to the same dead context. Stop
+                    # before queuing/generating All Actions and restart Chrome.
+                    raise
+                except Exception as exc:
+                    match_data["sync_state"] = "partial"
+                    match_data.setdefault("source_metadata", {})["stats_error"] = str(exc)
+            else:
+                match_data["sync_state"] = previous.get("sync_state", "discovered")
+
+            self._write_match_artifacts(
+                player_root=player_root,
+                season=job.get("season", ""),
+                match_data=match_data,
+            )
+
+            if not job.get("all_actions_enabled"):
+                match_data["actions_state"] = "not_requested"
+            elif (
+                previous.get("actions_state") in {"downloaded", "emailed"}
+                and resolve_existing_actions_file(
+                    self.storage_root,
+                    previous.get("local_folder_key"),
+                    previous.get("all_actions_filename"),
+                )
+            ):
+                # L’e-mail final est envoyé une seule fois par Django, lorsque le
+                # rapport (et, si activé, YouTube) est prêt. L’agent local conserve
+                # uniquement le fichier vidéo et ne l’envoie plus en pièce jointe.
+                match_data["actions_state"] = previous["actions_state"]
+                for field in (
+                    "local_folder_key",
+                    "all_actions_filename",
+                    "all_actions_downloaded_at",
+                    "all_actions_emailed_at",
+                    "delivery_error",
+                ):
+                    if previous.get(field) not in (None, ""):
+                        match_data[field] = previous[field]
+                print(
+                    "[SPORTSBASE] All Actions locale déjà valide — "
+                    f"match {match_data['sportsbase_match_id']}"
+                )
+            elif previous.get("actions_state") in {"downloaded", "emailed"}:
+                # The database can say downloaded after the local MP4 was moved,
+                # deleted or left empty. Resume My Videos instead of silently
+                # finishing without a file that the YouTube uploader can use.
+                print(
+                    "[SPORTSBASE][WARN] All Actions marquée téléchargée mais fichier "
+                    f"local absent/vide — reprise My Videos pour le match "
+                    f"{match_data['sportsbase_match_id']}"
+                )
+                match_data["actions_state"] = "generating"
+                match_data["delivery_error"] = ""
+                generation_queue.append((match_data, match_item, False))
+            elif previous.get("actions_state") == "generating":
+                # Une génération a déjà été demandée lors d'un passage précédent.
+                # On reprend uniquement My Videos, sans créer de doublon SportsBase.
+                match_data["actions_state"] = "generating"
+                generation_queue.append((match_data, match_item, False))
+            else:
+                match_data["actions_state"] = "queued"
+                generation_queue.append((match_data, match_item, True))
+                print(
+                    "[SPORTSBASE] All Actions ajoutée à la file — "
+                    f"match {match_data['sportsbase_match_id']}"
+                )
+            output.append(match_data)
+
+        try:
+            self._generate_and_deliver_actions(
+                page=page,
+                job=job,
+                player_root=player_root,
+                downloads_dir=downloads_dir,
+                queue=generation_queue,
+            )
+        except Exception as exc:
+            # Les statistiques déjà collectées doivent toujours être envoyées à Django.
+            print(f"[SPORTSBASE][ERREUR ALL ACTIONS] {exc}")
+            traceback.print_exc()
+            for match_data, _match_item, _should_generate in generation_queue:
+                if match_data.get("actions_state") in {"queued", "generating"}:
+                    match_data["actions_state"] = "generating"
+                    match_data["delivery_error"] = (
+                        "Statistiques enregistrées. Téléchargement All Actions à reprendre : "
+                        f"{exc}"
+                    )
+        for match_data in output:
+            self._write_match_artifacts(
+                player_root=player_root,
+                season=job.get("season", ""),
+                match_data=match_data,
+            )
+        return output
+
+    def _discover_matches(self, page):
+        rows = []
+        items = self.automation.get_match_items(page)
+        for index in range(items.count()):
+            item = items.nth(index)
+            href = self.automation.get_match_profile_href(item) or ""
+            id_match = MATCH_ID_RE.search(href)
+            if not id_match:
+                continue
+            raw = item.evaluate(
+                r"""
+                (row) => {
+                  const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
+                  const teamLinks = [...row.querySelectorAll('a[href*="/teams/"]')];
+                  return {
+                    text: text(row),
+                    teams: teamLinks.slice(0, 2).map((node) => ({
+                      name: text(node), href: node.getAttribute('href') || ''
+                    })),
+                    competition: text(row.querySelector('[class*="Tournament"], [class*="Competition"]')),
+                    week: text(row.querySelector('[class*="Week"], [class*="Round"]')),
+                    lineup: text(row.querySelector('[class*="Lineup"], [class*="Position"]')),
+                    score: text(row.querySelector('[class*="Score-sc-jnav9l-8"], [class*="Score-sc-ql8gpc-3"]')),
+                    referee: text(row.querySelector('[class*="RefereeName"]')),
+                  };
+                }
+                """
+            )
+            text = raw.get("text", "")
+            teams = raw.get("teams", [])
+            score = SCORE_RE.search(raw.get("score", "")) or SCORE_RE.search(text)
+            row = {
+                "sportsbase_match_id": id_match.group(1),
+                "match_date": _iso_date(text),
+                "competition": raw.get("competition", ""),
+                "week": raw.get("week", ""),
+                "referee": raw.get("referee", ""),
+                "home_team": teams[0]["name"] if teams else "",
+                "home_team_id": self._id_from_href(teams[0]["href"]) if teams else "",
+                "away_team": teams[1]["name"] if len(teams) > 1 else "",
+                "away_team_id": self._id_from_href(teams[1]["href"]) if len(teams) > 1 else "",
+                "home_score": int(score.group(1)) if score else None,
+                "away_score": int(score.group(2)) if score else None,
+                "lineup": raw.get("lineup", ""),
+                "match_url": urljoin(SPORTSBASE_ROOT, href),
+                "source_metadata": {"list_position": index + 1, "captured_at": _now_iso()},
+            }
+            rows.append(row)
+        return rows
+
+    @staticmethod
+    def _id_from_href(href):
+        match = re.search(r"/(?:teams|players)/(\d+)", href or "")
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _apply_season_boundary(matches, job):
+        first_id = str(job.get("first_match_id") or "")
+        if first_id:
+            index = next(
+                (i for i, item in enumerate(matches) if item["sportsbase_match_id"] == first_id),
+                None,
+            )
+            if index is not None:
+                matches = matches[: index + 1]
+        start = job.get("sync_from_date")
+        if start:
+            matches = [item for item in matches if not item["match_date"] or item["match_date"] >= start]
+        return matches
+
+    def _match_item(self, page, match_id):
+        item = self.automation.get_match_items(page).filter(
+            has=page.locator(f'a[href*="/matches/{match_id}"]')
+        ).first
+        item.wait_for(state="visible", timeout=10000)
+        return item
+
+    def _read_match_details(
+        self, page, context, match_item, match_data, job, *, player_root
+    ):
+        details_scope = self._open_match_details_scope(
+            page,
+            match_item,
+            match_data["sportsbase_match_id"],
+        )
+        pairs = self._season_match_statistics(
+            match_data["sportsbase_match_id"]
+        )
+        pairs.update(self._extract_label_values(details_scope))
+        pairs.update(
+            self._extract_match_table_stats(
+                page, match_data["sportsbase_match_id"]
+            )
+        )
+        success = {key: value for key, value in pairs.items() if "%" in value or "%" in key}
+        summary = {key: value for key, value in pairs.items() if key not in success}
+        heatmap = self._capture_map_in_container(page, details_scope, "Heatmap")
+        touches = self._capture_map_in_container(
+            page, details_scope, "Ball touches map"
+        )
+        ball_touches_points = list(
+            getattr(self, "_last_ball_touches_points", [])
+        )
+        profile = self._read_match_profile(
+            context,
+            match_data["match_url"],
+            job["player"],
+            match_data,
+            statistics_dir=self._match_folder(
+                player_root=player_root,
+                season=job.get("season", ""),
+                match_data=match_data,
+            ),
+        )
+        for field in ("match_date", "home_score", "away_score", "referee"):
+            value = profile.get(field)
+            if value not in (None, ""):
+                match_data[field] = value
+        if profile.get("stadium"):
+            match_data.setdefault("source_metadata", {})["stadium"] = profile[
+                "stadium"
+            ]
+        position_percentages = self._extract_position_percentages(details_scope)
+        return {
+            "team_name": profile.get("team_name") or job["player"].get("club", ""),
+            "position": profile.get("position") or match_data.get("lineup", ""),
+            "position_percentages": position_percentages,
+            "minutes_played": profile.get("minutes_played"),
+            "index": profile.get("index"),
+            "team_rank": profile.get("team_rank"),
+            "match_rank": profile.get("match_rank"),
+            "summary_statistics": summary,
+            "success_rates": success,
+            "detailed_statistics": pairs,
+            "team_table": profile.get("team_table", []),
+            "players_statistics_headers": profile.get(
+                "players_statistics_headers", []
+            ),
+            "players_statistics_rows": profile.get("players_statistics_rows", []),
+            "heatmap_png_base64": _b64(heatmap),
+            "ball_touches_png_base64": _b64(touches),
+            "source_metadata": {
+                "match_profile_url": match_data["match_url"],
+                "stadium": profile.get("stadium", ""),
+                "referee": profile.get("referee", ""),
+                "players_statistics_url": profile.get(
+                    "players_statistics_url", ""
+                ),
+                "players_statistics_source": profile.get(
+                    "players_statistics_source", ""
+                ),
+                "players_statistics_xlsx": profile.get(
+                    "players_statistics_xlsx", ""
+                ),
+                "players_statistics_downloaded_at": profile.get(
+                    "players_statistics_downloaded_at", ""
+                ),
+                "players_statistics_error": profile.get(
+                    "players_statistics_error", ""
+                ),
+                "ball_touches_scope": "match",
+                "ball_touches_count": len(ball_touches_points),
+                "ball_touches_points": ball_touches_points,
+            },
+        }
+
+    @staticmethod
+    def _open_match_details_scope(page, match_item, match_id):
+        def visible_scope(locator):
+            for index in range(locator.count()):
+                candidate = locator.nth(index)
+                try:
+                    if (
+                        candidate.is_visible()
+                        and candidate.locator('[class*="MapFieldWrapper"]').count()
+                        and candidate.locator('[class*="PlayerStatsContainer"]').count()
+                    ):
+                        return candidate
+                except Exception:
+                    continue
+            return None
+
+        descendant = visible_scope(
+            match_item.locator('[class*="StatsWrapper"]')
+        )
+        if descendant is not None:
+            print(
+                f"[SPORTSBASE] Détails match {match_id} déjà ouverts dans la ligne"
+            )
+            return descendant
+
+        existing_following = visible_scope(
+            match_item.locator(
+                'xpath=following::*[contains(@class,"StatsWrapper")][1]'
+            )
+        )
+        if existing_following is not None:
+            print(
+                f"[SPORTSBASE] Détails match {match_id} déjà ouverts hors de la ligne"
+            )
+            return existing_following
+
+        existing_wrappers = page.locator('[class*="StatsWrapper"]')
+        existing_count = existing_wrappers.count()
+        more = match_item.get_by_text("More details", exact=False).first
+        if not more.count():
+            raise RuntimeError(
+                f"Bouton More details introuvable pour le match {match_id}"
+            )
+        more.scroll_into_view_if_needed(timeout=10000)
+        more.click(timeout=10000)
+
+        for _attempt in range(40):
+            descendant = visible_scope(
+                match_item.locator('[class*="StatsWrapper"]')
+            )
+            if descendant is not None:
+                print(
+                    f"[SPORTSBASE] Détails match {match_id} ouverts dans la ligne"
+                )
+                return descendant
+
+            wrappers = page.locator('[class*="StatsWrapper"]')
+            if wrappers.count() > existing_count:
+                for index in range(existing_count, wrappers.count()):
+                    candidate = visible_scope(wrappers.nth(index))
+                    if candidate is not None:
+                        print(
+                            f"[SPORTSBASE] Détails match {match_id} ouverts hors de la ligne"
+                        )
+                        return candidate
+
+            following = visible_scope(
+                match_item.locator(
+                    'xpath=following::*[contains(@class,"StatsWrapper")][1]'
+                )
+            )
+            if following is not None:
+                print(
+                    f"[SPORTSBASE] Détails match {match_id} associés par position DOM"
+                )
+                return following
+            page.wait_for_timeout(250)
+
+        raise RuntimeError(
+            f"Le bloc Player match stats du match {match_id} ne s’est pas ouvert"
+        )
+
+    def _season_match_statistics(self, match_id):
+        headers = getattr(self, "_season_table_headers", [])
+        values = getattr(self, "_season_match_rows", {}).get(str(match_id), [])
+        return {
+            _clean_label(header): _clean_label(value)
+            for header, value in zip(headers, values)
+            if _clean_label(header)
+            and _clean_label(value)
+            and _clean_label(value) not in {"–", "-"}
+        }
+
+    @staticmethod
+    def _extract_match_table_stats(page, match_id):
+        links = page.locator(f'a[href*="/matches/{match_id}"]')
+        for index in range(links.count()):
+            row = links.nth(index).locator('xpath=ancestor::*[@role="row"][1]')
+            if not row.count():
+                continue
+            cells = row.locator('[role="bodycell"], [role="cell"]')
+            if cells.count() < 5:
+                continue
+            table = row.locator('xpath=ancestor::*[@role="table"][1]')
+            headers = table.locator('[role="headercell"], [role="columnheader"]')
+            labels = []
+            for header_index in range(headers.count()):
+                label = headers.nth(header_index).evaluate(
+                    r"""
+                    (node) => {
+                      const text = (item) => item ? item.textContent.replace(/\s+/g, ' ').trim() : '';
+                      const tooltip = node.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
+                      if (tooltip) return text(tooltip);
+                      const labels = [...node.querySelectorAll('[class*="LexicWrapper"]')].map(text).filter(Boolean);
+                      return labels.length ? labels[labels.length - 1] : text(node);
+                    }
+                    """
+                )
+                labels.append(_clean_label(label))
+            values = [_clean_label(cells.nth(i).inner_text()) for i in range(cells.count())]
+            return {
+                label: value
+                for label, value in zip(labels, values)
+                if label and value and value != "–"
+            }
+        return {}
+
+    @staticmethod
+    def _extract_label_values(container):
+        rows = container.locator(
+            'li[class*="PlayerStatsItem"], li[class*="PlayerStatsItem-sc-98ruxp-0"]'
+        )
+        result = {}
+        for index in range(rows.count()):
+            row = rows.nth(index)
+            try:
+                parsed = row.evaluate(
+                    r"""
+                    (node) => {
+                      const text = (item) => item ? item.textContent.replace(/\s+/g, ' ').trim() : '';
+                      const directText = (item) => {
+                        if (!item) return '';
+                        const clone = item.cloneNode(true);
+                        clone.querySelectorAll('[class*="Tooltip"]').forEach((tooltip) => tooltip.remove());
+                        return text(clone);
+                      };
+                      const label = directText(node.querySelector('[class*="PlayerStatsName"]'));
+                      const values = [...node.querySelectorAll('[class*="PlayerStatsValue-sc-"]')].map((item) => ({
+                        value: directText(item),
+                        semanticLabel: text(item.querySelector('[class*="Tooltip"] [class*="LexicWrapper"], [class*="Tooltip"]')),
+                      }));
+                      return {label, values};
+                    }
+                    """
+                )
+                label = _clean_label(parsed.get("label"))
+                values = parsed.get("values") or []
+                if label and values:
+                    primary = _clean_label(values[0].get("value"))
+                    if primary:
+                        result[label] = primary
+                for value in values[1:]:
+                    semantic_label = _clean_label(value.get("semanticLabel"))
+                    semantic_value = _clean_label(value.get("value"))
+                    if semantic_label and semantic_value:
+                        result[semantic_label] = semantic_value
+            except Exception:
+                continue
+        return result
+
+    @staticmethod
+    def _extract_position_percentages(container):
+        try:
+            rows = container.locator('[class*="MapTitleValueContainer"]')
+            values = []
+            for index in range(rows.count()):
+                parsed = rows.nth(index).evaluate(
+                    r"""
+                    (node) => {
+                      const text = (item) => item ? item.textContent.replace(/\s+/g, ' ').trim() : '';
+                      const main = node.querySelector('[class*="MapTitleValueMain"]');
+                      const clone = main ? main.cloneNode(true) : null;
+                      if (clone) clone.querySelectorAll('[class*="Tooltip"]').forEach((item) => item.remove());
+                      return {
+                        code: text(clone),
+                        name: text(main?.querySelector('[class*="Tooltip"]')),
+                        percent: text(node.querySelector('[class*="MapTitleValueSecond"]')),
+                      };
+                    }
+                    """
+                )
+                code = _clean_label(parsed.get("code"))
+                if code:
+                    values.append(
+                        {
+                            "code": code,
+                            "name": _clean_label(parsed.get("name")) or code,
+                            "percent": _safe_int(parsed.get("percent")),
+                        }
+                    )
+            return values
+        except Exception:
+            return []
+
+    def _capture_map_field(self, page, scope, label):
+        try:
+            if label == "Ball touches map":
+                self._last_ball_touches_points = []
+            button = scope.get_by_role("button", name=label, exact=True).first
+            if not button.count():
+                button = scope.get_by_text(label, exact=True).first
+            if not button.count():
+                raise RuntimeError(f"Bouton {label} absent du bloc de statistiques")
+            button.scroll_into_view_if_needed()
+            button.click()
+            wrapper = button.locator(
+                'xpath=ancestor::*[contains(@class,"MapFieldWrapper")][1]'
+            )
+            if not wrapper.count():
+                wrapper = scope.locator('[class*="MapFieldWrapper"]').first
+            wrapper.wait_for(state="visible", timeout=5000)
+            field = wrapper.locator('div[class*="Field-sc-12b02qw-2"]').first
+            if not field.count():
+                field = wrapper.locator('[class*="Field-"]').first
+            field.wait_for(state="visible", timeout=5000)
+            if not self._wait_for_map_mode(page, button, field, label):
+                raise RuntimeError(
+                    f"L’onglet {label} n’a pas produit le DOM attendu"
+                )
+            page.wait_for_timeout(1500)
+            box = field.bounding_box()
+            if not box or box["width"] < 200 or box["height"] < 100:
+                raise RuntimeError(f"Terrain {label} trop petit ou invisible")
+            state = field.evaluate(
+                r"""
+                (node) => ({
+                  width: Math.round(node.getBoundingClientRect().width),
+                  height: Math.round(node.getBoundingClientRect().height),
+                  canvases: node.querySelectorAll('canvas').length,
+                  points: node.querySelectorAll('[class*="Point-sc-"]').length,
+                  mapContainers: node.querySelectorAll('[class*="MapContainer"]').length,
+                  background: getComputedStyle(node).backgroundImage,
+                })
+                """
+            )
+            print(
+                f"[SPORTSBASE] Carte {label} — "
+                f"{state.get('width')}x{state.get('height')} — "
+                f"canvas={state.get('canvases')} — points={state.get('points')}"
+            )
+
+            if label == "Heatmap" and field.locator("canvas").count():
+                content = self._read_canvas_png(
+                    page, field.locator("canvas").first
+                )
+                if content:
+                    composed = self._compose_map_on_pitch(content)
+                    if composed:
+                        print(
+                            "[SPORTSBASE] Fond de terrain ajouté à la Heatmap"
+                        )
+                        return composed
+                    return content
+
+            if label == "Ball touches map":
+                touch_data = self._read_ball_touch_data(field)
+                self._last_ball_touches_points = touch_data.get("points", [])
+                content = self._render_ball_touches_overlay(touch_data)
+                if content:
+                    print(
+                        "[SPORTSBASE] Ball touches reconstruite depuis "
+                        f"{len(self._last_ball_touches_points)} coordonnée(s)"
+                    )
+                    return content
+            else:
+                content = self._capture_viewport_crop(page, field)
+                if content:
+                    return content
+            raise RuntimeError(
+                "SportsBase affiche encore un terrain vide après le rendu"
+            )
+        except Exception as exc:
+            print(f"[SPORTSBASE][WARN] Capture {label} impossible : {exc}")
+            return b""
+
+    @staticmethod
+    def _wait_for_map_mode(page, button, field, label):
+        for click_attempt in range(3):
+            for _attempt in range(20):
+                canvas_count = field.locator("canvas").count()
+                map_count = field.locator('[class*="MapContainer"]').count()
+                point_count = field.locator('[class*="Point-sc-"]').count()
+                if label == "Heatmap" and canvas_count:
+                    return True
+                if label == "Ball touches map" and map_count and point_count:
+                    return True
+                page.wait_for_timeout(250)
+            if click_attempt < 2:
+                button.evaluate("node => node.click()")
+                page.wait_for_timeout(750)
+        return False
+
+    @staticmethod
+    def _read_ball_touch_data(field):
+        return field.evaluate(
+            r"""
+            (node) => {
+              const container = node.querySelector('[class*="MapContainer"]');
+              if (!container) return {width: 0, height: 0, points: []};
+              const rect = container.getBoundingClientRect();
+              const percent = (value) => {
+                const parsed = Number.parseFloat(value || '');
+                return Number.isFinite(parsed) ? parsed : null;
+              };
+              const points = [...container.querySelectorAll('[class*="Point-sc-"]')].map((point) => {
+                const style = getComputedStyle(point);
+                const pointRect = point.getBoundingClientRect();
+                let left = percent(point.style.left);
+                let top = percent(point.style.top);
+                if (left === null && rect.width) left = ((pointRect.left - rect.left) / rect.width) * 100;
+                if (top === null && rect.height) top = ((pointRect.top - rect.top) / rect.height) * 100;
+                return {
+                  left_pct: left,
+                  top_pct: top,
+                  width_px: pointRect.width || Number.parseFloat(style.width) || 6,
+                  height_px: pointRect.height || Number.parseFloat(style.height) || 6,
+                  color: style.backgroundColor || style.color || 'rgb(220, 35, 55)',
+                };
+              }).filter((point) => point.left_pct !== null && point.top_pct !== null);
+              return {
+                width: Math.round(rect.width) || 389,
+                height: Math.round(rect.height) || 252,
+                points,
+              };
+            }
+            """
+        )
+
+    @staticmethod
+    def _render_ball_touches_overlay(touch_data):
+        points = touch_data.get("points") or []
+        if not points:
+            return b""
+        width = max(200, min(_safe_int(touch_data.get("width")) or 389, 2000))
+        height = max(120, min(_safe_int(touch_data.get("height")) or 252, 1400))
+        image = SportsBaseSubscriptionScraper._render_pitch_background(
+            width, height
+        )
+        draw = ImageDraw.Draw(image, "RGBA")
+        for point in points:
+            left = max(0.0, min(float(point.get("left_pct") or 0), 100.0))
+            top = max(0.0, min(float(point.get("top_pct") or 0), 100.0))
+            x = left * (width - 1) / 100
+            y = top * (height - 1) / 100
+            diameter = max(
+                5.0,
+                min(
+                    float(point.get("width_px") or 6),
+                    float(point.get("height_px") or 6),
+                    16.0,
+                ),
+            )
+            radius = diameter / 2
+            color = SportsBaseSubscriptionScraper._parse_css_color(
+                point.get("color")
+            )
+            outline = max(1.0, min(width, height) * 0.004)
+            draw.ellipse(
+                (
+                    x - radius - outline,
+                    y - radius - outline,
+                    x + radius + outline,
+                    y + radius + outline,
+                ),
+                fill=(248, 252, 251, 225),
+            )
+            draw.ellipse(
+                (x - radius, y - radius, x + radius, y + radius),
+                fill=color,
+            )
+        output = BytesIO()
+        image.convert("RGB").save(output, format="PNG", optimize=True)
+        return output.getvalue()
+
+    @staticmethod
+    def _render_pitch_background(width, height):
+        """Draw a proportional football pitch behind transparent SportsBase maps."""
+        width = max(200, min(int(width), 2000))
+        height = max(120, min(int(height), 1400))
+        scale = 4
+        canvas_width, canvas_height = width * scale, height * scale
+
+        image = Image.new(
+            "RGBA",
+            (canvas_width, canvas_height),
+            (8, 47, 42, 255),
+        )
+        draw = ImageDraw.Draw(image, "RGBA")
+
+        left = round(canvas_width * 0.025)
+        right = round(canvas_width * 0.975)
+        top = round(canvas_height * 0.035)
+        bottom = round(canvas_height * 0.965)
+        pitch_width = right - left
+        pitch_height = bottom - top
+
+        stripe_count = 10
+        for index in range(stripe_count):
+            stripe_left = left + round(pitch_width * index / stripe_count)
+            stripe_right = left + round(
+                pitch_width * (index + 1) / stripe_count
+            )
+            shade = (
+                (21, 105, 84, 255)
+                if index % 2 == 0
+                else (18, 94, 77, 255)
+            )
+            draw.rectangle(
+                (stripe_left, top, stripe_right, bottom),
+                fill=shade,
+            )
+
+        line_color = (242, 249, 247, 238)
+        shadow_color = (1, 39, 34, 105)
+        line_width = max(5, round(min(canvas_width, canvas_height) * 0.007))
+        shadow_width = line_width + max(2, scale)
+
+        def outlined_line(points):
+            draw.line(points, fill=shadow_color, width=shadow_width)
+            draw.line(points, fill=line_color, width=line_width)
+
+        draw.rectangle(
+            (left, top, right, bottom),
+            outline=shadow_color,
+            width=shadow_width,
+        )
+        draw.rectangle(
+            (left, top, right, bottom),
+            outline=line_color,
+            width=line_width,
+        )
+
+        centre_x = (left + right) / 2
+        centre_y = (top + bottom) / 2
+        outlined_line((centre_x, top, centre_x, bottom))
+
+        metre = pitch_height / 68.0
+        centre_radius = 9.15 * metre
+        draw.ellipse(
+            (
+                centre_x - centre_radius,
+                centre_y - centre_radius,
+                centre_x + centre_radius,
+                centre_y + centre_radius,
+            ),
+            outline=shadow_color,
+            width=shadow_width,
+        )
+        draw.ellipse(
+            (
+                centre_x - centre_radius,
+                centre_y - centre_radius,
+                centre_x + centre_radius,
+                centre_y + centre_radius,
+            ),
+            outline=line_color,
+            width=line_width,
+        )
+        spot_radius = max(5, round(line_width * 0.72))
+        draw.ellipse(
+            (
+                centre_x - spot_radius,
+                centre_y - spot_radius,
+                centre_x + spot_radius,
+                centre_y + spot_radius,
+            ),
+            fill=line_color,
+        )
+
+        penalty_depth = pitch_width * 16.5 / 105.0
+        penalty_half_height = pitch_height * 40.32 / 68.0 / 2
+        goal_area_depth = pitch_width * 5.5 / 105.0
+        goal_area_half_height = pitch_height * 18.32 / 68.0 / 2
+        penalty_spot_offset = pitch_width * 11.0 / 105.0
+        penalty_arc_radius = 9.15 * metre
+
+        for side in ("left", "right"):
+            goal_line = left if side == "left" else right
+            penalty_inner = (
+                goal_line + penalty_depth
+                if side == "left"
+                else goal_line - penalty_depth
+            )
+            goal_area_inner = (
+                goal_line + goal_area_depth
+                if side == "left"
+                else goal_line - goal_area_depth
+            )
+            penalty_box = (
+                min(goal_line, penalty_inner),
+                centre_y - penalty_half_height,
+                max(goal_line, penalty_inner),
+                centre_y + penalty_half_height,
+            )
+            goal_area = (
+                min(goal_line, goal_area_inner),
+                centre_y - goal_area_half_height,
+                max(goal_line, goal_area_inner),
+                centre_y + goal_area_half_height,
+            )
+            for rectangle in (penalty_box, goal_area):
+                draw.rectangle(
+                    rectangle,
+                    outline=shadow_color,
+                    width=shadow_width,
+                )
+                draw.rectangle(
+                    rectangle,
+                    outline=line_color,
+                    width=line_width,
+                )
+
+            penalty_x = (
+                goal_line + penalty_spot_offset
+                if side == "left"
+                else goal_line - penalty_spot_offset
+            )
+            draw.ellipse(
+                (
+                    penalty_x - spot_radius,
+                    centre_y - spot_radius,
+                    penalty_x + spot_radius,
+                    centre_y + spot_radius,
+                ),
+                fill=line_color,
+            )
+            arc_box = (
+                penalty_x - penalty_arc_radius,
+                centre_y - penalty_arc_radius,
+                penalty_x + penalty_arc_radius,
+                centre_y + penalty_arc_radius,
+            )
+            arc_angles = (-53, 53) if side == "left" else (127, 233)
+            draw.arc(
+                arc_box,
+                start=arc_angles[0],
+                end=arc_angles[1],
+                fill=shadow_color,
+                width=shadow_width,
+            )
+            draw.arc(
+                arc_box,
+                start=arc_angles[0],
+                end=arc_angles[1],
+                fill=line_color,
+                width=line_width,
+            )
+
+            goal_depth = max(6 * scale, round(pitch_width * 2.0 / 105.0))
+            goal_half_height = pitch_height * 7.32 / 68.0 / 2
+            goal_outer = (
+                goal_line - goal_depth
+                if side == "left"
+                else goal_line + goal_depth
+            )
+            goal_box = (
+                min(goal_line, goal_outer),
+                centre_y - goal_half_height,
+                max(goal_line, goal_outer),
+                centre_y + goal_half_height,
+            )
+            draw.rectangle(
+                goal_box,
+                outline=(231, 242, 239, 210),
+                width=max(3, line_width - 2),
+            )
+
+        corner_radius = max(6 * scale, metre)
+        corner_specs = (
+            ((left, top), 0, 90),
+            ((right, top), 90, 180),
+            ((right, bottom), 180, 270),
+            ((left, bottom), 270, 360),
+        )
+        for (corner_x, corner_y), start, end in corner_specs:
+            draw.arc(
+                (
+                    corner_x - corner_radius,
+                    corner_y - corner_radius,
+                    corner_x + corner_radius,
+                    corner_y + corner_radius,
+                ),
+                start=start,
+                end=end,
+                fill=line_color,
+                width=line_width,
+            )
+
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        return image.resize((width, height), resampling).convert("RGB").convert(
+            "RGBA"
+        )
+
+    @staticmethod
+    def _compose_map_on_pitch(content):
+        if not content:
+            return b""
+        try:
+            with Image.open(BytesIO(content)) as source:
+                overlay = source.convert("RGBA")
+            pitch = SportsBaseSubscriptionScraper._render_pitch_background(
+                overlay.width, overlay.height
+            )
+            pitch.alpha_composite(overlay)
+            output = BytesIO()
+            pitch.convert("RGB").save(
+                output,
+                format="PNG",
+                optimize=True,
+            )
+            return output.getvalue()
+        except Exception:
+            return b""
+
+    @staticmethod
+    def _parse_css_color(value):
+        numbers = [
+            float(item)
+            for item in re.findall(r"[\d.]+", str(value or ""))[:4]
+        ]
+        if len(numbers) >= 3:
+            alpha = numbers[3] if len(numbers) > 3 else 1.0
+            if alpha <= 1:
+                alpha *= 255
+            return tuple(
+                max(0, min(round(channel), 255))
+                for channel in (*numbers[:3], alpha)
+            )
+        return (220, 35, 55, 255)
+
+    @staticmethod
+    def _read_canvas_png(page, canvas):
+        for _attempt in range(20):
+            try:
+                data_url = canvas.evaluate(
+                    "node => node.toDataURL('image/png')"
+                )
+                if data_url and "," in data_url:
+                    content = base64.b64decode(data_url.split(",", 1)[1])
+                    if not SportsBaseSubscriptionScraper._png_is_blank(content):
+                        print(
+                            "[SPORTSBASE] Heatmap lue directement depuis le canvas"
+                        )
+                        return content
+            except Exception:
+                # Canvas protégé ou remplacé pendant le rendu React : le recadrage
+                # du viewport prend ensuite le relais.
+                break
+            page.wait_for_timeout(500)
+        return b""
+
+    @staticmethod
+    def _capture_viewport_crop(page, field):
+        for _attempt in range(6):
+            field.evaluate(
+                "node => node.scrollIntoView({block: 'center', inline: 'center'})"
+            )
+            page.wait_for_timeout(800)
+            box = field.bounding_box()
+            if not box:
+                continue
+            viewport = page.evaluate(
+                "() => ({width: window.innerWidth, height: window.innerHeight})"
+            )
+            screenshot = page.screenshot(
+                type="png",
+                full_page=False,
+                animations="disabled",
+            )
+            with Image.open(BytesIO(screenshot)) as source:
+                scale_x = source.width / max(viewport.get("width") or 1, 1)
+                scale_y = source.height / max(viewport.get("height") or 1, 1)
+                left = max(0, round(box["x"] * scale_x))
+                top = max(0, round(box["y"] * scale_y))
+                right = min(
+                    source.width,
+                    round((box["x"] + box["width"]) * scale_x),
+                )
+                bottom = min(
+                    source.height,
+                    round((box["y"] + box["height"]) * scale_y),
+                )
+                if right <= left or bottom <= top:
+                    continue
+                cropped = source.crop((left, top, right, bottom)).convert("RGB")
+                output = BytesIO()
+                cropped.save(output, format="PNG")
+                content = output.getvalue()
+            if not SportsBaseSubscriptionScraper._png_is_blank(content):
+                print("[SPORTSBASE] Carte recadrée depuis le viewport Chrome")
+                return content
+            page.wait_for_timeout(1000)
+        return b""
+
+    @staticmethod
+    def _png_is_blank(content):
+        if not content:
+            return True
+        try:
+            with Image.open(BytesIO(content)) as image:
+                rgb = image.convert("RGB")
+                extrema = rgb.getextrema()
+                return all((maximum - minimum) <= 3 for minimum, maximum in extrema)
+        except Exception:
+            return True
+
+    def _capture_map_in_container(self, page, container, label):
+        return self._capture_map_field(page, container, label)
+
+    def _read_match_profile(
+        self,
+        context,
+        match_url,
+        player,
+        match_data=None,
+        *,
+        statistics_dir=None,
+    ):
+        page = context.new_page()
+        try:
+            page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+            sportsbase_id = PLAYER_ID_RE.search(player["sportsbase_url"])
+            selector = (
+                f'a[href*="/players/{sportsbase_id.group(1)}"]'
+                if sportsbase_id
+                else f'a:has-text("{player["name"]}")'
+            )
+            player_link = page.locator(selector).first
+            player_link.wait_for(timeout=15000)
+            team_block = player_link.locator(
+                'xpath=ancestor::*[contains(@class,"BlockWrapper")][1]'
+            )
+            if not team_block.count():
+                team_block = page.locator("body")
+            team_name = _clean_label(
+                team_block.locator('[class*="BlockTitle"]').first.inner_text()
+            ) if team_block.locator('[class*="BlockTitle"]').count() else ""
+            table = team_block.locator('[role="table"]').first
+            if not table.count():
+                table = team_block
+            parsed = table.evaluate(
+                r"""
+                (root) => {
+                  const text = (node) => node ? node.textContent.replace(/\s+/g, ' ').trim() : '';
+                  const headerText = (node) => {
+                    if (!node) return '';
+                    const tooltip = node.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
+                    if (tooltip) return text(tooltip);
+                    const labels = [...node.querySelectorAll('[class*="LexicWrapper"]')].map(text).filter(Boolean);
+                    return labels.length ? labels[labels.length - 1] : text(node);
+                  };
+                  const rows = [...root.querySelectorAll('[role="row"]')];
+                  return rows.map((row) => ({
+                    headers: [...row.querySelectorAll('[role="headercell"], [role="columnheader"]')].map(headerText),
+                    cells: [...row.querySelectorAll('[role="bodycell"], [role="cell"]')].map(text),
+                    playerName: text(row.querySelector('a[href*="/players/"]')),
+                    playerHref: row.querySelector('a[href*="/players/"]')?.getAttribute('href') || '',
+                  }));
+                }
+                """
+            )
+            all_rows = page.evaluate(
+                r"""
+                () => [...document.querySelectorAll('a[href*="/players/"]')].map((link) => {
+                  const row = link.closest('[role="row"]');
+                  const cells = row ? [...row.querySelectorAll('[role="bodycell"], [role="cell"]')].map(
+                    (node) => node.textContent.replace(/\s+/g, ' ').trim()
+                  ) : [];
+                  return {playerHref: link.getAttribute('href') || '', cells};
+                })
+                """
+            )
+            metadata = self._read_match_header_metadata(page, match_data or {})
+            result = self._normalize_team_table(
+                parsed,
+                sportsbase_id.group(1) if sportsbase_id else "",
+                team_name,
+                all_rows=all_rows,
+            )
+            result.update(metadata)
+            if statistics_dir is not None:
+                result.update(
+                    self._download_match_players_statistics(
+                        page=page,
+                        match_data=match_data or {},
+                        destination_dir=statistics_dir,
+                    )
+                )
+            return result
+        finally:
+            try:
+                if not page.is_closed():
+                    page.close()
+            except Exception:
+                # Preserve the original browser error raised by the XLSX step.
+                pass
+
+    @staticmethod
+    def _install_xlsx_blob_capture(page):
+        """Intercept the exact XLSX blob before Chrome's download manager sees it."""
+        page.evaluate(
+            r"""
+            () => {
+              const key = '__sportsbasePlayersXlsxCapture';
+              const previous = window[key];
+              if (previous && typeof previous.restore === 'function') {
+                previous.restore();
+              }
+
+              const state = {
+                status: 'waiting',
+                filename: '',
+                data: '',
+                error: '',
+                href: '',
+              };
+              const encode = (buffer) => {
+                const bytes = new Uint8Array(buffer);
+                const chunks = [];
+                for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+                  chunks.push(
+                    String.fromCharCode.apply(
+                      null,
+                      bytes.subarray(offset, offset + 0x8000)
+                    )
+                  );
+                }
+                return btoa(chunks.join(''));
+              };
+              state.captureBlob = (blob, href, filename) => {
+                if (state.status !== 'waiting') return;
+                state.status = 'reading';
+                state.href = String(href || '');
+                state.filename = String(filename || '');
+                Promise.resolve(blob.arrayBuffer()).then((buffer) => {
+                  const bytes = new Uint8Array(buffer);
+                  if (bytes.length < 2 || bytes[0] !== 80 || bytes[1] !== 75) {
+                    state.status = 'waiting';
+                    state.href = '';
+                    state.filename = '';
+                    return;
+                  }
+                  state.data = encode(buffer);
+                  state.status = 'captured';
+                }).catch((error) => {
+                  state.error = String(error && error.message || error);
+                  state.status = 'error';
+                });
+              };
+              state.captureUrl = (href, filename) => {
+                if (state.status !== 'waiting') return;
+                state.status = 'reading';
+                state.href = String(href || '');
+                state.filename = String(filename || '');
+                fetch(state.href, {credentials: 'include'}).then((response) => {
+                  if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                  }
+                  return response.arrayBuffer();
+                }).then((buffer) => {
+                  state.data = encode(buffer);
+                  state.status = 'captured';
+                }).catch((error) => {
+                  state.error = String(error && error.message || error);
+                  state.status = 'error';
+                });
+              };
+              state.qualifies = (href, filename) => {
+                const url = String(href || '');
+                const name = String(filename || '');
+                return Boolean(
+                  name ||
+                  url.startsWith('blob:') ||
+                  /\.xlsx(?:$|[?#])/i.test(url)
+                );
+              };
+
+              state.originalCreateObjectURL = URL.createObjectURL;
+              state.patchedCreateObjectURL = function(object) {
+                const href = state.originalCreateObjectURL.apply(this, arguments);
+                const mime = object instanceof Blob
+                  ? String(object.type || '').toLowerCase()
+                  : '';
+                if (
+                  object instanceof Blob &&
+                  (
+                    !mime ||
+                    /spreadsheet|excel|officedocument|zip|octet-stream/.test(mime)
+                  )
+                ) {
+                  state.captureBlob(object, href, '');
+                }
+                return href;
+              };
+              URL.createObjectURL = state.patchedCreateObjectURL;
+
+              state.originalAnchorClick = HTMLAnchorElement.prototype.click;
+              state.patchedAnchorClick = function() {
+                const href = this.href || '';
+                const filename = this.download || '';
+                if (state.qualifies(href, filename)) {
+                  state.captureUrl(href, filename);
+                  return;
+                }
+                return state.originalAnchorClick.apply(this, arguments);
+              };
+              HTMLAnchorElement.prototype.click = state.patchedAnchorClick;
+
+              state.clickListener = (event) => {
+                const target = event.target;
+                const anchor = target && target.closest
+                  ? target.closest('a')
+                  : null;
+                if (!anchor || !state.qualifies(anchor.href, anchor.download)) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                state.captureUrl(anchor.href, anchor.download);
+              };
+              document.addEventListener('click', state.clickListener, true);
+
+              state.originalOpen = window.open;
+              state.patchedOpen = function(href) {
+                if (state.qualifies(href, '')) {
+                  state.captureUrl(href, '');
+                  return null;
+                }
+                return state.originalOpen.apply(this, arguments);
+              };
+              window.open = state.patchedOpen;
+
+              state.restore = () => {
+                if (URL.createObjectURL === state.patchedCreateObjectURL) {
+                  URL.createObjectURL = state.originalCreateObjectURL;
+                }
+                if (
+                  HTMLAnchorElement.prototype.click === state.patchedAnchorClick
+                ) {
+                  HTMLAnchorElement.prototype.click = state.originalAnchorClick;
+                }
+                if (window.open === state.patchedOpen) {
+                  window.open = state.originalOpen;
+                }
+                document.removeEventListener(
+                  'click',
+                  state.clickListener,
+                  true
+                );
+              };
+              window[key] = state;
+            }
+            """
+        )
+
+    @staticmethod
+    def _xlsx_blob_capture_state(page):
+        return page.evaluate(
+            r"""
+            () => {
+              const state = window.__sportsbasePlayersXlsxCapture;
+              if (!state) return null;
+              return {
+                status: state.status,
+                filename: state.filename,
+                data: state.data,
+                error: state.error,
+                href: state.href,
+              };
+            }
+            """
+        )
+
+    @staticmethod
+    def _restore_xlsx_blob_capture(page):
+        page.evaluate(
+            r"""
+            () => {
+              const state = window.__sportsbasePlayersXlsxCapture;
+              if (state && typeof state.restore === 'function') {
+                state.restore();
+              }
+              delete window.__sportsbasePlayersXlsxCapture;
+            }
+            """
+        )
+
+    @staticmethod
+    def _is_xlsx_response(content, headers, url):
+        if not content.startswith(b"PK"):
+            return False
+        lowered_headers = {
+            str(name).casefold(): str(value).casefold()
+            for name, value in (headers or {}).items()
+        }
+        signature = " ".join(
+            (
+                lowered_headers.get("content-type", ""),
+                lowered_headers.get("content-disposition", ""),
+                str(url or "").casefold(),
+            )
+        )
+        return any(
+            marker in signature
+            for marker in (
+                "spreadsheet",
+                "excel",
+                "officedocument",
+                ".xlsx",
+                "download",
+                "export",
+            )
+        ) or content.startswith(b"PK\x03\x04")
+
+    def _capture_original_players_xlsx(self, page, download_button):
+        """Keep the SportsBase response byte-for-byte and bypass Chrome downloads."""
+        captured_responses = []
+
+        def capture_response(route):
+            response = None
+            try:
+                response = route.fetch(timeout=120_000)
+                content = response.body()
+                headers = response.all_headers()
+                if self._is_xlsx_response(
+                    content,
+                    headers,
+                    route.request.url,
+                ):
+                    captured_responses.append(bytes(content))
+                    route.abort()
+                    return
+                route.fulfill(response=response)
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        page.route("**/*", capture_response)
+        self._install_xlsx_blob_capture(page)
+        try:
+            download_button.click(timeout=10_000, no_wait_after=True)
+            deadline = time.monotonic() + 120
+            capture_error = ""
+            while time.monotonic() < deadline:
+                if captured_responses:
+                    return captured_responses[0]
+
+                state = self._xlsx_blob_capture_state(page) or {}
+                status = state.get("status")
+                if status == "captured":
+                    try:
+                        content = base64.b64decode(
+                            state.get("data") or "",
+                            validate=True,
+                        )
+                    except (TypeError, ValueError) as exc:
+                        raise RuntimeError(
+                            "Le XLSX original capturé est illisible."
+                        ) from exc
+                    if self._is_xlsx_response(
+                        content,
+                        {"content-type": "application/vnd.openxmlformats"},
+                        state.get("filename") or state.get("href") or "",
+                    ):
+                        return content
+                    raise RuntimeError(
+                        "Le contenu capturé par SportsBase n’est pas un XLSX."
+                    )
+                if status == "error":
+                    capture_error = str(state.get("error") or "")
+                page.wait_for_timeout(100)
+
+            detail = f" Détail navigateur : {capture_error}" if capture_error else ""
+            raise RuntimeError(
+                "SportsBase n’a pas fourni le XLSX original dans les 120 secondes."
+                + detail
+            )
+        finally:
+            try:
+                self._restore_xlsx_blob_capture(page)
+            except Exception:
+                pass
+            try:
+                page.unroute("**/*", capture_response)
+            except Exception:
+                pass
+
+    def _download_match_players_statistics(
+        self, *, page, match_data, destination_dir
+    ):
+        """Configure the Players table, download its XLSX and keep 81 KPI."""
+        match_id = str(match_data.get("sportsbase_match_id") or "").strip()
+        if not match_id:
+            match = MATCH_ID_RE.search(page.url)
+            match_id = match.group(1) if match else ""
+        if not match_id:
+            return {
+                "players_statistics_error": (
+                    "Identifiant du match introuvable pour le téléchargement XLSX."
+                )
+            }
+
+        destination_dir = Path(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / (
+            f"match_{self._file_component(match_id)}__players_statistics.xlsx"
+        )
+        if self._valid_xlsx(destination):
+            cached = self._parse_players_statistics(destination)
+            if not self._missing_xlsx_analysis_headers(
+                cached.get("players_statistics_headers")
+            ):
+                print(
+                    "[SPORTSBASE] Statistiques Players XLSX déjà présentes : "
+                    f"{destination}"
+                )
+                return {
+                    "players_statistics_url": urljoin(
+                        SPORTSBASE_ROOT, f"/matches/{match_id}/players"
+                    ),
+                    "players_statistics_source": "players_xlsx",
+                    "players_statistics_xlsx": destination.name,
+                    **cached,
+                }
+
+        players_path = f"/matches/{match_id}/players"
+        players_url = urljoin(SPORTSBASE_ROOT, players_path)
+        try:
+            players_tab = page.locator(f'a[href="{players_path}"]').first
+            if players_tab.count():
+                players_tab.scroll_into_view_if_needed(timeout=10_000)
+                players_tab.click(timeout=10_000)
+                page.wait_for_url(f"**{players_path}*", timeout=30_000)
+            else:
+                page.goto(
+                    players_url,
+                    wait_until="domcontentloaded",
+                    timeout=30_000,
+                )
+            page.locator('[role="table"]').first.wait_for(
+                state="visible", timeout=30_000
+            )
+
+            self._wait_for_enriched_players_table(page)
+            tooltip = page.get_by_text(
+                "Download statistics (XLSX)", exact=True
+            ).first
+            tooltip.wait_for(state="attached", timeout=15_000)
+            download_button = tooltip.locator(
+                'xpath=ancestor::*[contains(@class,"ActionIconWrapper")][1]'
+            )
+            if not download_button.count():
+                download_button = page.locator(
+                    '[class*="DownloadButtonContainer"] '
+                    '[class*="ActionIconWrapper"]'
+                ).first
+            download_button.wait_for(state="visible", timeout=15_000)
+            download_button.scroll_into_view_if_needed(timeout=10_000)
+            print(
+                "[SPORTSBASE] Téléchargement des statistiques Players XLSX — "
+                f"match {match_id}"
+            )
+            content = self._capture_original_players_xlsx(
+                page,
+                download_button,
+            )
+            if destination.exists():
+                destination = self._unique_path(destination)
+            temporary = destination.with_name(f"{destination.name}.part")
+            try:
+                temporary.write_bytes(content)
+                if not self._valid_xlsx(temporary):
+                    raise RuntimeError(
+                        "Le fichier reçu n’est pas un classeur XLSX valide."
+                    )
+                temporary.replace(destination)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+            if not self._valid_xlsx(destination):
+                raise RuntimeError(
+                    "Le fichier reçu n’est pas un classeur XLSX valide."
+                )
+            print(
+                "[SPORTSBASE] XLSX original capturé sans fermer Chrome — "
+                f"match {match_id}"
+            )
+
+            parsed = self._parse_players_statistics(destination)
+            missing = self._missing_xlsx_analysis_headers(
+                parsed.get("players_statistics_headers")
+            )
+            if missing:
+                raise RuntimeError(
+                    "Le XLSX SportsBase ne contient pas les 81 colonnes requises. "
+                    "Colonnes manquantes : " + ", ".join(missing)
+                )
+            print(f"[SPORTSBASE] Statistiques Players XLSX enregistrées : {destination}")
+            return {
+                "players_statistics_url": players_url,
+                "players_statistics_source": "players_xlsx",
+                "players_statistics_xlsx": destination.name,
+                "players_statistics_downloaded_at": _now_iso(),
+                "players_statistics_error": "",
+                **parsed,
+            }
+        except Exception as exc:
+            if _browser_target_was_closed(exc):
+                raise _RetryableXlsxBrowserClosed(
+                    "Le navigateur SportsBase a disparu pendant l’enregistrement "
+                    f"du XLSX du match {match_id}."
+                ) from exc
+            print(
+                "[SPORTSBASE][WARN] Téléchargement Players XLSX impossible — "
+                f"match {match_id} : {exc}"
+            )
+            return {
+                "players_statistics_url": players_url,
+                "players_statistics_source": "players_xlsx",
+                "players_statistics_xlsx": "",
+                "players_statistics_headers": [],
+                "players_statistics_rows": [],
+                "players_statistics_error": str(exc),
+            }
+
+    @classmethod
+    def _parse_players_statistics(cls, path):
+        try:
+            workbook = read_players_statistics_xlsx(path)
+            normalized = cls._normalize_players_table_snapshot(workbook)
+            rows = normalized.get("rows") or []
+            print(
+                "[SPORTSBASE] Statistiques Players lues — "
+                f"{len(rows)} joueur(s), "
+                f"{len(normalized.get('headers') or [])} indicateur(s) retenu(s)"
+            )
+            return {
+                "players_statistics_headers": normalized.get("headers") or [],
+                "players_statistics_rows": rows,
+            }
+        except Exception as exc:
+            print(
+                "[SPORTSBASE][WARN] Lecture du fichier Players XLSX impossible : "
+                f"{exc}"
+            )
+            return {
+                "players_statistics_headers": [],
+                "players_statistics_rows": [],
+                "players_statistics_error": str(exc),
+            }
+
+    @staticmethod
+    def _valid_xlsx(path):
+        path = Path(path)
+        try:
+            if not path.is_file() or path.stat().st_size <= 0:
+                return False
+            with path.open("rb") as workbook:
+                return workbook.read(2) == b"PK"
+        except OSError:
+            return False
+
+    @staticmethod
+    def _select_all_players_table_teams(stats_block, page):
+        toggles = stats_block.locator(
+            '[class*="TableSettings"] > [class*="Wrapper"]'
+        )
+        changed = False
+        for index in range(toggles.count()):
+            toggle = toggles.nth(index)
+            if toggle.locator('[class*="StyledIcon"]').count():
+                continue
+            toggle.click(timeout=10_000)
+            changed = True
+        if changed:
+            print(
+                "[SPORTSBASE] Les deux équipes ont été activées dans la table Players."
+            )
+            page.wait_for_timeout(1_000)
+
+    @staticmethod
+    def _players_table_snapshot(stats_block, match_data):
+        return stats_block.evaluate(
+            r"""
+            (root, fixture) => {
+              const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+              const headerText = (node) => {
+                const tooltip = node?.querySelector('[class*="Tooltip"] [class*="LexicWrapper"]');
+                if (tooltip) return clean(tooltip.textContent);
+                const labels = [...(node?.querySelectorAll('[class*="LexicWrapper"]') || [])]
+                  .map((item) => clean(item.textContent)).filter(Boolean);
+                return labels.length ? labels[labels.length - 1] : clean(node?.textContent);
+              };
+              const configuredTeams = [...root.querySelectorAll(
+                '[class*="TableSettings"] > [class*="Wrapper"] [class*="Text"]'
+              )].map((node) => clean(node.textContent)).filter(Boolean);
+              const fixtureTeams = [fixture.homeTeam, fixture.awayTeam]
+                .map(clean).filter(Boolean);
+              const tables = [...root.querySelectorAll('[role="table"]')];
+              let headers = [];
+              const rows = [];
+
+              tables.forEach((table, tableIndex) => {
+                const tableHeaders = [...table.querySelectorAll('[role="headercell"], [role="columnheader"]')]
+                  .map(headerText).filter(Boolean);
+                if (!tableHeaders.length) return;
+                if (!headers.length) {
+                  headers = ['№', 'Player', 'Team', ...tableHeaders.slice(1)];
+                }
+                const team = configuredTeams[tableIndex] || fixtureTeams[tableIndex] || '';
+                [...table.querySelectorAll('[role="row"]')].forEach((row) => {
+                  const playerLink = row.querySelector('a[href*="/players/"]');
+                  if (!playerLink) return;
+                  const number = clean(row.querySelector('[class*="PlayerNumber"]')?.textContent);
+                  const cells = [...row.querySelectorAll('[role="bodycell"], [role="cell"]')]
+                    .map((cell) => clean(cell.textContent));
+                  const item = {
+                    '№': number,
+                    Player: clean(playerLink.textContent),
+                    Team: team,
+                  };
+                  tableHeaders.slice(1).forEach((header, index) => {
+                    item[header] = cells[index + 1] || '';
+                  });
+                  rows.push(item);
+                });
+              });
+              return {
+                headers,
+                rows,
+                teams: configuredTeams.length ? configuredTeams : fixtureTeams,
+                tableCount: tables.length,
+              };
+            }
+            """,
+            {
+                "homeTeam": match_data.get("home_team") or "",
+                "awayTeam": match_data.get("away_team") or "",
+            },
+        )
+
+    def _wait_for_stable_players_table(self, stats_block, page, match_data):
+        last_snapshot = {"headers": [], "rows": []}
+        last_count = -1
+        stable_reads = 0
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            snapshot = self._players_table_snapshot(stats_block, match_data)
+            row_count = len(snapshot.get("rows") or [])
+            expected_teams = {
+                self._normalized_header(item)
+                for item in (
+                    match_data.get("home_team"),
+                    match_data.get("away_team"),
+                )
+                if item
+            }
+            observed_teams = {
+                self._normalized_header(item.get("Team"))
+                for item in (snapshot.get("rows") or [])
+                if item.get("Team")
+            }
+            teams_complete = not expected_teams or expected_teams.issubset(
+                observed_teams
+            )
+            if row_count > 0 and row_count == last_count and teams_complete:
+                stable_reads += 1
+            else:
+                stable_reads = 0
+            last_snapshot = snapshot
+            last_count = row_count
+            if stable_reads >= 2:
+                return self._normalize_players_table_snapshot(snapshot)
+            page.wait_for_timeout(750)
+        return self._normalize_players_table_snapshot(last_snapshot)
+
+    @classmethod
+    def _normalize_players_table_snapshot(cls, snapshot):
+        raw_headers = [
+            re.sub(r"\s+", " ", str(item or "")).strip()
+            for item in (snapshot.get("headers") or [])
+            if str(item or "").strip()
+        ]
+        raw_header_by_normalized = {
+            cls._normalized_header(header): header for header in raw_headers
+        }
+        headers = [
+            header
+            for header in SPORTSBASE_PLAYER_COLUMNS
+            if cls._normalized_header(header) in raw_header_by_normalized
+        ]
+        rows = []
+        for raw_row in snapshot.get("rows") or []:
+            row = {}
+            for header in headers:
+                raw_header = raw_header_by_normalized[cls._normalized_header(header)]
+                value = raw_row.get(raw_header, "")
+                if header in {"Player", "Team", "Position"}:
+                    row[header] = re.sub(r"\s+", " ", str(value or "")).strip()
+                else:
+                    row[header] = cls._coerce_players_table_value(value)
+            if row.get("Player"):
+                rows.append(row)
+        return {
+            "headers": headers,
+            "rows": rows,
+            "teams": snapshot.get("teams") or [],
+            "table_count": snapshot.get("tableCount") or 0,
+        }
+
+    @staticmethod
+    def _coerce_players_table_value(value):
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text or text in {"-", "–", "—"}:
+            return "-"
+        if text.endswith("%"):
+            return text
+        normalized = text.replace(" ", "").replace(",", ".")
+        if re.fullmatch(r"-?\d+", normalized):
+            return int(normalized)
+        if re.fullmatch(r"-?\d+\.\d+", normalized):
+            return float(normalized)
+        return text
+
+    @staticmethod
+    def _normalized_header(value):
+        normalized = re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+        return PLAYERS_TABLE_HEADER_ALIASES.get(normalized, normalized)
+
+    @classmethod
+    def _missing_enriched_players_headers(cls, headers):
+        available = {cls._normalized_header(item) for item in (headers or [])}
+        return [
+            item
+            for item in PLAYERS_TABLE_REQUIRED_ENRICHED_HEADERS
+            if cls._normalized_header(item) not in available
+        ]
+
+    @classmethod
+    def _missing_xlsx_analysis_headers(cls, headers):
+        available = {cls._normalized_header(item) for item in (headers or [])}
+        return [
+            item
+            for item in SPORTSBASE_PLAYER_COLUMNS
+            if cls._normalized_header(item) not in available
+        ]
+
+    @staticmethod
+    def _live_players_table_headers(page):
+        table = page.locator('[role="table"]').first
+        return table.evaluate(
+            r"""
+            (table) => {
+              const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+              return [...table.querySelectorAll('[role="headercell"]')].map((cell) => {
+                const tooltips = [...cell.querySelectorAll('[class*="Tooltip"]')]
+                  .map((node) => clean(node.textContent)).filter(Boolean);
+                return tooltips.length ? tooltips[tooltips.length - 1] : clean(cell.textContent);
+              }).filter(Boolean);
+            }
+            """
+        )
+
+    def _wait_for_enriched_players_table(self, page):
+        """Ensure that React exposes every KPI required by the analysis engine."""
+        last_headers = []
+        configuration_attempted = False
+        for attempt in range(3):
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                last_headers = self._live_players_table_headers(page)
+                if not self._missing_enriched_players_headers(last_headers):
+                    return last_headers
+                page.wait_for_timeout(750)
+
+            missing = self._missing_enriched_players_headers(last_headers)
+            if not configuration_attempted:
+                print(
+                    "[SPORTSBASE] Table Players incomplète "
+                    f"({len(last_headers)} colonnes; manque : {', '.join(missing)}); "
+                    "configuration automatique des indicateurs…"
+                )
+                self._configure_all_players_table_metrics(page)
+                configuration_attempted = True
+                page.locator('[role="table"]').first.wait_for(
+                    state="visible", timeout=30_000
+                )
+                continue
+
+            if attempt == 1:
+                missing = self._missing_enriched_players_headers(last_headers)
+                print(
+                    "[SPORTSBASE] Table enrichie pas encore rechargée "
+                    f"({len(last_headers)} colonnes; manque : {', '.join(missing)}); "
+                    "actualisation unique…"
+                )
+                page.reload(wait_until="domcontentloaded", timeout=30_000)
+                page.locator('[role="table"]').first.wait_for(
+                    state="visible", timeout=30_000
+                )
+
+        missing = self._missing_enriched_players_headers(last_headers)
+        raise RuntimeError(
+            "La configuration automatique de la table Players n’a pas rendu tous "
+            "les KPI requis disponibles. Colonnes manquantes : "
+            + ", ".join(missing)
+        )
+
+    @staticmethod
+    def _configure_all_players_table_metrics(page):
+        """Select every metric in every Settings section, then persist the table."""
+        settings_button = page.get_by_role(
+            "button", name=re.compile(r"^Settings$", re.I)
+        ).first
+        settings_button.scroll_into_view_if_needed(timeout=10_000)
+        settings_button.click(timeout=10_000)
+
+        save_button = page.get_by_role(
+            "button", name=re.compile(r"^Save$", re.I)
+        ).last
+        save_button.wait_for(state="visible", timeout=15_000)
+        settings_panel = save_button.locator(
+            'xpath=ancestor::div['
+            './/*[normalize-space()="Section"] and '
+            './/*[normalize-space()="Select all"]][1]'
+        )
+        if not settings_panel.count():
+            raise RuntimeError(
+                "Le panneau Settings de la table Players est introuvable."
+            )
+
+        section_items = settings_panel.locator('[class*="BlocksItem"]')
+        section_names = []
+        for index in range(section_items.count()):
+            name = re.sub(
+                r"\s+", " ", section_items.nth(index).inner_text(timeout=5_000)
+            ).strip()
+            if name and name not in section_names:
+                section_names.append(name)
+        if not section_names:
+            raise RuntimeError(
+                "Aucune section d’indicateurs n’est visible dans Settings."
+            )
+
+        selected_sections = 0
+        for section_name in section_names:
+            section = settings_panel.locator('[class*="BlocksItem"]').filter(
+                has_text=re.compile(rf"^\s*{re.escape(section_name)}\s*$", re.I)
+            ).first
+            section.scroll_into_view_if_needed(timeout=10_000)
+            section.click(timeout=10_000)
+
+            select_all_label = settings_panel.locator("label").filter(
+                has_text=re.compile(r"^\s*Select all\s*$", re.I)
+            ).first
+            select_all_label.wait_for(state="visible", timeout=10_000)
+            checkbox = select_all_label.locator('input[type="checkbox"]').first
+            if checkbox.count() and not checkbox.is_checked():
+                select_all_label.click(timeout=10_000)
+                page.wait_for_timeout(250)
+            selected_sections += 1
+
+        print(
+            "[SPORTSBASE] Settings Players — "
+            f"Select all appliqué à {selected_sections} section(s)."
+        )
+        save_button.click(timeout=10_000)
+        save_button.wait_for(state="hidden", timeout=15_000)
+        page.locator('[role="table"]').first.wait_for(
+            state="visible", timeout=30_000
+        )
+        page.wait_for_timeout(1_000)
+        print(
+            "[SPORTSBASE] Configuration enrichie enregistrée dans le profil Chrome."
+        )
+
+    @staticmethod
+    def _read_match_header_metadata(page, match_data):
+        raw = page.evaluate(
+            r"""
+            () => {
+              const text = (node) => node ? (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim() : '';
+              const directText = (node) => {
+                if (!node) return '';
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('[class*="Tooltip"]').forEach((item) => item.remove());
+                return text(clone);
+              };
+              const labelled = [];
+              document.querySelectorAll('[class*="ParamName"], [class*="InfoName"], [class*="Label"], dt').forEach((labelNode) => {
+                const label = directText(labelNode);
+                if (!/(referee|arbitre|stadium|stade|venue|terrain)/i.test(label)) return;
+                const row = labelNode.closest('li, [class*="Row"], [class*="Item"], [class*="Info"]') || labelNode.parentElement;
+                if (!row) return;
+                const clone = row.cloneNode(true);
+                const clonedLabel = clone.querySelector('[class*="ParamName"], [class*="InfoName"], [class*="Label"], dt');
+                if (clonedLabel) clonedLabel.remove();
+                labelled.push({label, value: text(clone)});
+              });
+              const selectorTexts = (selector) => [...document.querySelectorAll(selector)].map(text).filter(Boolean);
+              return {
+                labelled,
+                scoreTexts: selectorTexts('[class*="Score"], [class*="MatchTeams"], [class*="Result"]'),
+                dateTexts: selectorTexts('time, [class*="MatchDate"], [class*="Date"]'),
+                bodyLines: (document.body?.innerText || '').split(/\n+/).map((item) => item.trim()).filter(Boolean).slice(0, 250),
+              };
+            }
+            """
+        )
+        result = {"stadium": "", "referee": ""}
+        for item in raw.get("labelled", []):
+            label = _clean_label(item.get("label")).lower()
+            value = _clean_label(item.get("value"))
+            if not value:
+                continue
+            if any(token in label for token in ("referee", "arbitre")):
+                result["referee"] = value
+            elif any(
+                token in label
+                for token in ("stadium", "stade", "venue", "terrain")
+            ):
+                result["stadium"] = value
+
+        home = _clean_label(match_data.get("home_team")).lower()
+        away = _clean_label(match_data.get("away_team")).lower()
+        score_candidates = raw.get("scoreTexts", [])
+        preferred = [
+            value
+            for value in score_candidates
+            if (not home or home in value.lower())
+            and (not away or away in value.lower())
+        ]
+        for value in preferred or score_candidates:
+            score = SCORE_RE.search(value or "")
+            if score:
+                result["home_score"] = int(score.group(1))
+                result["away_score"] = int(score.group(2))
+                break
+
+        for value in raw.get("dateTexts", []):
+            parsed_date = _iso_date(value)
+            if parsed_date:
+                result["match_date"] = parsed_date
+                break
+
+        lines = raw.get("bodyLines", [])
+        if not result["referee"]:
+            result["referee"] = SportsBaseSubscriptionScraper._value_after_label(
+                lines, ("referee", "arbitre")
+            )
+        if not result["stadium"]:
+            result["stadium"] = SportsBaseSubscriptionScraper._value_after_label(
+                lines, ("stadium", "stade", "venue", "terrain")
+            )
+        return result
+
+    @staticmethod
+    def _value_after_label(lines, labels):
+        for index, line in enumerate(lines):
+            normalized = _clean_label(line)
+            lowered = normalized.lower()
+            for label in labels:
+                if lowered == label and index + 1 < len(lines):
+                    return _clean_label(lines[index + 1])
+                match = re.match(
+                    rf"^{re.escape(label)}\s*[:\-]\s*(.+)$",
+                    normalized,
+                    flags=re.IGNORECASE,
+                )
+                if match:
+                    return _clean_label(match.group(1))
+        return ""
+
+    @staticmethod
+    def _normalize_team_table(rows, player_id, team_name, all_rows=None):
+        headers = next((row["headers"] for row in rows if row.get("headers")), [])
+        table = []
+        current = None
+        for row in rows:
+            if not row.get("playerName"):
+                continue
+            cells = row.get("cells", [])
+            mapped = dict(zip(headers, cells)) if headers else {}
+            index_value = _safe_int(mapped.get("Index") or (cells[1] if len(cells) > 1 else None))
+            item = {
+                "rank": len(table) + 1,
+                "player_name": row["playerName"],
+                "index": index_value,
+                "position": mapped.get("Pos") or mapped.get("Position") or (cells[2] if len(cells) > 2 else ""),
+                "minutes": _safe_int(mapped.get("Min") or mapped.get("Minutes") or (cells[3] if len(cells) > 3 else None)),
+                "is_current_player": f"/players/{player_id}" in row.get("playerHref", ""),
+            }
+            table.append(item)
+            if item["is_current_player"]:
+                current = item
+        ranked = sorted(
+            [item for item in table if item["index"] is not None],
+            key=lambda item: item["index"],
+            reverse=True,
+        )
+        team_rank = None
+        if current:
+            team_rank = next(
+                (
+                    index + 1
+                    for index, item in enumerate(ranked)
+                    if item["is_current_player"]
+                ),
+                None,
+            )
+            if team_rank is None:
+                # SportsBase peut laisser l'index vide pour une courte participation.
+                # La position affichée dans la table reste alors l'information fiable.
+                team_rank = current["rank"]
+        match_indexes = []
+        for row in all_rows or []:
+            cells = row.get("cells", [])
+            index_value = _safe_int(cells[1] if len(cells) > 1 else None)
+            if index_value is not None:
+                match_indexes.append(
+                    {
+                        "index": index_value,
+                        "is_current_player": f"/players/{player_id}" in row.get("playerHref", ""),
+                    }
+                )
+        if not match_indexes:
+            match_indexes = ranked
+        match_indexes.sort(key=lambda item: item["index"], reverse=True)
+        match_rank = next(
+            (index + 1 for index, item in enumerate(match_indexes) if item["is_current_player"]),
+            None,
+        )
+        return {
+            "team_name": team_name,
+            "team_table": table,
+            "index": current.get("index") if current else None,
+            "position": current.get("position") if current else "",
+            "minutes_played": current.get("minutes") if current else None,
+            "team_rank": team_rank,
+            "match_rank": match_rank,
+        }
+
+    def _generate_and_deliver_actions(self, *, page, job, player_root, downloads_dir, queue):
+        """Generate All Actions last, then click each ready row exactly once."""
+        if not queue:
+            return
+
+        if any(should_generate for _match, _item, should_generate in queue):
+            # Reading the enriched XLSX happens in a second match tab. SportsBase
+            # can then re-render the player page while keeping a stale match row
+            # without its action buttons. Rebuild the exact page state used by
+            # the proven pre-XLSX workflow before requesting All Actions.
+            print(
+                "[SPORTSBASE] Retour à la page joueur après le XLSX pour "
+                "préparer All Actions…"
+            )
+            self.automation.ensure_logged_in_and_open_player(
+                page, job["player"]["sportsbase_url"]
+            )
+            self.automation.open_player_statistics(page)
+            try:
+                matches_played = self.automation.get_matches_played(
+                    page, seasons_to_process=1
+                )
+            except Exception:
+                matches_played = 100
+            self.automation.expand_matches_list(page, matches_played)
+            print(
+                "[SPORTSBASE] Liste des matchs restaurée — génération All Actions"
+            )
+
+        generated_matches = []
+        for match_data, _match_item, should_generate in queue:
+            popup = None
+            if not should_generate:
+                generated_matches.append(
+                    (match_data, self._generated_match_label(match_data))
+                )
+                continue
+            try:
+                # The Players/XLSX page is opened in another tab. React can
+                # replace the original match row while that tab is active, so a
+                # locator captured before the XLSX download is not reliable here.
+                page.bring_to_front()
+                page.wait_for_timeout(500)
+                match_item = self._match_item(
+                    page, match_data["sportsbase_match_id"]
+                )
+                action_button = match_item.get_by_role(
+                    "button",
+                    name=PLAYER_ACTIONS_BUTTON_RE,
+                ).first
+                if not action_button.count() or not action_button.is_visible():
+                    # An expanded More details panel can temporarily hide the
+                    # action controls. Collapse it, then resolve the row again.
+                    less_details = match_item.get_by_text(
+                        "Less details", exact=False
+                    ).first
+                    if less_details.count() and less_details.is_visible():
+                        less_details.click(timeout=10_000)
+                        page.wait_for_timeout(750)
+                        match_item = self._match_item(
+                            page, match_data["sportsbase_match_id"]
+                        )
+                        action_button = match_item.get_by_role(
+                            "button",
+                            name=PLAYER_ACTIONS_BUTTON_RE,
+                        ).first
+                print(
+                    "[SPORTSBASE] Ouverture All Actions — match "
+                    f"{match_data['sportsbase_match_id']}"
+                )
+                if not action_button.count():
+                    raise RuntimeError(
+                        "Bouton Player actions introuvable dans la ligne du match"
+                    )
+                action_button.wait_for(state="visible", timeout=10_000)
+                action_button.scroll_into_view_if_needed(timeout=10_000)
+                match_position = (
+                    match_data["source_metadata"]["list_position"] - 1
+                )
+                print(
+                    f"[DEBUG] Match {match_position + 1} href: "
+                    f"/matches/{match_data['sportsbase_match_id']}"
+                )
+                with page.expect_popup(timeout=20_000) as popup_info:
+                    action_button.click(timeout=10_000)
+                popup = popup_info.value
+                popup.wait_for_load_state("domcontentloaded", timeout=30_000)
+                popup.wait_for_timeout(4_000)
+                print(
+                    f"[DEBUG] Popup URL match {match_position + 1}: {popup.url}"
+                )
+                print(
+                    f"[DEBUG] Popup title match {match_position + 1}: "
+                    f"{popup.title()}"
+                )
+                title, _confirmed, _cancelled = (
+                    self.automation.generate_download_in_popup(popup)
+                )
+                score = SCORE_RE.search(title or "")
+                if score:
+                    match_data["home_score"] = int(score.group(1))
+                    match_data["away_score"] = int(score.group(2))
+                generated_matches.append((match_data, title))
+                match_data["actions_state"] = "generating"
+                match_data["delivery_error"] = ""
+            except Exception as exc:
+                match_data["actions_state"] = "failed"
+                match_data["delivery_error"] = str(exc)
+                print(
+                    "[SPORTSBASE][ERREUR ALL ACTIONS] Match "
+                    f"{match_data['sportsbase_match_id']} : {exc}"
+                )
+                traceback.print_exc()
+            finally:
+                if popup is not None:
+                    try:
+                        popup.close()
+                    except Exception:
+                        pass
+
+        if not generated_matches:
+            return
+
+        # Le clic natif de Chrome possède exactement le contexte d'authentification
+        # attendu par SportsBase. Comme dans la version stable v23, la confirmation
+        # se fait sur le fichier terminé et non sur l'événement Playwright download.
+        downloaded = self._download_generated_actions_once(
+            page=page,
+            player_name=(
+                self._sportsbase_player_name or job["player"]["name"]
+            ),
+            downloads_dir=downloads_dir,
+            generated_matches=generated_matches,
+        )
+        downloaded_ids = set()
+        for match_data, _generated_title in generated_matches:
+            source = downloaded.get(match_data["sportsbase_match_id"])
+            if not source:
+                match_data["actions_state"] = "generating"
+                match_data["delivery_error"] = (
+                    "La vidéo a été générée, mais le fichier téléchargé n’a pas encore "
+                    "été confirmé. Le prochain passage de l’agent pourra reprendre ce match."
+                )
+                continue
+
+            destination = self._store_actions_file(
+                source=source,
+                player_root=player_root,
+                player_name=job["player"]["name"],
+                season=job.get("season", ""),
+                match_data=match_data,
+            )
+            match_folder = destination.parent
+            match_data.update(
+                {
+                    "actions_state": "downloaded",
+                    "local_folder_key": str(match_folder.relative_to(self.storage_root)),
+                    "all_actions_filename": destination.name,
+                    "all_actions_downloaded_at": _now_iso(),
+                    "delivery_error": "",
+                }
+            )
+            downloaded_ids.add(match_data["sportsbase_match_id"])
+
+        if downloaded_ids:
+            print(
+                "[SPORTSBASE] All Actions classées : "
+                f"{len(downloaded_ids)} fichier(s)"
+            )
+
+    def _download_generated_actions_once(
+        self, *, page, player_name, downloads_dir, generated_matches
+    ):
+        """Download ready My Videos rows without ever repeating a click in this run."""
+        self._open_my_videos(page)
+        targets = self._my_videos_targets(player_name)
+        candidate_indexes = self._wait_for_candidate_rows(
+            page,
+            targets=targets,
+            expected=len(generated_matches),
+        )
+        if not candidate_indexes:
+            print("[SPORTSBASE][WARN] Aucune ligne My Videos trouvée pour le joueur.")
+            return {}
+
+        # SportsBase affiche les vidéos les plus récentes en premier. Les générations,
+        # elles, ont été lancées du match le plus ancien au plus récent.
+        selected_indexes = candidate_indexes[: len(generated_matches)]
+        assignments = zip(generated_matches, reversed(selected_indexes))
+        downloaded = {}
+        clicked_rows = set()
+
+        for ((match_data, generated_title), row_index) in assignments:
+            row = self._wait_until_video_row_done(page, row_index, targets)
+            if row is None:
+                continue
+
+            row_key = self._video_row_key(row)
+            if row_key in clicked_rows:
+                continue
+            clicked_rows.add(row_key)
+
+            buttons_cell = row.locator(
+                "div.ButtonsCellContainer-sc-1t45i5t-0"
+            ).first
+            icons = buttons_cell.locator("div.IconWrapper-sc-1t45i5t-3")
+            if not buttons_cell.count() or not icons.count():
+                print(f"[SPORTSBASE][WARN] Bouton download absent : {row_key}")
+                continue
+
+            download_icon = icons.first
+            download_icon.scroll_into_view_if_needed()
+            page.wait_for_timeout(300)
+
+            print(f"[SPORTSBASE] Clic download unique : {row_key}")
+            match_id = match_data["sportsbase_match_id"]
+            try:
+                staged_source = self._download_actions_with_chrome(
+                    page=page,
+                    download_icon=download_icon,
+                    downloads_dir=downloads_dir,
+                    match_id=match_id,
+                )
+            except Exception as exc:
+                print(
+                    "[SPORTSBASE][WARN] Téléchargement All Actions impossible "
+                    f"pour le match {match_id} : {exc}. Aucun second clic ne "
+                    "sera effectué."
+                )
+                continue
+            downloaded[match_id] = staged_source
+            print(
+                "[SPORTSBASE] Fichier détecté et réservé au match "
+                f"{match_id} : {staged_source}"
+            )
+        return downloaded
+
+    def _download_actions_with_chrome(
+        self,
+        *,
+        page,
+        download_icon,
+        downloads_dir,
+        match_id,
+    ):
+        """Click once in Chrome and confirm the original MP4 directly on disk."""
+        downloads_dir = Path(downloads_dir)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        watch_dirs = self._download_watch_directories(downloads_dir)
+        self._configure_native_downloads(page, downloads_dir)
+        before = self._snapshot_download_files(watch_dirs)
+
+        download_icon.click(timeout=5_000, no_wait_after=True)
+        print(
+            "[SPORTSBASE] Téléchargement Chrome lancé; attente du fichier "
+            "MP4 terminé…"
+        )
+        source = self._wait_for_new_download(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        if source is None:
+            raise TimeoutError(
+                "Aucun fichier All Actions terminé détecté après 300 secondes."
+            )
+
+        staged = self._stage_actions_download(
+            source=source,
+            downloads_dir=downloads_dir,
+            match_id=match_id,
+        )
+        if not staged.is_file() or staged.stat().st_size <= 0:
+            raise RuntimeError("Le fichier vidéo téléchargé est vide.")
+        with staged.open("rb") as downloaded_file:
+            prefix = downloaded_file.read(256).lstrip()
+        if prefix.startswith((b"<", b"{", b"[")):
+            try:
+                staged.unlink()
+            except OSError:
+                pass
+            raise RuntimeError(
+                "SportsBase a renvoyé du texte au lieu du fichier MP4."
+            )
+
+        print(
+            "[SPORTSBASE] MP4 original détecté sur le disque — "
+            f"{staged.stat().st_size / (1024 * 1024):.1f} Mo"
+        )
+        return staged
+
+    def _configure_native_downloads(self, page, downloads_dir):
+        """Restore the stable v23 Chrome download name and destination."""
+        try:
+            browser = getattr(self, "_cdp_browser", None)
+            if browser is not None:
+                session = browser.new_browser_cdp_session()
+            else:
+                session = page.context.new_cdp_session(page)
+            session.send(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(downloads_dir).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+            return True
+        except Exception as exc:
+            print(
+                "[SPORTSBASE][INFO] Dossier Chrome contrôlé par le profil "
+                f"persistant : {exc}"
+            )
+            return False
+
+    @staticmethod
+    def _generated_match_label(match_data):
+        home = match_data.get("home_team") or "Equipe 1"
+        away = match_data.get("away_team") or "Equipe 2"
+        if match_data.get("home_score") is not None and match_data.get("away_score") is not None:
+            return (
+                f"{home} {match_data['home_score']}:"
+                f"{match_data['away_score']} {away}"
+            )
+        return f"{home} - {away}"
+
+    def _open_my_videos(self, page):
+        opener = getattr(
+            self.automation,
+            "ensure_logged_in_and_open_my_videos",
+            None,
+        ) or getattr(self.automation, "open_my_videos")
+        opener(page)
+        page.locator('div[role="table"]').first.wait_for(
+            state="visible", timeout=30000
+        )
+
+    @staticmethod
+    def _video_rows(page):
+        groups = page.locator('div[role="rowgroup"]')
+        return groups.nth(1).locator('div[role="row"]') if groups.count() > 1 else page.locator('div[role="row"]')
+
+    @staticmethod
+    def _my_videos_targets(player_name):
+        """Return SportsBase title variants, including its shortened player name."""
+        normalized_name = _clean_label(player_name).casefold()
+        name_parts = normalized_name.split()
+        aliases = {normalized_name}
+
+        # The player profile can display the complete name while My Videos drops
+        # the leading given name. Example observed in production:
+        # "Mohamed Amine Ben Ammar" -> "Amine Ben Ammar, Player actions".
+        # Keep the remaining full suffix; never fall back to a bare surname.
+        if len(name_parts) >= 3:
+            aliases.add(" ".join(name_parts[1:]))
+
+        action_labels = {
+            "player actions",
+            "all player actions",
+            "player's actions",
+            "all player's actions",
+            "actions du joueur",
+            "toutes les actions du joueur",
+        }
+        return {
+            f"{alias}, {action_label}"
+            for alias in aliases
+            for action_label in action_labels
+            if alias
+        }
+
+    def _candidate_video_indexes(self, page, targets):
+        rows = self._video_rows(page)
+        indexes = []
+        for index in range(rows.count()):
+            try:
+                title = rows.nth(index).locator("span.Name-sc-jbc8ns-2").first
+                if not title.count():
+                    continue
+                value = _clean_label(title.inner_text()).lower()
+                if any(target in value for target in targets):
+                    indexes.append(index)
+            except Exception:
+                continue
+        return indexes
+
+    def _wait_for_candidate_rows(self, page, *, targets, expected):
+        for attempt in range(20):
+            indexes = self._candidate_video_indexes(page, targets)
+            print(f"[SPORTSBASE] Lignes My Videos candidates : {indexes}")
+            if len(indexes) >= expected:
+                return indexes
+            show_more = page.get_by_role("button", name="Show more").first
+            if show_more.count() and show_more.is_visible():
+                show_more.click()
+                page.wait_for_timeout(1500)
+            else:
+                page.wait_for_timeout(5000)
+                if attempt < 19:
+                    page.reload(wait_until="domcontentloaded", timeout=30000)
+                    page.locator('div[role="table"]').first.wait_for(
+                        state="visible", timeout=30000
+                    )
+        indexes = self._candidate_video_indexes(page, targets)
+        return indexes if len(indexes) >= expected else []
+
+    def _wait_until_video_row_done(self, page, row_index, targets):
+        try:
+            timeout_seconds = int(
+                os.getenv("SPORTSBASE_VIDEO_READY_TIMEOUT_SECONDS", "1200")
+            )
+        except (TypeError, ValueError):
+            timeout_seconds = 1200
+        timeout_seconds = max(60, min(timeout_seconds, 3600))
+        attempts = max(1, timeout_seconds // 5)
+        previous_state = None
+
+        for attempt in range(attempts):
+            indexes = self._candidate_video_indexes(page, targets)
+            if row_index not in indexes:
+                if attempt < attempts - 1:
+                    page.wait_for_timeout(5000)
+                    page.reload(wait_until="domcontentloaded", timeout=45000)
+                    page.locator('div[role="table"]').first.wait_for(
+                        state="visible", timeout=30000
+                    )
+                    continue
+                return None
+
+            row = self._video_rows(page).nth(row_index)
+            status = row.locator("div.StatusContainer-sc-1qv6hin-1 span").first
+            status_text = _clean_label(status.inner_text()).lower() if status.count() else ""
+            buttons_cell = row.locator(
+                "div.ButtonsCellContainer-sc-1t45i5t-0"
+            ).first
+            download_icon = buttons_cell.locator(
+                "div.IconWrapper-sc-1t45i5t-3"
+            ).first
+            download_ready = bool(
+                buttons_cell.count()
+                and download_icon.count()
+                and download_icon.is_visible()
+            )
+            state = status_text or "inconnu"
+            if status_text == "done" and not download_ready:
+                state = "done — attente de la flèche Download"
+            if state != previous_state or attempt % 6 == 0:
+                print(f"[SPORTSBASE] Ligne {row_index} — statut : {state}")
+                previous_state = state
+
+            if status_text == "done" and download_ready:
+                return row
+
+            page.wait_for_timeout(5000)
+            if attempt % 3 == 2:
+                page.reload(wait_until="domcontentloaded", timeout=45000)
+                page.locator('div[role="table"]').first.wait_for(
+                    state="visible", timeout=30000
+                )
+
+        print(
+            "[SPORTSBASE][WARN] La vidéo n’est pas devenue Done avec la flèche "
+            f"Download dans les {timeout_seconds} secondes."
+        )
+        return None
+
+    @staticmethod
+    def _video_row_key(row):
+        def value(selector):
+            locator = row.locator(selector).first
+            return _clean_label(locator.inner_text()) if locator.count() else ""
+
+        return "|".join(
+            (
+                value("span.Name-sc-jbc8ns-2"),
+                value("div.DateCellContainer-sc-88jqaj-0"),
+                value("div.DurationCellContainer-sc-kz1ea2-0"),
+            )
+        )
+
+    @staticmethod
+    def _download_watch_directories(downloads_dir):
+        directories = [Path(downloads_dir)]
+        configured = os.getenv("SPORTSBASE_BROWSER_DOWNLOAD_DIR", "").strip()
+        if configured:
+            directories.append(Path(configured))
+        else:
+            directories.append(Path.home() / "Downloads")
+        unique = []
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            if directory not in unique:
+                unique.append(directory)
+        return unique
+
+    @staticmethod
+    def _snapshot_download_files(directories):
+        snapshot = {}
+        for directory in directories:
+            try:
+                for path in directory.iterdir():
+                    if path.is_file():
+                        stat = path.stat()
+                        snapshot[str(path.resolve())] = (
+                            stat.st_size,
+                            stat.st_mtime_ns,
+                        )
+            except OSError:
+                continue
+        return snapshot
+
+    def _wait_for_new_download(self, directories, before, timeout_seconds):
+        deadline = time.monotonic() + timeout_seconds
+        stable_sizes = {}
+        temporary_suffixes = {".crdownload", ".part", ".tmp", ".download"}
+        while time.monotonic() < deadline:
+            candidates = []
+            for directory in directories:
+                try:
+                    paths = list(directory.iterdir())
+                except OSError:
+                    continue
+                for path in paths:
+                    if not path.is_file() or path.suffix.lower() in temporary_suffixes:
+                        continue
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        continue
+                    original = before.get(str(path.resolve()))
+                    if original is None or original != (stat.st_size, stat.st_mtime_ns):
+                        candidates.append((stat.st_mtime_ns, stat.st_size, path))
+
+            for _modified, size, path in sorted(candidates, reverse=True):
+                if size <= 0:
+                    continue
+                key = str(path.resolve())
+                if stable_sizes.get(key) == size:
+                    return path
+                stable_sizes[key] = size
+            time.sleep(1)
+        return None
+
+    def _write_season_artifacts(self, *, player_root, profile):
+        season_key = self._folder_component(
+            profile.get("season") or "saison_inconnue"
+        )
+        season_folder = Path(player_root) / f"season_{season_key}"
+        season_folder.mkdir(parents=True, exist_ok=True)
+        payload = {
+            key: value
+            for key, value in profile.items()
+            if not key.endswith("_png_base64")
+        }
+        self._write_json(season_folder / "season_profile.json", payload)
+        self._write_base64_png(
+            season_folder / "season_radar.png",
+            profile.get("radar_png_base64"),
+        )
+        self._write_base64_png(
+            season_folder / "season_heatmap.png",
+            profile.get("heatmap_png_base64"),
+        )
+        self._write_base64_png(
+            season_folder / "season_ball_touches.png",
+            profile.get("ball_touches_png_base64"),
+        )
+
+    def _write_match_artifacts(self, *, player_root, season, match_data):
+        match_folder = self._match_folder(
+            player_root=player_root,
+            season=season,
+            match_data=match_data,
+        )
+        stats = match_data.get("stats") or {}
+        payload = {
+            key: value
+            for key, value in match_data.items()
+            if key != "stats"
+        }
+        payload["stats"] = {
+            key: value
+            for key, value in stats.items()
+            if not key.endswith("_png_base64")
+        }
+        self._write_json(match_folder / "match_data.json", payload)
+        self._write_base64_png(
+            match_folder / "heatmap.png",
+            stats.get("heatmap_png_base64"),
+        )
+        self._write_base64_png(
+            match_folder / "ball_touches.png",
+            stats.get("ball_touches_png_base64"),
+        )
+        match_data["local_folder_key"] = str(
+            match_folder.relative_to(self.storage_root)
+        )
+
+    @staticmethod
+    def _write_json(path, payload):
+        with Path(path).open("w", encoding="utf-8") as output:
+            json.dump(payload, output, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _write_base64_png(path, encoded):
+        if not encoded:
+            return
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except Exception:
+            return
+        if content:
+            Path(path).write_bytes(content)
+
+    def _match_folder(self, *, player_root, season, match_data):
+        season_key = self._folder_component(season or "saison_inconnue")
+        date_key = self._folder_component(
+            match_data.get("match_date") or "date_inconnue"
+        )
+        home_key = self._folder_component(
+            match_data.get("home_team") or "equipe_1"
+        )
+        away_key = self._folder_component(
+            match_data.get("away_team") or "equipe_2"
+        )
+        match_id = self._folder_component(match_data["sportsbase_match_id"])
+        match_folder = (
+            Path(player_root)
+            / f"season_{season_key}"
+            / f"{date_key}__{home_key}_vs_{away_key}__match_{match_id}"
+        )
+        match_folder.mkdir(parents=True, exist_ok=True)
+        return match_folder
+
+    def _store_actions_file(
+        self, *, source, player_root, player_name, season, match_data
+    ):
+        match_folder = self._match_folder(
+            player_root=player_root,
+            season=season,
+            match_data=match_data,
+        )
+        match_id = self._folder_component(match_data["sportsbase_match_id"])
+
+        extension = Path(source).suffix or ".mp4"
+        filename = self._file_component(
+            f"{player_name}__All_Actions__match_{match_id}"
+        )
+        destination = self._unique_path(match_folder / f"{filename}{extension}")
+        if Path(source).resolve() != destination.resolve():
+            shutil.move(str(source), str(destination))
+        return destination
+
+    @classmethod
+    def _stage_actions_download(cls, *, source, downloads_dir, match_id):
+        """Give each downloaded match its own path before Chrome reuses a name."""
+        source = Path(source)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+
+        staging_dir = Path(downloads_dir)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        safe_match_id = cls._folder_component(match_id)
+        extension = source.suffix or ".mp4"
+        staged = cls._unique_path(
+            staging_dir / f"_All_Actions__match_{safe_match_id}{extension}"
+        )
+        if source.resolve() != staged.resolve():
+            shutil.move(str(source), str(staged))
+        return staged
+
+    @staticmethod
+    def _folder_component(value):
+        cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "-", str(value or ""))
+        cleaned = re.sub(r"\s+", "_", cleaned).strip(" ._-")
+        return cleaned[:100] or "inconnu"
+
+    @classmethod
+    def _file_component(cls, value):
+        return cls._folder_component(value)[:140]
+
+    @staticmethod
+    def _unique_path(path):
+        if not path.exists():
+            return path
+        counter = 2
+        while True:
+            candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
+            if not candidate.exists():
+                return candidate
+            counter += 1

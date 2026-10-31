@@ -1,0 +1,1124 @@
+{
+  "files": {
+    "qualification/ag/ci_entry.py": "b60d5f922cab3893f069feaf6146904e7ec28c43beabe617ac273e95d0338a1b",
+    "qualification/ag/ci_run.py": "469dd58a798db63c414b56e2cbf44e11f4a96e79d5c0c13279989bd14716bf20",
+    "qualification/ag/expected-tests.json": "b4f34071349dbc1d1228e7c43350e00ecc7ddcaf889bc5f0e4cbf5a696a65eb0",
+    "qualification/ag/requirements.txt": "318ad748d73c6ba462b345c09a55ec2f925b5a274ddd8b89cd1286701e1263ae",
+    "qualification/ag/verify_sources.py": "cf989531612cac0ee550de6914551ba73b0afa2b2c72845f7e638a001893e1da",
+    "qualification/ag/candidate/ci_target.py": "805e599304ee0f24604f22e7ba71ea942085995d06c532dd117713a611bdfc17",
+    "qualification/ag/candidate/effect_audit.py": "77394b208c53b3192ec09db6faa4417a20e6d64bcd26ef8cd17052ae1eb86ad5",
+    "qualification/ag/candidate/fixture_snapshot.py": "d6156d6d2d899c1f2fa79aaaa5d79653b810e339e3bf5d3e17021c66c0ae8468",
+    "qualification/ag/candidate/isolation.py": "c7aeee51195c169b6b1535df9e4131bd39108661e12f3a3cbda31c75b0c82f9a",
+    "qualification/ag/candidate/lab_control.py": "596439301ad9f7d12b1dda1554d3476cb91ea23b002f39d14498376c7558eaab",
+    "qualification/ag/candidate/lab_settings.py": "c8a85a49de12bd33d7e0c727ee8d6b98ebc52f9bde43822416e9eecd6aae56a2",
+    "qualification/ag/candidate/lab_urls.py": "86ee6ac68f705244b145e00a2068718b2534e5f436ab9dc82e580cc65f4fc80e",
+    "qualification/ag/candidate/readback_unified01.py": "4cb6c8d7fc18c7f7479f29b7107dce80d99a093ec5b1fe56a583b9c3adb2c063",
+    "qualification/ag/candidate/target_wrapper.py": "5338479f7f5be3d4cf2e0940f6af802b451a421c97f5bc2a1ade0df35c0c3fd4",
+    "qualification/ag/candidate/test_actions.py": "33b03ec0c094d758fe92e6ad15cd4b4085faafbab4323b6d51312535ba773c93",
+    "qualification/ag/candidate/test_compatibility.py": "41474011bb47a55484ed14681f56e5336a3fd59b0a687f7fa8e7a4fb28e9ebcf",
+    "qualification/ag/candidate/test_declarative.py": "d69aad0a0d5af59e160d116bb782810dffc443b886fde0b7b64c7ed15b594af2",
+    "qualification/ag/candidate/test_df01.py": "a3417921440e39bf298a4b66c2473ee1c8fa3670e7ef196a14283fe502eb6572",
+    "qualification/ag/candidate/test_final.py": "13a68e939349b81ba12fff4009c04ebb36732104f0ff45294abf9a699b8e6b25",
+    "qualification/ag/candidate/test_integration.py": "fe7a32600a705454b346d2ffcee7b4b3977e7b66e40af5fe242a5d976718ac7b",
+    "qualification/ag/candidate/test_merge.py": "2c22502e1817ccaf70b2262e9f0a929355f70c392e7dcdb3c3dbfabb1a94ba56",
+    "qualification/ag/candidate/test_unified01.py": "9071a56edff8a5446bd463c777ac78432c571d1996ad9db4241f1fd5784655de",
+    "qualification/ag/candidate/test_wf01.py": "ea26dba65a50b7267c70db6b74e2f22b1a6bccdb99de1a090268c10df70b483a",
+    "qualification/ag/candidate/test_wf01_http.py": "cfaf5b93f829894660fc718d78539a8d9809df177648c5b7dca90c85001e3cf5",
+    "qualification/ag/candidate/test_workflow.py": "192ac8407d7b217246e8d793bdd656522585025ef65adc7bf2c0eb5aa4ddbc3a",
+    "qualification/ag/candidate/test_workflow_more.py": "e189d7665f5181f8566383bff8b8bdd4fd853fead36e2b5e4f4b57abc21bf574",
+    "qualification/ag/candidate/test_workflow_safety.py": "5ab1d8ff2e386375f3f6292842b72527ab3251070fcae487e716df897ff99e86",
+    "qualification/ag/candidate/worker.py": "d45d6ea8d349f05a29fff3551b4f0d795557059a37db174d19ccc38a368c318b",
+    "qualification/ag/unified/source/actions/engine.py": "26fe417755db900c751e07ef13af13e65de29dc55042701f3b3bf5f1b08f0803",
+    "qualification/ag/candidate/source/actions/declarative.py": "e0c91878bbfa9e3d51906c9dbe00ad896d79d566916135eb9f8d402fd684c1e3",
+    "qualification/ag/candidate/source/actions/effects.py": "578e54a81e8c2d5dc44063639d5ec8393d18cec1ec42129f99bce4ac17baf720",
+    "qualification/ag/candidate/source/actions/engine.py": "0933c3580356cae1594ba543e1ff0f6b83290e338a27f0b08c35d28fcd15a79e",
+    "qualification/ag/candidate/source/actions/http.py": "0051790609a28b341ff9a73b5ff89a27864fc6388f4e782ed28d38413b9c52f6",
+    "qualification/ag/candidate/source/actions/limits.py": "c3d06fd49552d22ace132a6f9e71998b67b9605b6803ffdacbdface1cd01b723",
+    "qualification/ag/candidate/source/actions/models.py": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9",
+    "qualification/ag/candidate/source/actions/mount.py": "2932e8bff25df8a88c9efe7a86c495688f6b6487d4017eb0419f76d31560c1e3",
+    "qualification/ag/candidate/source/actions/pilot.py": "f112eec924d241831eadf2d1384af8c17e5e7542d753dc1498a90b87de368db7",
+    "qualification/ag/candidate/source/actions/registry.py": "ca1b4b985bd13d1804748c2ac7fc572ce11e9bf90ae33e2bb81338b304c2d79e",
+    "qualification/ag/candidate/source/actions/workflow.py": "593a441458123195735803802ea187e2f0c40034e6fb9e1d8ad28e2f90639506",
+    "qualification/ag/candidate/source/actions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/source/client_portal/admin.py": "5c4bd1e99ed71e95c96d803141e4688b706e527268d9cebf8020c0c071c1614e",
+    "qualification/ag/candidate/source/client_portal/apps.py": "60c78861bde2a237ac9728d5718a4a13576685adf666790af66b67f911631cca",
+    "qualification/ag/candidate/source/client_portal/context_processors.py": "94a40209f9f0382fc61997046f0ea7d850a59bce87133b1c9d7bb3904f5c5c35",
+    "qualification/ag/candidate/source/client_portal/decorators.py": "d800df13d12e9ebfb7d8e1931ad623226af48d47edfb8d6518f9378f7207cffc",
+    "qualification/ag/candidate/source/client_portal/forms.py": "9d07e12ec593bb2fec57ea5dab17bb874b8e8ff145f679478c9afddc3145a74d",
+    "qualification/ag/candidate/source/client_portal/google_sheets.py": "a33630630900897f6eaf93c9268354cbbd7ea4eeaf4788f4d584086ea8f1ba77",
+    "qualification/ag/candidate/source/client_portal/middleware.py": "22577785f608d2131cbb38ff3827db741755cef7090e81ecab69e92ca567f612",
+    "qualification/ag/candidate/source/client_portal/models.py": "bf091c25adfaf1b1af0c21c28e9e4064159af47149a958bb3b78d1fcdacd1de9",
+    "qualification/ag/candidate/source/client_portal/portal_i18n.py": "0d99dbe781c75ea6b484055aed413b080d65ac9ed6f7894224d18d21b8bb569c",
+    "qualification/ag/candidate/source/client_portal/services.py": "fa7db8dd0d474872e41de99566e4aedea165f642ec188eb9700a2c20071aff61",
+    "qualification/ag/candidate/source/client_portal/tests.py": "36eae92d70dd00137f1c4efc7575a360276c1d56eaac0a661976d9fd263825b3",
+    "qualification/ag/candidate/source/client_portal/urls.py": "2761f386cc6cb3be0f88cb126e18b0263fc891b926c875c3a08b9d6f487d78d1",
+    "qualification/ag/candidate/source/client_portal/views.py": "873265ed65395f5caeb6965b7afb811c956c40c2698614a9982b6c15c67bd95a",
+    "qualification/ag/candidate/source/client_portal/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/gestion_joueurs/admin.py": "b2e328e31f08dc907100505521d13ee6a9ea67a240655d051120011ce49cfaf8",
+    "qualification/ag/candidate/source/gestion_joueurs/apps.py": "5bfa763eb6067d131aa56165f1fe4808c54a3cac800daf19135de8bfc82e7a7c",
+    "qualification/ag/candidate/source/gestion_joueurs/automation_agent.py": "ce1dd497d52b80aebd825863ffafc943a20309969f7f2a98dda73e3aaa44085c",
+    "qualification/ag/candidate/source/gestion_joueurs/automation_progress.py": "9ca79f5c41a371a2378df4908f39ee877fc2a550450a1b8e5cbdab0a5fa13b76",
+    "qualification/ag/candidate/source/gestion_joueurs/context_processors.py": "170782c3d852881dd3d3adff8a74f590cbc304804a70d99d78a0903fa98b12c2",
+    "qualification/ag/candidate/source/gestion_joueurs/deadline_planning.py": "10c544b7ec0b374298b64636428724f3aff8800dda976848b12c681e6d8aa878",
+    "qualification/ag/candidate/source/gestion_joueurs/decorators.py": "4eedb1ad85dc7fa33ea97797a1004bbfaa5a8c62b817bba1534530558431469c",
+    "qualification/ag/candidate/source/gestion_joueurs/forms.py": "6d41f636c9bcbc118615eef3a1e8cb89a4c768b8a7a5e00d2233dec492c7df0e",
+    "qualification/ag/candidate/source/gestion_joueurs/intro_generation.py": "b111a56e31d5a758675685d2b23bb89fb7160fd81dbace6b43ef479cbc51dd3f",
+    "qualification/ag/candidate/source/gestion_joueurs/intro_playwright.py": "bf23985d12e7ecb160caed24656174a9f26ff96e7726532bfe7efedd43849323",
+    "qualification/ag/candidate/source/gestion_joueurs/jarvis_api.py": "fde0e752f7242021ba262a48c6f6bed0952c540391ba646a79b4c0ae99a6a9f1",
+    "qualification/ag/candidate/source/gestion_joueurs/jarvis_bridge.py": "bbbdb46543743b9b58a471ce7df3880f13eec3a24dab729fb0a1528a847462ed",
+    "qualification/ag/candidate/source/gestion_joueurs/media_validation.py": "f9c0dd89de85fbb773b2c4962c671b49601b1400b3c8df57171fc9dbc34060b2",
+    "qualification/ag/candidate/source/gestion_joueurs/middleware.py": "4184da1a6ce7e45004ba618b4f6d3d00185d355b21e6929d2c459811fc6dc0d2",
+    "qualification/ag/candidate/source/gestion_joueurs/models.py": "384658d14c317c24ecf8bf3c088889e5bc2fd8b1f9006213de548b2aec0a8143",
+    "qualification/ag/candidate/source/gestion_joueurs/premiere_automation.py": "0304f89452d5eb97575c5f523ba6414c4cce353e5eb9b9c1dd105808e0ec0fbd",
+    "qualification/ag/candidate/source/gestion_joueurs/presentation_styles.py": "52399c446730cab8e8e694a862e5a75c587cc344145d7278d45b63f3c8a86b90",
+    "qualification/ag/candidate/source/gestion_joueurs/signals.py": "ce69b17b01f0c383511a02ffc1e262de4ac45d94cbeac5f9b9092504ed5e9758",
+    "qualification/ag/candidate/source/gestion_joueurs/sportsbase_playwright.py": "7a8d4dbf1758d7688eced300dad573a087c8f9a5e93d7964122b431ab6078213",
+    "qualification/ag/candidate/source/gestion_joueurs/tasks.py": "6fe0a95100ac9e983cad276261be3849f283cd5c100b4b3f2c8cf6716c79dec5",
+    "qualification/ag/candidate/source/gestion_joueurs/tests.py": "ef1b57d0419e57c2e46377e99e3aa4931f07916e78a6d869eb2566560e2748a1",
+    "qualification/ag/candidate/source/gestion_joueurs/tests_jarvis_bridge.py": "4f65c17313507de8b4a35fc0ac035761c8d3e4af852a330a41c893c9fc28c6ae",
+    "qualification/ag/candidate/source/gestion_joueurs/test_intro_generation.py": "b5cba45be807a743e203819052ee35a1f1986189a91809e65a21984f5d8d450e",
+    "qualification/ag/candidate/source/gestion_joueurs/test_premiere_automation.py": "6f1be1e228b2b41ece0e06ee333feaf6bbcd2672e4d9f45f57d20a274187850a",
+    "qualification/ag/candidate/source/gestion_joueurs/transfermarkt_assets.py": "b4b304db88386a04c790c3c1c0d7a6284beef68eb14a0c2fcc278f891bb84845",
+    "qualification/ag/candidate/source/gestion_joueurs/transfermarkt_fetcher.py": "237f53dfd242abc603ebd00ff440b9e51f320fdaa793cf289dff26c734b6be96",
+    "qualification/ag/candidate/source/gestion_joueurs/urls.py": "7017d7ddb5dfc45d63e09b1d531ec72d23179c4a9753b488e6e01712bfd11641",
+    "qualification/ag/candidate/source/gestion_joueurs/utils.py": "c67a03b88976af2fb3c4c0956ae3e7917d34d382fda36c21aa4112ccbeabf05f",
+    "qualification/ag/candidate/source/gestion_joueurs/video_status_whatsapp.py": "eafce2d3c8e5bff8d2583494850fd6225e1541e74e5d0bb002ff433e55ffb9d3",
+    "qualification/ag/candidate/source/gestion_joueurs/views.py": "1d44396ae540c5d79ecacdb156f9792adc4d06b201c0f242bf8f89e8384c18b7",
+    "qualification/ag/candidate/source/gestion_joueurs/whatsapp_delivery.py": "b112e81799e474cf497ece69c55f0f33dd1c28c01cc32a6e92d7711b10f7db37",
+    "qualification/ag/candidate/source/gestion_joueurs/__init__.py": "57333e7ac3e0e407166f36b0b12a9ed7415554d71b90820b763530efc87d482f",
+    "qualification/ag/candidate/source/ms_football_gest/celery.py": "437a4c36258205551b5b2595b79f289169be221659019363a0d5e02fd75f5cdd",
+    "qualification/ag/candidate/source/ms_football_gest/__init__.py": "cccfb8e756e70f568f9acb192d0cf675f822d54021c3364c8f1a9a610506ecee",
+    "qualification/ag/candidate/source/prospects/admin.py": "35d411ab7fc458855d3f6867c298ca0b40bb0190195c45297a6edf7e5b055a24",
+    "qualification/ag/candidate/source/prospects/apps.py": "09292b79fd3a2d6f4d8b652c3578085bad8309634b928feda0edecf5ceb30526",
+    "qualification/ag/candidate/source/prospects/forms.py": "571128179ce49d875ceb1793b53e9bef7ffe0cef082b110fd46f56b819d7eb07",
+    "qualification/ag/candidate/source/prospects/models.py": "8f9f635cec82eef7b0c7c1b17697c9f9abc1d35189031a1dff347c0776018b1f",
+    "qualification/ag/candidate/source/prospects/services.py": "e4d23c5c610fb1c031af9969888d6ed554269a451bd73292ea33cf78ad14c1aa",
+    "qualification/ag/candidate/source/prospects/tests.py": "17ead8a0e48151fe0d365d2bc19e8220dfd7916969fbe36b3d0500490184ecfa",
+    "qualification/ag/candidate/source/prospects/urls.py": "4fce2fd486b0885065ccdde2fb8e6fee43af68aaaef29d31c4b7c529cd2ed2c0",
+    "qualification/ag/candidate/source/prospects/views.py": "bf838399921f807fcc1499e44d228a30ed7f2c5dc59bad0901edded105894a0c",
+    "qualification/ag/candidate/source/prospects/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/sportsbase_data/admin.py": "ccb47eefcbb6ef0a22d0c7b819208342ef5e8b22c51ace7a3cda6d24a708cc77",
+    "qualification/ag/candidate/source/sportsbase_data/agent_config.py": "2c010b486bf287ea0ba3346b41e4ad54619055b6a832b68bea2ccfbdc9f3d35f",
+    "qualification/ag/candidate/source/sportsbase_data/analysis_engine.py": "04e0c8d94a17f8fbf90063bc54b35ca50cd5191541e81c789313f8d0218b677c",
+    "qualification/ag/candidate/source/sportsbase_data/apps.py": "0931f6237081742f029fec58be50bbc6235c457a3a76af09265cddc21cb5811c",
+    "qualification/ag/candidate/source/sportsbase_data/dailymotion_links.py": "bf299b19ebc11e7421ff905cc8d697017857279df1aff5ef0029940edf31746b",
+    "qualification/ag/candidate/source/sportsbase_data/dailymotion_uploader.py": "54685e2fb6dd247d811f5b4234f82cba3bf7bb67639f3a5b2017a69f4ad269c2",
+    "qualification/ag/candidate/source/sportsbase_data/delivery.py": "f994760ff51bc1ac2d33115cb1b8fd2b191ce5556bde57a7fa356869ac90f22d",
+    "qualification/ag/candidate/source/sportsbase_data/forms.py": "8620974c843350ba4e1825f4fa9e36868eb9c144a1f65101ebc8604307e0b997",
+    "qualification/ag/candidate/source/sportsbase_data/local_agent.py": "e5cbe78c744fb80b9970eb31f873eefb1ca3db195fcb095827a89047fb936720",
+    "qualification/ag/candidate/source/sportsbase_data/local_delivery.py": "fed9f331e49d20d10b04ae92e4377f1202c1f14c019df5485959717f3d07836f",
+    "qualification/ag/candidate/source/sportsbase_data/models.py": "749b45bf0018adcbfaff881fd76255d7ad6ab009d9e1fdf883418df5ccf4fa72",
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_history.py": "a2e0603a2e11697dcebd33f402f310ab1d51ff94f83f102e25a9d0a781fa98df",
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_proxy.py": "4bcf08a4f48c1d40d5663004ef9665b33baa12ae2bab18ae93ceb8ac4d326f07",
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_views.py": "c978d2305a0e63de0b42b24e92f613ee8b4b0e3f528a9b76a7706d3d34775eda",
+    "qualification/ag/candidate/source/sportsbase_data/reports.py": "80b06424734bc414ce06fbc0bc8d46fb6ecd6cdf2a1995b3481a88718c1c6595",
+    "qualification/ag/candidate/source/sportsbase_data/report_pdf.py": "466a59c1e2fd67018162af9af69f7fbcc14d093d57c910260f0c8a8797f02367",
+    "qualification/ag/candidate/source/sportsbase_data/scraper.py": "cbab79323f2ea0bb4b59e1490a222b4918fd453f643230e828b94e7c061449bc",
+    "qualification/ag/candidate/source/sportsbase_data/services.py": "2f163f5d5a5d0d8d52d97d2bc5494bb33d421e747f14c4304a39e5d9b8d008da",
+    "qualification/ag/candidate/source/sportsbase_data/tests.py": "4af66774fb209124f482414e97adedd22a7b95c6809f83e75c5b5adad1cb8f7b",
+    "qualification/ag/candidate/source/sportsbase_data/test_analysis_engine.py": "42470b16d955dc45c4f1ebe17200ad3d37350fd6bc0d923e5954f12d980aebaa",
+    "qualification/ag/candidate/source/sportsbase_data/test_dailymotion_uploader.py": "192fb8bfc43a10dce279fb2d6ee8fc3262fade32e1ac5a639bff362b55ad30cb",
+    "qualification/ag/candidate/source/sportsbase_data/test_local_agent_config.py": "663ef6f4be926b1ea148f16804d059c98dcee9a8f6a63f7bc26f82f85cf1bd86",
+    "qualification/ag/candidate/source/sportsbase_data/test_local_delivery.py": "e48db1d4673329f7ebbb10d7e791f63b56ac756fc582b67c2773642312e315b8",
+    "qualification/ag/candidate/source/sportsbase_data/urls.py": "2bc91c09aa5b679ca398a788e2d1f5e5901850a458c1a646c6ca8e0f463a6235",
+    "qualification/ag/candidate/source/sportsbase_data/views.py": "88f68f562893dcd2aa2b288463af6a32439b83171b73f5ab1fc45b59488b3ed3",
+    "qualification/ag/candidate/source/sportsbase_data/xlsx_statistics.py": "c0b71a97742af32225f22fce6f9bbf4b551a813d54202c6e885111ffc2b4a97a",
+    "qualification/ag/candidate/source/sportsbase_data/youtube_uploader.py": "6c23a1a087aa1c92f95fe1dee1b1415a3271a325dff2f490de8d7ca3ae95b1b7",
+    "qualification/ag/candidate/source/sportsbase_data/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0001_initial.py": "ebe498f32dfc9271ac618742467c0a4ca07c5db930e883f3442c99ba289af8e7",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0002_youtube_all_actions_delivery.py": "cd35bdde41eb63964caa7bded01858710d003696c57512c9380af9784be61d99",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0003_performance_report_notification.py": "bef7efecb7d6757f03ac6dbfd57166a151b0f285fddfd68686ca40e93846df4a",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0004_match_analysis_payload.py": "9d672e8dced1bfa07330bb2aa72b699003902ae65190b8459f1fa287a98eb9f9",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0005_performance_subscription_payments.py": "3b9a7d80c185d2b4cf055d70fbcccd69c750bc3af9adab42c4b86f75cda6264e",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0006_dailymotion_all_actions_fallback.py": "6786e22dae0331eed264671d85e17bb69c3487b820f85b4e5674089536ec161b",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0007_dailymotion_manual_link.py": "65e3adc5279f6633b91b32ceed746b010666dcbcbf17e66487e65fe8cdec844f",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0008_agent_monitoring.py": "4c6e7a8b989a144d7139cb6072ea455cc7af58b70ce618b5458c324c6ab2cb7e",
+    "qualification/ag/candidate/source/sportsbase_data/migrations/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/sportsbase_data/templatetags/performance_extras.py": "1530140bbb87c6291a510735fa2d512b3b0aa58b8b08e06398f09cca661faf12",
+    "qualification/ag/candidate/source/sportsbase_data/templatetags/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/prospects/migrations/0001_initial.py": "e62f1f6522e9c45ff445331b5146bb98f8ac83752152cef703f995a558f44795",
+    "qualification/ag/candidate/source/prospects/migrations/0002_prospect_date_of_birth_prospect_league_and_more.py": "903703c159664b21f08ee98b9a5a79b7e22dd3c754863fa48f86f01fe6de0ce8",
+    "qualification/ag/candidate/source/prospects/migrations/0003_alter_prospect_country_alter_prospect_match_links.py": "3ca31fa3e098dd3c479810847557f0da14e9c78c7214bc4ff1927916bdc78c7b",
+    "qualification/ag/candidate/source/prospects/migrations/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/gestion_joueurs/management/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0001_initial.py": "f44a6e3d86c9ba0d610bebb838da9f3d80508b7023afd5fa6040bbb8758a3419",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0002_remove_videoeditor_email_remove_videoeditor_name_and_more.py": "2872e9828f8eddbd59edd387921dad0856b30110c68516a83c09a75ca3a30659",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0003_remove_player_email_remove_player_name_player_age_and_more.py": "ab5625b7e2f741db77068c0a3029a04f1c1789d9b838db0fa9a6659f46c41a14",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0004_remove_player_age_remove_player_first_name_and_more.py": "c4fcaecd3a8045049d9d9810ad51417206de8da3d8d7bdf80310d2f2e4377809",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0005_player_age_player_whatsapp_number_and_more.py": "6364e3c604d8ef262d0158bf5b4cc145ea089febcdc1fc2bcf72792f10a9c22a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0006_alter_player_age_alter_player_email_and_more.py": "790fb798b743229db91ec6bd63a02c5efb1d6bc6b152974b1339530d63bf6865",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0007_alter_player_email.py": "6d9cfa37130f5325320fb5916017f7fc0de6ad439066341e0c13c179ceaba5bb",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0008_alter_player_age_alter_player_club_and_more.py": "252e2dc4039f1a4c936a68680ad5c9cb86d969d512dbc41020c44880212fd4bc",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0009_alter_player_email.py": "f09e5dc1b0f2bb626d4b9d26bd4bacae45f80c0c34251de4e9413ab75346d277",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0010_player_league_alter_player_email.py": "e59cb06f98dd6e331595f9dd673140e88117e8110d91540eaf0dafdba30c1344",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0011_alter_player_email.py": "a840885e2e003e5a7219e9a9a7a09f02b27036c459f6625fda50c8520ef9dbfb",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0012_video_info.py": "4d32d6eb8bfd298cdd3c7edbe36e266ff1460a82ca2ec39e082da4b5dc9fac35",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0013_alter_player_age_alter_player_club_and_more.py": "529ed60126b22dc24c56ab2be986e61db4bc8138e68f723c89a094358a643dbb",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0014_payment_remaining_balance.py": "fe7eb323488d256ce05a4fb5a2c5c6312e6a85394377d936f021f59d8154c8c7",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0015_video_season_alter_payment_video.py": "d94a65cfe54d126081b2e99c7b797bb02c2f55de9e626a1662a05a2e5264fbd5",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0016_player_date_of_birth.py": "81ea0f29151c68aa62e2f94cc2e204b18a964db43072d7b81a3c01f81065f8bc",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0017_video_club_video_league.py": "2bd4e9cccd0242ca995a59ad83ef274e038661b6c273008978ca027cda78323a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0018_videostatushistory_created_by.py": "d20caa55bc1c3a4fc15c3eefc3c6d4f5ededea0049682f706ffa1175ee5a866f",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0019_paymentcategory_payment_method_and_more.py": "fa992ed8404b8901a08875a15e596972c5a35168e60ff526256d27a68bfea0a8",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0020_remove_invoice_due_date_remove_payment_method_and_more.py": "6350ba7d0e6ef16fb6517e2dedd1ea4e9c174cc573ca1a058785a5c99a1ab3f6",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0021_alter_invoice_video.py": "34fd02f2c0545d12e9847d2a08baf760844d33837a38a1a2f5035e9884b67563",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0022_alter_invoice_video.py": "a747b73a2d3d8dbd23f1e850d8d927343bc9a9e274f6db00c41a597345dd156f",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0023_alter_invoice_total_amount.py": "3058c736fdcaa9f75563f96399c7c4da4947bdba24e7039e57b968a4a323e996",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0024_payment_payment_method.py": "9a1670c06f8a346e8aef54a8dbf159de93279575014a3c4bd0d53f889dd3665b",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0025_salary_expense_salary.py": "681fe554787d19c1580e8ece9f13164bfc7840a6e6e0f9909003413bcbe0ee1e",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0026_video_salary_paid_status.py": "de5c6a0d7cd44dc3f7fd5d2b94802dea66fc8d46c69b6f7a012179c634c9cfe4",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0027_remove_expense_description.py": "8589c0a1ca277157a811288349a1adb5fbb56a6385d524ca8d29b35d3da96034",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0028_expense_description.py": "4e28e6e2c2154b4d7b0d2e068ef12165f9b110fbae45e1958091f0026a851f45",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0029_alter_expense_category.py": "168399968a60884e517f95235b4983cc4456054d0e6f0d3e5b1d0452f8d02f60",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0030_video_video_creation_date.py": "cc507993a41b535d0c234ca4a91e830d22fa9fba85568f855fa49a32845b01d1",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0031_alter_video_status.py": "974a8f455f3a52f6d7e2b1c210b7f8e4d85258b5214e91e6e3f8739605476ede",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0032_player_player_creation_date.py": "e0fea6f9a831a1b35760e69e2cfdfd85b8dfddb7018896405aa51b6c4a83ab64",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0033_player_client_fidel_player_client_vip_and_more.py": "63d04ccc4f3d7a07b0db367cec0b5292954d74a34cd544291a591eac471052da",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0034_notification.py": "00a6c8a06edee55750b251a418cfe4e2d94c0be65f82fb05dca474efc522641a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0035_notification_video.py": "ce0dc4556a2aeb54dc2c2fe22b26099e621d1771613cfaef5c068b766f9391c9",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0036_notification_type_alter_invoice_status.py": "f9f52350e7e5c353f4afe189eaceebe071827f66549666133f1d623c54c2e9e6",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0037_alter_invoice_status.py": "d3b3984f9a405faca6b4850fe9dbb56c6716b3b0e916852ab6fd59ad77fbf3b3",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0038_rename_type_notification_notification_type.py": "2409a25b523f7b8aaac96736c003e7a1ca03088dc0249ef993cd0613df507b51",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0039_notification_sent_at.py": "8177bd75e37ce0cb827b8c584827761adfa54c639c3077382cb799d4cb0440fe",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0040_notification_player.py": "14ee8707fedac121effef152d1f0da854dc58408521f82b62442a096bd947b7a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0041_nonvideoincome.py": "f496c3c9f0a3469b697f72c0f335b7b6bf9d41645051c0417dd044b291733072",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0042_alter_nonvideoincome_amount_and_more.py": "4f22908273aef95776d5a9f5c38f392beb183ddc463a2a167bee93ef0d586207",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0043_financialreport_total_outstanding_income.py": "3d8057188d36bb54f73a5e9b551d5e03f00fcb98be31bbd17adb2d01ddf2dc32",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0044_financialreport_net_revenue_if_all_paid.py": "b91b1bf485142e9a010792e7a2359146fd1949dcf9dab4232a0a087d5f125af4",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0045_financialreport_global_income.py": "6110f787eb8c6cd46331a476b7f4b09c893be74c4167823a84eb5825044ffb7a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0046_rename_global_income_financialreport_global_income.py": "f1d2e787ebde591d62b223478e6842dfbb20001c9abf2ca77a542c09cf9197e9",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0047_notification_sent_by.py": "bc764e1a1669eb2d02395ba1e72bca654f6e877edbfa55560a72752ff9922694",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0048_alter_expense_id_alter_invoice_id_and_more.py": "34782f6f20d9298715209469f14bd713018c8ee86b43b2138a937ee11176afad",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0049_alter_invoice_id_alter_nonvideoincome_id_and_more.py": "01a4c3af03587215d7b05febd5a1cc60c2de78655f1149d2325adc453d67851d",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0050_player_sportsbase_url_player_transfermarkt_url_and_more.py": "bc7a93f4017196a2fcde34204ad03ccd6d5efe9ca4930c24e3a9d298ab2805e4",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0051_video_delivery_automation_completed_and_more.py": "8fa34ce07c984af9fd79d073d6015453fc49e845eb4fd6a9bc721a8a32288b64",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0052_video_seasons_to_process.py": "58972806389b8c1b51ce68d8d171b2f84d6ae90b42366b3961da94444d444386",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0053_video_intro_automation_completed_and_more.py": "2951b2fddefd760d03d2a01f8e6e4024aea403bfa50c32d66d158f23740a6480",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0054_video_intro_automation_enabled.py": "1a5db4f2b026bccf2c87fe10d24a40a79499bacd22c5c09a84a69c999349cb39",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0055_video_client_portal_visible.py": "647d711148de7dce402266058983310fdf094f5dfe2adef1af550b8787273c0d",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0056_alter_video_deadline.py": "a1c9dd414b77f1cd633f8abcc116203984ac5cd2f8b21a531352e8b82badd11b",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0057_automationrun_automationevent.py": "15259e86f4458f2d3eee760e189487bae9a1b9c1da0d309cafbaa36013de4449",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0058_video_intro_presentation_style.py": "396c6d0c845d6c8b41de78c4d3a35589104f1c24c8e6011dda1caed0e3f032d1",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0059_video_academy_order_fields.py": "83f79f039ee38d4eaae5403ff3d207d79f317bcbf3f6f1f3732c16f4c5d15c5a",
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/source/gestion_joueurs/templatetags/video_filters.py": "91446637c8fe763b3a99dfe29be3c7a3614f0e96a31815621f0fb68a34c5142f",
+    "qualification/ag/candidate/source/gestion_joueurs/templatetags/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/run_jarvis_bridge.py": "f831c4edcf67ba3e683d0eb51427e52d8e19909e1f5b6b02158f2f85409050fe",
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/send_reminders.py": "3e9ac014c7e035edb058b7fb83cd1230af2673870d9cc4c6a854254a9954b760",
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/source/client_portal/migrations/0001_initial.py": "5bf35522840c2b87038d1a54a9150f51a7efada1353e764b5ba1e68e22197d25",
+    "qualification/ag/candidate/source/client_portal/migrations/0002_organizationplayer_ended_at.py": "02f9ff49d9453d99968a4843835b7c5d2f3dddcc494dbe0ea87e2e05c77dadef",
+    "qualification/ag/candidate/source/client_portal/migrations/0003_organization_google_sheet.py": "bc49e34ce8f3f9167d4a725caf76b872762f7ba07176edddc07b019cc57e6854",
+    "qualification/ag/candidate/source/client_portal/migrations/0004_organizationplayer_expected_matches.py": "02c960ebab737b4ec4ae846cf39e74a1e950d0dc19f8ed4f4c540f23b7ad5f5c",
+    "qualification/ag/candidate/source/client_portal/migrations/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/client_portal/templatetags/portal_extras.py": "d6c23b0b267ff0058bcf028090a7d9df6159de32cd463fb7bad9767202fe2e8c",
+    "qualification/ag/candidate/source/client_portal/templatetags/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "qualification/ag/candidate/source/actions/migrations/0001_initial.py": "deb1b8d9e877db21aef295faeb26efd18bdeabba8509bb77f29cf3c37faaa51a",
+    "qualification/ag/candidate/source/actions/migrations/0002_quotabucket.py": "0911c5864408084f0f10074104040bb30b7ee031abecb41dfa89b37f70a98296",
+    "qualification/ag/candidate/source/actions/migrations/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qualification/ag/candidate/original/actions/engine.py": "47e0f250f99cd50de1f75fdde11ca75fd762511708523dbbbe57edf20cfd4b80",
+    ".github/workflows/action06-linux.yml": "ffc1cf05c61bbbd5469c16e834f6128d7b603af8c9792d247302dd74690c888f"
+  },
+  "base_branch": "ci/hermes-actions-linux-20261028",
+  "base_sha": "54abe72a21f87da8b1660a477b216f021699d7a5",
+  "source_pin": "22bdee407d63a80d6cb9a82952b7a79a51206caf",
+  "distinct_ids": 90,
+  "scope": "Qualification fixtures only; SEC-01 unused Telegram bot module excluded, not complete source byte identity.",
+  "provenance": {
+    "qualification/ag/candidate/test_actions.py": {
+      "sha256": "33b03ec0c094d758fe92e6ad15cd4b4085faafbab4323b6d51312535ba773c93",
+      "origin": "action-general-01/unified-fixed/test_actions.py"
+    },
+    "qualification/ag/candidate/test_compatibility.py": {
+      "sha256": "41474011bb47a55484ed14681f56e5336a3fd59b0a687f7fa8e7a4fb28e9ebcf",
+      "origin": "action-general-01/unified-fixed/test_compatibility.py"
+    },
+    "qualification/ag/candidate/test_declarative.py": {
+      "sha256": "d69aad0a0d5af59e160d116bb782810dffc443b886fde0b7b64c7ed15b594af2",
+      "origin": "action-general-01/unified-fixed/test_declarative.py"
+    },
+    "qualification/ag/candidate/test_df01.py": {
+      "sha256": "a3417921440e39bf298a4b66c2473ee1c8fa3670e7ef196a14283fe502eb6572",
+      "origin": "action-general-01/unified-fixed/test_df01.py"
+    },
+    "qualification/ag/candidate/test_final.py": {
+      "sha256": "13a68e939349b81ba12fff4009c04ebb36732104f0ff45294abf9a699b8e6b25",
+      "origin": "action-general-01/unified-fixed/test_final.py"
+    },
+    "qualification/ag/candidate/test_integration.py": {
+      "sha256": "fe7a32600a705454b346d2ffcee7b4b3977e7b66e40af5fe242a5d976718ac7b",
+      "origin": "action-general-01/unified-fixed/test_integration.py"
+    },
+    "qualification/ag/candidate/test_merge.py": {
+      "sha256": "2c22502e1817ccaf70b2262e9f0a929355f70c392e7dcdb3c3dbfabb1a94ba56",
+      "origin": "action-general-01/unified-fixed/test_merge.py"
+    },
+    "qualification/ag/candidate/test_unified01.py": {
+      "sha256": "9071a56edff8a5446bd463c777ac78432c571d1996ad9db4241f1fd5784655de",
+      "origin": "action-general-01/unified-fixed/test_unified01.py"
+    },
+    "qualification/ag/candidate/test_wf01.py": {
+      "sha256": "ea26dba65a50b7267c70db6b74e2f22b1a6bccdb99de1a090268c10df70b483a",
+      "origin": "action-general-01/unified-fixed/test_wf01.py"
+    },
+    "qualification/ag/candidate/test_wf01_http.py": {
+      "sha256": "cfaf5b93f829894660fc718d78539a8d9809df177648c5b7dca90c85001e3cf5",
+      "origin": "action-general-01/unified-fixed/test_wf01_http.py"
+    },
+    "qualification/ag/candidate/test_workflow.py": {
+      "sha256": "192ac8407d7b217246e8d793bdd656522585025ef65adc7bf2c0eb5aa4ddbc3a",
+      "origin": "action-general-01/unified-fixed/test_workflow.py"
+    },
+    "qualification/ag/candidate/test_workflow_more.py": {
+      "sha256": "e189d7665f5181f8566383bff8b8bdd4fd853fead36e2b5e4f4b57abc21bf574",
+      "origin": "action-general-01/unified-fixed/test_workflow_more.py"
+    },
+    "qualification/ag/candidate/test_workflow_safety.py": {
+      "sha256": "5ab1d8ff2e386375f3f6292842b72527ab3251070fcae487e716df897ff99e86",
+      "origin": "action-general-01/unified-fixed/test_workflow_safety.py"
+    },
+    "qualification/ag/candidate/effect_audit.py": {
+      "sha256": "77394b208c53b3192ec09db6faa4417a20e6d64bcd26ef8cd17052ae1eb86ad5",
+      "origin": "action-general-01/unified-fixed/effect_audit.py"
+    },
+    "qualification/ag/candidate/lab_settings.py": {
+      "sha256": "c8a85a49de12bd33d7e0c727ee8d6b98ebc52f9bde43822416e9eecd6aae56a2",
+      "origin": "action-general-01/unified-fixed/lab_settings.py"
+    },
+    "qualification/ag/candidate/lab_urls.py": {
+      "sha256": "86ee6ac68f705244b145e00a2068718b2534e5f436ab9dc82e580cc65f4fc80e",
+      "origin": "action-general-01/unified-fixed/lab_urls.py"
+    },
+    "qualification/ag/candidate/worker.py": {
+      "sha256": "d45d6ea8d349f05a29fff3551b4f0d795557059a37db174d19ccc38a368c318b",
+      "origin": "action-general-01/unified-fixed/worker.py"
+    },
+    "qualification/ag/candidate/readback_unified01.py": {
+      "sha256": "4cb6c8d7fc18c7f7479f29b7107dce80d99a093ec5b1fe56a583b9c3adb2c063",
+      "origin": "action-general-01/unified-fixed/readback_unified01.py"
+    },
+    "qualification/ag/candidate/source/actions/declarative.py": {
+      "sha256": "e0c91878bbfa9e3d51906c9dbe00ad896d79d566916135eb9f8d402fd684c1e3",
+      "origin": "action-general-01/unified-fixed/source/actions/declarative.py"
+    },
+    "qualification/ag/candidate/source/actions/effects.py": {
+      "sha256": "578e54a81e8c2d5dc44063639d5ec8393d18cec1ec42129f99bce4ac17baf720",
+      "origin": "action-general-01/unified-fixed/source/actions/effects.py"
+    },
+    "qualification/ag/candidate/source/actions/engine.py": {
+      "sha256": "0933c3580356cae1594ba543e1ff0f6b83290e338a27f0b08c35d28fcd15a79e",
+      "origin": "action-general-01/unified-fixed/source/actions/engine.py"
+    },
+    "qualification/ag/candidate/source/actions/http.py": {
+      "sha256": "0051790609a28b341ff9a73b5ff89a27864fc6388f4e782ed28d38413b9c52f6",
+      "origin": "action-general-01/unified-fixed/source/actions/http.py"
+    },
+    "qualification/ag/candidate/source/actions/limits.py": {
+      "sha256": "c3d06fd49552d22ace132a6f9e71998b67b9605b6803ffdacbdface1cd01b723",
+      "origin": "action-general-01/unified-fixed/source/actions/limits.py"
+    },
+    "qualification/ag/candidate/source/actions/models.py": {
+      "sha256": "49a0a34ad11ded6093d7f14d42b782dbebbcbf33c6ac72a9a16ccfad71fc9bc9",
+      "origin": "action-general-01/unified-fixed/source/actions/models.py"
+    },
+    "qualification/ag/candidate/source/actions/mount.py": {
+      "sha256": "2932e8bff25df8a88c9efe7a86c495688f6b6487d4017eb0419f76d31560c1e3",
+      "origin": "action-general-01/unified-fixed/source/actions/mount.py"
+    },
+    "qualification/ag/candidate/source/actions/pilot.py": {
+      "sha256": "f112eec924d241831eadf2d1384af8c17e5e7542d753dc1498a90b87de368db7",
+      "origin": "action-general-01/unified-fixed/source/actions/pilot.py"
+    },
+    "qualification/ag/candidate/source/actions/registry.py": {
+      "sha256": "ca1b4b985bd13d1804748c2ac7fc572ce11e9bf90ae33e2bb81338b304c2d79e",
+      "origin": "action-general-01/unified-fixed/source/actions/registry.py"
+    },
+    "qualification/ag/candidate/source/actions/workflow.py": {
+      "sha256": "593a441458123195735803802ea187e2f0c40034e6fb9e1d8ad28e2f90639506",
+      "origin": "action-general-01/unified-fixed/source/actions/workflow.py"
+    },
+    "qualification/ag/candidate/source/actions/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/actions/__init__.py"
+    },
+    "qualification/ag/candidate/source/client_portal/admin.py": {
+      "sha256": "5c4bd1e99ed71e95c96d803141e4688b706e527268d9cebf8020c0c071c1614e",
+      "origin": "action-general-01/unified-fixed/source/client_portal/admin.py"
+    },
+    "qualification/ag/candidate/source/client_portal/apps.py": {
+      "sha256": "60c78861bde2a237ac9728d5718a4a13576685adf666790af66b67f911631cca",
+      "origin": "action-general-01/unified-fixed/source/client_portal/apps.py"
+    },
+    "qualification/ag/candidate/source/client_portal/context_processors.py": {
+      "sha256": "94a40209f9f0382fc61997046f0ea7d850a59bce87133b1c9d7bb3904f5c5c35",
+      "origin": "action-general-01/unified-fixed/source/client_portal/context_processors.py"
+    },
+    "qualification/ag/candidate/source/client_portal/decorators.py": {
+      "sha256": "d800df13d12e9ebfb7d8e1931ad623226af48d47edfb8d6518f9378f7207cffc",
+      "origin": "action-general-01/unified-fixed/source/client_portal/decorators.py"
+    },
+    "qualification/ag/candidate/source/client_portal/forms.py": {
+      "sha256": "9d07e12ec593bb2fec57ea5dab17bb874b8e8ff145f679478c9afddc3145a74d",
+      "origin": "action-general-01/unified-fixed/source/client_portal/forms.py"
+    },
+    "qualification/ag/candidate/source/client_portal/google_sheets.py": {
+      "sha256": "a33630630900897f6eaf93c9268354cbbd7ea4eeaf4788f4d584086ea8f1ba77",
+      "origin": "action-general-01/unified-fixed/source/client_portal/google_sheets.py"
+    },
+    "qualification/ag/candidate/source/client_portal/middleware.py": {
+      "sha256": "22577785f608d2131cbb38ff3827db741755cef7090e81ecab69e92ca567f612",
+      "origin": "action-general-01/unified-fixed/source/client_portal/middleware.py"
+    },
+    "qualification/ag/candidate/source/client_portal/models.py": {
+      "sha256": "bf091c25adfaf1b1af0c21c28e9e4064159af47149a958bb3b78d1fcdacd1de9",
+      "origin": "action-general-01/unified-fixed/source/client_portal/models.py"
+    },
+    "qualification/ag/candidate/source/client_portal/portal_i18n.py": {
+      "sha256": "0d99dbe781c75ea6b484055aed413b080d65ac9ed6f7894224d18d21b8bb569c",
+      "origin": "action-general-01/unified-fixed/source/client_portal/portal_i18n.py"
+    },
+    "qualification/ag/candidate/source/client_portal/services.py": {
+      "sha256": "fa7db8dd0d474872e41de99566e4aedea165f642ec188eb9700a2c20071aff61",
+      "origin": "action-general-01/unified-fixed/source/client_portal/services.py"
+    },
+    "qualification/ag/candidate/source/client_portal/tests.py": {
+      "sha256": "36eae92d70dd00137f1c4efc7575a360276c1d56eaac0a661976d9fd263825b3",
+      "origin": "action-general-01/unified-fixed/source/client_portal/tests.py"
+    },
+    "qualification/ag/candidate/source/client_portal/urls.py": {
+      "sha256": "2761f386cc6cb3be0f88cb126e18b0263fc891b926c875c3a08b9d6f487d78d1",
+      "origin": "action-general-01/unified-fixed/source/client_portal/urls.py"
+    },
+    "qualification/ag/candidate/source/client_portal/views.py": {
+      "sha256": "873265ed65395f5caeb6965b7afb811c956c40c2698614a9982b6c15c67bd95a",
+      "origin": "action-general-01/unified-fixed/source/client_portal/views.py"
+    },
+    "qualification/ag/candidate/source/client_portal/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/client_portal/__init__.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/admin.py": {
+      "sha256": "b2e328e31f08dc907100505521d13ee6a9ea67a240655d051120011ce49cfaf8",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/admin.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/apps.py": {
+      "sha256": "5bfa763eb6067d131aa56165f1fe4808c54a3cac800daf19135de8bfc82e7a7c",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/apps.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/automation_agent.py": {
+      "sha256": "ce1dd497d52b80aebd825863ffafc943a20309969f7f2a98dda73e3aaa44085c",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/automation_agent.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/automation_progress.py": {
+      "sha256": "9ca79f5c41a371a2378df4908f39ee877fc2a550450a1b8e5cbdab0a5fa13b76",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/automation_progress.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/context_processors.py": {
+      "sha256": "170782c3d852881dd3d3adff8a74f590cbc304804a70d99d78a0903fa98b12c2",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/context_processors.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/deadline_planning.py": {
+      "sha256": "10c544b7ec0b374298b64636428724f3aff8800dda976848b12c681e6d8aa878",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/deadline_planning.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/decorators.py": {
+      "sha256": "4eedb1ad85dc7fa33ea97797a1004bbfaa5a8c62b817bba1534530558431469c",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/decorators.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/forms.py": {
+      "sha256": "6d41f636c9bcbc118615eef3a1e8cb89a4c768b8a7a5e00d2233dec492c7df0e",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/forms.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/intro_generation.py": {
+      "sha256": "b111a56e31d5a758675685d2b23bb89fb7160fd81dbace6b43ef479cbc51dd3f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/intro_generation.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/intro_playwright.py": {
+      "sha256": "bf23985d12e7ecb160caed24656174a9f26ff96e7726532bfe7efedd43849323",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/intro_playwright.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/jarvis_api.py": {
+      "sha256": "fde0e752f7242021ba262a48c6f6bed0952c540391ba646a79b4c0ae99a6a9f1",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/jarvis_api.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/jarvis_bridge.py": {
+      "sha256": "bbbdb46543743b9b58a471ce7df3880f13eec3a24dab729fb0a1528a847462ed",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/jarvis_bridge.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/media_validation.py": {
+      "sha256": "f9c0dd89de85fbb773b2c4962c671b49601b1400b3c8df57171fc9dbc34060b2",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/media_validation.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/middleware.py": {
+      "sha256": "4184da1a6ce7e45004ba618b4f6d3d00185d355b21e6929d2c459811fc6dc0d2",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/middleware.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/models.py": {
+      "sha256": "384658d14c317c24ecf8bf3c088889e5bc2fd8b1f9006213de548b2aec0a8143",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/models.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/premiere_automation.py": {
+      "sha256": "0304f89452d5eb97575c5f523ba6414c4cce353e5eb9b9c1dd105808e0ec0fbd",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/premiere_automation.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/presentation_styles.py": {
+      "sha256": "52399c446730cab8e8e694a862e5a75c587cc344145d7278d45b63f3c8a86b90",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/presentation_styles.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/signals.py": {
+      "sha256": "ce69b17b01f0c383511a02ffc1e262de4ac45d94cbeac5f9b9092504ed5e9758",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/signals.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/sportsbase_playwright.py": {
+      "sha256": "7a8d4dbf1758d7688eced300dad573a087c8f9a5e93d7964122b431ab6078213",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/sportsbase_playwright.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/tasks.py": {
+      "sha256": "6fe0a95100ac9e983cad276261be3849f283cd5c100b4b3f2c8cf6716c79dec5",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/tasks.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/tests.py": {
+      "sha256": "ef1b57d0419e57c2e46377e99e3aa4931f07916e78a6d869eb2566560e2748a1",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/tests.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/tests_jarvis_bridge.py": {
+      "sha256": "4f65c17313507de8b4a35fc0ac035761c8d3e4af852a330a41c893c9fc28c6ae",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/tests_jarvis_bridge.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/test_intro_generation.py": {
+      "sha256": "b5cba45be807a743e203819052ee35a1f1986189a91809e65a21984f5d8d450e",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/test_intro_generation.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/test_premiere_automation.py": {
+      "sha256": "6f1be1e228b2b41ece0e06ee333feaf6bbcd2672e4d9f45f57d20a274187850a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/test_premiere_automation.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/transfermarkt_assets.py": {
+      "sha256": "b4b304db88386a04c790c3c1c0d7a6284beef68eb14a0c2fcc278f891bb84845",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/transfermarkt_assets.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/transfermarkt_fetcher.py": {
+      "sha256": "237f53dfd242abc603ebd00ff440b9e51f320fdaa793cf289dff26c734b6be96",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/transfermarkt_fetcher.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/urls.py": {
+      "sha256": "7017d7ddb5dfc45d63e09b1d531ec72d23179c4a9753b488e6e01712bfd11641",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/urls.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/utils.py": {
+      "sha256": "c67a03b88976af2fb3c4c0956ae3e7917d34d382fda36c21aa4112ccbeabf05f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/utils.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/video_status_whatsapp.py": {
+      "sha256": "eafce2d3c8e5bff8d2583494850fd6225e1541e74e5d0bb002ff433e55ffb9d3",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/video_status_whatsapp.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/views.py": {
+      "sha256": "1d44396ae540c5d79ecacdb156f9792adc4d06b201c0f242bf8f89e8384c18b7",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/views.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/whatsapp_delivery.py": {
+      "sha256": "b112e81799e474cf497ece69c55f0f33dd1c28c01cc32a6e92d7711b10f7db37",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/whatsapp_delivery.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/__init__.py": {
+      "sha256": "57333e7ac3e0e407166f36b0b12a9ed7415554d71b90820b763530efc87d482f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/__init__.py"
+    },
+    "qualification/ag/candidate/source/ms_football_gest/celery.py": {
+      "sha256": "437a4c36258205551b5b2595b79f289169be221659019363a0d5e02fd75f5cdd",
+      "origin": "action-general-01/unified-fixed/source/ms_football_gest/celery.py"
+    },
+    "qualification/ag/candidate/source/ms_football_gest/__init__.py": {
+      "sha256": "cccfb8e756e70f568f9acb192d0cf675f822d54021c3364c8f1a9a610506ecee",
+      "origin": "action-general-01/unified-fixed/source/ms_football_gest/__init__.py"
+    },
+    "qualification/ag/candidate/source/prospects/admin.py": {
+      "sha256": "35d411ab7fc458855d3f6867c298ca0b40bb0190195c45297a6edf7e5b055a24",
+      "origin": "action-general-01/unified-fixed/source/prospects/admin.py"
+    },
+    "qualification/ag/candidate/source/prospects/apps.py": {
+      "sha256": "09292b79fd3a2d6f4d8b652c3578085bad8309634b928feda0edecf5ceb30526",
+      "origin": "action-general-01/unified-fixed/source/prospects/apps.py"
+    },
+    "qualification/ag/candidate/source/prospects/forms.py": {
+      "sha256": "571128179ce49d875ceb1793b53e9bef7ffe0cef082b110fd46f56b819d7eb07",
+      "origin": "action-general-01/unified-fixed/source/prospects/forms.py"
+    },
+    "qualification/ag/candidate/source/prospects/models.py": {
+      "sha256": "8f9f635cec82eef7b0c7c1b17697c9f9abc1d35189031a1dff347c0776018b1f",
+      "origin": "action-general-01/unified-fixed/source/prospects/models.py"
+    },
+    "qualification/ag/candidate/source/prospects/services.py": {
+      "sha256": "e4d23c5c610fb1c031af9969888d6ed554269a451bd73292ea33cf78ad14c1aa",
+      "origin": "action-general-01/unified-fixed/source/prospects/services.py"
+    },
+    "qualification/ag/candidate/source/prospects/tests.py": {
+      "sha256": "17ead8a0e48151fe0d365d2bc19e8220dfd7916969fbe36b3d0500490184ecfa",
+      "origin": "action-general-01/unified-fixed/source/prospects/tests.py"
+    },
+    "qualification/ag/candidate/source/prospects/urls.py": {
+      "sha256": "4fce2fd486b0885065ccdde2fb8e6fee43af68aaaef29d31c4b7c529cd2ed2c0",
+      "origin": "action-general-01/unified-fixed/source/prospects/urls.py"
+    },
+    "qualification/ag/candidate/source/prospects/views.py": {
+      "sha256": "bf838399921f807fcc1499e44d228a30ed7f2c5dc59bad0901edded105894a0c",
+      "origin": "action-general-01/unified-fixed/source/prospects/views.py"
+    },
+    "qualification/ag/candidate/source/prospects/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/prospects/__init__.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/admin.py": {
+      "sha256": "ccb47eefcbb6ef0a22d0c7b819208342ef5e8b22c51ace7a3cda6d24a708cc77",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/admin.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/agent_config.py": {
+      "sha256": "2c010b486bf287ea0ba3346b41e4ad54619055b6a832b68bea2ccfbdc9f3d35f",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/agent_config.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/analysis_engine.py": {
+      "sha256": "04e0c8d94a17f8fbf90063bc54b35ca50cd5191541e81c789313f8d0218b677c",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/analysis_engine.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/apps.py": {
+      "sha256": "0931f6237081742f029fec58be50bbc6235c457a3a76af09265cddc21cb5811c",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/apps.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/dailymotion_links.py": {
+      "sha256": "bf299b19ebc11e7421ff905cc8d697017857279df1aff5ef0029940edf31746b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/dailymotion_links.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/dailymotion_uploader.py": {
+      "sha256": "54685e2fb6dd247d811f5b4234f82cba3bf7bb67639f3a5b2017a69f4ad269c2",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/dailymotion_uploader.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/delivery.py": {
+      "sha256": "f994760ff51bc1ac2d33115cb1b8fd2b191ce5556bde57a7fa356869ac90f22d",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/delivery.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/forms.py": {
+      "sha256": "8620974c843350ba4e1825f4fa9e36868eb9c144a1f65101ebc8604307e0b997",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/forms.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/local_agent.py": {
+      "sha256": "e5cbe78c744fb80b9970eb31f873eefb1ca3db195fcb095827a89047fb936720",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/local_agent.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/local_delivery.py": {
+      "sha256": "fed9f331e49d20d10b04ae92e4377f1202c1f14c019df5485959717f3d07836f",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/local_delivery.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/models.py": {
+      "sha256": "749b45bf0018adcbfaff881fd76255d7ad6ab009d9e1fdf883418df5ccf4fa72",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/models.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_history.py": {
+      "sha256": "a2e0603a2e11697dcebd33f402f310ab1d51ff94f83f102e25a9d0a781fa98df",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/monitoring_history.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_proxy.py": {
+      "sha256": "4bcf08a4f48c1d40d5663004ef9665b33baa12ae2bab18ae93ceb8ac4d326f07",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/monitoring_proxy.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/monitoring_views.py": {
+      "sha256": "c978d2305a0e63de0b42b24e92f613ee8b4b0e3f528a9b76a7706d3d34775eda",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/monitoring_views.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/reports.py": {
+      "sha256": "80b06424734bc414ce06fbc0bc8d46fb6ecd6cdf2a1995b3481a88718c1c6595",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/reports.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/report_pdf.py": {
+      "sha256": "466a59c1e2fd67018162af9af69f7fbcc14d093d57c910260f0c8a8797f02367",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/report_pdf.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/scraper.py": {
+      "sha256": "cbab79323f2ea0bb4b59e1490a222b4918fd453f643230e828b94e7c061449bc",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/scraper.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/services.py": {
+      "sha256": "2f163f5d5a5d0d8d52d97d2bc5494bb33d421e747f14c4304a39e5d9b8d008da",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/services.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/tests.py": {
+      "sha256": "4af66774fb209124f482414e97adedd22a7b95c6809f83e75c5b5adad1cb8f7b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/tests.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/test_analysis_engine.py": {
+      "sha256": "42470b16d955dc45c4f1ebe17200ad3d37350fd6bc0d923e5954f12d980aebaa",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/test_analysis_engine.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/test_dailymotion_uploader.py": {
+      "sha256": "192fb8bfc43a10dce279fb2d6ee8fc3262fade32e1ac5a639bff362b55ad30cb",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/test_dailymotion_uploader.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/test_local_agent_config.py": {
+      "sha256": "663ef6f4be926b1ea148f16804d059c98dcee9a8f6a63f7bc26f82f85cf1bd86",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/test_local_agent_config.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/test_local_delivery.py": {
+      "sha256": "e48db1d4673329f7ebbb10d7e791f63b56ac756fc582b67c2773642312e315b8",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/test_local_delivery.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/urls.py": {
+      "sha256": "2bc91c09aa5b679ca398a788e2d1f5e5901850a458c1a646c6ca8e0f463a6235",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/urls.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/views.py": {
+      "sha256": "88f68f562893dcd2aa2b288463af6a32439b83171b73f5ab1fc45b59488b3ed3",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/views.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/xlsx_statistics.py": {
+      "sha256": "c0b71a97742af32225f22fce6f9bbf4b551a813d54202c6e885111ffc2b4a97a",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/xlsx_statistics.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/youtube_uploader.py": {
+      "sha256": "6c23a1a087aa1c92f95fe1dee1b1415a3271a325dff2f490de8d7ca3ae95b1b7",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/youtube_uploader.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/__init__.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0001_initial.py": {
+      "sha256": "ebe498f32dfc9271ac618742467c0a4ca07c5db930e883f3442c99ba289af8e7",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0001_initial.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0002_youtube_all_actions_delivery.py": {
+      "sha256": "cd35bdde41eb63964caa7bded01858710d003696c57512c9380af9784be61d99",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0002_youtube_all_actions_delivery.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0003_performance_report_notification.py": {
+      "sha256": "bef7efecb7d6757f03ac6dbfd57166a151b0f285fddfd68686ca40e93846df4a",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0003_performance_report_notification.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0004_match_analysis_payload.py": {
+      "sha256": "9d672e8dced1bfa07330bb2aa72b699003902ae65190b8459f1fa287a98eb9f9",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0004_match_analysis_payload.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0005_performance_subscription_payments.py": {
+      "sha256": "3b9a7d80c185d2b4cf055d70fbcccd69c750bc3af9adab42c4b86f75cda6264e",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0005_performance_subscription_payments.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0006_dailymotion_all_actions_fallback.py": {
+      "sha256": "6786e22dae0331eed264671d85e17bb69c3487b820f85b4e5674089536ec161b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0006_dailymotion_all_actions_fallback.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0007_dailymotion_manual_link.py": {
+      "sha256": "65e3adc5279f6633b91b32ceed746b010666dcbcbf17e66487e65fe8cdec844f",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0007_dailymotion_manual_link.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/0008_agent_monitoring.py": {
+      "sha256": "4c6e7a8b989a144d7139cb6072ea455cc7af58b70ce618b5458c324c6ab2cb7e",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/0008_agent_monitoring.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/migrations/__init__.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/templatetags/performance_extras.py": {
+      "sha256": "1530140bbb87c6291a510735fa2d512b3b0aa58b8b08e06398f09cca661faf12",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/templatetags/performance_extras.py"
+    },
+    "qualification/ag/candidate/source/sportsbase_data/templatetags/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/sportsbase_data/templatetags/__init__.py"
+    },
+    "qualification/ag/candidate/source/prospects/migrations/0001_initial.py": {
+      "sha256": "e62f1f6522e9c45ff445331b5146bb98f8ac83752152cef703f995a558f44795",
+      "origin": "action-general-01/unified-fixed/source/prospects/migrations/0001_initial.py"
+    },
+    "qualification/ag/candidate/source/prospects/migrations/0002_prospect_date_of_birth_prospect_league_and_more.py": {
+      "sha256": "903703c159664b21f08ee98b9a5a79b7e22dd3c754863fa48f86f01fe6de0ce8",
+      "origin": "action-general-01/unified-fixed/source/prospects/migrations/0002_prospect_date_of_birth_prospect_league_and_more.py"
+    },
+    "qualification/ag/candidate/source/prospects/migrations/0003_alter_prospect_country_alter_prospect_match_links.py": {
+      "sha256": "3ca31fa3e098dd3c479810847557f0da14e9c78c7214bc4ff1927916bdc78c7b",
+      "origin": "action-general-01/unified-fixed/source/prospects/migrations/0003_alter_prospect_country_alter_prospect_match_links.py"
+    },
+    "qualification/ag/candidate/source/prospects/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/prospects/migrations/__init__.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/management/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/management/__init__.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0001_initial.py": {
+      "sha256": "f44a6e3d86c9ba0d610bebb838da9f3d80508b7023afd5fa6040bbb8758a3419",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0001_initial.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0002_remove_videoeditor_email_remove_videoeditor_name_and_more.py": {
+      "sha256": "2872e9828f8eddbd59edd387921dad0856b30110c68516a83c09a75ca3a30659",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0002_remove_videoeditor_email_remove_videoeditor_name_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0003_remove_player_email_remove_player_name_player_age_and_more.py": {
+      "sha256": "ab5625b7e2f741db77068c0a3029a04f1c1789d9b838db0fa9a6659f46c41a14",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0003_remove_player_email_remove_player_name_player_age_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0004_remove_player_age_remove_player_first_name_and_more.py": {
+      "sha256": "c4fcaecd3a8045049d9d9810ad51417206de8da3d8d7bdf80310d2f2e4377809",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0004_remove_player_age_remove_player_first_name_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0005_player_age_player_whatsapp_number_and_more.py": {
+      "sha256": "6364e3c604d8ef262d0158bf5b4cc145ea089febcdc1fc2bcf72792f10a9c22a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0005_player_age_player_whatsapp_number_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0006_alter_player_age_alter_player_email_and_more.py": {
+      "sha256": "790fb798b743229db91ec6bd63a02c5efb1d6bc6b152974b1339530d63bf6865",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0006_alter_player_age_alter_player_email_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0007_alter_player_email.py": {
+      "sha256": "6d9cfa37130f5325320fb5916017f7fc0de6ad439066341e0c13c179ceaba5bb",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0007_alter_player_email.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0008_alter_player_age_alter_player_club_and_more.py": {
+      "sha256": "252e2dc4039f1a4c936a68680ad5c9cb86d969d512dbc41020c44880212fd4bc",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0008_alter_player_age_alter_player_club_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0009_alter_player_email.py": {
+      "sha256": "f09e5dc1b0f2bb626d4b9d26bd4bacae45f80c0c34251de4e9413ab75346d277",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0009_alter_player_email.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0010_player_league_alter_player_email.py": {
+      "sha256": "e59cb06f98dd6e331595f9dd673140e88117e8110d91540eaf0dafdba30c1344",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0010_player_league_alter_player_email.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0011_alter_player_email.py": {
+      "sha256": "a840885e2e003e5a7219e9a9a7a09f02b27036c459f6625fda50c8520ef9dbfb",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0011_alter_player_email.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0012_video_info.py": {
+      "sha256": "4d32d6eb8bfd298cdd3c7edbe36e266ff1460a82ca2ec39e082da4b5dc9fac35",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0012_video_info.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0013_alter_player_age_alter_player_club_and_more.py": {
+      "sha256": "529ed60126b22dc24c56ab2be986e61db4bc8138e68f723c89a094358a643dbb",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0013_alter_player_age_alter_player_club_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0014_payment_remaining_balance.py": {
+      "sha256": "fe7eb323488d256ce05a4fb5a2c5c6312e6a85394377d936f021f59d8154c8c7",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0014_payment_remaining_balance.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0015_video_season_alter_payment_video.py": {
+      "sha256": "d94a65cfe54d126081b2e99c7b797bb02c2f55de9e626a1662a05a2e5264fbd5",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0015_video_season_alter_payment_video.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0016_player_date_of_birth.py": {
+      "sha256": "81ea0f29151c68aa62e2f94cc2e204b18a964db43072d7b81a3c01f81065f8bc",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0016_player_date_of_birth.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0017_video_club_video_league.py": {
+      "sha256": "2bd4e9cccd0242ca995a59ad83ef274e038661b6c273008978ca027cda78323a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0017_video_club_video_league.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0018_videostatushistory_created_by.py": {
+      "sha256": "d20caa55bc1c3a4fc15c3eefc3c6d4f5ededea0049682f706ffa1175ee5a866f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0018_videostatushistory_created_by.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0019_paymentcategory_payment_method_and_more.py": {
+      "sha256": "fa992ed8404b8901a08875a15e596972c5a35168e60ff526256d27a68bfea0a8",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0019_paymentcategory_payment_method_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0020_remove_invoice_due_date_remove_payment_method_and_more.py": {
+      "sha256": "6350ba7d0e6ef16fb6517e2dedd1ea4e9c174cc573ca1a058785a5c99a1ab3f6",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0020_remove_invoice_due_date_remove_payment_method_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0021_alter_invoice_video.py": {
+      "sha256": "34fd02f2c0545d12e9847d2a08baf760844d33837a38a1a2f5035e9884b67563",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0021_alter_invoice_video.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0022_alter_invoice_video.py": {
+      "sha256": "a747b73a2d3d8dbd23f1e850d8d927343bc9a9e274f6db00c41a597345dd156f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0022_alter_invoice_video.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0023_alter_invoice_total_amount.py": {
+      "sha256": "3058c736fdcaa9f75563f96399c7c4da4947bdba24e7039e57b968a4a323e996",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0023_alter_invoice_total_amount.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0024_payment_payment_method.py": {
+      "sha256": "9a1670c06f8a346e8aef54a8dbf159de93279575014a3c4bd0d53f889dd3665b",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0024_payment_payment_method.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0025_salary_expense_salary.py": {
+      "sha256": "681fe554787d19c1580e8ece9f13164bfc7840a6e6e0f9909003413bcbe0ee1e",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0025_salary_expense_salary.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0026_video_salary_paid_status.py": {
+      "sha256": "de5c6a0d7cd44dc3f7fd5d2b94802dea66fc8d46c69b6f7a012179c634c9cfe4",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0026_video_salary_paid_status.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0027_remove_expense_description.py": {
+      "sha256": "8589c0a1ca277157a811288349a1adb5fbb56a6385d524ca8d29b35d3da96034",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0027_remove_expense_description.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0028_expense_description.py": {
+      "sha256": "4e28e6e2c2154b4d7b0d2e068ef12165f9b110fbae45e1958091f0026a851f45",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0028_expense_description.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0029_alter_expense_category.py": {
+      "sha256": "168399968a60884e517f95235b4983cc4456054d0e6f0d3e5b1d0452f8d02f60",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0029_alter_expense_category.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0030_video_video_creation_date.py": {
+      "sha256": "cc507993a41b535d0c234ca4a91e830d22fa9fba85568f855fa49a32845b01d1",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0030_video_video_creation_date.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0031_alter_video_status.py": {
+      "sha256": "974a8f455f3a52f6d7e2b1c210b7f8e4d85258b5214e91e6e3f8739605476ede",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0031_alter_video_status.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0032_player_player_creation_date.py": {
+      "sha256": "e0fea6f9a831a1b35760e69e2cfdfd85b8dfddb7018896405aa51b6c4a83ab64",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0032_player_player_creation_date.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0033_player_client_fidel_player_client_vip_and_more.py": {
+      "sha256": "63d04ccc4f3d7a07b0db367cec0b5292954d74a34cd544291a591eac471052da",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0033_player_client_fidel_player_client_vip_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0034_notification.py": {
+      "sha256": "00a6c8a06edee55750b251a418cfe4e2d94c0be65f82fb05dca474efc522641a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0034_notification.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0035_notification_video.py": {
+      "sha256": "ce0dc4556a2aeb54dc2c2fe22b26099e621d1771613cfaef5c068b766f9391c9",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0035_notification_video.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0036_notification_type_alter_invoice_status.py": {
+      "sha256": "f9f52350e7e5c353f4afe189eaceebe071827f66549666133f1d623c54c2e9e6",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0036_notification_type_alter_invoice_status.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0037_alter_invoice_status.py": {
+      "sha256": "d3b3984f9a405faca6b4850fe9dbb56c6716b3b0e916852ab6fd59ad77fbf3b3",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0037_alter_invoice_status.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0038_rename_type_notification_notification_type.py": {
+      "sha256": "2409a25b523f7b8aaac96736c003e7a1ca03088dc0249ef993cd0613df507b51",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0038_rename_type_notification_notification_type.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0039_notification_sent_at.py": {
+      "sha256": "8177bd75e37ce0cb827b8c584827761adfa54c639c3077382cb799d4cb0440fe",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0039_notification_sent_at.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0040_notification_player.py": {
+      "sha256": "14ee8707fedac121effef152d1f0da854dc58408521f82b62442a096bd947b7a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0040_notification_player.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0041_nonvideoincome.py": {
+      "sha256": "f496c3c9f0a3469b697f72c0f335b7b6bf9d41645051c0417dd044b291733072",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0041_nonvideoincome.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0042_alter_nonvideoincome_amount_and_more.py": {
+      "sha256": "4f22908273aef95776d5a9f5c38f392beb183ddc463a2a167bee93ef0d586207",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0042_alter_nonvideoincome_amount_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0043_financialreport_total_outstanding_income.py": {
+      "sha256": "3d8057188d36bb54f73a5e9b551d5e03f00fcb98be31bbd17adb2d01ddf2dc32",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0043_financialreport_total_outstanding_income.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0044_financialreport_net_revenue_if_all_paid.py": {
+      "sha256": "b91b1bf485142e9a010792e7a2359146fd1949dcf9dab4232a0a087d5f125af4",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0044_financialreport_net_revenue_if_all_paid.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0045_financialreport_global_income.py": {
+      "sha256": "6110f787eb8c6cd46331a476b7f4b09c893be74c4167823a84eb5825044ffb7a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0045_financialreport_global_income.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0046_rename_global_income_financialreport_global_income.py": {
+      "sha256": "f1d2e787ebde591d62b223478e6842dfbb20001c9abf2ca77a542c09cf9197e9",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0046_rename_global_income_financialreport_global_income.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0047_notification_sent_by.py": {
+      "sha256": "bc764e1a1669eb2d02395ba1e72bca654f6e877edbfa55560a72752ff9922694",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0047_notification_sent_by.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0048_alter_expense_id_alter_invoice_id_and_more.py": {
+      "sha256": "34782f6f20d9298715209469f14bd713018c8ee86b43b2138a937ee11176afad",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0048_alter_expense_id_alter_invoice_id_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0049_alter_invoice_id_alter_nonvideoincome_id_and_more.py": {
+      "sha256": "01a4c3af03587215d7b05febd5a1cc60c2de78655f1149d2325adc453d67851d",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0049_alter_invoice_id_alter_nonvideoincome_id_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0050_player_sportsbase_url_player_transfermarkt_url_and_more.py": {
+      "sha256": "bc7a93f4017196a2fcde34204ad03ccd6d5efe9ca4930c24e3a9d298ab2805e4",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0050_player_sportsbase_url_player_transfermarkt_url_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0051_video_delivery_automation_completed_and_more.py": {
+      "sha256": "8fa34ce07c984af9fd79d073d6015453fc49e845eb4fd6a9bc721a8a32288b64",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0051_video_delivery_automation_completed_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0052_video_seasons_to_process.py": {
+      "sha256": "58972806389b8c1b51ce68d8d171b2f84d6ae90b42366b3961da94444d444386",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0052_video_seasons_to_process.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0053_video_intro_automation_completed_and_more.py": {
+      "sha256": "2951b2fddefd760d03d2a01f8e6e4024aea403bfa50c32d66d158f23740a6480",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0053_video_intro_automation_completed_and_more.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0054_video_intro_automation_enabled.py": {
+      "sha256": "1a5db4f2b026bccf2c87fe10d24a40a79499bacd22c5c09a84a69c999349cb39",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0054_video_intro_automation_enabled.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0055_video_client_portal_visible.py": {
+      "sha256": "647d711148de7dce402266058983310fdf094f5dfe2adef1af550b8787273c0d",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0055_video_client_portal_visible.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0056_alter_video_deadline.py": {
+      "sha256": "a1c9dd414b77f1cd633f8abcc116203984ac5cd2f8b21a531352e8b82badd11b",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0056_alter_video_deadline.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0057_automationrun_automationevent.py": {
+      "sha256": "15259e86f4458f2d3eee760e189487bae9a1b9c1da0d309cafbaa36013de4449",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0057_automationrun_automationevent.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0058_video_intro_presentation_style.py": {
+      "sha256": "396c6d0c845d6c8b41de78c4d3a35589104f1c24c8e6011dda1caed0e3f032d1",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0058_video_intro_presentation_style.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/0059_video_academy_order_fields.py": {
+      "sha256": "83f79f039ee38d4eaae5403ff3d207d79f317bcbf3f6f1f3732c16f4c5d15c5a",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/0059_video_academy_order_fields.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/migrations/__init__.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/templatetags/video_filters.py": {
+      "sha256": "91446637c8fe763b3a99dfe29be3c7a3614f0e96a31815621f0fb68a34c5142f",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/templatetags/video_filters.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/templatetags/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/templatetags/__init__.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/run_jarvis_bridge.py": {
+      "sha256": "f831c4edcf67ba3e683d0eb51427e52d8e19909e1f5b6b02158f2f85409050fe",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/management/commands/run_jarvis_bridge.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/send_reminders.py": {
+      "sha256": "3e9ac014c7e035edb058b7fb83cd1230af2673870d9cc4c6a854254a9954b760",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/management/commands/send_reminders.py"
+    },
+    "qualification/ag/candidate/source/gestion_joueurs/management/commands/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/gestion_joueurs/management/commands/__init__.py"
+    },
+    "qualification/ag/candidate/source/client_portal/migrations/0001_initial.py": {
+      "sha256": "5bf35522840c2b87038d1a54a9150f51a7efada1353e764b5ba1e68e22197d25",
+      "origin": "action-general-01/unified-fixed/source/client_portal/migrations/0001_initial.py"
+    },
+    "qualification/ag/candidate/source/client_portal/migrations/0002_organizationplayer_ended_at.py": {
+      "sha256": "02f9ff49d9453d99968a4843835b7c5d2f3dddcc494dbe0ea87e2e05c77dadef",
+      "origin": "action-general-01/unified-fixed/source/client_portal/migrations/0002_organizationplayer_ended_at.py"
+    },
+    "qualification/ag/candidate/source/client_portal/migrations/0003_organization_google_sheet.py": {
+      "sha256": "bc49e34ce8f3f9167d4a725caf76b872762f7ba07176edddc07b019cc57e6854",
+      "origin": "action-general-01/unified-fixed/source/client_portal/migrations/0003_organization_google_sheet.py"
+    },
+    "qualification/ag/candidate/source/client_portal/migrations/0004_organizationplayer_expected_matches.py": {
+      "sha256": "02c960ebab737b4ec4ae846cf39e74a1e950d0dc19f8ed4f4c540f23b7ad5f5c",
+      "origin": "action-general-01/unified-fixed/source/client_portal/migrations/0004_organizationplayer_expected_matches.py"
+    },
+    "qualification/ag/candidate/source/client_portal/migrations/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/client_portal/migrations/__init__.py"
+    },
+    "qualification/ag/candidate/source/client_portal/templatetags/portal_extras.py": {
+      "sha256": "d6c23b0b267ff0058bcf028090a7d9df6159de32cd463fb7bad9767202fe2e8c",
+      "origin": "action-general-01/unified-fixed/source/client_portal/templatetags/portal_extras.py"
+    },
+    "qualification/ag/candidate/source/client_portal/templatetags/__init__.py": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "origin": "action-general-01/unified-fixed/source/client_portal/templatetags/__init__.py"
+    },
+    "qualification/ag/candidate/source/actions/migrations/0001_initial.py": {
+      "sha256": "deb1b8d9e877db21aef295faeb26efd18bdeabba8509bb77f29cf3c37faaa51a",
+      "origin": "action-general-01/unified-fixed/source/actions/migrations/0001_initial.py"
+    },
+    "qualification/ag/candidate/source/actions/migrations/0002_quotabucket.py": {
+      "sha256": "0911c5864408084f0f10074104040bb30b7ee031abecb41dfa89b37f70a98296",
+      "origin": "action-general-01/unified-fixed/source/actions/migrations/0002_quotabucket.py"
+    },
+    "qualification/ag/candidate/source/actions/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "action-general-01/unified-fixed/source/actions/migrations/__init__.py"
+    },
+    "qualification/ag/candidate/original/actions/engine.py": {
+      "sha256": "47e0f250f99cd50de1f75fdde11ca75fd762511708523dbbbe57edf20cfd4b80",
+      "origin": "action-general-01/unified-fixed/original/actions/engine.py"
+    },
+    "qualification/ag/unified/source/actions/engine.py": {
+      "sha256": "26fe417755db900c751e07ef13af13e65de29dc55042701f3b3bf5f1b08f0803",
+      "origin": "action-general-01/unified/source/actions/engine.py"
+    },
+    "qualification/ag/candidate/fixture_snapshot.py": {
+      "sha256": "d6156d6d2d899c1f2fa79aaaa5d79653b810e339e3bf5d3e17021c66c0ae8468",
+      "origin": "action-general-01/review-clean/fixture_snapshot.py"
+    },
+    "qualification/ag/requirements.txt": {
+      "sha256": "318ad748d73c6ba462b345c09a55ec2f925b5a274ddd8b89cd1286701e1263ae",
+      "origin": "action-06-linux/repo/qualification/action06/requirements.txt"
+    },
+    "qualification/ag/candidate/isolation.py": {
+      "sha256": "c7aeee51195c169b6b1535df9e4131bd39108661e12f3a3cbda31c75b0c82f9a",
+      "origin": "action-06-linux/repo/qualification/action06/isolation.py"
+    },
+    "qualification/ag/candidate/ci_target.py": {
+      "sha256": "805e599304ee0f24604f22e7ba71ea942085995d06c532dd117713a611bdfc17",
+      "origin": "action-general-01/linux-qualification/ci_target.py"
+    }
+  },
+  "scan_findings": [
+    {
+      "path": "qualification/ag/candidate/test_declarative.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/test_integration.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/test_unified01.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/source/client_portal/tests.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/source/gestion_joueurs/tests.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/source/prospects/models.py",
+      "disposition": "public upstream static validator example"
+    },
+    {
+      "path": "qualification/ag/candidate/source/prospects/tests.py",
+      "disposition": "synthetic test fixture, hash-identical reviewed/upstream test module"
+    },
+    {
+      "path": "qualification/ag/candidate/source/prospects/migrations/0001_initial.py",
+      "disposition": "public upstream static validator example"
+    }
+  ],
+  "sanitization": {
+    "finding": "SEC-01",
+    "method": "exclude_unused_module",
+    "excluded": [
+      {
+        "path": "qualification/ag/candidate/source/gestion_joueurs/telegram_bot.py",
+        "sha256": "986aded87ffb70171789d95d6e602023d2a69b948af6e3d603bf6fd24d8958ad"
+      }
+    ],
+    "initial_archive_sha256": "84ba7afee14ef61f9c78a0171e83d17432b2b02c373cadadbcfd24683c31b174",
+    "source_files_before": 188,
+    "source_files_after": 187,
+    "unchanged_retained_sources": 187,
+    "production_changed": false,
+    "rotation_performed": false,
+    "qualification_only": true
+  }
+}

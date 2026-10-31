@@ -1,0 +1,2773 @@
+import base64
+from datetime import timedelta
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, patch
+
+from PIL import Image, ImageDraw
+
+from django.core import mail
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+
+from client_portal.models import (
+    Organization,
+    OrganizationMembership,
+    OrganizationPlayer,
+    PlayerAccess,
+    PortalProfile,
+)
+from gestion_joueurs.models import Player
+
+from .analysis_engine import SPORTSBASE_PLAYER_COLUMNS
+from .forms import SportsBaseSubscriptionForm
+from .models import (
+    PerformanceReport,
+    PerformanceSubscriptionPayment,
+    SportsBaseDailymotionUpload,
+    SportsBaseMatch,
+    SportsBaseMatchStats,
+    SportsBaseSeasonSnapshot,
+    SportsBaseSubscription,
+    SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
+)
+from .reports import (
+    generate_match_report,
+    generate_reports_for_subscription,
+    render_report_pdf,
+    send_ready_delivery_notification,
+)
+from .scraper import (
+    _XLSX_BROWSER_RETRY_KEY,
+    _browser_target_was_closed,
+    SportsBaseSubscriptionScraper,
+)
+from .services import (
+    apply_dailymotion_upload_result,
+    apply_sync_result,
+    apply_youtube_upload_result,
+    claim_next_dailymotion_upload,
+    claim_next_job,
+    claim_next_youtube_upload,
+    ensure_youtube_upload_jobs,
+    queue_sync,
+    reconcile_subscription_delivery_settings,
+    request_dailymotion_upload,
+    save_dailymotion_link,
+)
+from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"test-png-content"
+
+
+class SportsBaseFixtureMixin:
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            "performance-admin", "admin@example.com", "password"
+        )
+        self.player = Player.objects.create(
+            name="Performance Player",
+            club="Stade Tunisien",
+            email="player@example.com",
+            sportsbase_url="https://football.sportsbase.world/players/575815",
+        )
+        self.other_player = Player.objects.create(
+            name="Private Player",
+            club="Club Privé",
+            email="private@example.com",
+            sportsbase_url="https://football.sportsbase.world/players/999999",
+        )
+        self.subscription = SportsBaseSubscription.objects.create(
+            player=self.player,
+            season="2025/2026",
+            starts_on=timezone.localdate(),
+            created_by=self.admin,
+        )
+        self.other_subscription = SportsBaseSubscription.objects.create(
+            player=self.other_player,
+            season="2025/2026",
+            starts_on=timezone.localdate(),
+            created_by=self.admin,
+        )
+
+    def portal_user(self, username="client", account_type=PortalProfile.AccountType.PLAYER):
+        user = User.objects.create_user(username, password="password")
+        PortalProfile.objects.create(
+            user=user,
+            account_type=account_type,
+            display_name=username.title(),
+            created_by=self.admin,
+        )
+        return user
+
+
+class SubscriptionModelTests(SportsBaseFixtureMixin, TestCase):
+    def test_performance_payment_updates_paid_amount_and_remaining_balance(self):
+        self.subscription.total_amount = 900
+        self.subscription.currency = SportsBaseSubscription.Currency.TND
+        self.subscription.save(update_fields=("total_amount", "currency", "updated_at"))
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse(
+                "performance:subscription_payment_add",
+                args=(self.subscription.pk,),
+            ),
+            {
+                "amount": "250.00",
+                "payment_date": timezone.localdate(),
+                "payment_method": PerformanceSubscriptionPayment.Method.BANK_TRANSFER,
+                "reference": "VIR-250",
+                "notes": "Premier règlement",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("performance:subscription_edit", args=(self.subscription.pk,)),
+            fetch_redirect_response=False,
+        )
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.amount_paid, 250)
+        self.assertEqual(self.subscription.remaining_balance, 650)
+        self.assertEqual(self.subscription.payment_state, "partial")
+
+    def test_subscription_is_additive_and_does_not_change_player(self):
+        original = (self.player.name, self.player.club, self.player.email)
+        self.subscription.is_active = False
+        self.subscription.save()
+        self.player.refresh_from_db()
+        self.assertEqual((self.player.name, self.player.club, self.player.email), original)
+
+    def test_form_rejects_active_subscription_without_sportsbase_url(self):
+        player = Player.objects.create(name="Sans lien", club="Club", email="none@example.com")
+        form = SportsBaseSubscriptionForm(
+            data={
+                "player": player.pk,
+                "season": "2025/2026",
+                "starts_on": timezone.localdate(),
+                "sync_interval_hours": 24,
+                "is_active": True,
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("player", form.errors)
+
+    def test_access_expiry_hides_subscription(self):
+        self.subscription.ends_on = timezone.localdate() - timedelta(days=1)
+        self.subscription.save()
+        self.assertFalse(self.subscription.access_enabled)
+
+    def test_email_subscription_is_complete_only_after_delivery(self):
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="770001",
+            season=self.subscription.season,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+        )
+        self.assertFalse(match.is_complete)
+        match.actions_state = SportsBaseMatch.ActionsState.EMAILED
+        self.assertTrue(match.is_complete)
+
+
+class SyncServiceTests(SportsBaseFixtureMixin, TestCase):
+    def test_pending_jobs_api_previews_every_player_without_claiming_jobs(self):
+        sync_job, _created = queue_sync(self.subscription, requested_by=self.admin)
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772538",
+            season=self.subscription.season,
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            home_score=1,
+            away_score=1,
+        )
+        youtube_job = SportsBaseYouTubeUpload.objects.create(match=match)
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("performance:api_pending_jobs"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        player_names = {
+            item["player"]["name"] for item in payload["sportsbase_jobs"]
+        }
+        self.assertEqual(player_names, {"Performance Player", "Private Player"})
+        self.assertEqual(payload["youtube_jobs"][0]["player"]["name"], "Performance Player")
+        sync_job.refresh_from_db()
+        youtube_job.refresh_from_db()
+        self.assertEqual(sync_job.status, SportsBaseSyncJob.Status.PENDING)
+        self.assertEqual(youtube_job.status, SportsBaseYouTubeUpload.Status.PENDING)
+
+    def test_job_payload_contains_only_operational_player_data(self):
+        job, created = queue_sync(self.subscription, requested_by=self.admin)
+        self.assertTrue(created)
+        claimed = claim_next_job()
+        self.assertEqual(claimed.pk, job.pk)
+        self.assertEqual(claimed.payload["player"]["id"], self.player.pk)
+        self.assertEqual(claimed.payload["season"], "2025/2026")
+        self.assertNotIn("password", claimed.payload)
+
+    def test_job_payload_exposes_stored_players_statistics_headers(self):
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772538",
+            season=self.subscription.season,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=match,
+            players_statistics_headers=["Player", "Team", "Headers"],
+        )
+        queue_sync(self.subscription, requested_by=self.admin)
+
+        claimed = claim_next_job()
+
+        self.assertEqual(
+            claimed.payload["known_matches"][0]["players_statistics_headers"],
+            ["Player", "Team", "Headers"],
+        )
+
+    def test_result_upserts_profile_match_stats_and_maps(self):
+        job, _created = queue_sync(self.subscription, requested_by=self.admin)
+        claimed = claim_next_job()
+        encoded = base64.b64encode(PNG).decode("ascii")
+        result = {
+            "status": "success",
+            "profile": {
+                "season": "2025/2026",
+                "sportsbase_player_id": "575815",
+                "sportsbase_player_name": "Performance Player",
+                "club_name": "Stade Tunisien",
+                "season_statistics": {"Matches played": "12"},
+                "heatmap_png_base64": encoded,
+                "ball_touches_png_base64": encoded,
+                "radar_png_base64": encoded,
+            },
+            "matches": [
+                {
+                    "sportsbase_match_id": "772538",
+                    "match_date": "2026-08-20",
+                    "home_team": "Stade Tunisien",
+                    "away_team": "Gabès",
+                    "home_score": 2,
+                    "away_score": 0,
+                    "sync_state": "synced",
+                    "actions_state": "emailed",
+                    "all_actions_filename": "actions.mp4",
+                    "stats": {
+                        "team_name": "Stade Tunisien",
+                        "index": 201,
+                        "team_rank": 1,
+                        "match_rank": 2,
+                        "summary_statistics": {"Shots": "3"},
+                        "heatmap_png_base64": encoded,
+                    },
+                }
+            ],
+        }
+        apply_sync_result(claimed, result)
+        self.assertEqual(SportsBaseSeasonSnapshot.objects.count(), 1)
+        snapshot = SportsBaseSeasonSnapshot.objects.get()
+        self.assertEqual(bytes(snapshot.heatmap_png), PNG)
+        match = SportsBaseMatch.objects.get(sportsbase_match_id="772538")
+        self.assertEqual(match.score, "2–0")
+        self.assertEqual(match.player_stats.index, 201)
+        self.assertEqual(bytes(match.player_stats.heatmap_png), PNG)
+
+        second_job, _created = queue_sync(self.subscription, requested_by=self.admin)
+        second_job.status = SportsBaseSyncJob.Status.RUNNING
+        second_job.save(update_fields=("status",))
+        apply_sync_result(second_job, result)
+        self.assertEqual(SportsBaseSeasonSnapshot.objects.count(), 1)
+        self.assertEqual(SportsBaseMatch.objects.count(), 1)
+        self.assertEqual(SportsBaseMatchStats.objects.count(), 1)
+
+    def test_invalid_map_is_rejected_without_partial_database_write(self):
+        job, _created = queue_sync(self.subscription)
+        claimed = claim_next_job()
+        with self.assertRaises(ValueError):
+            apply_sync_result(
+                claimed,
+                {
+                    "status": "success",
+                    "profile": {
+                        "season": "2025/2026",
+                        "heatmap_png_base64": base64.b64encode(b"not-png").decode(),
+                    },
+                },
+            )
+        self.assertFalse(SportsBaseSeasonSnapshot.objects.exists())
+
+    def test_invalid_api_result_marks_job_failed_instead_of_leaving_it_running(self):
+        job, _created = queue_sync(self.subscription)
+        claimed = claim_next_job()
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("performance:api_job_result", args=(claimed.pk,)),
+            data={
+                "status": "success",
+                "profile": {
+                    "season": "2025/2026",
+                    "heatmap_png_base64": base64.b64encode(b"not-png").decode(),
+                },
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        job.refresh_from_db()
+        self.subscription.refresh_from_db()
+        self.assertEqual(job.status, SportsBaseSyncJob.Status.FAILED)
+        self.assertEqual(
+            self.subscription.last_sync_state,
+            SportsBaseSubscription.SyncState.FAILED,
+        )
+
+
+@override_settings(STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage")
+class PortalPerformanceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.snapshot = SportsBaseSeasonSnapshot.objects.create(
+            subscription=self.subscription,
+            season=self.subscription.season,
+            sportsbase_player_name=self.player.name,
+            heatmap_png=PNG,
+            time_on_field_percent=45,
+            season_statistics={
+                "Index": "180",
+                "Matches played": "12",
+                "Passes": "540",
+                "Passes accurate, %": "86%",
+                "Challenges": "120",
+                "Challenges won, %": "61%",
+                "Goals": "4",
+                "Assists": "3",
+            },
+            average_statistics={
+                "Passes": "45",
+                "Passes accurate, %": "86%",
+                "Challenges": "10",
+                "Challenges won, %": "61%",
+                "Goals": "0.33",
+            },
+            season_table_headers=["Index", "Passes"],
+            season_match_rows=[{"sportsbase_match_id": "772538", "values": ["201", "45"]}],
+        )
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772538",
+            season=self.subscription.season,
+            home_team="Stade Tunisien",
+            away_team="Gabès",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.GENERATING,
+            delivery_error="Erreur de génération SportsBase réservée à l’équipe.",
+        )
+        SportsBaseMatchStats.objects.create(
+            match=self.match,
+            team_name="Stade Tunisien",
+            index=201,
+            minutes_played=90,
+            summary_statistics={
+                "Passes": "45",
+                "Challenges": "8",
+                "Shots": "3",
+                "Goals": "1",
+            },
+            success_rates={
+                "Passes accurate, %": "89%",
+                "Challenges won, %": "62%",
+                "Shots on target, %": "67%",
+            },
+            detailed_statistics={
+                "Passes": "45",
+                "Passes accurate, %": "89%",
+                "Goals": "1",
+                "Key passes": "2",
+            },
+            team_table=[
+                {
+                    "rank": 1,
+                    "player_name": self.player.name,
+                    "index": 201,
+                    "position": "CM",
+                    "minutes": 90,
+                    "is_current_player": True,
+                }
+            ],
+        )
+
+    def test_player_sees_only_his_active_performance(self):
+        user = self.portal_user()
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(reverse("performance:portal_overview"))
+        self.assertContains(response, self.player.name)
+        self.assertNotContains(response, self.other_player.name)
+        self.assertContains(response, "Suivi vidéo")
+        self.assertContains(response, "Performance")
+
+    def test_agent_sees_multiple_linked_players(self):
+        user = self.portal_user("agent", PortalProfile.AccountType.AGENT)
+        organization = Organization.objects.create(name="Agent Football")
+        OrganizationMembership.objects.create(organization=organization, user=user)
+        OrganizationPlayer.objects.create(organization=organization, player=self.player)
+        OrganizationPlayer.objects.create(organization=organization, player=self.other_player)
+        self.client.force_login(user)
+        response = self.client.get(reverse("performance:portal_overview"))
+        self.assertContains(response, self.player.name)
+        self.assertContains(response, self.other_player.name)
+
+    def test_superuser_sees_every_active_performance_subscription(self):
+        expired_player = Player.objects.create(
+            name="Expired Performance Player",
+            club="Former Club",
+            email="expired@example.com",
+            sportsbase_url="https://football.sportsbase.world/players/111111",
+        )
+        SportsBaseSubscription.objects.create(
+            player=expired_player,
+            season="2024/2025",
+            starts_on=timezone.localdate() - timedelta(days=366),
+            ends_on=timezone.localdate() - timedelta(days=1),
+            created_by=self.admin,
+        )
+
+        self.client.force_login(self.admin)
+        overview = self.client.get(reverse("performance:portal_overview"))
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertContains(overview, self.player.name)
+        self.assertContains(overview, self.other_player.name)
+        self.assertNotContains(overview, expired_player.name)
+        self.assertFalse(
+            PortalProfile.objects.filter(user=self.admin).exists()
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("performance:portal_detail", args=(self.player.pk,))
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("performance:portal_detail", args=(self.other_player.pk,))
+            ).status_code,
+            200,
+        )
+
+    def test_unrelated_portal_user_cannot_open_player_or_map(self):
+        user = self.portal_user("outsider")
+        self.client.force_login(user)
+        detail = self.client.get(reverse("performance:portal_detail", args=(self.player.pk,)))
+        map_response = self.client.get(
+            reverse("performance:portal_season_map", args=(self.player.pk, "heatmap"))
+        )
+        self.assertEqual(detail.status_code, 404)
+        self.assertEqual(map_response.status_code, 404)
+
+    def test_authorized_map_is_private_png(self):
+        user = self.portal_user("map-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("performance:portal_season_map", args=(self.player.pk, "heatmap"))
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, PNG)
+
+    def test_performance_and_match_pages_render_complete_navigation(self):
+        user = self.portal_user("details-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
+        self.client.force_login(user)
+        detail = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        match = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Tableau statistique de la saison")
+        self.assertContains(detail, "Suivi vidéo")
+        self.assertContains(detail, "Matchs du joueur")
+        self.assertContains(detail, "Fiche et repères du joueur")
+        self.assertContains(detail, "Volume, efficacité et rythme")
+        self.assertContains(detail, "Passes réussies")
+        self.assertContains(detail, "540")
+        self.assertContains(detail, "86%")
+        self.assertContains(detail, "45")
+        self.assertContains(detail, "performance-analysis-card")
+        self.assertContains(detail, "90 min")
+        self.assertContains(detail, "Sur les matchs analysés")
+        self.assertContains(detail, "--analysis-progress: 86.0%")
+        html = detail.content.decode()
+        self.assertLess(
+            html.index("Matchs du joueur"),
+            html.index("Saison MS Performance"),
+        )
+        self.assertLess(html.index("Index moyen"), html.index("Matchs analysés"))
+        self.assertLess(html.index("Matchs analysés"), html.index("Buts"))
+        self.assertLess(html.index("Buts"), html.index("Passes décisives"))
+        season_pairs = detail.context["season_analysis_pairs"]
+        season_passes = next(
+            item for item in season_pairs if item["name"] == "Passes"
+        )
+        self.assertEqual(season_passes["value"], "540")
+        self.assertEqual(season_passes["average_value"], "45")
+        self.assertEqual(season_passes["rate_value"], "86%")
+        self.assertEqual(season_passes["chart_percent"], 86.0)
+        self.assertNotContains(detail, "SportsBase")
+        self.assertNotContains(detail, "Règlement de l’abonnement")
+        self.assertNotContains(detail, "performance-portal-payment")
+        self.assertEqual(match.status_code, 200)
+        self.assertContains(match, "Index du match")
+        self.assertContains(match, "Volume et efficacité")
+        self.assertContains(match, "Passes réussies")
+        self.assertContains(match, "89%")
+        self.assertNotContains(match, "Autres repères du match")
+        self.assertContains(match, "Vue collective")
+        self.assertContains(match, "All Actions")
+        self.assertNotContains(match, "Analyse complète")
+        self.assertNotContains(match, "Indicateurs avancés")
+        self.assertNotContains(match, "Match 772538")
+        self.assertNotContains(match, "SportsBase")
+
+        paired = match.context["analysis_pairs"]
+        passes = next(item for item in paired if item["name"] == "Passes")
+        self.assertEqual(passes["value"], "45")
+        self.assertEqual(passes["rate_value"], "89%")
+        self.assertEqual(passes["chart_percent"], 89.0)
+        self.assertTrue(passes["has_rate"])
+        self.assertContains(match, "--analysis-progress: 89.0%")
+        self.assertContains(match, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertNotContains(match, "all-actions-open-link")
+
+    def test_player_profile_shows_transfermarkt_but_hides_subscription_payment(self):
+        self.player.transfermarkt_url = "https://www.transfermarkt.com/example/profil/spieler/123"
+        self.player.save(update_fields=("transfermarkt_url",))
+        self.subscription.total_amount = 1200
+        self.subscription.currency = SportsBaseSubscription.Currency.TND
+        self.subscription.payment_url = "https://payments.example.com/performance/secure"
+        self.subscription.save(
+            update_fields=("total_amount", "currency", "payment_url", "updated_at")
+        )
+        PerformanceSubscriptionPayment.objects.create(
+            subscription=self.subscription,
+            amount=400,
+            payment_method=PerformanceSubscriptionPayment.Method.ONLINE,
+            created_by=self.admin,
+        )
+        user = self.portal_user("payment-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Transfermarkt")
+        self.assertContains(response, self.player.transfermarkt_url)
+        self.assertNotContains(response, "Règlement de l’abonnement")
+        self.assertNotContains(response, "400.00 TND")
+        self.assertNotContains(response, "800.00 TND")
+        self.assertNotContains(response, self.subscription.payment_url)
+        self.assertNotContains(response, "performance-portal-payment")
+
+    def test_average_only_season_metrics_keep_source_order_and_values(self):
+        self.snapshot.season_statistics = {
+            "Index": "180",
+            "Matches played": "16",
+            "Goals": "1",
+            "Assists": "2",
+        }
+        self.snapshot.average_statistics = {
+            "Key passes": "0.12",
+            "Shots": "0.38",
+            "Crosses": "1.25",
+            "Challenges": "6.75",
+            "Challenges won, %": "59%",
+            "Aerial challenges": "1.44",
+            "Aerial challenges won, %": "52%",
+            "Dribbles": "1.12",
+            "Dribbles successful, %": "67%",
+            "Tackles": "1.25",
+        }
+        self.snapshot.save(update_fields=("season_statistics", "average_statistics"))
+        user = self.portal_user("season-order-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        self.assertEqual(response.status_code, 200)
+        pairs = response.context["season_analysis_pairs"]
+        self.assertEqual(
+            [item["name"] for item in pairs],
+            [
+                "Key passes",
+                "Shots",
+                "Crosses",
+                "Challenges",
+                "Aerial challenges",
+                "Dribbles",
+                "Tackles",
+            ],
+        )
+        duels = next(item for item in pairs if item["name"] == "Challenges")
+        self.assertEqual(duels["value"], "6.75")
+        self.assertTrue(duels["value_is_average"])
+        self.assertEqual(duels["rate_value"], "59%")
+        self.assertContains(response, "6.75")
+        self.assertContains(response, "1.44")
+        self.assertContains(response, "1.12")
+
+    def test_portal_season_aggregates_two_then_three_analysed_matches(self):
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=self.match,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 1",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 80,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Goals"}],
+                    }
+                ],
+            },
+        )
+        second = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772539",
+            season=self.subscription.season,
+            home_team="Stade Tunisien",
+            away_team="Club Africain",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=second,
+            team_name="Stade Tunisien",
+            index=181,
+            minutes_played=30,
+            detailed_statistics={
+                "Goals": "1",
+                "Assists": "1",
+                "Passes": "10",
+                "Challenges": "2",
+                "Challenges won": "1",
+                "Challenges won, %": "50%",
+                "Key passes": "1",
+            },
+        )
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=second,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 2",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 60,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Assists"}],
+                    }
+                ],
+            },
+        )
+        user = self.portal_user("tracked-season-user")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        summary = response.context["tracked_season_summary"]
+        self.assertEqual(summary["match_count"], 2)
+        self.assertEqual(summary["index_average"], 211)
+        self.assertEqual(summary["goals"], 2)
+        self.assertEqual(summary["assists"], 1)
+        self.assertEqual(summary["minutes_total"], 120)
+        self.assertEqual(summary["minutes_average"], 60)
+        challenges = next(
+            item
+            for item in response.context["tracked_season_pairs"]
+            if item["name"] == "Challenges"
+        )
+        self.assertEqual(challenges["total_value"], 10)
+        self.assertEqual(challenges["value"], 5)
+        self.assertEqual(challenges["rate_value"], "59.6%")
+        mission = response.context["tracked_season_missions"][0]
+        self.assertEqual(mission["label"], "Impact décisif")
+        self.assertEqual(mission["rating_10"], 7.0)
+        self.assertEqual(mission["match_count"], 2)
+        self.assertContains(response, "Saison MS Performance")
+        self.assertContains(response, "Statistiques générales de la saison")
+
+        third = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="772540",
+            season=self.subscription.season,
+            home_team="Espérance Tunis",
+            away_team="Stade Tunisien",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+        )
+        SportsBaseMatchStats.objects.create(
+            match=third,
+            team_name="Stade Tunisien",
+            index=161,
+            minutes_played=60,
+            detailed_statistics={
+                "Goals": "0",
+                "Assists": "0",
+                "Passes": "20",
+                "Challenges": "5",
+                "Challenges won, %": "80%",
+                "Key passes": "0",
+            },
+        )
+        PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=third,
+            report_type=PerformanceReport.ReportType.MATCH,
+            language="fr",
+            status=PerformanceReport.Status.PUBLISHED,
+            title="Rapport 3",
+            analysis_payload={
+                "available": True,
+                "dimensions": [
+                    {
+                        "key": "impact",
+                        "label": "Impact décisif",
+                        "score": 90,
+                        "effective_weight": 30,
+                        "evidence": [{"metric": "Key passes"}],
+                    }
+                ],
+            },
+        )
+
+        updated = self.client.get(
+            reverse("performance:portal_detail", args=(self.player.pk,))
+        )
+        updated_summary = updated.context["tracked_season_summary"]
+        self.assertEqual(updated_summary["match_count"], 3)
+        self.assertEqual(updated_summary["index_average"], 201)
+        self.assertEqual(updated_summary["goals"], 2)
+        self.assertEqual(updated_summary["minutes_total"], 180)
+        updated_challenges = next(
+            item
+            for item in updated.context["tracked_season_pairs"]
+            if item["name"] == "Challenges"
+        )
+        self.assertEqual(updated_challenges["total_value"], 15)
+        self.assertEqual(updated_challenges["value"], 5)
+        self.assertEqual(updated_challenges["rate_value"], "66.4%")
+        self.assertEqual(
+            updated.context["tracked_season_missions"][0]["rating_10"],
+            7.7,
+        )
+
+
+class ScraperNormalizationTests(TestCase):
+    def test_full_sync_preflight_skips_complete_known_matches(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[
+                {"sportsbase_match_id": "800001"},
+                {"sportsbase_match_id": "800002"},
+            ]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800001": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                },
+                "800002": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                },
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertFalse(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], [])
+        self.assertEqual(result["pending_match_ids"], [])
+        self.assertEqual(result["discovered_count"], 2)
+
+    def test_full_sync_preflight_detects_new_match(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[
+                {"sportsbase_match_id": "800003"},
+                {"sportsbase_match_id": "800002"},
+            ]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800002": {
+                    "complete": True,
+                    "players_statistics_headers": ["complete"],
+                }
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], ["800003"])
+        self.assertEqual(result["pending_match_ids"], ["800003"])
+
+    def test_full_sync_preflight_preserves_incomplete_match_recovery(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(
+            return_value=[{"sportsbase_match_id": "800004"}]
+        )
+        scraper._missing_enriched_players_headers = Mock(return_value=())
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={
+                "800004": {
+                    "complete": False,
+                    "players_statistics_headers": ["complete"],
+                }
+            },
+        )
+
+        self.assertTrue(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["new_match_ids"], [])
+        self.assertEqual(result["pending_match_ids"], ["800004"])
+
+    def test_full_sync_preflight_fails_open_on_empty_discovery(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper._discover_job_matches = Mock(return_value=[])
+
+        result = scraper._full_sync_preflight(
+            page=Mock(),
+            job={"job_type": "full"},
+            known={"800005": {"complete": True}},
+        )
+
+        self.assertFalse(result["reliable"])
+        self.assertTrue(result["needs_processing"])
+        self.assertEqual(result["discovered_count"], 0)
+
+    def test_windows_installed_chrome_uses_cdp_port_by_default(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.browser_channel = "chrome"
+
+        with patch.dict(
+            "sportsbase_data.scraper.os.environ",
+            {},
+            clear=True,
+        ), patch("sportsbase_data.scraper.os.name", "nt"):
+            self.assertTrue(scraper._uses_cdp_port_transport())
+
+    def test_cdp_port_launch_keeps_installed_chrome_and_persistent_profile(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        scraper.profile_dir = Path("persistent-profile")
+        scraper.browser_channel = "chrome"
+        scraper.automation = Mock(headless=False)
+        scraper._cdp_browser = None
+        scraper._cdp_process = None
+        scraper._cdp_port = None
+        scraper._browser_executable = Mock(
+            return_value=Path("Google/Chrome/Application/chrome.exe")
+        )
+        scraper._reserve_cdp_port = Mock(return_value=9333)
+        scraper._wait_for_cdp_endpoint = Mock(
+            return_value="http://127.0.0.1:9333"
+        )
+
+        context = Mock()
+        browser = Mock()
+        browser.contexts = [context]
+        browser.version = "152.0.7977.76"
+        playwright = Mock()
+        playwright.chromium.connect_over_cdp.return_value = browser
+        process = Mock()
+
+        with patch(
+            "sportsbase_data.scraper.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            launched_context = scraper._launch_context_over_cdp_port(
+                playwright,
+                Path("downloads"),
+            )
+
+        self.assertIs(launched_context, context)
+        command = popen.call_args.args[0]
+        self.assertIn("--remote-debugging-port=9333", command)
+        self.assertIn("--remote-debugging-address=127.0.0.1", command)
+        self.assertTrue(
+            any(argument.startswith("--user-data-dir=") for argument in command)
+        )
+        self.assertNotIn("--remote-debugging-pipe", command)
+        playwright.chromium.connect_over_cdp.assert_called_once_with(
+            "http://127.0.0.1:9333",
+            timeout=30_000,
+            is_local=True,
+            no_defaults=False,
+        )
+        self.assertIs(scraper._cdp_browser, browser)
+        self.assertIs(scraper._cdp_process, process)
+
+    def test_cdp_port_context_cleanup_closes_external_chrome_gracefully(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        process = Mock()
+        process.wait.return_value = 0
+        scraper._cdp_browser = browser
+        scraper._cdp_process = process
+        scraper._cdp_port = 9333
+        context = Mock()
+
+        scraper._close_browser_context(context)
+
+        session.send.assert_called_once_with("Browser.close")
+        browser.close.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=10)
+        context.close.assert_not_called()
+        self.assertIsNone(scraper._cdp_browser)
+        self.assertIsNone(scraper._cdp_process)
+        self.assertIsNone(scraper._cdp_port)
+
+    def test_all_actions_uses_single_chrome_click_and_disk_confirmation(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        download_icon = Mock()
+        original = b"\x00\x00\x00\x18ftypmp42sportsbase-original-video"
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "Player actions.mp4"
+            source.write_bytes(original)
+            watch_dirs = [downloads_dir]
+            before = {"existing": (1, 1)}
+            scraper._download_watch_directories = Mock(return_value=watch_dirs)
+            scraper._configure_native_downloads = Mock(return_value=True)
+            scraper._snapshot_download_files = Mock(return_value=before)
+            scraper._wait_for_new_download = Mock(return_value=source)
+
+            destination = scraper._download_actions_with_chrome(
+                page=page,
+                download_icon=download_icon,
+                downloads_dir=downloads_dir,
+                match_id="800074",
+            )
+
+            self.assertEqual(destination.read_bytes(), original)
+            self.assertEqual(destination.name, "_All_Actions__match_800074.mp4")
+
+        scraper._configure_native_downloads.assert_called_once_with(
+            page,
+            downloads_dir,
+        )
+        scraper._snapshot_download_files.assert_called_once_with(watch_dirs)
+        download_icon.click.assert_called_once_with(
+            timeout=5_000,
+            no_wait_after=True,
+        )
+        scraper._wait_for_new_download.assert_called_once_with(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        page.expect_download.assert_not_called()
+
+    def test_cdp_port_sets_native_chrome_download_directory(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        browser = Mock()
+        session = Mock()
+        browser.new_browser_cdp_session.return_value = session
+        scraper._cdp_browser = browser
+        page = Mock()
+
+        with TemporaryDirectory() as directory:
+            configured = scraper._configure_native_downloads(page, directory)
+
+            self.assertTrue(configured)
+            session.send.assert_called_once_with(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(directory).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+        page.context.new_cdp_session.assert_not_called()
+
+    def test_chrome_download_without_extension_is_staged_as_mp4(self):
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            source = downloads_dir / "playwright-download-guid"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42video")
+
+            staged = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=source,
+                downloads_dir=downloads_dir,
+                match_id="800074",
+            )
+
+            self.assertEqual(staged.suffix, ".mp4")
+            self.assertEqual(staged.read_bytes(), b"\x00\x00\x00\x18ftypmp42video")
+
+    def test_disk_confirmation_ignores_crdownload_until_mp4_is_finished(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            partial = downloads_dir / "Player actions.mp4.crdownload"
+            finished = downloads_dir / "Player actions.mp4"
+
+            def advance_download(_seconds):
+                if not partial.exists() and not finished.exists():
+                    partial.write_bytes(b"partial")
+                elif partial.exists():
+                    partial.replace(finished)
+
+            with patch(
+                "sportsbase_data.scraper.time.sleep",
+                side_effect=advance_download,
+            ):
+                detected = scraper._wait_for_new_download(
+                    [downloads_dir],
+                    before={},
+                    timeout_seconds=1,
+                )
+
+            self.assertEqual(detected, finished)
+            self.assertEqual(detected.read_bytes(), b"partial")
+
+    def test_original_xlsx_blob_is_captured_byte_for_byte_without_native_save(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        page.context.cookies.return_value = []
+        page.evaluate.return_value = "Chrome test"
+        download_button = Mock()
+        original = b"PK\x03\x04sportsbase-original-xlsx"
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={
+                "status": "captured",
+                "data": base64.b64encode(original).decode("ascii"),
+            }
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(captured, original)
+        download_button.click.assert_called_once_with(
+            timeout=10_000,
+            no_wait_after=True,
+        )
+        scraper._restore_xlsx_blob_capture.assert_called_once_with(page)
+        page.unroute.assert_called_once()
+
+    def test_original_xlsx_network_response_is_captured_before_chrome_download(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        page = Mock()
+        download_button = Mock()
+        route = Mock()
+        route.request.url = (
+            "https://api-football.sportsbase.world/exports/players.xlsx"
+        )
+        response = Mock()
+        response.body.return_value = b"PK\x03\x04sportsbase-original-xlsx"
+        response.all_headers.return_value = {
+            "content-type": (
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            )
+        }
+        route.fetch.return_value = response
+        handlers = {}
+        page.route.side_effect = lambda pattern, handler: handlers.__setitem__(
+            pattern,
+            handler,
+        )
+        download_button.click.side_effect = lambda **_kwargs: handlers[
+            "**/*"
+        ](route)
+        scraper._install_xlsx_blob_capture = Mock()
+        scraper._restore_xlsx_blob_capture = Mock()
+        scraper._xlsx_blob_capture_state = Mock(
+            return_value={"status": "waiting"}
+        )
+
+        captured = scraper._capture_original_players_xlsx(
+            page,
+            download_button,
+        )
+
+        self.assertEqual(
+            captured,
+            b"PK\x03\x04sportsbase-original-xlsx",
+        )
+        route.abort.assert_called_once_with()
+        route.fulfill.assert_not_called()
+        page.unroute.assert_called_once()
+
+    def test_target_closed_error_is_distinguished_from_normal_xlsx_failure(self):
+        self.assertTrue(
+            _browser_target_was_closed(
+                RuntimeError(
+                    "Download.save_as: Target page, context or browser has been closed"
+                )
+            )
+        )
+        self.assertFalse(
+            _browser_target_was_closed(RuntimeError("Download timed out after 30000ms"))
+        )
+
+    def test_xlsx_browser_closure_restarts_twice_then_returns_success(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            if len(attempts) < 3:
+                return {
+                    "status": "partial",
+                    "profile": {"season": "2026/2027"},
+                    "matches": [],
+                    "summary": {"matches_imported": 0},
+                    "error": "Chrome fermé",
+                    _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+                }
+            return {
+                "status": "success",
+                "profile": {"season": "2026/2027"},
+                "matches": [{"sportsbase_match_id": "800079"}],
+                "summary": {"matches_imported": 1},
+                "error": "",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["summary"]["matches_imported"], 1)
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
+    def test_xlsx_browser_retry_exhaustion_preserves_partial_result(self):
+        scraper = object.__new__(SportsBaseSubscriptionScraper)
+        attempts = []
+
+        def fake_attempt(_job):
+            attempts.append(len(attempts) + 1)
+            return {
+                "status": "partial",
+                "profile": {"season": "2026/2027"},
+                "matches": [],
+                "summary": {"matches_imported": 0},
+                "error": "Chrome fermé",
+                _XLSX_BROWSER_RETRY_KEY: "Chrome fermé",
+            }
+
+        scraper._run_browser_attempt = fake_attempt
+        scraper._xlsx_browser_max_attempts = lambda: 3
+        scraper._xlsx_browser_retry_delay = lambda: 0
+
+        result = scraper.run({"player": {"name": "Test Player"}})
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["profile"]["season"], "2026/2027")
+        self.assertIn("Échec après 3 tentative(s)", result["error"])
+        self.assertNotIn(_XLSX_BROWSER_RETRY_KEY, result)
+
+    def test_same_chrome_filename_is_staged_separately_for_each_match(self):
+        with TemporaryDirectory() as directory:
+            downloads_dir = Path(directory)
+            chrome_filename = (
+                downloads_dir / "Boubacar Junior Camara, Player actions.mp4"
+            )
+
+            chrome_filename.write_bytes(b"match-800076")
+            first = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=chrome_filename,
+                downloads_dir=downloads_dir,
+                match_id="800076",
+            )
+
+            chrome_filename.write_bytes(b"match-800068")
+            second = SportsBaseSubscriptionScraper._stage_actions_download(
+                source=chrome_filename,
+                downloads_dir=downloads_dir,
+                match_id="800068",
+            )
+
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_bytes(), b"match-800076")
+            self.assertEqual(second.read_bytes(), b"match-800068")
+            self.assertIn("800076", first.name)
+            self.assertIn("800068", second.name)
+
+    def test_my_videos_uses_exact_name_from_sportsbase_profile(self):
+        class FakeTitle:
+            def count(self):
+                return 1
+
+            def inner_text(self):
+                return "  Boubacar   Junior Camara  "
+
+        class FakeLocator:
+            first = FakeTitle()
+
+        class FakePage:
+            def locator(self, selector):
+                self.selector = selector
+                return FakeLocator()
+
+        page = FakePage()
+
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._read_profile_player_name(
+                page,
+                fallback="Boubacar Camara",
+            ),
+            "Boubacar Junior Camara",
+        )
+        self.assertEqual(page.selector, '[class*="ProfileTitle"]')
+
+    def test_profile_player_name_falls_back_to_local_name(self):
+        class MissingTitle:
+            def count(self):
+                return 0
+
+        class FakeLocator:
+            first = MissingTitle()
+
+        class FakePage:
+            def locator(self, _selector):
+                return FakeLocator()
+
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._read_profile_player_name(
+                FakePage(),
+                fallback="Boubacar Camara",
+            ),
+            "Boubacar Camara",
+        )
+
+    def test_my_videos_accepts_name_shortened_by_sportsbase(self):
+        targets = SportsBaseSubscriptionScraper._my_videos_targets(
+            "Mohamed Amine Ben Ammar"
+        )
+
+        self.assertIn("mohamed amine ben ammar, player actions", targets)
+        self.assertIn("amine ben ammar, player actions", targets)
+        self.assertNotIn("ben ammar, player actions", targets)
+        self.assertNotIn("ammar, player actions", targets)
+
+    def test_pitch_background_is_opaque_and_contains_pitch_lines(self):
+        pitch = SportsBaseSubscriptionScraper._render_pitch_background(
+            545, 360
+        )
+
+        self.assertEqual(pitch.size, (545, 360))
+        self.assertEqual(pitch.mode, "RGBA")
+        self.assertEqual(pitch.getchannel("A").getextrema(), (255, 255))
+        centre_line = pitch.getpixel((272, 18))
+        grass = pitch.getpixel((250, 80))
+        self.assertGreater(sum(centre_line[:3]), sum(grass[:3]) + 150)
+
+    def test_ball_touches_keep_coordinates_on_pitch(self):
+        png = SportsBaseSubscriptionScraper._render_ball_touches_overlay(
+            {
+                "width": 545,
+                "height": 360,
+                "points": [
+                    {
+                        "left_pct": 50,
+                        "top_pct": 50,
+                        "width_px": 8,
+                        "height_px": 8,
+                        "color": "rgb(220, 35, 55)",
+                    }
+                ],
+            }
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (545, 360))
+            self.assertEqual(image.mode, "RGB")
+            red, green, blue = image.getpixel((272, 180))
+            self.assertGreater(red, green * 3)
+            self.assertGreater(red, blue * 2)
+
+    def test_heatmap_overlay_is_composited_on_pitch(self):
+        overlay = Image.new("RGBA", (405, 268), (0, 0, 0, 0))
+        ImageDraw.Draw(overlay, "RGBA").ellipse(
+            (172, 104, 232, 164),
+            fill=(245, 55, 35, 180),
+        )
+        source = BytesIO()
+        overlay.save(source, format="PNG")
+
+        png = SportsBaseSubscriptionScraper._compose_map_on_pitch(
+            source.getvalue()
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (405, 268))
+            self.assertEqual(image.mode, "RGB")
+            red, green, blue = image.getpixel((202, 134))
+            self.assertGreater(red, green)
+            self.assertGreater(red, blue)
+
+    def test_season_and_average_sections_remain_separate(self):
+        class FakePage:
+            def __init__(self):
+                self.calls = 0
+                self.waited = []
+
+            def evaluate(self, _script):
+                self.calls += 1
+                if self.calls == 1:
+                    return True
+                return {
+                    "season": {
+                        "Index": "169",
+                        "Matches played": "25",
+                        "Goals": "6",
+                    },
+                    "averages": {
+                        "Key passes": "0.4",
+                        "Shots": "1.8",
+                        "Challenges won, %": "30%",
+                    },
+                    "table": {"headers": [], "rows": []},
+                }
+
+            def wait_for_timeout(self, milliseconds):
+                self.waited.append(milliseconds)
+
+        page = FakePage()
+        result = SportsBaseSubscriptionScraper._read_season_statistics(
+            object(), page
+        )
+
+        self.assertEqual(result["season_statistics"]["Matches played"], "25")
+        self.assertEqual(result["season_statistics"]["Goals"], "6")
+        self.assertNotIn("Shots", result["season_statistics"])
+        self.assertEqual(result["average_statistics"]["Shots"], "1.8")
+        self.assertEqual(
+            result["average_statistics"]["Challenges won, %"], "30%"
+        )
+        self.assertEqual(page.waited, [450])
+
+    def test_position_comparison_radar_is_a_valid_portal_png(self):
+        metrics = [
+            {"label": "Shots", "player": 0.86, "average": 1.19, "player_normalized": 35.8, "average_normalized": 49.6, "scale_max": 2.4, "precision": 2, "unit": "per_90"},
+            {"label": "Passes into the penalty box accurate, %", "player": 93, "average": 71, "player_normalized": 93, "average_normalized": 71, "scale_max": 100, "precision": 0, "unit": "%"},
+            {
+                "label": "Defensive challenges",
+                "player": 9.14,
+                "average": 7.18,
+                "player_normalized": 89.9,
+                "average_normalized": 70.6,
+                "scale_max": 10.17,
+                "precision": 2,
+                "unit": "per_90",
+            },
+            {"label": "Interceptions", "player": 3.37, "average": 3.36, "player_normalized": 55.4, "average_normalized": 55.3, "scale_max": 6.10, "precision": 2, "unit": "per_90"},
+        ]
+
+        png = SportsBaseSubscriptionScraper._build_position_comparison_radar(
+            metrics,
+            player_name="Iyed Belwafi",
+            position_label="Left attacking midfielder",
+        )
+
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        with Image.open(BytesIO(png)) as image:
+            self.assertEqual(image.size, (1400, 1150))
+
+    def test_team_table_marks_player_and_calculates_ranks(self):
+        rows = [
+            {"headers": ["Player", "Index", "Pos", "Min"], "cells": []},
+            {
+                "headers": [],
+                "cells": ["First Player", "225", "CF", "90"],
+                "playerName": "First Player",
+                "playerHref": "/players/111",
+            },
+            {
+                "headers": [],
+                "cells": ["Target Player", "201", "LW", "75"],
+                "playerName": "Target Player",
+                "playerHref": "/players/575815",
+            },
+        ]
+        result = SportsBaseSubscriptionScraper._normalize_team_table(
+            rows, "575815", "Stade Tunisien"
+        )
+        self.assertEqual(result["index"], 201)
+        self.assertEqual(result["team_rank"], 2)
+        self.assertEqual(result["match_rank"], 2)
+        self.assertTrue(result["team_table"][1]["is_current_player"])
+
+    def test_direct_players_table_snapshot_preserves_values_and_teams(self):
+        snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
+            {
+                "headers": [
+                    "№", "Player", "Team", "Index", "Headers",
+                    "Headers on target, %",
+                ],
+                "rows": [
+                    {
+                        "№": "9",
+                        "Player": "  Test  Striker ",
+                        "Team": " Team A ",
+                        "Index": "170",
+                        "Headers": "3",
+                        "Headers on target, %": "67%",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(snapshot["rows"][0]["Player"], "Test Striker")
+        self.assertEqual(snapshot["rows"][0]["Team"], "Team A")
+        self.assertEqual(snapshot["rows"][0]["Headers"], 3)
+        self.assertEqual(snapshot["rows"][0]["Headers on target, %"], "67%")
+
+    def test_players_table_requires_enriched_custom_headers(self):
+        enriched = [
+            header
+            for header in SPORTSBASE_PLAYER_COLUMNS
+            if header not in {"№", "Player", "Team"}
+        ]
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._missing_enriched_players_headers(enriched),
+            [],
+        )
+        missing = SportsBaseSubscriptionScraper._missing_enriched_players_headers(
+            ["Player", "Shots", "Shots on target, %"]
+        )
+        self.assertIn("Headers", missing)
+        self.assertIn("Shots on target from the penalty area, %", missing)
+        self.assertNotIn("Player", missing)
+
+    def test_xlsx_requires_complete_81_column_analysis_contract(self):
+        self.assertEqual(
+            SportsBaseSubscriptionScraper._missing_xlsx_analysis_headers(
+                SPORTSBASE_PLAYER_COLUMNS
+            ),
+            [],
+        )
+        missing = SportsBaseSubscriptionScraper._missing_xlsx_analysis_headers(
+            [header for header in SPORTSBASE_PLAYER_COLUMNS if header != "Player"]
+        )
+        self.assertEqual(missing, ["Player"])
+
+    def test_renamed_sportsbase_columns_satisfy_full_81_kpi_contract(self):
+        renamed = {
+            "Goals by head": "Headed goals",
+            "Progressive open passes": "Uncontested progressive passes",
+            "Lost balls": "Ball losses",
+            "Lost balls in own half": "Ball losses in own half",
+        }
+        incoming_headers = [
+            renamed.get(header, header) for header in SPORTSBASE_PLAYER_COLUMNS
+        ]
+        scraper = SportsBaseSubscriptionScraper
+        self.assertEqual(scraper._missing_enriched_players_headers(incoming_headers), [])
+        self.assertEqual(scraper._missing_xlsx_analysis_headers(incoming_headers), [])
+        self.assertEqual(len(incoming_headers), 81)
+
+        source_row = {header: "1" for header in incoming_headers}
+        source_row.update({
+            "Player": "Test Player",
+            "Team": "Test Team",
+            "Position": "LB",
+            "Headed goals": "2",
+            "Uncontested progressive passes": "7",
+            "Ball losses": "5",
+            "Ball losses in own half": "3",
+        })
+        snapshot = scraper._normalize_players_table_snapshot({
+            "headers": [*incoming_headers, "Optional SportsBase metric"],
+            "rows": [source_row],
+        })
+        self.assertEqual(snapshot["headers"], list(SPORTSBASE_PLAYER_COLUMNS))
+        self.assertEqual(len(snapshot["rows"]), 1)
+        target = snapshot["rows"][0]
+        self.assertEqual(target["Player"], "Test Player")
+        self.assertEqual(target["Goals by head"], 2)
+        self.assertEqual(target["Progressive open passes"], 7)
+        self.assertEqual(target["Lost balls"], 5)
+        self.assertEqual(target["Lost balls in own half"], 3)
+        for renamed_header in renamed.values():
+            self.assertNotIn(renamed_header, target)
+        self.assertNotIn("Optional SportsBase metric", target)
+
+    def test_legacy_sportsbase_column_names_remain_supported(self):
+        scraper = SportsBaseSubscriptionScraper
+        headers = list(SPORTSBASE_PLAYER_COLUMNS)
+        self.assertEqual(scraper._missing_xlsx_analysis_headers(headers), [])
+        self.assertEqual(scraper._missing_enriched_players_headers(headers), [])
+        source_row = {header: "1" for header in headers}
+        source_row.update({
+            "Player": "Historical Player",
+            "Team": "Historical Team",
+            "Goals by head": "4",
+            "Progressive open passes": "8",
+            "Lost balls": "6",
+            "Lost balls in own half": "2",
+        })
+        snapshot = scraper._normalize_players_table_snapshot({
+            "headers": headers,
+            "rows": [source_row],
+        })
+        self.assertEqual(snapshot["headers"], headers)
+        self.assertEqual(snapshot["rows"][0]["Goals by head"], 4)
+        self.assertEqual(snapshot["rows"][0]["Progressive open passes"], 8)
+        self.assertEqual(snapshot["rows"][0]["Lost balls"], 6)
+        self.assertEqual(snapshot["rows"][0]["Lost balls in own half"], 2)
+
+
+    def test_direct_players_table_keeps_only_analysis_contract_columns(self):
+        snapshot = SportsBaseSubscriptionScraper._normalize_players_table_snapshot(
+            {
+                "headers": [
+                    "№", "Player", "Team", "Index", "Headers", "Unused metric",
+                ],
+                "rows": [
+                    {
+                        "№": "9",
+                        "Player": "Test Striker",
+                        "Team": "Team A",
+                        "Index": "170",
+                        "Headers": "3",
+                        "Unused metric": "999",
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("Unused metric", snapshot["headers"])
+        self.assertNotIn("Unused metric", snapshot["rows"][0])
+
+
+class YouTubeDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="880001",
+            season=self.subscription.season,
+            match_date=timezone.localdate(),
+            home_team="Stade Tunisien",
+            away_team="CS Sfaxien",
+            home_score=1,
+            away_score=0,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="player_1/season/match_880001",
+            all_actions_filename="all-actions.mp4",
+        )
+        SportsBaseMatchStats.objects.create(
+            match=self.match,
+            minutes_played=90,
+            detailed_statistics={
+                "Passes": "40",
+                "Passes accurate, %": "88%",
+            },
+        )
+
+    def test_pending_job_reads_delivery_options_again_when_claimed(self):
+        self.subscription.all_actions_enabled = False
+        self.subscription.email_delivery_enabled = False
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "email_delivery_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        queue_sync(self.subscription, requested_by=self.admin)
+        SportsBaseSubscription.objects.filter(pk=self.subscription.pk).update(
+            all_actions_enabled=True,
+            email_delivery_enabled=True,
+            youtube_delivery_enabled=True,
+        )
+        claimed = claim_next_job()
+        self.assertTrue(claimed.payload["all_actions_enabled"])
+        self.assertTrue(claimed.payload["email_delivery_enabled"])
+        self.assertTrue(claimed.payload["youtube_delivery_enabled"])
+
+    def test_upload_queue_is_idempotent_and_contains_no_source_brand(self):
+        self.assertEqual(ensure_youtube_upload_jobs(), 1)
+        self.assertEqual(ensure_youtube_upload_jobs(), 0)
+        upload = claim_next_youtube_upload()
+        self.assertEqual(upload.match, self.match)
+        self.assertEqual(upload.payload["youtube"]["visibility"], "unlisted")
+        self.assertNotIn("sportsbase", str(upload.payload).casefold())
+        self.assertEqual(SportsBaseYouTubeUpload.objects.count(), 1)
+
+    def test_valid_result_links_video_to_match(self):
+        upload = claim_next_youtube_upload()
+        finished = apply_youtube_upload_result(
+            upload,
+            {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": "a" * 64,
+                "file_size_bytes": 31_000_000,
+            },
+        )
+        self.assertEqual(finished.status, SportsBaseYouTubeUpload.Status.UPLOADED)
+        self.assertEqual(finished.match, self.match)
+        self.assertEqual(finished.youtube_video_id, "abcdefghijk")
+
+    def test_disabled_subscription_does_not_queue_upload(self):
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.assertEqual(ensure_youtube_upload_jobs(), 0)
+        self.assertFalse(SportsBaseYouTubeUpload.objects.exists())
+
+    def test_pending_upload_is_suspended_while_youtube_is_disabled(self):
+        self.assertEqual(ensure_youtube_upload_jobs(), 1)
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.assertIsNone(claim_next_youtube_upload())
+        self.assertEqual(
+            SportsBaseYouTubeUpload.objects.get(match=self.match).status,
+            SportsBaseYouTubeUpload.Status.PENDING,
+        )
+
+    def test_reactivation_queues_missing_actions_and_reuses_downloaded_video(self):
+        self.subscription.all_actions_enabled = False
+        self.subscription.youtube_delivery_enabled = False
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        self.match.actions_state = SportsBaseMatch.ActionsState.NOT_REQUESTED
+        self.match.local_folder_key = ""
+        self.match.all_actions_filename = ""
+        self.match.save(
+            update_fields=(
+                "actions_state",
+                "local_folder_key",
+                "all_actions_filename",
+                "updated_at",
+            )
+        )
+        self.subscription.all_actions_enabled = True
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=(
+                "all_actions_enabled",
+                "youtube_delivery_enabled",
+                "updated_at",
+            )
+        )
+        result = reconcile_subscription_delivery_settings(
+            self.subscription,
+            previous_options={
+                "all_actions_enabled": False,
+                "email_delivery_enabled": True,
+                "youtube_delivery_enabled": False,
+            },
+            requested_by=self.admin,
+        )
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.actions_state, SportsBaseMatch.ActionsState.QUEUED)
+        self.assertTrue(result["sync_queued"])
+        self.assertEqual(
+            self.subscription.sync_jobs.get().job_type,
+            SportsBaseSyncJob.JobType.FULL,
+        )
+
+    def test_unchanged_enabled_options_repair_missing_actions(self):
+        self.match.actions_state = SportsBaseMatch.ActionsState.NOT_REQUESTED
+        self.match.local_folder_key = ""
+        self.match.all_actions_filename = ""
+        self.match.save(
+            update_fields=(
+                "actions_state",
+                "local_folder_key",
+                "all_actions_filename",
+                "updated_at",
+            )
+        )
+        result = reconcile_subscription_delivery_settings(
+            self.subscription,
+            previous_options={
+                "all_actions_enabled": True,
+                "email_delivery_enabled": True,
+                "youtube_delivery_enabled": True,
+            },
+            requested_by=self.admin,
+        )
+        self.assertFalse(result["changed"])
+        self.assertTrue(result["sync_queued"])
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
+class SubscriptionManagementSearchTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        today = timezone.localdate()
+        self.old_match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="old-search-target",
+            season=self.subscription.season,
+            match_date=today - timedelta(days=200),
+            home_team="Ancien Club",
+            away_team="Adversaire historique",
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="performance-player/old-search-target",
+            all_actions_filename="all-actions.mp4",
+        )
+        self.old_upload = SportsBaseYouTubeUpload.objects.create(
+            match=self.old_match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée pour droits d’auteur.",
+        )
+        self.old_report = PerformanceReport.objects.create(
+            subscription=self.subscription,
+            match=self.old_match,
+            report_type=PerformanceReport.ReportType.MATCH,
+            title="Ancien rapport du joueur recherché",
+            generated_at=timezone.now() - timedelta(days=200),
+        )
+
+        for index in range(31):
+            recent_match = SportsBaseMatch.objects.create(
+                subscription=self.other_subscription,
+                sportsbase_match_id=f"recent-search-{index}",
+                season=self.other_subscription.season,
+                match_date=today - timedelta(days=index),
+                home_team=f"Club récent {index}",
+                away_team="Adversaire",
+            )
+            SportsBaseYouTubeUpload.objects.create(match=recent_match)
+            PerformanceReport.objects.create(
+                subscription=self.other_subscription,
+                match=recent_match,
+                report_type=PerformanceReport.ReportType.MATCH,
+                title=f"Rapport récent {index}",
+                generated_at=timezone.now() - timedelta(minutes=index),
+            )
+
+    def test_section_searches_find_records_beyond_the_default_thirty(self):
+        self.client.force_login(self.admin)
+        url = reverse("performance:management")
+
+        default_page = self.client.get(url)
+        self.assertNotIn(
+            self.old_upload.pk,
+            [upload.pk for upload in default_page.context["youtube_jobs"]],
+        )
+        self.assertNotIn(
+            self.old_report.pk,
+            [report.pk for report in default_page.context["reports"]],
+        )
+
+        delivery_search = self.client.get(
+            url,
+            {"delivery_q": "Performance Player"},
+        )
+        self.assertEqual(
+            [upload.pk for upload in delivery_search.context["youtube_jobs"]],
+            [self.old_upload.pk],
+        )
+        self.assertContains(delivery_search, "Ancien Club")
+        self.assertContains(delivery_search, "Essayer Dailymotion")
+        self.assertContains(delivery_search, "recherche effectuée dans tout l’historique")
+
+        report_search = self.client.get(
+            url,
+            {"report_q": "Performance Player"},
+        )
+        self.assertEqual(
+            [report.pk for report in report_search.context["reports"]],
+            [self.old_report.pk],
+        )
+        self.assertContains(report_search, self.old_report.title)
+        self.assertContains(report_search, "recherche effectuée dans tout l’historique")
+
+
+@override_settings(
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage"
+)
+class DailymotionDeliveryServiceTests(SportsBaseFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(update_fields=("youtube_delivery_enabled", "updated_at"))
+        self.match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id="880002",
+            season=self.subscription.season,
+            match_date=timezone.localdate(),
+            home_team="Stade Tunisien",
+            away_team="Club Africain",
+            home_score=2,
+            away_score=1,
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key="player_1/season/match_880002",
+            all_actions_filename="all-actions.mp4",
+        )
+        SportsBaseMatchStats.objects.create(match=self.match, minutes_played=90)
+        self.youtube_upload = SportsBaseYouTubeUpload.objects.create(
+            match=self.match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée pour droits d’auteur.",
+        )
+
+    def test_manual_fallback_preserves_youtube_and_reuses_download_metadata(self):
+        fallback, created = request_dailymotion_upload(self.match)
+
+        self.assertTrue(created)
+        self.youtube_upload.refresh_from_db()
+        self.assertEqual(self.youtube_upload.status, SportsBaseYouTubeUpload.Status.FAILED)
+        self.assertEqual(
+            self.youtube_upload.error_message,
+            "Vidéo bloquée pour droits d’auteur.",
+        )
+
+        claimed = claim_next_dailymotion_upload()
+        self.assertEqual(claimed.pk, fallback.pk)
+        self.assertEqual(claimed.payload["match"]["filename"], "all-actions.mp4")
+        self.assertEqual(
+            claimed.payload["match"]["local_folder_key"],
+            "player_1/season/match_880002",
+        )
+        self.assertEqual(claimed.payload["dailymotion"]["visibility"], "private")
+        self.assertEqual(claimed.payload["dailymotion"]["category"], "sport")
+        self.assertNotIn("api_secret", str(claimed.payload).casefold())
+
+    def test_fallback_cannot_be_requested_before_all_actions_is_local(self):
+        self.match.actions_state = SportsBaseMatch.ActionsState.GENERATING
+        self.match.save(update_fields=("actions_state", "updated_at"))
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Le fichier All Actions doit être téléchargé",
+        ):
+            request_dailymotion_upload(self.match)
+
+        self.assertFalse(SportsBaseDailymotionUpload.objects.exists())
+
+    def test_valid_result_links_fallback_and_it_becomes_preferred_video(self):
+        request_dailymotion_upload(self.match)
+        upload = claim_next_dailymotion_upload()
+        finished = apply_dailymotion_upload_result(
+            upload,
+            {
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9fallback",
+                "dailymotion_video_id": "x9fallback",
+                "content_sha256": "b" * 64,
+                "file_size_bytes": 28_000_000,
+            },
+        )
+
+        self.assertEqual(finished.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(finished.dailymotion_video_id, "x9fallback")
+        self.assertEqual(self.match.available_video_url, finished.dailymotion_url)
+
+    def test_agent_api_claims_and_completes_the_manual_fallback(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+
+        overview = self.client.get(reverse("performance:api_pending_jobs"))
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(
+            overview.json()["dailymotion_jobs"][0]["job_id"],
+            fallback.pk,
+        )
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+        self.assertEqual(claimed.json()["job"]["job_id"], fallback.pk)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "uploaded",
+                "dailymotion_url": "https://www.dailymotion.com/video/x9apiresult",
+                "dailymotion_video_id": "x9apiresult",
+                "content_sha256": "c" * 64,
+                "file_size_bytes": 42,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(fallback.dailymotion_video_id, "x9apiresult")
+
+    def test_agent_api_records_completed_transfer_while_preview_link_is_pending(self):
+        fallback, _created = request_dailymotion_upload(self.match)
+        self.client.force_login(self.admin)
+        claimed = self.client.get(reverse("performance:api_next_dailymotion_job"))
+        self.assertEqual(claimed.status_code, 200)
+
+        completed = self.client.post(
+            reverse(
+                "performance:api_dailymotion_job_result",
+                args=(fallback.pk,),
+            ),
+            data={
+                "status": "link_pending",
+                "dailymotion_url": "",
+                "dailymotion_video_id": "",
+                "content_sha256": "d" * 64,
+                "file_size_bytes": 136_900_000,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], "link_pending")
+        fallback.refresh_from_db()
+        self.assertEqual(
+            fallback.status,
+            SportsBaseDailymotionUpload.Status.LINK_PENDING,
+        )
+        self.assertEqual(fallback.dailymotion_url, "")
+        self.assertEqual(fallback.content_sha256, "d" * 64)
+        with self.assertRaisesMessage(ValueError, "Ajoutez son lien Aperçu"):
+            request_dailymotion_upload(self.match)
+
+    def test_internal_management_exposes_try_retry_and_view_actions(self):
+        self.client.force_login(self.admin)
+        management_url = reverse("performance:management")
+
+        initial = self.client.get(management_url)
+        self.assertContains(initial, "Essayer Dailymotion")
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_upload_request",
+                args=(self.match.pk,),
+            )
+        )
+        self.assertRedirects(response, management_url, fetch_redirect_response=False)
+        fallback = SportsBaseDailymotionUpload.objects.get(match=self.match)
+
+        fallback.status = SportsBaseDailymotionUpload.Status.LINK_PENDING
+        fallback.error_message = ""
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        link_pending = self.client.get(management_url)
+        self.assertContains(link_pending, "Upload effectué — lien à ajouter")
+        self.assertContains(link_pending, "Ajouter le lien")
+        self.assertContains(
+            link_pending,
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+        )
+
+        fallback.status = SportsBaseDailymotionUpload.Status.FAILED
+        fallback.error_message = "Publication refusée."
+        fallback.save(update_fields=("status", "error_message", "updated_at"))
+        failed = self.client.get(management_url)
+        self.assertContains(failed, "Réessayer")
+
+        fallback.status = SportsBaseDailymotionUpload.Status.UPLOADED
+        fallback.dailymotion_url = "https://www.dailymotion.com/video/x9fallback"
+        fallback.dailymotion_video_id = "x9fallback"
+        fallback.error_message = ""
+        fallback.save(
+            update_fields=(
+                "status",
+                "dailymotion_url",
+                "dailymotion_video_id",
+                "error_message",
+                "updated_at",
+            )
+        )
+        uploaded = self.client.get(management_url)
+        self.assertContains(uploaded, "https://www.dailymotion.com/video/x9fallback")
+        self.assertContains(uploaded, "Voir")
+
+    def test_manual_preview_link_is_canonicalized_and_embedded_for_client(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.LINK_PENDING,
+            upload_title="Performance Player — All Actions",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dai.ly/k6dRv0e0ZEC5WCJBlxc"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("performance:management"),
+            fetch_redirect_response=False,
+        )
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.UPLOADED)
+        self.assertEqual(
+            fallback.dailymotion_url,
+            "https://www.dailymotion.com/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertEqual(fallback.dailymotion_video_id, "k6dRv0e0ZEC5WCJBlxc")
+
+        management = self.client.get(reverse("performance:management"))
+        self.assertContains(management, "Voir")
+        self.assertNotContains(management, "Ajouter le lien")
+
+        user = self.portal_user("manual-dailymotion-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        portal = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(
+            portal,
+            "dailymotion.com/embed/video/k6dRv0e0ZEC5WCJBlxc",
+        )
+        self.assertNotContains(portal, "Ajouter le lien")
+
+    def test_manual_preview_link_rejects_external_urls(self):
+        fallback = SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.FAILED,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse(
+                "performance:dailymotion_link_save",
+                args=(self.match.pk,),
+            ),
+            data={"dailymotion_url": "https://dailymotion.com.evil.test/video/kBad"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Saisissez un lien Dailymotion valide")
+        fallback.refresh_from_db()
+        self.assertEqual(fallback.status, SportsBaseDailymotionUpload.Status.FAILED)
+        self.assertEqual(fallback.dailymotion_url, "")
+
+    def test_manual_link_service_rejects_a_transfer_still_running(self):
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.RUNNING,
+        )
+
+        with self.assertRaisesMessage(ValueError, "travaille encore"):
+            save_dailymotion_link(
+                self.match,
+                "https://dai.ly/k6dRv0e0ZEC5WCJBlxc",
+            )
+
+    def test_portal_uses_fallback_without_exposing_management_controls(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=self.match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+        user = self.portal_user("fallback-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, self.match.sportsbase_match_id),
+            )
+        )
+
+        self.assertContains(response, "dailymotion.com/embed/video/x9fallback")
+        self.assertNotContains(response, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertNotContains(response, "Essayer Dailymotion")
+        self.assertNotContains(response, "Réessayer")
+
+    def test_youtube_remains_visible_while_fallback_is_pending(self):
+        self.youtube_upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+        self.youtube_upload.youtube_url = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        )
+        self.youtube_upload.youtube_video_id = "abcdefghijk"
+        self.youtube_upload.save(
+            update_fields=(
+                "status",
+                "youtube_url",
+                "youtube_video_id",
+                "updated_at",
+            )
+        )
+        SportsBaseDailymotionUpload.objects.create(match=self.match)
+        self.match.refresh_from_db()
+
+        self.assertEqual(
+            self.match.available_video_url,
+            "https://www.youtube.com/watch?v=abcdefghijk",
+        )
+        self.assertEqual(self.match.video_delivery_status, "uploaded")
+
+
+class YouTubeChannelConfigurationTests(SimpleTestCase):
+    def test_highlights_configuration_is_isolated_from_performance(self):
+        settings = {
+            "YOUTUBE_STUDIO_CHANNEL_ID": "UC_PERFORMANCE",
+            "YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_MSPerformance_Profile",
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+            "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_Highlights_Profile",
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            performance = YouTubeStudioUploader(directory)
+            highlights = YouTubeStudioUploader(
+                directory,
+                config_prefix="HIGHLIGHTS_YOUTUBE",
+            )
+
+        self.assertEqual(performance.channel_id, "UC_PERFORMANCE")
+        self.assertEqual(highlights.channel_id, "UC_HIGHLIGHTS")
+        self.assertEqual(
+            str(performance.profile_dir), r"D:\YouTube_MSPerformance_Profile"
+        )
+        self.assertEqual(
+            str(highlights.profile_dir), r"D:\YouTube_Highlights_Profile"
+        )
+        self.assertEqual(highlights.chrome_profile_name, "Default")
+        self.assertIn("UC_PERFORMANCE", performance.upload_url)
+        self.assertIn("UC_HIGHLIGHTS", highlights.upload_url)
+
+    def test_highlights_launches_the_copied_profile_one_directory(self):
+        with TemporaryDirectory() as directory:
+            profile_root = Path(directory) / "YouTube_Highlights_Profile"
+            (profile_root / "Profile 1").mkdir(parents=True)
+            (profile_root / "Local State").write_text("{}", encoding="utf-8")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_NAME": "Profile 1",
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            expected_context = object()
+            playwright = Mock()
+            playwright.chromium.launch_persistent_context.return_value = (
+                expected_context
+            )
+
+            result = uploader._launch_context(playwright)
+
+            self.assertIs(result, expected_context)
+            launch = playwright.chromium.launch_persistent_context.call_args
+            self.assertEqual(
+                launch.kwargs["user_data_dir"],
+                str(profile_root),
+            )
+            self.assertIn(
+                "--profile-directory=Profile 1",
+                launch.kwargs["args"],
+            )
+
+    def test_setup_opens_normal_chrome_then_checks_the_saved_session(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_root = root / "YouTube_Highlights_Profile"
+            chrome_executable = root / "Google" / "Chrome" / "chrome.exe"
+            chrome_executable.parent.mkdir(parents=True)
+            chrome_executable.write_bytes(b"chrome")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+                "HIGHLIGHTS_YOUTUBE_CHROME_EXE": str(chrome_executable),
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            with patch(
+                "sportsbase_data.youtube_uploader.subprocess.Popen"
+            ) as popen, patch("builtins.input"), patch.object(
+                uploader,
+                "check_access",
+                return_value=True,
+            ) as check_access:
+                result = uploader.setup_access_with_normal_chrome()
+
+            self.assertTrue(result)
+            command = popen.call_args.args[0]
+            self.assertEqual(command[0], str(chrome_executable))
+            self.assertIn(f"--user-data-dir={profile_root}", command)
+            self.assertIn("--profile-directory=Default", command)
+            self.assertIn(uploader.content_url, command)
+            check_access.assert_called_once_with(allow_interactive_login=False)
+
+    def test_missing_profile_fails_before_playwright_creates_another_one(self):
+        with TemporaryDirectory() as directory:
+            profile_root = Path(directory) / "YouTube_Highlights_Profile"
+            profile_root.mkdir()
+            (profile_root / "Local State").write_text("{}", encoding="utf-8")
+            settings = {
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": str(profile_root),
+            }
+            with patch.dict("os.environ", settings, clear=True):
+                uploader = YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "Profil Chrome copié introuvable",
+            ):
+                uploader._launch_context(Mock())
+            self.assertFalse((profile_root / "Default").exists())
+
+    def test_highlights_channel_id_is_required(self):
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", {}, clear=True
+        ):
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID est obligatoire",
+            ):
+                YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+    def test_highlights_profile_must_be_different_from_performance(self):
+        settings = {
+            "YOUTUBE_STUDIO_CHANNEL_ID": "UC_PERFORMANCE",
+            "YOUTUBE_CHROME_PROFILE_DIR": r"D:\YouTube_MSPerformance_Profile",
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+            "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR": (
+                r"D:\YouTube_MSPerformance_Profile"
+            ),
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            with self.assertRaisesMessage(
+                YouTubeUploadError,
+                "HIGHLIGHTS_YOUTUBE_CHROME_PROFILE_DIR doit être différent",
+            ):
+                YouTubeStudioUploader(
+                    directory,
+                    config_prefix="HIGHLIGHTS_YOUTUBE",
+                )
+
+    def test_highlights_does_not_reuse_a_legacy_performance_receipt(self):
+        settings = {
+            "HIGHLIGHTS_YOUTUBE_STUDIO_CHANNEL_ID": "UC_HIGHLIGHTS",
+        }
+        with TemporaryDirectory() as directory, patch.dict(
+            "os.environ", settings, clear=True
+        ):
+            uploader = YouTubeStudioUploader(
+                directory,
+                config_prefix="HIGHLIGHTS_YOUTUBE",
+            )
+            job = {"job_id": "highlight-1914"}
+            receipt = {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": "video-digest",
+                "file_size_bytes": 123,
+            }
+            uploader._save_receipt(job, receipt)
+
+            self.assertIsNone(
+                uploader._load_receipt(
+                    job,
+                    content_sha256="video-digest",
+                    file_size=123,
+                )
+            )
+
+
+class YouTubeUploaderPathTests(SimpleTestCase):
+    def test_public_visibility_uses_public_radio(self):
+        page = Mock()
+        public_radio = Mock()
+        page.locator.return_value.first = public_radio
+        public_radio.count.return_value = 1
+        public_radio.is_visible.return_value = True
+        uploader = object.__new__(YouTubeStudioUploader)
+
+        selected = uploader._select_visibility(page, "public")
+
+        self.assertEqual(selected, "public")
+        self.assertIn(
+            'name="PUBLIC"',
+            page.locator.call_args_list[0].args[0],
+        )
+        public_radio.click.assert_called_once_with()
+
+    def test_thumbnail_is_resolved_inside_subscription_storage(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            thumbnail = root / "player_1" / "intro" / "youtube_thumbnail.jpg"
+            thumbnail.parent.mkdir(parents=True)
+            thumbnail.write_bytes(b"jpeg-thumbnail")
+            uploader = YouTubeStudioUploader(root)
+
+            resolved = uploader.resolve_thumbnail_path(
+                {
+                    "youtube": {
+                        "thumbnail_path": (
+                            "player_1/intro/youtube_thumbnail.jpg"
+                        )
+                    }
+                }
+            )
+
+            self.assertEqual(resolved, thumbnail.resolve())
+
+    def test_thumbnail_path_traversal_is_rejected(self):
+        with TemporaryDirectory() as directory:
+            uploader = YouTubeStudioUploader(directory)
+            with self.assertRaises(YouTubeUploadError):
+                uploader.resolve_thumbnail_path(
+                    {"youtube": {"thumbnail_path": "../outside.jpg"}}
+                )
+
+    def test_thumbnail_uses_youtube_studio_hidden_file_input(self):
+        class FakeFileInput:
+            def __init__(self):
+                self.uploaded_path = ""
+
+            def set_input_files(self, path):
+                self.uploaded_path = path
+
+        class FakePreview:
+            def __init__(self):
+                self.waited_states = []
+
+            @property
+            def first(self):
+                return self
+
+            def wait_for(self, **kwargs):
+                self.waited_states.append(kwargs)
+
+        class FakePage:
+            def __init__(self, preview):
+                self.preview = preview
+
+            def locator(self, _selector):
+                return self.preview
+
+            def wait_for_timeout(self, _milliseconds):
+                return None
+
+        uploader = object.__new__(YouTubeStudioUploader)
+        file_input = FakeFileInput()
+        preview = FakePreview()
+        uploader._attached_thumbnail_input = lambda _page: file_input
+        page = FakePage(preview)
+        thumbnail = Path("youtube_thumbnail.jpg")
+
+        uploader._upload_thumbnail(page, thumbnail)
+
+        self.assertEqual(file_input.uploaded_path, str(thumbnail))
+        self.assertEqual(
+            preview.waited_states,
+            [
+                {"state": "visible", "timeout": 60000},
+                {"state": "hidden", "timeout": 60000},
+            ],
+        )
+
+    def test_fast_upload_completion_is_detected_from_studio_status(self):
+        class FakeHost:
+            def inner_text(self):
+                return "Upload complete ... Processing will begin shortly"
+
+        class FakeHosts:
+            def count(self):
+                return 1
+
+            def nth(self, _index):
+                return FakeHost()
+
+        class FakePage:
+            def locator(self, _selector):
+                return FakeHosts()
+
+        self.assertTrue(
+            YouTubeStudioUploader._upload_completion_detected(FakePage())
+        )
+
+    def test_prechecks_warning_clicks_publish_anyway(self):
+        class FakeButton:
+            def __init__(self):
+                self.clicked = False
+
+            def click(self, **_kwargs):
+                self.clicked = True
+
+            def is_visible(self):
+                return not self.clicked
+
+        class FakePage:
+            def wait_for_timeout(self, _milliseconds):
+                return None
+
+        uploader = object.__new__(YouTubeStudioUploader)
+        button = FakeButton()
+        uploader._first_visible = lambda *_args, **_kwargs: button
+        uploader._wait_button_enabled = lambda *_args, **_kwargs: None
+
+        self.assertTrue(
+            uploader._publish_anyway_if_prechecks_pending(FakePage())
+        )
+        self.assertTrue(button.clicked)
+
+    def test_local_video_is_resolved_inside_subscription_storage(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            match_folder = root / "player_1" / "match_1"
+            match_folder.mkdir(parents=True)
+            video = match_folder / "actions.mp4"
+            video.write_bytes(b"video")
+            uploader = YouTubeStudioUploader(root)
+            resolved = uploader.resolve_video_path(
+                {
+                    "match": {
+                        "local_folder_key": r"player_1\match_1",
+                        "filename": "actions.mp4",
+                    }
+                }
+            )
+            self.assertEqual(resolved, video.resolve())
+
+    def test_path_traversal_is_rejected(self):
+        with TemporaryDirectory() as directory:
+            uploader = YouTubeStudioUploader(directory)
+            with self.assertRaises(YouTubeUploadError):
+                uploader.resolve_video_path(
+                    {
+                        "match": {
+                            "local_folder_key": "../outside",
+                            "filename": "actions.mp4",
+                        }
+                    }
+                )
+
+    def test_local_receipt_prevents_duplicate_upload_after_network_failure(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            match_folder = root / "player_1" / "match_1"
+            match_folder.mkdir(parents=True)
+            video = match_folder / "actions.mp4"
+            video.write_bytes(b"same-video-content")
+            uploader = YouTubeStudioUploader(root)
+            job = {
+                "job_id": 91,
+                "match": {
+                    "local_folder_key": "player_1/match_1",
+                    "filename": "actions.mp4",
+                },
+            }
+            digest = "9f49d074192c1a27e5317cae42d054485229606a4bd0fc3592a6c0238716d5d1"
+            receipt = {
+                "status": "uploaded",
+                "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
+                "youtube_video_id": "abcdefghijk",
+                "content_sha256": digest,
+                "file_size_bytes": video.stat().st_size,
+            }
+            uploader._save_receipt(job, receipt)
+            self.assertEqual(
+                uploader._load_receipt(
+                    job,
+                    content_sha256=digest,
+                    file_size=video.stat().st_size,
+                ),
+                receipt,
+            )
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    PUBLIC_SITE_URL="https://example.test",
+    STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage",
+)
+class PerformanceReportTests(SportsBaseFixtureMixin, TestCase):
+    def _create_match(self, number, pass_rate=85):
+        match = SportsBaseMatch.objects.create(
+            subscription=self.subscription,
+            sportsbase_match_id=str(990000 + number),
+            season=self.subscription.season,
+            match_date=timezone.localdate() - timedelta(days=6 - number),
+            home_team="Stade Tunisien",
+            away_team=f"Club {number}",
+            sync_state=SportsBaseMatch.SyncState.SYNCED,
+            actions_state=SportsBaseMatch.ActionsState.DOWNLOADED,
+            local_folder_key=f"player/match_{number}",
+            all_actions_filename=f"actions-{number}.mp4",
+        )
+        SportsBaseMatchStats.objects.create(
+            match=match,
+            minutes_played=90,
+            detailed_statistics={
+                "Passes": 40 + number,
+                "Passes accurate, %": f"{pass_rate}%",
+                "Challenges": 8,
+                "Challenges won, %": "62%",
+            },
+        )
+        return match
+
+    def test_match_and_five_match_cycle_reports_are_generated_once(self):
+        matches = [self._create_match(number) for number in range(1, 6)]
+        generated = generate_reports_for_subscription(self.subscription)
+        self.assertEqual(len(generated), 6)
+        self.assertEqual(
+            PerformanceReport.objects.filter(
+                report_type=PerformanceReport.ReportType.MATCH
+            ).count(),
+            5,
+        )
+        cycle = PerformanceReport.objects.get(
+            report_type=PerformanceReport.ReportType.CYCLE
+        )
+        self.assertEqual(cycle.match_ids, [item.sportsbase_match_id for item in matches])
+        generate_reports_for_subscription(self.subscription)
+        self.assertEqual(PerformanceReport.objects.count(), 6)
+
+    def test_manual_analysis_is_not_overwritten_by_next_sync(self):
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        report.strengths = "Observation personnelle de l’analyste."
+        report.is_manually_edited = True
+        report.save(update_fields=("strengths", "is_manually_edited", "updated_at"))
+        generate_match_report(match)
+        report.refresh_from_db()
+        self.assertEqual(report.strengths, "Observation personnelle de l’analyste.")
+
+    def test_pdf_is_generated_from_current_report_version(self):
+        report = generate_match_report(self._create_match(1))
+        report.analyst_notes = "Conserver cette observation dans le PDF."
+        report.save(update_fields=("analyst_notes", "updated_at"))
+        pdf = render_report_pdf(report)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 1000)
+        self.client.force_login(self.admin)
+        agent_pdf = self.client.get(
+            reverse("performance:api_report_pdf", args=(report.pk,))
+        )
+        self.assertEqual(agent_pdf.status_code, 200)
+        self.assertEqual(agent_pdf["Content-Type"], "application/pdf")
+        self.assertIn("attachment", agent_pdf["Content-Disposition"])
+
+    def test_email_waits_for_video_and_published_report(self):
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=("youtube_delivery_enabled", "updated_at")
+        )
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        self.assertFalse(send_ready_delivery_notification(report))
+        upload = SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
+        self.assertTrue(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("espace joueur", mail.outbox[0].body)
+        self.assertNotIn("http://", mail.outbox[0].body)
+        self.assertNotIn("https://", mail.outbox[0].body)
+        self.assertFalse(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_email_accepts_dailymotion_when_youtube_upload_failed(self):
+        self.subscription.youtube_delivery_enabled = True
+        self.subscription.save(
+            update_fields=("youtube_delivery_enabled", "updated_at")
+        )
+        match = self._create_match(3)
+        report = generate_match_report(match)
+        SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.FAILED,
+            error_message="Vidéo bloquée.",
+        )
+        SportsBaseDailymotionUpload.objects.create(
+            match=match,
+            status=SportsBaseDailymotionUpload.Status.UPLOADED,
+            dailymotion_url="https://www.dailymotion.com/video/x9fallback",
+            dailymotion_video_id="x9fallback",
+        )
+
+        self.assertTrue(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertFalse(send_ready_delivery_notification(report))
+
+    def test_email_option_suppresses_notification(self):
+        match = self._create_match(2)
+        report = generate_match_report(match)
+        self.subscription.email_delivery_enabled = False
+        self.subscription.save(update_fields=("email_delivery_enabled", "updated_at"))
+        self.assertFalse(send_ready_delivery_notification(report))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_portal_shows_embedded_video_and_dynamic_report(self):
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        report.analysis_payload = {
+            "available": True,
+            "player": {"profile_score": 78},
+            "verdict": {
+                "score": 82,
+                "label": "TRÈS BON MATCH",
+                "tone": "excellent",
+            },
+            "appendix_metrics": [
+                {"metric": "Goals", "display": "1"},
+                {"metric": "Assists", "display": "0"},
+                {"metric": "Key passes", "display": "3"},
+            ],
+        }
+        report.save(update_fields=("analysis_payload", "updated_at"))
+        SportsBaseYouTubeUpload.objects.create(
+            match=match,
+            status=SportsBaseYouTubeUpload.Status.UPLOADED,
+            youtube_url="https://www.youtube.com/watch?v=abcdefghijk",
+            youtube_video_id="abcdefghijk",
+        )
+        user = self.portal_user("report-client")
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        detail = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(detail, "youtube-nocookie.com/embed/abcdefghijk")
+        self.assertContains(detail, "Rapport de l’analyste")
+        self.assertContains(detail, "MS Score")
+        self.assertContains(detail, "8.2/10")
+        self.assertContains(detail, "TRÈS BON MATCH")
+        self.assertContains(detail, "Passes clés")
+        pdf = self.client.get(reverse("performance:report_pdf", args=(report.pk,)))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+
+    def test_subscription_controls_report_but_account_controls_portal_copy(self):
+        self.subscription.report_language = SportsBaseSubscription.ReportLanguage.ENGLISH
+        self.subscription.save(update_fields=("report_language", "updated_at"))
+        match = self._create_match(1)
+        report = generate_match_report(match)
+        self.assertEqual(report.language, "en")
+        self.assertTrue(report.title.startswith("Performance report"))
+        user = self.portal_user("english-client")
+        user.portal_profile.preferred_language = "ar"
+        user.portal_profile.save(update_fields=("preferred_language", "updated_at"))
+        PlayerAccess.objects.create(user=user, player=self.player)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse(
+                "performance:portal_match",
+                args=(self.player.pk, match.sportsbase_match_id),
+            )
+        )
+        self.assertContains(response, "تحليل المباراة")
+        self.assertNotContains(response, "Analyse du match")
+        self.assertNotContains(response, "Match analysis")
