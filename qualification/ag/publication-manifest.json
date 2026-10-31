@@ -4,7 +4,7 @@
     "qualification/ag/ci_run.py": "469dd58a798db63c414b56e2cbf44e11f4a96e79d5c0c13279989bd14716bf20",
     "qualification/ag/expected-tests.json": "b4f34071349dbc1d1228e7c43350e00ecc7ddcaf889bc5f0e4cbf5a696a65eb0",
     "qualification/ag/requirements.txt": "318ad748d73c6ba462b345c09a55ec2f925b5a274ddd8b89cd1286701e1263ae",
-    "qualification/ag/verify_sources.py": "cf989531612cac0ee550de6914551ba73b0afa2b2c72845f7e638a001893e1da",
+    "qualification/ag/verify_sources.py": "8b413b7dbeea34fda033512d4c94a33e1b6de3b403a7957f2d7f17d160c7a3df",
     "qualification/ag/candidate/ci_target.py": "805e599304ee0f24604f22e7ba71ea942085995d06c532dd117713a611bdfc17",
     "qualification/ag/candidate/effect_audit.py": "77394b208c53b3192ec09db6faa4417a20e6d64bcd26ef8cd17052ae1eb86ad5",
     "qualification/ag/candidate/fixture_snapshot.py": "d6156d6d2d899c1f2fa79aaaa5d79653b810e339e3bf5d3e17021c66c0ae8468",
