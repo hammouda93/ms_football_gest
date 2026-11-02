@@ -1,0 +1,25 @@
+# Candidate technical read access — integration contract
+
+> Lot06 pilot override: `policy.json` now exposes exactly 15 models and structured scalars only. The original broad-policy integration tests below are copied unchanged, not a claim of acceptance for this pilot. `configuration.py` fixes statement timeout at 1500 ms, response at 262144 bytes, cell at 16384 bytes, and quotas at 10 per principal / 15 globally per minute. Core engine/views/access remain byte-identical to lot03. No activation, migration, database access or remote deployment was performed during assembly. PostgreSQL and the historical full-suite acceptance remain parent-owned; see `../../evidence/pilot-report.json`.
+
+Implemented, confined to `data_access/`. Parent verification exercised all 28 tests, including the real multi-process PostgreSQL quota tests, after provisioning the dedicated fictional security database. Views, logger configuration and the separate analytical connection are wired by the parent; see the final candidate evidence.
+
+## Public callables
+
+* `authenticate_request(request) -> {"id": str, "scope": "business:read:all"}`. Requires `DATA_ACCESS_ENABLED is True` (otherwise 404). Bearer only; never Django cookie/user fallback. `DATA_ACCESS_CREDENTIALS` is a list of `{id, token_hash: <64 lowercase hex SHA-256>, scope, expires_at: <aware ISO 8601>, revoked?: bool}`. Issuer IDs match `[A-Za-z0-9_-]{1,64}`. Unknown/missing/expired/revoked credentials: 401; valid credential with another scope: 403. Fixed public errors, no credential contents.
+* `reserve_budget(principal_id) -> None`. Call **before** the engine's read-only transaction on mandatory alias `data_access`. Fail closed unless PostgreSQL, `ATOMIC_REQUESTS=False`, autocommit enabled and no transaction already active. No fallback to `default`, no third alias. Independent committed quota transaction survives later read rollback/connection close. Raises `QuotaError` (429) or `AccessDenied` (503).
+* `AccessDenied.status`, `.code`, `.message`; `QuotaError` subclasses it, with `.retry_after` seconds until the next UTC minute.
+* `fingerprint(query) -> str`: SHA-256 of canonical JSON, no raw query logged. JSON object key order is normalized; list order preserved.
+* `emit_audit(event=None, **fields) -> None`: bounded whitelist-only JSON on Python logger `data_access.audit`; never request, Authorization, tokens, query/payload contents, business text, exception details. **Final parent contract**: `requestId`, `principalId`, `queryHash`, `schemaFingerprint`, `entity`, `fields`, `rowCount`, `durationMs`, `status` (HTTP integer), `code`. Unknown/malformed fields are dropped. `principalId` is the validated issuer ID; entity/field identifiers must come from the trusted catalog. Request IDs are 32 lowercase hex, hashes 64 lowercase hex, field list max 200 identifiers (max 128 ASCII characters each), rowCount nonnegative int, durationMs finite 0–86400000, status integer100–599. Codes are an explicit finite allowlist. There is no `outcome` field; status/code describe the result. The caller closes the alias in its finally block; reserve_budget does not close an otherwise usable connection.
+
+## PostgreSQL quota table (explicit opt-in migration)
+
+A new technical-only table is necessary for a cumulative cross-process quota without Redis/cache requirements. `data_access/migrations/0001_read_budget.py` will create `data_access_read_budget`, using a migration operation (never runtime CREATE). It stores only a UTC minute, a domain-separated SHA-256 principal/global key, and an integer counter. No business models, text, tokens or payloads.
+
+Within one transaction on `data_access`, a shared PostgreSQL advisory transaction lock serializes the global and identity counters. Defaults: 50 requests per identity and 100 globally per fixed UTC minute; settings `DATA_ACCESS_REQUESTS_PER_MINUTE` and `DATA_ACCESS_GLOBAL_REQUESTS_PER_MINUTE`. A denied attempt increments neither counter. Bounded cleanup removes expired technical rows. Activation/migration requires explicit deployment approval; this document does not authorize applying it outside the isolated test DB.
+
+Views must be non-atomic on default (`non_atomic_requests(using="default")`) and `data_access` must set `ATOMIC_REQUESTS=False`. Engine uses `connections['data_access']`, rolls back and closes after its read-only transaction. No credential value is supplied by this module; deployment owns secure token generation, hashed credential config, expiry, revocation and rotation.
+
+## Test prerequisite
+
+Standalone unittest settings, no business app/test runner/database creation. Integration tests connect only to `127.0.0.1:55439`, user `msf_test_owner`, database `msf_candidate_security`, and touch the new technical table only. It was initially missing; the parent explicitly provisioned this fictional database and reran the 28-test suite successfully. This is not a dependency on any real database. Re-provision the same dedicated lab target before replay; never substitute a production connection.

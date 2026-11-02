@@ -1,0 +1,16 @@
+name: ms-football-actions
+version: 0.3.0
+description: Composable MS Football pilot with gated native one-operation production consent
+entrypoint: __init__.py
+provides_tools:
+  - ms_football_action_catalogue
+  - ms_football_action_prepare
+  - ms_football_action_execute
+  - ms_football_action_status
+  - ms_football_action_verify
+provides_hooks:
+  - pre_approval_request
+  - post_approval_response
+  - on_human_input_request
+  - on_human_input_resolved
+  - on_session_end

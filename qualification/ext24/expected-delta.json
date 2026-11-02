@@ -1,0 +1,15 @@
+[
+  "test_fix.FixTests.test_ds01_encoded_access_rejected_before_preview",
+  "test_fix.FixTests.test_ds01_safe_encoded_url_preserved",
+  "test_fix.FixTests.test_ds02_date_changes_inside_view_rolls_back",
+  "test_fix.FixTests.test_ds02_date_tamper_detected_by_post",
+  "test_fix.FixTests.test_ds02_day_changes_after_snapshot_rolls_back",
+  "test_fix.FixTests.test_ds02_day_changes_before_execute_conflict",
+  "test_fix.FixTests.test_ds02_real_auto_now_add_midnight",
+  "test_delivery_salary.DeliverySalaryTests.test_delivery",
+  "test_delivery_salary.DeliverySalaryTests.test_delivery_variants",
+  "test_delivery_salary.DeliverySalaryTests.test_guards_conflicts_and_tamper",
+  "test_delivery_salary.DeliverySalaryTests.test_preservation_reader_and_protocol",
+  "test_delivery_salary.DeliverySalaryTests.test_salary",
+  "test_delivery_salary.DeliverySalaryTests.test_salary_journal_and_status_attacks"
+]

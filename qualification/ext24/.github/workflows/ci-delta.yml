@@ -1,0 +1,47 @@
+name: extension24 delta only
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Python 3.10.22 / Django 4.2.20 / PostgreSQL 16.14
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.14@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
+        env:
+          POSTGRES_DB: msf_ext24_fiction
+          POSTGRES_USER: msf_ext24_fixture
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:55951:5432
+        options: >-
+          --health-cmd "pg_isready -U msf_ext24_fixture -d msf_ext24_fiction"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.10.22'
+      - run: python -s -B verify_ci_inventory.py
+      - run: pip install -r requirements.txt
+      - name: Attest disposable PostgreSQL target
+        env:
+          CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Networks}}' > networks.json
+          python -c 'import json,pathlib; n=json.loads(pathlib.Path("networks.json").read_text()); ips=[v["IPAddress"] for v in n.values()]; assert len(ips)==1; pathlib.Path("ci-target.json").write_text(json.dumps({"serverAddress":ips[0],"serverPort":5432,"dataDirectory":"/var/lib/postgresql/data"}))'
+      - run: python -s -B ci_delta_job.py offline
+      - run: python -s -B ci_delta_job.py migrate
+      - run: python -s -B ci_delta_job.py tests
+      - run: python -s -B ci_socket_smoke.py
+      - run: python -s -B ci_delta_job.py readback
+      - run: python -s -B verify_ci_inventory.py
