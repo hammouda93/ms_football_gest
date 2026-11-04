@@ -1,0 +1,165 @@
+{% extends "client_portal/portal_base.html" %}
+{% load performance_extras portal_extras %}
+{% block title %}{{ match.home_team }} – {{ match.away_team }} · Performance{% endblock %}
+{% block portal_content %}
+{% performance_copy portal_language as copy %}
+<div class="performance-localized" lang="{{ portal_language }}" dir="{% if portal_language == 'ar' %}rtl{% else %}ltr{% endif %}">
+<nav class="portal-breadcrumb">
+    <a href="{% url 'portal:dashboard' %}">{{ copy.home }}</a><span>›</span>
+    <a href="{% url 'performance:portal_detail' player.pk %}">{{ player.name }}</a><span>›</span>
+    <span>{{ match.home_team }} – {{ match.away_team }}</span>
+</nav>
+
+<section class="performance-match-hero">
+    <div>
+        <span class="eyebrow">{{ match.competition }}{% if match.week %} · {{ match.week }}{% endif %}</span>
+        <time>{% if match.match_date %}{{ match.match_date|date:"d/m/Y" }}{% else %}{{ copy.date_unknown }}{% endif %}</time>
+    </div>
+    <div class="performance-scoreboard">
+        <span>{{ match.home_team }}</span><strong>{{ match.score }}</strong><span>{{ match.away_team }}</span>
+    </div>
+    <div class="performance-lineup">
+        <span>{{ match.lineup|default:copy.participation_recorded }}</span>
+        {% if match.referee %}<small>{{ copy.referee }} : {{ match.referee }}</small>{% endif %}
+    </div>
+</section>
+
+<nav class="player-service-tabs" aria-label="Services du joueur">
+    <a href="{% url 'portal:player' player.pk %}"><i class="fas fa-clapperboard"></i> {{ copy.video_tracking }}</a>
+    <a class="active" href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> {{ copy.performance }}</a>
+</nav>
+
+{% if stats %}
+{% if match_headline %}
+<section class="performance-impact-summary tone-{{ match_headline.tone }}">
+    <header>
+        <div><span class="eyebrow">{{ copy.performance_summary }}</span><h2>{{ copy.direct_impact }}</h2></div>
+        <span class="performance-verdict"><small>{{ copy.analyst_verdict }}</small><strong>{{ match_headline.verdict }}</strong></span>
+    </header>
+    <div class="performance-impact-grid">
+        <article class="impact-goals"><i class="fas fa-futbol"></i><span>{{ copy.goals }}</span><strong>{{ match_headline.goals|stat_value }}</strong></article>
+        <article class="impact-assists"><i class="fas fa-handshake-angle"></i><span>{{ copy.assists }}</span><strong>{{ match_headline.assists|stat_value }}</strong></article>
+        <article class="impact-key-passes"><i class="fas fa-key"></i><span>{{ copy.key_passes }}</span><strong>{{ match_headline.key_passes|stat_value }}</strong></article>
+        <article class="impact-score"><i class="fas fa-gauge-high"></i><span>{{ copy.ms_score }}</span><strong>{% if match_headline.rating_10 != None %}{{ match_headline.rating_10|floatformat:1 }}/10{% else %}—{% endif %}</strong></article>
+    </div>
+</section>
+{% endif %}
+
+<section class="performance-rank-grid match-rank-overview">
+    <article><span>{{ copy.match_index }}</span><strong>{{ stats.index|ms_index }}</strong><small>{{ copy.global_indicator }}</small></article>
+    <article class="performance-combined-rank">
+        <span>{{ copy.team_rank }} · {{ copy.match_rank }}</span>
+        <div>
+            <b><small>{{ stats.team_name|default:player.club }}</small><strong>{% if stats.team_rank %}#{{ stats.team_rank }}{% else %}—{% endif %}</strong></b>
+            <i></i>
+            <b><small>{{ copy.both_teams }}</small><strong>{% if stats.match_rank %}#{{ stats.match_rank }}{% else %}—{% endif %}</strong></b>
+        </div>
+    </article>
+    <article><span>{{ copy.minutes_played }}</span><strong>{{ stats.minutes_played|stat_value }}</strong><small>{{ stats.position|default:copy.position_unknown }}</small></article>
+</section>
+
+<section class="performance-panel performance-match-analysis">
+    <div class="performance-panel-heading">
+        <div><span class="eyebrow">{{ copy.match_analysis }}</span><h2>{{ copy.volume_efficiency }}</h2><p>{{ copy.efficiency_help }}</p></div>
+        <i class="fas fa-chart-simple"></i>
+    </div>
+    {% if analysis_pairs %}
+    <div class="performance-paired-grid">
+        {% for item in analysis_pairs %}
+        <article class="performance-analysis-card{% if not item.has_rate %} is-unrated{% endif %}" style="--analysis-progress: {{ item.chart_percent }}%;">
+            <header>
+                <span class="performance-analysis-icon"><i class="fas {{ item.icon }}"></i></span>
+                <div><small>{{ item.name|stat_label_for:portal_language }}</small><strong>{{ item.value|stat_value }}</strong></div>
+            </header>
+            <div class="performance-analysis-visual">
+                <div class="performance-analysis-ring" role="img" aria-label="{{ item.rate_name|stat_label_for:portal_language }} : {{ item.rate_value|stat_value }}">
+                    <span>{{ item.rate_value|stat_value }}</span>
+                </div>
+                <div class="performance-analysis-rate">
+                    <span>{{ item.rate_name|stat_label_for:portal_language }}</span>
+                    <div class="performance-analysis-track" aria-hidden="true"><i></i></div>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="performance-panel-empty compact"><i class="fas fa-chart-column"></i><span>{{ copy.efficiency_preparing }}</span></div>
+    {% endif %}
+
+    {% if analysis_other %}
+    <div class="performance-secondary-analysis">
+        <h3>{{ copy.other_markers }}</h3>
+        <div class="performance-stat-list compact">
+            {% for item in analysis_other %}<div><span>{{ item.name|stat_label_for:portal_language }}</span><strong>{{ item.value|stat_value }}</strong></div>{% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+{% if stats.heatmap_png or stats.ball_touches_png %}
+<section class="performance-map-grid performance-match-maps">
+    <article class="performance-panel performance-map-card compact-map">
+        <div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.positioning }}</span><h2>{{ copy.activity_zones }}</h2></div><i class="fas fa-fire"></i></div>
+        {% if stats.heatmap_png %}<img src="{% url 'performance:portal_match_map' player.pk match.sportsbase_match_id 'heatmap' %}" alt="{{ copy.activity_zones }}">{% else %}<div class="performance-panel-empty compact"><span>{{ copy.unavailable }}</span></div>{% endif %}
+    </article>
+    <article class="performance-panel performance-map-card compact-map">
+        <div class="performance-panel-heading"><div><span class="eyebrow">{{ copy.involvement }}</span><h2>{{ copy.ball_touches }}</h2></div><i class="fas fa-location-dot"></i></div>
+        {% if stats.ball_touches_png %}<img src="{% url 'performance:portal_match_map' player.pk match.sportsbase_match_id 'touches' %}" alt="{{ copy.ball_touches }}">{% else %}<div class="performance-panel-empty compact"><span>{{ copy.unavailable }}</span></div>{% endif %}
+    </article>
+</section>
+{% endif %}
+
+{% if stats.team_table %}
+<details class="performance-panel performance-team-table">
+    <summary><span><small>{{ copy.team_view }}</small>{{ copy.team_ranking }}</span><i class="fas fa-chevron-down"></i></summary>
+    <div class="table-responsive">
+        <table>
+            <thead><tr><th>#</th><th>{{ copy.player }}</th><th>{{ copy.index }}</th><th>{{ copy.position }}</th><th>{{ copy.minutes }}</th></tr></thead>
+            <tbody>{% for row in stats.team_table %}<tr class="{% if row.is_current_player %}current-player{% endif %}"><td>{{ row.rank|default:forloop.counter }}</td><td>{{ row.player_name|default:"—" }}</td><td><strong>{{ row.index|ms_index }}</strong></td><td>{{ row.position|default:"—" }}</td><td>{{ row.minutes|stat_value }}</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</details>
+{% endif %}
+{% else %}
+<section class="portal-empty performance-empty"><i class="fas fa-chart-column"></i><strong>{{ copy.match_analysis_preparing }}</strong><span>{{ copy.indicators_preparing }}</span></section>
+{% endif %}
+
+{% with video_url=match.available_video_url video_status=match.video_delivery_status %}
+{% with embed_url=video_url|video_embed_url %}
+{% if video_status == "uploaded" and embed_url %}
+<section class="performance-panel all-actions-player">
+    <div class="performance-panel-heading">
+        <div><span class="eyebrow">{{ copy.match_video }}</span><h2>{{ copy.watch_actions }}</h2><p>{{ copy.actions_help }}</p></div>
+        <span class="performance-actions-state state-uploaded"><i class="fas fa-circle-check"></i> {{ copy.available }}</span>
+    </div>
+    <div class="all-actions-video-frame">
+        <iframe src="{{ embed_url }}" title="{{ copy.watch_actions }} — {{ player.name }}" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+</section>
+{% else %}
+<section class="performance-panel all-actions-delivery">
+    <div class="all-actions-icon"><i class="fas fa-film"></i></div>
+    <div>
+        <span class="eyebrow">{{ copy.match_video }}</span><h2>All Actions</h2>
+        <p>{{ copy.actions_compilation }}</p>
+        {% if match.all_actions_filename %}<small><i class="fas fa-file-video"></i> {{ match.all_actions_filename }}</small>{% endif %}
+        {% with delivery_message=match.actions_state|portal_action_message_for:portal_language %}{% if delivery_message %}<em class="delivery-note delivery-{{ match.actions_state }}">{{ delivery_message }}</em>{% endif %}{% endwith %}
+    </div>
+    {% if video_status == "running" %}<span class="performance-actions-state state-running"><i class="fas fa-cloud-arrow-up"></i> {{ copy.publishing }}</span>
+    {% elif video_status == "pending" %}<span class="performance-actions-state state-pending"><i class="fas fa-clock"></i> {{ copy.planned }}</span>
+    {% else %}<span class="performance-actions-state state-{{ match.actions_state }}">{{ match.actions_state|portal_action_label_for:portal_language }}</span>{% endif %}
+</section>
+{% endif %}
+{% endwith %}
+{% endwith %}
+
+{% if performance_report and performance_report.status == "published" %}
+<section class="performance-panel analyst-report-card">
+    <div class="analyst-report-icon"><i class="fas fa-file-lines"></i></div>
+    <div><span class="eyebrow">{{ copy.pro_analysis }}</span><h2>{{ copy.analyst_report }}</h2><p>{{ copy.report_help }}</p></div>
+    <a class="analyst-report-button" href="{% url 'performance:report_pdf' performance_report.pk %}" target="_blank"><i class="fas fa-file-pdf"></i> {{ copy.download_pdf }}</a>
+</section>
+{% endif %}
+</div>
+{% endblock %}

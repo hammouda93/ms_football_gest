@@ -1,14 +1,18 @@
 {% extends 'gestion_joueurs/base.html' %}
 
+{% block title %}Factures{% endblock %}
+
 {% block content %}
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h1>Factures</h1>
+<div class="container mt-4 ui-page list-page invoice-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Finance</span><h1>Factures</h1><p>Suivez les montants facturés, encaissés et restant à payer.</p></div>
+        <div class="ui-page-actions">
             <a href="{% url 'create_invoice' %}" class="btn btn-primary mb-0 mt-0">
-                <i class="fas fa-plus"></i> Créer une Facture
+                <i class="fas fa-plus"></i> Nouvelle facture
             </a>
         </div>
+    </header>
+    <div class="card">
         <div class="card-body">
             <form method="GET" class="mb-3" id="filter-form">
                 <input type="hidden" name="tab" value="{{ tab }}">
@@ -37,7 +41,7 @@
                         </select>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
                     </div>
                 </div>
             </form>

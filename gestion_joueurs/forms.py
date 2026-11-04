@@ -6,9 +6,32 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from client_portal.models import Organization
+from decimal import Decimal
+from datetime import timedelta
 
 
 class PlayerForm(forms.ModelForm):
+    organization = forms.ModelChoiceField(
+        queryset=Organization.objects.none(),
+        required=False,
+        label="Agent ou académie",
+        help_text=(
+            "Associez le joueur à une agence, un agent ou une académie existante. "
+            "Les autres relations déjà enregistrées seront conservées."
+        ),
+        empty_label="Aucun nouvel agent ou académie",
+    )
+    email = forms.EmailField(
+        required=False,
+        label="Adresse e-mail",
+        help_text="Obligatoire uniquement si vous créez un compte client.",
+    )
+    create_client_account = forms.BooleanField(
+        required=False,
+        label="Créer un compte client pour ce joueur",
+        help_text="Le compte sera créé seulement si le joueur n’en possède pas déjà un.",
+    )
     date_of_birth = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
         input_formats=['%Y-%m-%d', '%Y/%m-%d','%m/%d/%Y','%m/%d/%y', '%d/%m/%Y'],  # Format pour l'entrée
@@ -21,6 +44,7 @@ class PlayerForm(forms.ModelForm):
             'date_of_birth',
             'league',
             'club',
+            'email',
             'whatsapp_number',
             'position',
             'sportsbase_url',
@@ -31,16 +55,46 @@ class PlayerForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['organization'].queryset = Organization.objects.filter(
+            is_active=True,
+            kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+        ).order_by('kind', 'name')
+        if self.instance and self.instance.pk and not self.is_bound:
+            active_link = self.instance.portal_organization_links.filter(
+                is_active=True,
+                organization__is_active=True,
+                organization__kind__in=(
+                    Organization.Kind.AGENT,
+                    Organization.Kind.ACADEMY,
+                ),
+            ).select_related('organization').first()
+            if active_link:
+                self.fields['organization'].initial = active_link.organization
         self.fields['club'].widget.attrs['placeholder'] = "Entrez le club du joueur"
         self.fields['whatsapp_number'].widget.attrs['placeholder'] = "Numéro WhatsApp (+999999999999 ou 999999999)"
         self.fields['position'].widget.attrs['placeholder'] = "Sélectionnez la position"
         self.fields['sportsbase_url'].widget.attrs['placeholder'] = "Lien SportsBase du joueur"
         self.fields['transfermarkt_url'].widget.attrs['placeholder'] = "Lien Transfermarkt du joueur"
+        self.fields['email'].widget.attrs['placeholder'] = "E-mail utilisé pour la connexion client"
         
         # Pour le champ de la ligue
         self.fields['league'].widget.attrs['placeholder'] = "Sélectionnez la ligue"
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('create_client_account') and not cleaned_data.get('email'):
+            self.add_error(
+                'email',
+                "Renseignez l’e-mail du joueur pour créer son compte client.",
+            )
+        return cleaned_data
+
 class VideoForm(forms.ModelForm):
+    create_client_account = forms.BooleanField(
+        required=False,
+        label="Créer le compte client du joueur s’il n’existe pas",
+        help_text="Le compte utilise l’e-mail et le WhatsApp enregistrés sur la fiche joueur.",
+    )
     
     SEASONS = [
         ('2022/2023', '2022/2023'),
@@ -59,14 +113,88 @@ class VideoForm(forms.ModelForm):
     )
     class Meta:
         model = Video
-        fields = ['status', 'advance_payment', 'total_payment', 'deadline', 'video_link','info', 'season', 'editor','seasons_to_process']
+        fields = [
+            'status',
+            'advance_payment',
+            'total_payment',
+            'client_organization',
+            'whatsapp_conversation_date',
+            'deadline_from_whatsapp',
+            'match_package',
+            'matches_processed',
+            'deadline',
+            'delivery_date',
+            'video_link',
+            'client_portal_visible',
+            'info',
+            'season',
+            'editor',
+            'seasons_to_process',
+        ]
     
     editor = forms.ModelChoiceField(queryset=VideoEditor.objects.all(), required=True)
 
     def __init__(self, *args, **kwargs):
-        # Récupérer l'utilisateur connecté
+        # Récupérer l'utilisateur connecté et, à la création, le joueur choisi.
         user = kwargs.pop('user', None)
+        player = kwargs.pop('player', None)
         super(VideoForm, self).__init__(*args, **kwargs)
+        self.is_editing = bool(self.instance and self.instance.pk)
+
+        self.fields['client_organization'].queryset = Organization.objects.filter(
+            is_active=True
+        ).order_by('kind', 'name')
+        self.fields['client_organization'].label = "Académie / agence liée"
+        self.fields['client_organization'].help_text = (
+            "Sélectionnez l’organisation qui a commandé cette vidéo. "
+            "Laissez vide pour une commande directe du joueur."
+        )
+        self.fields['whatsapp_conversation_date'].widget = forms.DateInput(
+            attrs={'type': 'date'}
+        )
+        self.fields['whatsapp_conversation_date'].help_text = (
+            "Date de début de la conversation WhatsApp avec l’académie ou l’agence."
+        )
+        self.fields['deadline_from_whatsapp'].help_text = (
+            "Si cochée, la deadline sera enregistrée à 5 jours après la date WhatsApp."
+        )
+        self.fields['match_package'].help_text = (
+            "Tarifs académie : 3 matchs = 300 DT, 5 = 350 DT, 10 = 400 DT."
+        )
+        self.fields['matches_processed'].help_text = (
+            "Progression réelle de la commande, par exemple 3 sur 5 matchs."
+        )
+        self.fields['delivery_date'].widget = forms.DateInput(attrs={'type': 'date'})
+        self.fields['delivery_date'].help_text = (
+            "Pour une ancienne vidéo livrée, vous pouvez corriger ici la vraie date de livraison."
+        )
+
+        if not self.is_bound and not self.is_editing and player is not None:
+            active_link = (
+                player.portal_organization_links.filter(
+                    is_active=True,
+                    organization__is_active=True,
+                )
+                .select_related('organization')
+                .order_by('-created_at')
+                .first()
+            )
+            if active_link:
+                self.fields['client_organization'].initial = active_link.organization
+
+        self.fields['deadline'].label = "Deadline de livraison"
+        self.fields['deadline'].widget.attrs['data-deadline-planner-target'] = 'true'
+        if self.is_editing:
+            self.fields['deadline'].widget.attrs.pop('min', None)
+            self.fields['deadline'].help_text = (
+                "Une deadline passée reste modifiable. L’assistant vous signalera "
+                "simplement le retard sans empêcher l’enregistrement."
+            )
+        else:
+            self.fields['deadline'].widget.attrs['min'] = timezone.localdate().isoformat()
+            self.fields['deadline'].help_text = (
+                "Choisissez librement une date future ; l’assistant vous indique la charge."
+            )
         self.fields['seasons_to_process'].widget = forms.Select(choices=Video.SeasonsToProcessChoices.choices)
         if user and hasattr(user, 'videoeditor'):
             # Définir l'éditeur par défaut sur l'utilisateur connecté
@@ -78,6 +206,43 @@ class VideoForm(forms.ModelForm):
     
     def clean(self):
         cleaned_data = super().clean()
+        organization = cleaned_data.get("client_organization")
+        whatsapp_date = cleaned_data.get("whatsapp_conversation_date")
+        deadline_from_whatsapp = cleaned_data.get("deadline_from_whatsapp")
+        match_package = cleaned_data.get("match_package")
+        matches_processed = cleaned_data.get("matches_processed") or 0
+
+        if organization and not match_package:
+            self.add_error(
+                "match_package",
+                "Sélectionnez le nombre de matchs prévu pour cette commande d’académie/agence.",
+            )
+        if match_package and not organization:
+            self.add_error(
+                "client_organization",
+                "Sélectionnez l’académie ou l’agence liée à ce pack de matchs.",
+            )
+
+        if deadline_from_whatsapp:
+            if not whatsapp_date:
+                self.add_error(
+                    "whatsapp_conversation_date",
+                    "Renseignez la date de la conversation WhatsApp pour calculer la deadline +5 jours.",
+                )
+            else:
+                cleaned_data["deadline"] = whatsapp_date + timedelta(days=5)
+
+        if match_package:
+            package_count = int(match_package)
+            cleaned_data["total_payment"] = Decimal(
+                str(Video.MATCH_PACKAGE_PRICES[package_count])
+            )
+            if matches_processed > package_count:
+                self.add_error(
+                    "matches_processed",
+                    "Le nombre de matchs traités ne peut pas dépasser le pack commandé.",
+                )
+
         advance_payment = cleaned_data.get("advance_payment")
         total_payment = cleaned_data.get("total_payment")
 
@@ -89,7 +254,7 @@ class VideoForm(forms.ModelForm):
     
     def clean_deadline(self):
         deadline = self.cleaned_data.get('deadline')
-        if deadline and deadline < timezone.now().date():
+        if deadline and deadline < timezone.localdate() and not self.is_editing:
             raise ValidationError("La date de deadline ne peut pas être dans le passé.")
         return deadline
 

@@ -1,16 +1,32 @@
-from django.urls import path
+from django.urls import include, path
 #from .views import dashboard, create_video_request, video_status, update_video_status, register_video_editor, user_login, user_logout
 from .views import automation_pending_videos, dashboard, create_video_highlight, mark_automation_completed, mark_automation_started, mark_intro_automation_completed, mark_intro_automation_started, video_status, update_video_status,add_expense,edit_expense,view_expenses,player_dashboard,notification_center
 from. views import register_video_editor,search_players,view_invoices,view_payments,manage_salaries,get_videos_by_editor,view_profile,generate_financial_report,view_video
 from .views import user_login, user_logout,edit_player,edit_video,record_payment,get_videos_by_player,get_remaining_balance,create_invoice,StatisticalDashboardView,get_months
 from .views import mark_notification_as_read,test_task, non_video_income_list,add_non_video_income,edit_non_video_income,financial_report_list,view_financial_report,get_days
 from .views import add_notification, notification_list, view_notification,run_all_tasks,import_transfermarkt_player,dashboard_cards_view
+from .views import (
+    automation_progress_detail,
+    automation_worker_heartbeat,
+    automation_worker_status,
+    claim_automation_job,
+    complete_automation_delivery,
+    confirm_delivery_whatsapp,
+    report_automation_progress,
+    retry_automation_progress,
+)
+from .deadline_planning import deadline_planning_assistant
 from django.conf import settings
+from .jarvis_api import jarvis_agent_health, jarvis_agent_tool
 from django.conf.urls.static import static
 urlpatterns = [
+    path('agent/', include('agent_api.urls')),
+    path('jarvis-agent/health/', jarvis_agent_health, name='jarvis_agent_health'),
+    path('jarvis-agent/tool/', jarvis_agent_tool, name='jarvis_agent_tool'),
     path('', dashboard, name='dashboard'),
     path('players/', player_dashboard, name='player_dashboard'),
     path('create/', create_video_highlight, name='create_video_request'),
+    path('planning/deadlines/', deadline_planning_assistant, name='deadline_planning_assistant'),
     path('status/<int:video_id>/', video_status, name='video_status'),
     path('update_status/<int:video_id>/', update_video_status, name='update_video_status'),
     path('register/editor/', register_video_editor, name='register_video_editor'),
@@ -55,6 +71,14 @@ urlpatterns = [
     path('automation/<int:video_id>/mark-completed/', mark_automation_completed, name='mark_automation_completed'),
     path('automation/<int:video_id>/mark-intro-started/', mark_intro_automation_started, name='mark_intro_automation_started'),
     path('automation/<int:video_id>/mark-intro-completed/', mark_intro_automation_completed, name='mark_intro_automation_completed'),
+    path('automation/jobs/claim/', claim_automation_job, name='claim_automation_job'),
+    path('automation/<int:video_id>/progress/', automation_progress_detail, name='automation_progress_detail'),
+    path('automation/<int:video_id>/progress/report/', report_automation_progress, name='report_automation_progress'),
+    path('automation/<int:video_id>/progress/<str:pipeline>/retry/', retry_automation_progress, name='retry_automation_progress'),
+    path('automation/worker/heartbeat/', automation_worker_heartbeat, name='automation_worker_heartbeat'),
+    path('automation/worker/status/', automation_worker_status, name='automation_worker_status'),
+    path('automation/<int:video_id>/delivery/complete/', complete_automation_delivery, name='complete_automation_delivery'),
+    path('automation/<int:video_id>/delivery/whatsapp-sent/', confirm_delivery_whatsapp, name='confirm_delivery_whatsapp'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

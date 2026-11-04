@@ -10,6 +10,12 @@ from typing import Any
 
 
 class PremiereAutomation:
+    DEFAULT_EXPORT_PRESET_RELATIVE_PATHS = (
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "YouTube 1080p HD.epr",
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "00 - Match Source - High bitrate.epr",
+        Path("MediaIO") / "systempresets" / "4E49434B_48323634" / "01 - Match Source - High bitrate.epr",
+    )
+
     def __init__(
         self,
         premiere_exe: str | None = None,
@@ -42,6 +48,19 @@ class PremiereAutomation:
         premiere_dir.mkdir(parents=True, exist_ok=True)
         return premiere_dir
 
+    def _resolve_export_preset_path(self) -> str:
+        """Use an explicit preset or a bundled Premiere H.264 1080p preset."""
+        configured = os.getenv("PREMIERE_EXPORT_PRESET", "").strip()
+        if configured and Path(configured).is_file():
+            return configured
+
+        premiere_dir = Path(self.premiere_exe).parent
+        for relative_path in self.DEFAULT_EXPORT_PRESET_RELATIVE_PATHS:
+            candidate = premiere_dir / relative_path
+            if candidate.is_file():
+                return str(candidate)
+        return configured
+
     def _build_project_path(self, premiere_dir: Path, player_name: str) -> Path:
         date_str = datetime.now().strftime("%Y-%m-%d")
         safe_player_name = self._safe_name(player_name)
@@ -49,16 +68,19 @@ class PremiereAutomation:
 
     def _find_and_prepare_kling_intro_mp4(self, target_dir: Path, player_name: str) -> str | None:
         intro_dir = target_dir / "intro"
-        uploads_gemini_dir = intro_dir / "Uploads_Gemini"
-        if not uploads_gemini_dir.exists():
-            return None
-
+        upload_dirs = [
+            intro_dir / "Uploads_ChatGPT_Kling",
+            intro_dir / "Uploads_Gemini",
+        ]
         kling_candidates = sorted(
             [
-                p for p in uploads_gemini_dir.iterdir()
-                if p.is_file()
-                and p.suffix.lower() == ".mp4"
-                and p.name.lower().startswith("kling")
+                path
+                for upload_dir in upload_dirs
+                if upload_dir.exists()
+                for path in upload_dir.iterdir()
+                if path.is_file()
+                and path.suffix.lower() == ".mp4"
+                and path.name.lower().startswith(("kling", "intro"))
             ],
             key=lambda p: p.stat().st_mtime,
             reverse=True,
@@ -90,6 +112,8 @@ class PremiereAutomation:
             "player_intro_path": job_data.get("player_intro_path", ""),
             "music_dir": job_data.get("music_dir", ""),
             "logo_path": job_data.get("logo_path", ""),
+            "final_export_path": job_data.get("final_export_path", ""),
+            "export_preset_path": job_data.get("export_preset_path", ""),
             "created_at": job_data.get("created_at", ""),
         }
 
@@ -121,6 +145,9 @@ class PremiereAutomation:
 
         safe_player_name = self._safe_name(player_name)
         player_intro_path = str(Path(intro_dir) / f"{safe_player_name}Intro.mp4")
+        final_export_path = str(
+            target_dir / "exports" / f"{safe_player_name}_Highlights_Final.mp4"
+        )
 
         kling_intro_path = self._find_and_prepare_kling_intro_mp4(target_dir, player_name)
         if kling_intro_path:
@@ -144,6 +171,8 @@ class PremiereAutomation:
             "music_dir": music_dir,
             "intro_dir": intro_dir,
             "player_intro_path": player_intro_path,
+            "final_export_path": final_export_path,
+            "export_preset_path": self._resolve_export_preset_path(),
         }
 
         job_file = premiere_dir / "premiere_job.json"
@@ -213,6 +242,13 @@ class PremiereAutomation:
                 "missing_clips": missing,
             }
 
+        existing_result = self.read_project_result(target_path)
+        if existing_result and existing_result.get("success"):
+            return {
+                **existing_result,
+                "reused_existing_result": True,
+            }
+
         written = self._write_job_file(
             player_name=player_name,
             target_dir=target_path,
@@ -230,6 +266,21 @@ class PremiereAutomation:
         )
         current_command_file = self._write_current_command_file(command_file)
 
+        result_file = premiere_dir / "premiere_result.txt"
+        lock_file = premiere_dir / "premiere_lock.txt"
+        if result_file.exists():
+            result_file.unlink()
+        if existing_result and lock_file.exists():
+            lock_file.unlink()
+        if lock_file.exists():
+            return {
+                "success": False,
+                "awaiting_result": True,
+                "reason": "Un projet Premiere est déjà en cours de création.",
+                "lock_file": str(lock_file),
+                "job_file": written["job_file"],
+            }
+
         self._launch_premiere()
 
         print(f"[INFO] Job Premiere préparé: {written['job_file']}")
@@ -237,12 +288,78 @@ class PremiereAutomation:
         print(f"[INFO] Commande Premiere préparée: {command_file}")
         print(f"[INFO] Current command file: {current_command_file}")
 
+        confirmation = self.wait_for_project_result(target_path)
         return {
-            "success": True,
+            **confirmation,
             "project_path": written["project_path"],
             "job_file": written["job_file"],
             "command_file": command_file,
             "current_command_file": current_command_file,
             "clips_count": len(downloaded_files),
             "project_context_file": project_context_file,
+            "final_export_path": written["job_data"]["final_export_path"],
         }
+
+    @staticmethod
+    def _parse_result_file(result_path: Path) -> dict[str, Any] | None:
+        if not result_path.is_file():
+            return None
+        values = {}
+        for line in result_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, separator, value = line.partition("=")
+            if separator:
+                values[key.strip()] = value.strip()
+        if not values:
+            return {
+                "success": False,
+                "reason": "Le résultat Premiere est vide ou illisible.",
+                "result_file": str(result_path),
+            }
+        return {
+            "success": values.get("success", "").casefold() == "true",
+            "result_file": str(result_path),
+            **values,
+        }
+
+    def read_project_result(self, target_dir: str | Path) -> dict[str, Any] | None:
+        result_path = Path(target_dir) / "premiere" / "premiere_result.txt"
+        return self._parse_result_file(result_path)
+
+    def wait_for_project_result(
+        self,
+        target_dir: str | Path,
+        timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        timeout_seconds = int(
+            timeout_seconds
+            if timeout_seconds is not None
+            else os.getenv("PREMIERE_RESULT_TIMEOUT_SECONDS", "180")
+        )
+        deadline = time.monotonic() + max(1, timeout_seconds)
+        while time.monotonic() < deadline:
+            result = self.read_project_result(target_dir)
+            if result is not None:
+                return result
+            time.sleep(2)
+        return {
+            "success": False,
+            "awaiting_result": True,
+            "reason": "Premiere Pro n’a pas encore confirmé la création du projet.",
+            "result_file": str(Path(target_dir) / "premiere" / "premiere_result.txt"),
+        }
+
+    @staticmethod
+    def find_final_export(target_dir: str | Path) -> str | None:
+        exports_dir = Path(target_dir) / "exports"
+        if not exports_dir.is_dir():
+            return None
+        candidates = sorted(
+            (
+                path
+                for path in exports_dir.iterdir()
+                if path.is_file() and path.suffix.casefold() == ".mp4"
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        return str(candidates[0]) if candidates else None

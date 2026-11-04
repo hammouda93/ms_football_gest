@@ -1,0 +1,243 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}Abonnements Performance{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">{% endblock %}
+{% block content %}
+<div class="performance-admin-page">
+    <header class="production-heading performance-admin-heading">
+        <div><span class="eyebrow">SportsBase · Agent local</span><h1>Abonnements Performance</h1><p>Activez le service par joueur, suivez les synchronisations et conservez le suivi vidéo totalement indépendant.</p></div>
+        <a class="btn btn-primary" href="{% url 'performance:subscription_create' %}"><i class="fas fa-plus"></i> Nouvel abonnement</a>
+    </header>
+
+    {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
+
+    <section class="performance-monitor-panel" id="performance-control-center"
+             data-monitor-url="{% url 'performance:monitor_status' %}"
+             data-history-url="{% url 'performance:monitor_history' %}" aria-label="Centre de contrôle Performance">
+        <div class="performance-monitor-heading">
+            <div>
+                <span class="eyebrow">MS Worker Cloud · supervision locale</span>
+                <h2>Centre de contrôle Performance</h2>
+                <p>Activité des agents lancés depuis le bouton Agent Performance · données actualisées automatiquement.</p>
+            </div>
+            <div class="performance-monitor-controls">
+                <small id="monitor-connection" role="status">Chargement de la supervision…</small>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="monitor-refresh">
+                    <i class="fas fa-rotate"></i> Actualiser
+                </button>
+            </div>
+        </div>
+        <div class="performance-monitor-metrics">
+            <div><strong id="monitor-count-subs">—</strong><span>Abonnements actifs</span></div>
+            <div><strong id="monitor-count-waiting">—</strong><span>Tâches en attente</span></div>
+            <div><strong id="monitor-count-running">—</strong><span>Tâches en cours</span></div>
+            <div><strong id="monitor-count-problems">—</strong><span>Matchs à corriger · <b id="monitor-count-affected-players">—</b> joueurs</span></div>
+        </div>
+        <div class="performance-monitor-grid">
+            <div class="monitor-pane">
+                <h3>Sessions Windows</h3>
+                <div id="monitor-worker-list" class="monitor-items">Connexion en cours…</div>
+                <h3>File des joueurs</h3>
+                <div id="monitor-task-list" class="monitor-items">Chargement…</div>
+            </div>
+            <div class="monitor-pane">
+                <div class="monitor-pane-heading">
+                    <h3>Journal en direct</h3>
+                    <label for="monitor-event-filter">Afficher
+                        <select id="monitor-event-filter" class="form-control form-control-sm">
+                            <option value="all">Tous les événements</option>
+                            <option value="warning">Avertissements</option>
+                            <option value="error">Erreurs</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="monitor-event-list" class="monitor-items monitor-event-list">Chargement…</div>
+            </div>
+        </div>
+        <details class="monitor-missing-panel">
+            <summary>Statistiques et analyses à vérifier (dossiers en cours)</summary>
+            <p>Matchs actuellement incomplets des abonnements actifs. Les tâches anciennes corrigées ne sont pas comptabilisées.</p>
+            <div id="monitor-missing-list" class="monitor-items">Chargement…</div>
+        </details>
+        <section class="performance-monitor-history" id="monitor-history">
+            <div class="performance-monitor-heading">
+                <div>
+                    <h3>Historique et recherches</h3>
+                    <p>Sessions Windows, tâches, événements et anomalies actuelles. Cliquez sur une ligne pour voir les étapes observées.</p>
+                </div>
+            </div>
+            <div class="monitor-history-tabs" role="group" aria-label="Section de l'historique">
+                <button type="button" class="monitor-history-tab is-selected" data-monitor-kind="sessions">Sessions</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="jobs">Joueurs / tâches</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="events">Journal complet</button>
+                <button type="button" class="monitor-history-tab" data-monitor-kind="issues">Problèmes ouverts</button>
+            </div>
+            <form id="monitor-history-form" class="monitor-history-form">
+                <label>Rechercher
+                    <input id="monitor-search" class="form-control" type="search" placeholder="Joueur, match, erreur ou ordinateur">
+                </label>
+                <label>État
+                    <select id="monitor-status" class="form-control">
+                        <option value="">Tous les états</option>
+                    </select>
+                </label>
+                <label>Du
+                    <input type="date" id="monitor-date-from" class="form-control">
+                </label>
+                <label>Au
+                    <input type="date" id="monitor-date-to" class="form-control">
+                </label>
+                <button class="btn btn-sm btn-primary" type="submit">Rechercher</button>
+                <button class="btn btn-sm btn-outline-secondary" id="monitor-clear" type="button">Effacer</button>
+            </form>
+            <div id="monitor-history-results" class="monitor-history-results" aria-live="polite">Chargement de l'historique…</div>
+            <nav class="monitor-history-pager" aria-label="Pages de l'historique">
+                <button type="button" id="monitor-history-previous" class="btn btn-sm btn-outline-primary">Précédent</button>
+                <span id="monitor-history-page">Page 1</span>
+                <button type="button" id="monitor-history-next" class="btn btn-sm btn-outline-primary">Suivant</button>
+            </nav>
+            <div id="monitor-history-detail" class="monitor-history-detail" hidden aria-live="polite"></div>
+        </section>
+        <div class="monitor-footer">
+            <span id="monitor-last-refresh">En attente d'actualisation</span>
+            <span>Supervision uniquement · ni lancement distant ni modification des tâches.</span>
+        </div>
+    </section>
+
+    <section class="metric-grid performance-admin-metrics">
+        <article class="metric-card"><span>Abonnements</span><strong>{{ subscription_count }}</strong></article>
+        <article class="metric-card"><span>Accès actifs</span><strong>{{ active_count }}</strong></article>
+        <article class="metric-card"><span>Publications vidéo</span><strong>{{ youtube_jobs|length }}</strong></article>
+    </section>
+
+    <form class="performance-filter-bar" method="get">
+        <label><span>Rechercher</span><input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Joueur, club ou saison"></label>
+        <label><span>État</span><select class="form-control" name="state"><option value="">Tous les états</option>{% for value,label in state_choices %}<option value="{{ value }}" {% if value == selected_state %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-filter"></i> Filtrer</button>
+    </form>
+
+    <section class="performance-admin-list" id="subscriptions">
+        {% for subscription in subscriptions %}
+            <article class="performance-subscription-row {% if not subscription.access_enabled %}inactive{% endif %}">
+                <div class="performance-player-identity"><span class="performance-avatar">{{ subscription.player.name|first|upper }}</span><div><strong>{{ subscription.player.name }}</strong><span>{{ subscription.player.club }} · {{ subscription.season }}</span><small>{% if subscription.player.sportsbase_url %}Profil SportsBase renseigné{% else %}Lien SportsBase manquant{% endif %}</small></div></div>
+                <div class="performance-row-metrics"><span><b>{{ subscription.match_count }}</b> matchs</span><span><b>{{ subscription.completed_match_count }}</b> synchronisés</span><span><b>{% if subscription.youtube_delivery_enabled %}Actif{% else %}Inactif{% endif %}</b> YouTube</span><span class="payment-{{ subscription.payment_state }}"><b>{{ subscription.amount_paid|floatformat:2 }} / {{ subscription.total_amount|floatformat:2 }}</b> {{ subscription.currency }}</span></div>
+                <div class="performance-sync-state state-{{ subscription.last_sync_state }}"><i class="fas fa-circle"></i><span>{{ subscription.get_last_sync_state_display }}<small>{% if subscription.last_sync_at %}{{ subscription.last_sync_at|date:"d/m/Y H:i" }}{% else %}Agent non lancé{% endif %}</small></span></div>
+                <div class="performance-row-actions">
+                    <a class="btn btn-sm btn-outline-primary" href="{% url 'performance:subscription_edit' subscription.pk %}"><i class="fas fa-pen"></i> Modifier</a>
+                    <form method="post" action="{% url 'performance:subscription_sync' subscription.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit" {% if not subscription.access_enabled %}disabled{% endif %}><i class="fas fa-rotate"></i> Synchroniser</button></form>
+                    <form method="post" action="{% url 'performance:subscription_toggle' subscription.pk %}">{% csrf_token %}{% if subscription.is_active %}<button class="btn btn-sm btn-outline-danger" name="action" value="deactivate"><i class="fas fa-pause"></i> Désactiver</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="activate"><i class="fas fa-play"></i> Activer</button>{% endif %}</form>
+                </div>
+            </article>
+        {% empty %}<div class="empty-state">Aucun abonnement Performance ne correspond à ces critères.</div>{% endfor %}
+    </section>
+
+    {% if subscription_page.paginator.num_pages > 1 %}
+    <nav class="monitor-subscription-pager" aria-label="Pagination des abonnements">
+        {% if subscription_page.has_previous %}
+            <a class="btn btn-sm btn-outline-primary" href="?{{ request.GET.urlencode }}&subs_page={{ subscription_page.previous_page_number }}#subscriptions">Précédent</a>
+        {% endif %}
+        <span>Abonnements — page {{ subscription_page.number }} / {{ subscription_page.paginator.num_pages }} · {{ subscription_count }} au total</span>
+        {% if subscription_page.has_next %}
+            <a class="btn btn-sm btn-outline-primary" href="?{{ request.GET.urlencode }}&subs_page={{ subscription_page.next_page_number }}#subscriptions">Suivant</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+
+    <section class="performance-jobs-panel">
+        <div class="panel-heading"><div><h2>Activité de l’agent</h2><small>Les trente dernières tâches</small></div></div>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Joueur</th><th>Type</th><th>État</th><th>Créée</th><th>Résultat</th></tr></thead><tbody>{% for job in jobs %}<tr><td>{{ job.subscription.player.name }}</td><td>{{ job.get_job_type_display }}</td><td><span class="job-status status-{{ job.status }}">{{ job.get_status_display }}</span></td><td>{{ job.created_at|date:"d/m/Y H:i" }}</td><td>{% if job.error_message %}<span class="text-danger">{{ job.error_message|truncatechars:80 }}</span>{% elif job.result_summary %}{{ job.result_summary.matches_received|default:0 }} match(s){% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Aucune tâche pour le moment.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    <section class="performance-jobs-panel" id="delivery-all-actions">
+        <div class="panel-heading performance-search-heading">
+            <div><h2>Livraison All Actions</h2><small>YouTube reste prioritaire. Lancez Dailymotion seulement comme solution de secours.</small></div>
+            <form class="performance-section-search" method="get" action="{% url 'performance:management' %}#delivery-all-actions">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                {% if selected_state %}<input type="hidden" name="state" value="{{ selected_state }}">{% endif %}
+                {% if report_query %}<input type="hidden" name="report_q" value="{{ report_query }}">{% endif %}
+                <div class="performance-search-control">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input class="form-control form-control-sm" type="search" name="delivery_q" value="{{ delivery_query }}" placeholder="Joueur, club ou équipe" aria-label="Rechercher dans les livraisons All Actions">
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Rechercher</button>
+                {% if delivery_query %}<button class="btn btn-sm btn-outline-secondary" type="submit" name="delivery_q" value="">Effacer</button>{% endif %}
+            </form>
+        </div>
+        {% if delivery_query %}<p class="performance-search-result">{{ youtube_jobs|length }} résultat{{ youtube_jobs|length|pluralize }} pour « {{ delivery_query }} » — recherche effectuée dans tout l’historique.</p>{% endif %}
+        <div class="table-responsive">
+            <table class="table performance-delivery-table">
+                <thead><tr><th>Joueur</th><th>Match</th><th>YouTube</th><th>Dailymotion</th></tr></thead>
+                <tbody>
+                    {% for upload in youtube_jobs %}
+                    <tr>
+                        <td>{{ upload.match.subscription.player.name }}</td>
+                        <td>{{ upload.match.home_team }} – {{ upload.match.away_team }}</td>
+                        <td>
+                            <div class="video-provider-actions">
+                                <span class="job-status status-{{ upload.status }}">{{ upload.get_status_display }}</span>
+                                {% if upload.youtube_url %}<a class="btn btn-sm btn-outline-primary" href="{{ upload.youtube_url }}" target="_blank" rel="noopener"><i class="fab fa-youtube"></i> Voir</a>{% endif %}
+                                {% if upload.status == "failed" %}<form method="post" action="{% url 'performance:youtube_upload_retry' upload.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Réessayer</button></form>{% endif %}
+                            </div>
+                            <small>{{ upload.attempts }} tentative{{ upload.attempts|pluralize }}</small>
+                            {% if upload.error_message %}<span class="delivery-provider-error text-danger">{{ upload.error_message|truncatechars:90 }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% with fallback=upload.match.dailymotion_upload %}
+                            <div class="video-provider-actions">
+                                {% if fallback.status %}<span class="job-status status-{{ fallback.status }}">{{ fallback.get_status_display }}</span>{% endif %}
+                                {% if fallback.status == "uploaded" and fallback.dailymotion_url %}
+                                    <a class="btn btn-sm btn-outline-primary" href="{{ fallback.dailymotion_url }}" target="_blank" rel="noopener"><i class="fas fa-circle-play"></i> Voir</a>
+                                {% elif fallback.status == "link_pending" %}
+                                    <form class="dailymotion-link-form" method="post" action="{% url 'performance:dailymotion_link_save' upload.match.pk %}">{% csrf_token %}<input class="form-control form-control-sm" type="url" name="dailymotion_url" required autocomplete="url" placeholder="https://dai.ly/k..."><button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-link"></i> Ajouter le lien</button></form>
+                                {% elif fallback.status == "failed" %}
+                                    <form method="post" action="{% url 'performance:dailymotion_upload_request' upload.match.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-rotate-right"></i> Réessayer</button></form>
+                                    <form class="dailymotion-link-form" method="post" action="{% url 'performance:dailymotion_link_save' upload.match.pk %}">{% csrf_token %}<input class="form-control form-control-sm" type="url" name="dailymotion_url" required autocomplete="url" placeholder="https://dai.ly/k..."><button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-link"></i> Lien manuel</button></form>
+                                {% elif fallback.status == "pending" or fallback.status == "running" %}
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" disabled><i class="fas fa-clock"></i> En cours</button>
+                                {% else %}
+                                    <form method="post" action="{% url 'performance:dailymotion_upload_request' upload.match.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit"><i class="fas fa-cloud-arrow-up"></i> Essayer Dailymotion</button></form>
+                                {% endif %}
+                            </div>
+                            {% if fallback.status %}<small>{{ fallback.attempts }} tentative{{ fallback.attempts|pluralize }}</small>{% endif %}
+                            {% if fallback.error_message %}<span class="delivery-provider-error text-danger">{{ fallback.error_message|truncatechars:90 }}</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="4">{% if delivery_query %}Aucune livraison trouvée pour « {{ delivery_query }} ».{% else %}Aucune publication planifiée. Activez YouTube dans un abonnement.{% endif %}</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="performance-jobs-panel" id="analyst-reports">
+        <div class="panel-heading performance-search-heading">
+            <div><h2>Rapports de l’analyste</h2><small>Générés automatiquement, puis modifiables avant ou après publication</small></div>
+            <form class="performance-section-search" method="get" action="{% url 'performance:management' %}#analyst-reports">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                {% if selected_state %}<input type="hidden" name="state" value="{{ selected_state }}">{% endif %}
+                {% if delivery_query %}<input type="hidden" name="delivery_q" value="{{ delivery_query }}">{% endif %}
+                <div class="performance-search-control">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input class="form-control form-control-sm" type="search" name="report_q" value="{{ report_query }}" placeholder="Joueur, club, saison ou rapport" aria-label="Rechercher dans les rapports de l’analyste">
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Rechercher</button>
+                {% if report_query %}<button class="btn btn-sm btn-outline-secondary" type="submit" name="report_q" value="">Effacer</button>{% endif %}
+            </form>
+        </div>
+        {% if report_query %}<p class="performance-search-result">{{ reports|length }} résultat{{ reports|length|pluralize }} pour « {{ report_query }} » — recherche effectuée dans tout l’historique.</p>{% endif %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Joueur</th><th>Rapport</th><th>Langue</th><th>État</th><th>Dernière version</th><th></th></tr></thead>
+                <tbody>
+                    {% for report in reports %}
+                        <tr><td>{{ report.subscription.player.name }}</td><td>{{ report.title }}</td><td>{{ report.get_language_display }}</td><td><span class="job-status status-{{ report.status }}">{{ report.get_status_display }}</span></td><td>{{ report.updated_at|date:"d/m/Y H:i" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'performance:report_edit' report.pk %}"><i class="fas fa-pen"></i> Modifier</a></td></tr>
+                    {% empty %}
+                        <tr><td colspan="6">{% if report_query %}Aucun rapport trouvé pour « {{ report_query }} ».{% else %}Les rapports apparaîtront après la prochaine synchronisation.{% endif %}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'sportsbase_data/worker_monitor.js' %}" defer></script><script src="{% static 'sportsbase_data/worker_monitor_history.js' %}" defer></script>{% endblock %}

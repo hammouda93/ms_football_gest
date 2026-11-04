@@ -1,0 +1,302 @@
+# Abonnements Performance SportsBase
+
+Ce module est volontairement séparé de la production des vidéos. Il ajoute un abonnement
+annuel par joueur, synchronise les données SportsBase depuis le PC local et les affiche dans
+le portail client existant.
+
+## Démarrer l’agent local
+
+Depuis la racine du projet, dans l’environnement Python habituel :
+
+```powershell
+python -m sportsbase_data.local_agent
+```
+
+L’agent traite tous les abonnements actifs, un joueur après l’autre. Un match déjà complet
+n’est pas régénéré. Un match partiel ou dont la vidéo est encore en cours est repris au
+passage suivant.
+
+Le bouton XLSX de SportsBase reste la source des statistiques Players : l’agent conserve
+le classeur original octet pour octet, sans reconstruire son contenu depuis la page. Pour
+éviter la déconnexion observée avec la copie Playwright sur le profil Chrome persistant, le
+fichier original est intercepté avant le gestionnaire natif de téléchargement, puis enregistré
+dans le même dossier de match. La session Chrome reste ainsi disponible pour All Actions.
+Le dernier téléchargement MP4 depuis « My Videos » reprend le flux stable antérieur à
+Dailymotion : l’agent fixe le dossier de téléchargement Chrome, effectue un seul clic puis
+surveille directement le fichier jusqu’à la disparition de son suffixe temporaire. Il ne
+dépend donc pas de l’événement `download`, que Playwright ne remonte pas toujours après une
+connexion par port CDP. Le MP4 original est ensuite associé au bon match, sans rejouer son
+URL signée. La génération et le classement final ne changent pas.
+
+Sous Windows, l’agent lance désormais ce même Chrome et ce même profil persistant avec un
+port CDP local, puis Playwright s’y connecte. Ce mode contourne le crash natif observé dans
+Chrome/Edge 152 lors de la finalisation d’un téléchargement sur le transport CDP par pipe.
+Le port écoute uniquement sur `127.0.0.1`. Pour un diagnostic ponctuel, le comportement peut
+être forcé avec `SPORTSBASE_CHROME_TRANSPORT=cdp-port` ou rétabli avec
+`SPORTSBASE_CHROME_TRANSPORT=pipe`.
+
+Variables locales attendues :
+
+```text
+DJANGO_SITE_URL=https://msfootball-1a882b44ed52.herokuapp.com
+DJANGO_AUTOMATION_USERNAME=...
+DJANGO_AUTOMATION_PASSWORD=...
+SPORTSBASE_LOGIN_URL=...
+SPORTSBASE_EMAIL=...
+SPORTSBASE_PASSWORD=...
+SPORTSBASE_HEADLESS=false
+SPORTSBASE_SUBSCRIPTION_PROFILE_DIR=D:\SportsBase_Playwright_Profile
+SPORTSBASE_SUBSCRIPTION_STORAGE_DIR=D:\Django_Projects\ms_football_gest\gestion_joueurs\sportsbase_subscriptions
+SPORTSBASE_AGENT_POLL_INTERVAL=60
+```
+
+Pour l’envoi des fichiers All Actions :
+
+```text
+SPORTSBASE_SMTP_HOST=...
+SPORTSBASE_SMTP_PORT=587
+SPORTSBASE_SMTP_USER=...
+SPORTSBASE_SMTP_PASSWORD=...
+SPORTSBASE_EMAIL_FROM=...
+SPORTSBASE_SMTP_USE_TLS=true
+SPORTSBASE_EMAIL_MAX_ATTACHMENT_MB=20
+```
+
+## Livraison YouTube non répertoriée
+
+La publication utilise un profil Chrome distinct du profil SportsBase. Elle est désactivée
+tant que l’abonnement n’a pas l’option YouTube cochée et que la variable locale ci-dessous
+n’est pas activée.
+
+```text
+YOUTUBE_UPLOAD_ENABLED=true
+YOUTUBE_STUDIO_CHANNEL_ID=UCB2SMAxFXOcWDDDX5FtI9iA
+YOUTUBE_CHROME_PROFILE_DIR=D:\YouTube_MSPerformance_Profile
+YOUTUBE_BROWSER_CHANNEL=chrome
+YOUTUBE_HEADLESS=false
+YOUTUBE_UPLOAD_TIMEOUT_MINUTES=180
+```
+
+Première connexion, sans publier de vidéo :
+
+```powershell
+python -m sportsbase_data.local_agent --check-youtube
+```
+
+Connectez le profil affiché à la chaîne **MS Performance**, puis fermez la fenêtre. Ensuite,
+le lancement normal traite d’abord toutes les synchronisations en attente, puis les uploads
+YouTube. Une tâche échouée se reprend depuis « Abonnements Performance » sans télécharger à
+nouveau la vidéo et sans resynchroniser le match. Après une publication réussie, un reçu
+technique est conservé dans `_youtube_receipts` : si la connexion avec Heroku est coupée au
+mauvais moment, l’agent renvoie l’URL existante au lieu de publier un doublon.
+
+## Solution de secours Dailymotion — RPA Chrome
+
+YouTube reste le canal principal et son fonctionnement ne change pas. Si une vidéo All
+Actions est bloquée, l’équipe peut lancer manuellement Dailymotion dans « Abonnements
+Performance », sur la même ligne que YouTube. Le bouton devient « Réessayer » après un
+échec. Lorsque le fichier est transféré mais que Dailymotion optimise encore la vidéo,
+l’état devient « Upload effectué — lien à ajouter » et permet de coller le lien « Aperçu ».
+Le bouton devient « Voir » dès que ce lien est enregistré. Aucun bouton de gestion
+Dailymotion n’est ajouté à l’espace client : la page du match utilise automatiquement la
+vidéo de secours lorsqu’elle est prête.
+
+Comme YouTube, la publication est pilotée dans **Chrome par Playwright** : ouverture de
+Studio, sélection du fichier, titre/description, catégorie Sport, langue, « non créé pour
+les enfants », visibilité Privée, Enregistrer, attente de la fin du transfert, puis
+« Fermer ». Dans la liste Vidéos, le RPA cible ensuite le titre exact et récupère le lien
+privé « Aperçu » depuis son menu. Aucun appel à l’API Dailymotion, aucune clé API et aucun
+mot de passe Dailymotion dans le code.
+
+Le bouton « Fermer » peut être actif pendant que Studio affiche encore « Upload en cours
+X % » : il n’est donc jamais utilisé comme preuve de fin. Le RPA attend obligatoirement
+100 % ou un statut explicite de transfert terminé avant de fermer la fenêtre.
+
+Ajoutez au `.env` local du PC qui exécute l’agent :
+
+```text
+DAILYMOTION_UPLOAD_ENABLED=true
+DAILYMOTION_STUDIO_PROFILE_ID=x6445ea
+DAILYMOTION_BROWSER_CHANNEL=chrome
+DAILYMOTION_HEADLESS=false
+DAILYMOTION_VIDEO_LANGUAGE=fr
+DAILYMOTION_UPLOAD_TIMEOUT_MINUTES=180
+DAILYMOTION_LINK_WAIT_SECONDS=0
+```
+
+Première connexion, sans envoyer de vidéo :
+
+```powershell
+python -m sportsbase_data.local_agent --check-dailymotion
+```
+
+La commande réutilise `D:\SportsBase_Playwright_Profile`. Si la session Dailymotion manque,
+elle ferme le navigateur automatisé et ouvre **Chrome normal** sur ce même profil afin que la
+connexion Google ne soit pas refusée comme « navigateur non sécurisé ». Connectez-vous,
+ouvrez le Studio du profil `x6445ea`, fermez complètement Chrome, puis appuyez sur Entrée dans
+PowerShell. Le RPA rouvre alors ce profil et vérifie Studio sans envoyer de vidéo. SportsBase
+et Dailymotion utilisent ce profil l’un après l’autre, jamais simultanément ; YouTube conserve
+son profil séparé. En cas d’expiration de session, relancez la même commande.
+
+Relancez ensuite `python -m sportsbase_data.local_agent`. L’ordre existant reste inchangé :
+synchronisations, YouTube, puis les essais Dailymotion demandés dans l’application interne.
+Il n’y a pas de détection automatique des blocages YouTube : le bouton permet aussi de
+secourir une vidéo marquée « disponible » dont le lecteur YouTube est devenu bloqué.
+
+La visibilité Dailymotion **Privée** correspond à un accès par lien, sans apparition dans
+les recherches, comme l’usage des vidéos YouTube non répertoriées. Le RPA conserve le vrai
+lien de partage fourni par Studio (y compris les identifiants privés), pas l’adresse
+d’édition. Ne publiez que des contenus autorisés : les règles de droits d’auteur restent
+applicables sur Dailymotion.
+
+Un reçu local est conservé dans `_dailymotion_receipts` afin d’éviter un second upload si
+le retour vers Heroku est interrompu. Si Chrome s’arrête après le clic Enregistrer sans
+confirmation, un reçu `needs_review` bloque un nouvel upload incertain : vérifiez le match
+dans Studio. Dès que le transfert est confirmé, le reçu passe à `link_pending` : fermer
+Chrome ou arrêter l’agent ne provoque alors aucun doublon. Par défaut, le RPA attend sans
+limite que l’optimisation rende le menu « Aperçu » disponible et affiche sa progression.
+Appuyez sur une touche dans PowerShell pour quitter cette attente : le transfert reste alors
+en état `link_pending` et le lien peut être saisi dans « Abonnements Performance ». Lorsqu’il
+est trouvé avant l’interruption, le lien est envoyé automatiquement à l’application. La valeur
+`DAILYMOTION_LINK_WAIT_SECONDS=0` active cette attente sans limite ; une valeur positive fixe
+facultativement une limite pour une exécution sans surveillance. Le lien est contrôlé puis
+transformé en URL Dailymotion canonique avant d’être proposé au lecteur client. Une capture
+locale dans `_dailymotion_diagnostics` aide à
+diagnostiquer un changement d’interface.
+
+Pour utiliser un lecteur Dailymotion personnalisé, configurez facultativement
+`DAILYMOTION_PLAYER_ID` sur l’application Django. Appliquez la migration au déploiement :
+
+```powershell
+python manage.py migrate
+```
+
+Références officielles : [upload Studio](https://faq.dailymotion.com/hc/en-us/articles/115009030368-Upload-videos-from-your-Dailymotion-Studio),
+[visibilité privée](https://faq.dailymotion.com/hc/en-us/articles/115009030028-Content-visibility).
+
+## Rapports Performance
+
+- Un rapport de match est créé et publié après chaque synchronisation complète.
+- Un rapport de cycle est créé après chaque groupe complet de cinq matchs.
+- La langue française, anglaise ou arabe est imposée par l’abonnement.
+- L’équipe peut modifier le texte et le remettre en brouillon depuis l’application interne.
+- Le PDF n’est pas stocké : il est régénéré depuis la dernière version enregistrée à chaque
+  ouverture.
+- L’e-mail de livraison part une seule fois lorsque le rapport est publié et qu’une vidéo
+  YouTube ou Dailymotion est disponible.
+
+Sur Heroku, configurez également :
+
+```text
+PUBLIC_SITE_URL=https://msfootball-1a882b44ed52.herokuapp.com
+```
+
+Les identifiants restent uniquement dans le `.env` local. Ils ne sont jamais transmis par
+l’API ni enregistrés dans la base Django.
+
+## Flux de données
+
+1. L’administrateur active un abonnement Performance pour un joueur qui possède déjà son URL
+   SportsBase.
+2. Django met une tâche en attente.
+3. L’agent local récupère la tâche avec son compte interne, ouvre SportsBase et importe la
+   saison courante.
+4. Les données structurées et les cartes PNG sont envoyées vers Django.
+5. Le fichier All Actions reste sur le PC, dans `player_.../match_.../`, puis une tâche de
+   publication non répertoriée est créée si l’option YouTube est active.
+6. L’agent local publie d’abord sur YouTube. Si l’équipe demande le secours Dailymotion,
+   il réutilise exactement le même fichier local, renvoie uniquement l’URL obtenue et
+   conserve l’empreinte du fichier pour la traçabilité.
+7. Le rapport du match et, tous les cinq matchs, le rapport de cycle sont générés dans la
+   langue de l’abonnement.
+8. Le joueur ou son agent consulte la vidéo, les données et le PDF selon les droits déjà gérés par
+   `client_portal`.
+
+
+## Centre de contrôle Performance (branche de développement)
+
+La page interne `/gestion/performances/` affiche un nouveau panneau de
+**supervision en lecture seule**. Il montre l'état des sessions Windows,
+la présence (dernier heartbeat), le plan initial, les joueurs, les événements
+XLSX/PDF/All Actions et les erreurs, ainsi que les matchs récemment incomplets.
+
+Le bouton latéral **Agent Performance** utilise toujours le même protocole
+`msfootball-agent://performance`. Dans cette branche, son lanceur Windows
+appelle `sportsbase_data.monitoring_proxy`, un processus observateur qui
+exécute le module **inchangé** `sportsbase_data.local_agent` et relaie
+sa sortie vers la fenêtre PowerShell d'origine.
+
+L'observateur envoie seulement des messages structurés et filtrés à
+`/sportsbase/automation/monitoring/ingest/` au moyen du même compte
+d'automatisation Django que l'agent. Il ne connaît ni ne manipule la logique
+SportsBase, les All Actions, les rapports, ni YouTube. Une panne de télémétrie
+n'empêche pas l'agent d'exécuter ses tâches. Les URL et chemins locaux sont
+retirés des messages téléversés. Les identifiants restent sur le PC.
+
+`/gestion/performances/monitoring/status/` est réservé à l'administrateur
+et fournit un instantané actualisé par le navigateur toutes les 10 secondes.
+
+Un démarrage de l'agent directement par
+`python -m sportsbase_data.local_agent` **n'est pas observé** par ce wrapper ;
+le démarrage par le bouton latéral déclenche la supervision. Le cas échéant,
+une ancienne session sera marquée « Signal perdu » après 90 secondes sans
+heartbeat. Il ne s'agit pas d'un ordre d'arrêt du processus local.
+
+Option de secours : `MS_PERFORMANCE_MONITOR_ENABLED=0` désactive les
+transmissions de supervision pour le processus démarré depuis le bouton.
+Le bouton Highlights reste inchangé.
+
+Les événements n'apparaîtront qu'après la mise à jour **à la fois** du site
+Heroku et des fichiers locaux sur le PC Windows. Le `Procfile` existant
+inclut déjà `release: python manage.py migrate --noinput` ; la nouvelle
+migration `0008_agent_monitoring` crée uniquement les tables de supervision.
+La branche est préparatoire : pas de déploiement implicite.
+
+La télémétrie est un observateur, pas un contrôleur : aucune action distante,
+aucune modification de file d'attente, aucune commande de suppression ou de
+réexécution n'est disponible depuis ce module.
+
+
+## Centre de contrôle V2 — historique, anomalies et pagination
+
+La branche `feature/performance-monitor-history-v2` ajoute quatre vues au
+panneau de supervision sans modifier `sportsbase_data/local_agent.py`,
+`sportsbase_data/scraper.py`, ni les automatisations YouTube/Dailymotion :
+
+- **Sessions** : historique paginé des lancements Windows, périodes de présence,
+  joueurs prévus au démarrage et tâches exécutées. Les sessions enregistrées
+  restent consultables après la fermeture de l'agent.
+- **Joueurs/tâches** : toutes les tâches historiques, recherche par joueur,
+  erreur et ID de match effectivement associé au résultat de la tâche. Le
+  détail montre les étapes observées et les états actuels de chaque match.
+- **Journal complet** : événements horodatés, recherche textuelle, filtres
+  par niveau et dates, pages de 20 résultats.
+- **Problèmes ouverts** : diagnostic recalculé depuis les matchs de la saison
+  des abonnements actifs (81 en-têtes attendus + lignes Players, analyse
+  disponible, vidéo si requise). Les tâches historiques échouées puis
+  corrigées ne sont plus comptées comme des anomalies. Les matchs détectés
+  mais pas encore synchronisés sont classés séparément « À synchroniser ».
+  Les données des matchs sont mises en cache durant 60 secondes.
+
+La liste d'abonnements de `/gestion/performances/` est paginée à 25 joueurs ;
+les recherches restent indépendantes de l'historique. Les quatre nouveaux
+endpoints sont **réservés aux superutilisateurs** et seulement en lecture.
+Ils ne mettent pas de tâches en file, ne lancent pas et n'arrêtent pas
+l'Agent Performance.
+
+La présence du MP4 et du PDF sur le disque Windows ne peut pas être vérifiée
+par la base Heroku. L'interface le précise au lieu de présenter un état de
+base de données comme une preuve de fichier local. Les étapes du journal
+correspondent aux messages reconnus par le moniteur ; « Non observé » ne
+signifie pas « Échoué ».
+
+Les sessions avant l'installation de l'observateur Windows ne peuvent pas
+être reconstituées. La V2 conserve la migration `0008_agent_monitoring`
+de V1 ; elle n'ajoute aucune nouvelle table ni migration. Il faut
+déployer la branche V2 sur Heroku et installer le code V2 sur le PC Windows
+pour bénéficier des nouveaux messages d'étapes. L'agent garde son bouton
+latéral `msfootball-agent://performance`.
+
+La collecte reste best-effort : si le moniteur local n'arrive pas à joindre
+Heroku, l'agent continue normalement, et certains événements de cette
+période peuvent manquer dans le journal.

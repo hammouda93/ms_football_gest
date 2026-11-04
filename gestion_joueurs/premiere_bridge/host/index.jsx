@@ -88,6 +88,35 @@ $._MSBridge.getPremiereDirForActiveProject = function () {
     }
 };
 
+$._MSBridge.findDefaultExportPresetPath = function () {
+    var relativePath = "/MediaIO/systempresets/4E49434B_48323634/YouTube 1080p HD.epr";
+    var candidates = [];
+    try {
+        if (app.path) {
+            candidates.push(String(app.path) + relativePath);
+        }
+    } catch (e1) {
+    }
+    for (var year = 2026; year >= 2020; year--) {
+        candidates.push(
+            "C:/Program Files/Adobe/Adobe Premiere Pro " + year + relativePath
+        );
+    }
+    for (var i = 0; i < candidates.length; i++) {
+        var candidate = new File(candidates[i]);
+        if (candidate.exists) {
+            return candidate.fsName;
+        }
+    }
+    return "";
+};
+
+$._MSBridge.safeFileStem = function (value) {
+    var result = String(value || "").replace(/[<>:\"\/\\|?*]/g, "_");
+    result = result.replace(/\s+/g, "_").replace(/_+/g, "_");
+    return result.replace(/^_+|_+$/g, "") || "Player";
+};
+
 $._MSBridge.readProjectContextForActiveProject = function () {
     var premiereDir = $._MSBridge.getPremiereDirForActiveProject();
     if (!premiereDir) {
@@ -96,7 +125,36 @@ $._MSBridge.readProjectContextForActiveProject = function () {
 
     var contextPath = premiereDir + "/project_context.json";
     var txt = $._MSBridge.readTextFile(contextPath);
-    return $._MSBridge.parseJsonText(txt);
+    var context = $._MSBridge.parseJsonText(txt);
+
+    // Older projects may have been created before export fields were persisted.
+    // Recover them from the sibling job file so the current edit can still export.
+    try {
+        var jobPath = premiereDir + "/premiere_job.json";
+        var jobFile = new File(jobPath);
+        if (jobFile.exists) {
+            var job = $._MSBridge.parseJsonText($._MSBridge.readTextFile(jobPath));
+            if (!context.player_name) { context.player_name = job.player_name || ""; }
+            if (!context.premiere_dir) { context.premiere_dir = job.premiere_dir || premiereDir; }
+            if (!context.final_export_path) { context.final_export_path = job.final_export_path || ""; }
+            if (!context.export_preset_path) { context.export_preset_path = job.export_preset_path || ""; }
+        }
+    } catch (jobError) {
+    }
+
+    if (!context.premiere_dir) {
+        context.premiere_dir = premiereDir;
+    }
+    if (!context.final_export_path) {
+        var projectFolder = new Folder(premiereDir);
+        var targetFolder = projectFolder.parent;
+        context.final_export_path = targetFolder.fsName + "/exports/" +
+            $._MSBridge.safeFileStem(context.player_name) + "_Highlights_Final.mp4";
+    }
+    if (!context.export_preset_path) {
+        context.export_preset_path = $._MSBridge.findDefaultExportPresetPath();
+    }
+    return context;
 };
 
 $._MSBridge.runCreateProjectFromCurrentCommand = function () {
@@ -222,9 +280,11 @@ $._MSBridge.runCreateProjectFromCurrentCommand = function () {
             '  "premiere_dir": "' + $._MSBridge.escapeJsonString(job.premiere_dir || "") + '",\n' +
             '  "graphics_bin_name": "' + $._MSBridge.escapeJsonString(job.graphics_bin_name || "04_GRAPHICS") + '",\n' +
             '  "audio_bin_name": "' + $._MSBridge.escapeJsonString(job.audio_bin_name || "05_AUDIO") + '",\n' +
-            '  "player_intro_path": "' + $._MSBridge.escapeJsonString(job.player_intro_path || "") + '",\n' +
-            '  "music_dir": "' + $._MSBridge.escapeJsonString(job.music_dir || "") + '"\n' +
-            "}";
+             '  "player_intro_path": "' + $._MSBridge.escapeJsonString(job.player_intro_path || "") + '",\n' +
+             '  "music_dir": "' + $._MSBridge.escapeJsonString(job.music_dir || "") + '",\n' +
+             '  "final_export_path": "' + $._MSBridge.escapeJsonString(job.final_export_path || "") + '",\n' +
+             '  "export_preset_path": "' + $._MSBridge.escapeJsonString(job.export_preset_path || "") + '"\n' +
+             "}";
 
         $._MSBridge.writeTextFile(projectContextPath, projectContextJson);
 
@@ -238,8 +298,12 @@ $._MSBridge.runCreateProjectFromCurrentCommand = function () {
             "clips_count=" + job.clips.length + "\n" +
             "logo_path=" + job.logo_path + "\n" +
             "intro_imported=" + introImported + "\n" +
-            "music_files_found=" + musicFilesFound + "\n"
+             "music_files_found=" + musicFilesFound + "\n"
         );
+
+        if (lockFile.exists) {
+            lockFile.remove();
+        }
 
         return "SUCCESS | project=" + job.project_path +
                " | sequence=" + seqName +
@@ -248,6 +312,21 @@ $._MSBridge.runCreateProjectFromCurrentCommand = function () {
                " | intro_imported=" + (introImported ? "YES" : "NO") +
                " | music_found=" + musicFilesFound;
     } catch (e) {
+        try {
+            if (resultPath) {
+                $._MSBridge.writeTextFile(
+                    resultPath,
+                    "success=false\nerror=" + e.toString() + "\n"
+                );
+            }
+        } catch (resultError) {
+        }
+        try {
+            if (lockFile && lockFile.exists) {
+                lockFile.remove();
+            }
+        } catch (lockError) {
+        }
         return "RUN_ERROR: " + e.toString();
     }
 };
@@ -2230,4 +2309,93 @@ $._MSBridge.tryApplyAudioGainDbToClip = function (trackItem, gainDb) {
     }
 
     return { ok: false, reason: "LEVEL_PROPERTY_NOT_FOUND" };
+};
+
+$._MSBridge.findSequenceByName = function (sequenceName) {
+    if (!app.project || !app.project.sequences) {
+        return null;
+    }
+    for (var i = 0; i < app.project.sequences.numSequences; i++) {
+        var sequence = app.project.sequences[i];
+        if (sequence && sequence.name === sequenceName) {
+            return sequence;
+        }
+    }
+    return null;
+};
+
+$._MSBridge.writeExportStatus = function (success, status, extraText) {
+    var current = $._MSBridge.activeExportTask;
+    if (!current || !current.resultPath) {
+        return;
+    }
+    var content =
+        "success=" + (success ? "true" : "false") + "\n" +
+        "status=" + status + "\n" +
+        "output_path=" + (current.outputPath || "") + "\n" +
+        "mode=direct\n" +
+        (extraText || "");
+    $._MSBridge.writeTextFile(current.resultPath, content);
+};
+
+$._MSBridge.exportCompletedMain = function () {
+    $._MSBridge.activeExportTask = null;
+    try {
+        var context = $._MSBridge.readProjectContextForActiveProject();
+        var sequence = $._MSBridge.findSequenceByName("COMPLETED_MAIN");
+        if (!sequence) {
+            throw new Error("La séquence COMPLETED_MAIN est introuvable");
+        }
+        if (!context.final_export_path) {
+            throw new Error("Le chemin du MP4 final est absent du projet");
+        }
+        if (!context.export_preset_path) {
+            throw new Error("PREMIERE_EXPORT_PRESET doit pointer vers un preset H.264 .epr");
+        }
+
+        var presetFile = new File(context.export_preset_path);
+        if (!presetFile.exists) {
+            throw new Error("Preset d'export introuvable: " + context.export_preset_path);
+        }
+        var outputFile = new File(context.final_export_path);
+        if (outputFile.parent && !outputFile.parent.exists) {
+            outputFile.parent.create();
+        }
+        if (outputFile.exists && !outputFile.remove()) {
+            throw new Error("Impossible de remplacer l'ancien export: " + outputFile.fsName);
+        }
+
+        $._MSBridge.activeExportTask = {
+            outputPath: outputFile.fsName,
+            resultPath: context.premiere_dir + "/premiere_export_result.txt"
+        };
+        $._MSBridge.writeExportStatus(false, "exporting", "");
+        app.project.save();
+
+        // Équivalent automatisé de Ctrl+M puis « Exporter » :
+        // le rendu reste dans Premiere Pro et couvre toute la séquence.
+        var exportSucceeded = sequence.exportAsMediaDirect(
+            outputFile.fsName,
+            presetFile.fsName,
+            0
+        );
+        if (!exportSucceeded) {
+            throw new Error("Premiere Pro a refusé l'export direct");
+        }
+
+        var completedFile = new File(outputFile.fsName);
+        if (!completedFile.exists) {
+            throw new Error("L'export direct est terminé mais le MP4 est introuvable");
+        }
+
+        $._MSBridge.writeExportStatus(true, "completed", "");
+        app.project.save();
+        return "EXPORT_COMPLETED | output=" + completedFile.fsName;
+    } catch (e) {
+        try {
+            $._MSBridge.writeExportStatus(false, "failed", "error=" + e.toString() + "\n");
+        } catch (ignored) {
+        }
+        return "EXPORT_ERROR: " + e.toString();
+    }
 };

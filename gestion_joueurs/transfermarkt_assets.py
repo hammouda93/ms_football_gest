@@ -8,6 +8,11 @@ import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
+try:
+    from .presentation_styles import DEFAULT_PRESENTATION_STYLE, get_presentation_style
+except ImportError:
+    from presentation_styles import DEFAULT_PRESENTATION_STYLE, get_presentation_style
+
 
 def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
@@ -709,7 +714,8 @@ def build_position_market_value_card(data: dict, output_path: Path):
     bg.save(output_path)
 
 
-def build_prompt_text(data: dict) -> str:
+def build_prompt_text(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
     player_name = data.get("player_name", "Unknown Player")
     shirt_number = data.get("shirt_number", "")
     club_name = data.get("club_name", "")
@@ -743,11 +749,14 @@ def build_prompt_text(data: dict) -> str:
                 "\n"
             )
 
-    prompt = f"""Create a premium cinematic football player profile poster in 1920x1080.
+    prompt = f"""Create one premium cinematic football presentation keyframe, exactly 1920x1080, 16:9. This image will become the source frame for a restrained Kling image-to-video shot, so it must feel photographic, coherent and animation-safe.
 
-Use the uploaded real player photo as the main focal point. The player must remain realistic, recognizable, sharp, and highly detailed. Build the design in the style of elite football highlight graphics, with dramatic lighting, strong contrast, clean structure, luxury sports branding, and professional marketing quality.
+SOURCE PRIORITY
+1. Preserve the uploaded player's real identity exactly: face, skin tone, age, hair, body proportions and recognizable features.
+2. Preserve the real kit design, shirt number and visible sponsor details from the uploaded photo. Do not replace the player with a lookalike.
+3. Use transfermarkt_data.json and the uploaded visual assets only as factual references.
 
-Also use the uploaded Transfermarkt assets and JSON data as reference for the factual information and visual identity:
+VERIFIED PLAYER DATA
 - Name: {player_name}
 - Shirt number: {shirt_number or "-"}
 - Nationality: {nationality or "-"}
@@ -764,41 +773,90 @@ Also use the uploaded Transfermarkt assets and JSON data as reference for the fa
 - Country / League context: {country or "-"}
 
 {trophies_block}
-Design requirements:
-- modern football poster aesthetic
-- bold typography
-- dynamic composition
-- subtle but premium background effects inspired by the club colors and the football culture of the club’s city / country
-- elegant glow, depth, lighting, and atmosphere
-- high-end sports broadcast / scouting presentation style
-- clean hierarchy of information
-- polished professional finish
-- no clutter
+SELECTED PRESENTATION STYLE
+- Preset: {style['label']} ({style['category']})
+- Environment direction: {style['image_direction']}
+- Follow this preset exactly while preserving all source-priority and factual constraints below.
 
-Visual priorities:
-1. player photo must dominate the composition
-2. club logo must be integrated in a stylish way
-3. trophies / badges must be integrated in a premium way
-4. use nationality and club location/cultural atmosphere subtly in the background design language
-5. make the composition feel like elite football promo art
+VISUAL IDENTITY RESEARCH
+- First analyze the uploaded real club logo: identify its verified dominant colors, outline geometry and any actual symbol already visible inside it.
+- If browsing is available, verify the club's city and country from reliable club/league sources before using one or two subtle local visual motifs. If it cannot be verified, use only the uploaded logo and the nationality/country values above.
+- Translate the real emblem geometry into tasteful background lines, light patterns or architectural framing. Never invent a new crest, flag, landmark, trophy, animal or cultural symbol.
+- Club and national references must remain elegant background accents, not costumes or caricatures.
 
-Text to include in an elegant way:
-- player full name
-- Season Highlights
-- club name
-- position
-- nationality
-- market value
-- selected profile details from the uploaded data
+COMPOSITION
+- Premium football broadcast/scouting art with a realistic cinematic photograph finish, not an illustration.
+- Medium-wide presentation framing with the player standing naturally, looking into camera, shoulders relaxed and a very slight friendly smile.
+- Keep the player's full head, torso, arms and hands anatomically correct and unobstructed. Leave breathing room around the silhouette for animation.
+- Build the selected believable environment with clear depth: foreground player, coherent mid-ground and a restrained background.
+- Integrate the uploaded club logo once as a clean, correctly proportioned graphic element. Use badge/trophy assets only when supplied.
+- Match lighting and environmental details to the selected preset. Do not add outdoor sky, birds, clouds or sunlight to an indoor preset.
+- Strong hierarchy, premium negative space, no clutter, no excessive particles, no aggressive flares.
 
-Important:
-- do not invent false statistics
-- use only the uploaded factual data
-- keep the layout aesthetic and balanced
-- make it feel like an elite football promo graphic
-- output must be exactly 1920x1080
+TEXT
+- Render only these short verified lines: "{player_name}", "SEASON HIGHLIGHTS", "{club_name or '-'}", "{primary_position or position or '-'}", "{market_value or '-'}".
+- Keep all text on a stable graphic panel away from the face, hands and shirt logo. It must be spelled exactly as supplied and remain readable.
+
+HARD CONSTRAINTS
+- Use only verified supplied facts; do not invent statistics.
+- No identity drift, face beautification, extra fingers, duplicated limbs, deformed hands, altered kit, fake sponsor, fake logo or misspelled text.
+- No exaggerated action pose. This is a sober professional player-presentation shot.
+- Output exactly 1920x1080 with no border, watermark or mockup frame.
 """
     return prompt
+
+
+def build_kling_prompt_text(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
+    player_name = data.get("player_name", "the player")
+    club_name = data.get("club_name", "the club")
+    return f"""Animate the supplied presentation image as one restrained 6-to-8-second cinematic football portrait shot of {player_name} for {club_name}. Respect the exact composition and animate only elements that already exist in the source image.
+
+PLAYER PERFORMANCE
+- The player keeps direct, calm eye contact with the camera.
+- Natural subtle breathing in the chest and shoulders.
+- One very small, realistic transfer of body weight, without stepping or changing pose.
+- One or two natural blinks.
+- A tiny progressive closed-mouth smile appears gently near the end, confident and friendly, never exaggerated.
+- Extremely light secondary motion in the jersey fabric caused by a soft breeze.
+- Hands, arms, head, hairstyle, body proportions, kit, shirt number, sponsor and club crest remain unchanged.
+- No speaking, no lip-sync, no visible words mouthed, no large gesture.
+
+LIVING ENVIRONMENT
+- Selected preset: {style['label']} ({style['category']}).
+- {style['motion_direction']}
+- Very subtle atmospheric particles and depth parallax may move only if already compatible with the source image.
+- Preserve the source environment, weather, time of day, club/country visual language and color palette.
+- Never add outdoor weather, sky, birds or clouds to an indoor or studio source image.
+
+CAMERA
+- Stable professional cinema camera on a tripod or stabilized dolly.
+- Almost locked frame with only an imperceptible slow push-in of about 2 percent.
+- No pan, no orbit, no handheld shake, no sudden zoom, no reframing and no focus pumping.
+- Natural cinematic motion blur, realistic lighting continuity and high temporal consistency.
+
+STRICT NEGATIVE CONSTRAINTS
+No face morphing, identity drift, beauty-filter change, rubber skin, eye distortion, head wobble, lip movement, teeth appearing, extra fingers, fused hands, duplicated limbs, body deformation, jersey or logo warping, text mutation, flicker, exposure pumping, fast clouds, large birds, storm wind, dramatic fabric movement, camera shake, jump cuts, scene transition, new objects or new people.
+
+The final result must feel like a real sober football presentation filmed on set: natural, premium, confident and understated.
+"""
+
+
+def build_visual_identity_brief(data: dict, presentation_style=DEFAULT_PRESENTATION_STYLE) -> str:
+    style = get_presentation_style(presentation_style)
+    return f"""VISUAL IDENTITY BRIEF — VERIFIED INPUTS ONLY
+
+Player: {data.get('player_name') or '-'}
+Club: {data.get('club_name') or '-'}
+League: {data.get('league_name') or '-'}
+Nationality: {data.get('nationality') or '-'}
+Country/league context: {data.get('country') or '-'}
+Club logo source: {data.get('club_logo_url') or '-'}
+Selected presentation style: {style['label']} ({style['category']})
+Selected environment direction: {style['image_direction']}
+
+Before image generation, inspect the supplied club logo and extract its real dominant colors, outline geometry and visible emblem symbol. If web research is available, verify the club city/country using an official club, federation or league source. Add at most two subtle, verified geographic or architectural motifs. If verification is unavailable, do not guess: use only the supplied logo, its colors and the factual fields above. Never invent a crest, flag, landmark, trophy or cultural symbol.
+"""
 
 
 def build_position_market_value_prompt_text(data: dict) -> str:
@@ -986,7 +1044,65 @@ def build_badges_card(data: dict, downloaded_badges: list, output_path: Path):
     bg.save(output_path)
 
 
-def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
+def write_presentation_prompt_assets(
+    data: dict,
+    output_dir: Path,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
+    """Write the style-sensitive files without re-scraping Transfermarkt."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    style = get_presentation_style(presentation_style)
+    image_prompt_text = build_prompt_text(data, style["value"])
+
+    prompt_path = output_dir / "prompt.txt"
+    prompt_path.write_text(image_prompt_text, encoding="utf-8")
+
+    chatgpt_image_prompt_path = output_dir / "prompt_chatgpt_image.txt"
+    chatgpt_image_prompt_path.write_text(image_prompt_text, encoding="utf-8")
+
+    kling_prompt_path = output_dir / "prompt_kling_image_to_video.txt"
+    kling_prompt_path.write_text(
+        build_kling_prompt_text(data, style["value"]),
+        encoding="utf-8",
+    )
+
+    visual_identity_brief_path = output_dir / "visual_identity_brief.txt"
+    visual_identity_brief_path.write_text(
+        build_visual_identity_brief(data, style["value"]),
+        encoding="utf-8",
+    )
+
+    presentation_style_path = output_dir / "presentation_style.json"
+    presentation_style_path.write_text(
+        json.dumps(
+            {
+                "value": style["value"],
+                "label": style["label"],
+                "category": style["category"],
+                "summary": style["summary"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return {
+        "prompt_path": str(prompt_path),
+        "chatgpt_image_prompt_path": str(chatgpt_image_prompt_path),
+        "kling_prompt_path": str(kling_prompt_path),
+        "visual_identity_brief_path": str(visual_identity_brief_path),
+        "presentation_style_path": str(presentation_style_path),
+        "presentation_style": style,
+    }
+
+
+def build_assets_from_transfermarkt_html_text(
+    html_text: str,
+    output_dir: str,
+    presentation_style=DEFAULT_PRESENTATION_STYLE,
+):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -998,8 +1114,11 @@ def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
     logo_path = output_dir / "transfermarkt_Team_Logo.jpg"
     logo_ok = download_image(data.get("club_logo_url", ""), logo_path)
 
-    prompt_path = output_dir / "prompt.txt"
-    prompt_path.write_text(build_prompt_text(data), encoding="utf-8")
+    prompt_assets = write_presentation_prompt_assets(
+        data,
+        output_dir,
+        presentation_style,
+    )
 
     position_market_value_prompt_path = output_dir / "prompt_position_market_value.txt"
     position_market_value_prompt_path.write_text(
@@ -1034,7 +1153,11 @@ def build_assets_from_transfermarkt_html_text(html_text: str, output_dir: str):
         "logo_path": str(logo_path) if logo_ok else None,
         "badge_paths": badge_paths,
         "badges_card_path": badges_card_path,
-        "prompt_path": str(prompt_path),
+        "prompt_path": prompt_assets["prompt_path"],
+        "chatgpt_image_prompt_path": prompt_assets["chatgpt_image_prompt_path"],
+        "kling_prompt_path": prompt_assets["kling_prompt_path"],
+        "visual_identity_brief_path": prompt_assets["visual_identity_brief_path"],
+        "presentation_style_path": prompt_assets["presentation_style_path"],
 
         # Deuxième génération
         "position_market_value_prompt_path": str(position_market_value_prompt_path),

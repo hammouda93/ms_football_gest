@@ -184,11 +184,22 @@ logger = logging.getLogger(__name__)
 # Debugging: Print when bot starts
 logger.info("Bot is starting...")
 _thread_locals = threading.local()
+from contextvars import ContextVar
+from contextlib import contextmanager
+_current_actor = ContextVar('msf_actor', default=None)
 def get_current_user():
-    return getattr(_thread_locals, 'user', None)
+    return _current_actor.get()
 
 def set_current_user(user):
-    _thread_locals.user = user
+    _current_actor.set(user if getattr(user, 'is_authenticated', False) else None)
+
+@contextmanager
+def actor_context(user):
+    token = _current_actor.set(user if getattr(user, 'is_authenticated', False) else None)
+    try:
+        yield
+    finally:
+        _current_actor.reset(token)
 
 
 def create_notification(user, message, notification_type='update', video=None, player=None,sent_by=None):

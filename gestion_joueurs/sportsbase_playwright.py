@@ -1,5 +1,11 @@
+import json
 import os
 import re
+import shutil
+import socket
+import subprocess
+import time
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Optional
 
@@ -8,9 +14,24 @@ from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
+PLAYER_ACTIONS_BUTTON_RE = re.compile(
+    r"^(?:Player\s+actions?|All\s+(?:players?\s+)?actions?)$",
+    re.IGNORECASE,
+)
+MY_VIDEOS_ACTION_LABELS = (
+    "player actions",
+    "all player actions",
+    "player's actions",
+    "all player's actions",
+    "actions joueur",
+    "actions joueurs",
+    "actions du joueur",
+    "toutes les actions du joueur",
+)
+
 
 class SportsBaseAutomation:
-    def __init__(self, base_download_dir: Optional[str] = None):
+    def __init__(self, base_download_dir: Optional[str] = None, progress_callback=None):
         self.login_url = os.getenv("SPORTSBASE_LOGIN_URL", "").strip()
         self.email = os.getenv("SPORTSBASE_EMAIL", "").strip()
         self.password = os.getenv("SPORTSBASE_PASSWORD", "").strip()
@@ -19,17 +40,191 @@ class SportsBaseAutomation:
             "SPORTSBASE_DOWNLOAD_DIR",
             "D:/Django_Projects/ms_football_gest/gestion_joueurs/automated_players"
         )
+        self.profile_dir = Path(
+            os.getenv(
+                "SPORTSBASE_PROFILE_DIR",
+                r"D:\SportsBase_Playwright_Profile",
+            )
+        )
+        self.progress_callback = progress_callback
+        self._cdp_browser = None
+        self._cdp_process = None
 
         if not self.login_url:
             raise ValueError("SPORTSBASE_LOGIN_URL manquant dans .env")
         if not self.email or not self.password:
             raise ValueError("SPORTSBASE_EMAIL ou SPORTSBASE_PASSWORD manquant dans .env")
 
+    def notify_progress(self, stage, current=0, total=0, message=""):
+        if not self.progress_callback:
+            return
+        try:
+            self.progress_callback(
+                stage=stage,
+                current=current,
+                total=total,
+                message=message,
+            )
+        except Exception as exc:
+            print(f"[WARN] Mise à jour progression impossible: {exc}")
+
     @staticmethod
     def sanitize_filename(value: str) -> str:
         value = re.sub(r'[<>:"/\\|?*]+', "_", value)
         value = re.sub(r"\s+", " ", value).strip()
         return value
+
+    @staticmethod
+    def my_videos_targets(player_name: str) -> set[str]:
+        """Return the title variants used by SportsBase in My Videos."""
+        normalized_name = re.sub(r"\s+", " ", player_name or "").strip().casefold()
+        aliases = {normalized_name}
+        name_parts = normalized_name.split()
+        if len(name_parts) >= 3:
+            aliases.add(" ".join(name_parts[1:]))
+        return {
+            f"{alias}, {action_label}"
+            for alias in aliases
+            for action_label in MY_VIDEOS_ACTION_LABELS
+            if alias
+        }
+
+    @classmethod
+    def is_player_actions_title(cls, title: str, player_name: str) -> bool:
+        normalized_title = re.sub(r"\s+", " ", title or "").strip().casefold()
+        return any(
+            target in normalized_title
+            for target in cls.my_videos_targets(player_name)
+        )
+
+    @staticmethod
+    def resolve_browser_executable(playwright) -> str:
+        """Reuse an installed browser when Playwright's bundled Chromium is absent."""
+        program_files = os.getenv("ProgramFiles", "")
+        program_files_x86 = os.getenv("ProgramFiles(x86)", "")
+        local_app_data = os.getenv("LOCALAPPDATA", "")
+        candidates = [
+            os.getenv("SPORTSBASE_BROWSER_EXECUTABLE", "").strip(),
+            getattr(playwright.chromium, "executable_path", ""),
+            os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe")
+            if program_files else "",
+            os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe")
+            if program_files_x86 else "",
+            os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe")
+            if local_app_data else "",
+            os.path.join(program_files_x86, "Microsoft", "Edge", "Application", "msedge.exe")
+            if program_files_x86 else "",
+            os.path.join(program_files, "Microsoft", "Edge", "Application", "msedge.exe")
+            if program_files else "",
+        ]
+        for candidate in dict.fromkeys(candidates):
+            if candidate and Path(candidate).is_file():
+                return str(Path(candidate))
+        return ""
+
+    @staticmethod
+    def reserve_cdp_port() -> int:
+        configured = os.getenv("SPORTSBASE_CDP_PORT", "").strip()
+        if configured:
+            return int(configured)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def wait_for_cdp_endpoint(process, port: int, timeout_seconds: int = 30) -> str:
+        deadline = time.monotonic() + timeout_seconds
+        last_error = ""
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(
+                    "Chrome s'est arrêté avant la connexion. Fermez toute autre "
+                    "fenêtre utilisant le profil SportsBase puis réessayez."
+                )
+            connection = None
+            try:
+                connection = HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/json/version")
+                response = connection.getresponse()
+                payload = response.read()
+                if response.status == 200:
+                    metadata = json.loads(payload.decode("utf-8"))
+                    if metadata.get("webSocketDebuggerUrl"):
+                        return f"http://127.0.0.1:{port}"
+            except Exception as exc:
+                last_error = str(exc)
+            finally:
+                if connection is not None:
+                    connection.close()
+            time.sleep(0.2)
+        raise RuntimeError(
+            f"Chrome n'a pas ouvert son port local dans les délais. {last_error}".strip()
+        )
+
+    def launch_profile_context(self, playwright, browser_executable: str):
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        port = self.reserve_cdp_port()
+        command = [
+            browser_executable,
+            f"--remote-debugging-port={port}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={self.profile_dir.resolve()}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-mode",
+            "--start-maximized",
+            "about:blank",
+        ]
+        if self.headless:
+            command.insert(-1, "--headless=new")
+        print(f"[DEBUG] Profil Chrome SportsBase: {self.profile_dir}")
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._cdp_process = process
+        try:
+            endpoint = self.wait_for_cdp_endpoint(process, port)
+            browser = playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=30_000,
+                is_local=True,
+                no_defaults=False,
+            )
+            if not browser.contexts:
+                raise RuntimeError("Chrome n'a exposé aucun profil navigateur.")
+            self._cdp_browser = browser
+            return browser.contexts[0]
+        except Exception:
+            self.close_profile_browser()
+            raise
+
+    def close_profile_browser(self):
+        browser = self._cdp_browser
+        process = self._cdp_process
+        self._cdp_browser = None
+        self._cdp_process = None
+        if browser is not None:
+            try:
+                session = browser.new_browser_cdp_session()
+                session.send("Browser.close")
+            except Exception:
+                pass
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if process is None:
+            return
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
     def run_for_player(self, player_name: str, player_url: str, target_dir: str, seasons_to_process: int = 1) -> dict:
         target_path = Path(target_dir)
@@ -47,19 +242,22 @@ class SportsBaseAutomation:
         }
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=self.headless,
-                args=["--start-maximized"]
-            )
-
-            context = browser.new_context(
-                accept_downloads=True,
-                no_viewport=True
-            )
+            browser_executable = self.resolve_browser_executable(p)
+            if not browser_executable:
+                raise RuntimeError(
+                    "Aucun navigateur compatible trouvé. Installez Chrome/Edge ou "
+                    "définissez SPORTSBASE_BROWSER_EXECUTABLE."
+                )
+            print(f"[DEBUG] Navigateur SportsBase: {browser_executable}")
+            context = self.launch_profile_context(p, browser_executable)
 
             page = context.new_page()
 
             try:
+                self.notify_progress(
+                    "sportsbase_discovery",
+                    message="Connexion au profil SportsBase",
+                )
                 self.ensure_logged_in_and_open_player(page, player_url)
 
                 sportsbase_player_name = self.get_sportsbase_player_name(page)
@@ -70,23 +268,34 @@ class SportsBaseAutomation:
                 matches_played = self.get_matches_played(page, seasons_to_process=seasons_to_process) 
                 result["matches_played"] = matches_played
                 print(f"[DEBUG] Matches played lus: {matches_played}")
+                self.notify_progress(
+                    "sportsbase_generation",
+                    current=0,
+                    total=matches_played,
+                    message=f"{matches_played} matchs trouvés",
+                )
 
                 generation_requests_sent, generated_match_titles = self.generate_all_players_actions(page, matches_played)
                 result["generation_requests_sent"] = generation_requests_sent
                 result["generated_match_titles"] = generated_match_titles
+                self.notify_progress(
+                    "sportsbase_download",
+                    current=0,
+                    total=generation_requests_sent,
+                    message=f"{generation_requests_sent} vidéos à télécharger",
+                )
 
                 downloaded = self.download_ready_videos(
                     page,
                     sportsbase_player_name or player_name,
                     raw_clips_dir,
                     generated_match_titles=generated_match_titles,
-                    max_downloads=generation_requests_sent
+                    max_downloads=generation_requests_sent,
                 )
                 result["downloaded_files"] = downloaded
 
             finally:
-                context.close()
-                browser.close()
+                self.close_profile_browser()
 
         return result
 
@@ -291,7 +500,13 @@ class SportsBaseAutomation:
 
         match_item.wait_for(state="visible", timeout=10000)
 
-        action_button = match_item.locator("button", has_text=re.compile(r"All player actions", re.I)).first
+        # SportsBase currently uses both "Player actions" and the older
+        # "All player actions" label. Keep the selector used by the proven
+        # subscription scraper so a UI wording change does not hide the button.
+        action_button = match_item.get_by_role(
+            "button",
+            name=PLAYER_ACTIONS_BUTTON_RE,
+        ).first
         action_button.wait_for(state="visible", timeout=10000)
         action_button.scroll_into_view_if_needed()
 
@@ -392,9 +607,11 @@ class SportsBaseAutomation:
         direct_download_cancelled = False
 
         def abort_video_download(route):
+            nonlocal direct_download_cancelled
             url = route.request.url.lower()
             if ".mp4" in url or "videocuts" in url:
                 print(f"[DEBUG] Téléchargement bloqué: {route.request.url}")
+                direct_download_cancelled = True
                 route.abort()
             else:
                 route.continue_()
@@ -421,29 +638,29 @@ class SportsBaseAutomation:
             except Exception:
                 pass
 
-            # Bloquer tout mp4/videocuts pendant le clic
-            popup.context.route("**/*", abort_video_download)
+            # Limiter le blocage à cette popup ; les autres pages restent intactes.
+            popup.route("**/*", abort_video_download)
 
             try:
                 one_file_option.click(timeout=5000, no_wait_after=True)
                 print("[DEBUG] Clic One file effectué")
-            finally:
-                popup.wait_for_timeout(1200)
                 try:
-                    popup.context.unroute("**/*", abort_video_download)
+                    popup.get_by_text(
+                        "Video file generation has started",
+                        exact=False,
+                    ).wait_for(timeout=7000)
+                    print(
+                        f"[DEBUG] Message génération vidéo détecté "
+                        f"avec qualité {selected_quality}"
+                    )
+                    generation_confirmed = True
+                except Exception:
+                    print("[INFO] Notification de génération non détectée")
+            finally:
+                try:
+                    popup.unroute("**/*", abort_video_download)
                 except Exception:
                     pass
-
-            # Si pas de téléchargement direct, attendre la notification
-            try:
-                popup.get_by_text("Video file generation has started", exact=False).wait_for(timeout=5000)
-                print(f"[DEBUG] Message génération vidéo détecté avec qualité {selected_quality}")
-                generation_confirmed = True
-            except Exception:
-                print("[INFO] Notification non détectée après clic")
-
-            # Si le mp4 a été bloqué, on considère ça comme un téléchargement annulé
-            direct_download_cancelled = True
 
         except Exception as e:
             print(f"[WARN] Erreur durant generate_download_in_popup: {e}")
@@ -478,8 +695,21 @@ class SportsBaseAutomation:
                 except Exception as e:
                     print(f"[WARN] popup.close error: {e}")
 
-                processed += 1
-                generated_match_titles.append(match_title)
+                generation_available = generation_confirmed or direct_download_cancelled
+                if generation_available:
+                    processed += 1
+                    generated_match_titles.append(match_title)
+                    self.notify_progress(
+                        "sportsbase_generation",
+                        current=processed,
+                        total=max_matches,
+                        message=f"Vidéo disponible pour le match {processed}/{max_matches}",
+                    )
+                else:
+                    print(
+                        f"[WARN] Match #{i + 1} non compté : SportsBase "
+                        "n’a pas confirmé la génération"
+                    )
 
                 print(
                     f"[DEBUG] Match #{i + 1} traité | "
@@ -540,18 +770,155 @@ class SportsBaseAutomation:
         print("[DEBUG] Table My videos détectée")
         return page
 
+    @staticmethod
+    def _download_watch_directories(downloads_dir):
+        """Use the same Chrome download folders as the subscription scraper."""
+        directories = [Path(downloads_dir)]
+        configured = os.getenv("SPORTSBASE_BROWSER_DOWNLOAD_DIR", "").strip()
+        if configured:
+            directories.append(Path(configured))
+        else:
+            directories.append(Path.home() / "Downloads")
+        unique = []
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            if directory not in unique:
+                unique.append(directory)
+        return unique
+
+    @staticmethod
+    def _snapshot_download_files(directories):
+        snapshot = {}
+        for directory in directories:
+            try:
+                for path in directory.iterdir():
+                    if path.is_file():
+                        stat = path.stat()
+                        snapshot[str(path.resolve())] = (
+                            stat.st_size,
+                            stat.st_mtime_ns,
+                        )
+            except OSError:
+                continue
+        return snapshot
+
+    def _wait_for_new_download(self, directories, before, timeout_seconds):
+        deadline = time.monotonic() + timeout_seconds
+        stable_sizes = {}
+        temporary_suffixes = {".crdownload", ".part", ".tmp", ".download"}
+        while time.monotonic() < deadline:
+            candidates = []
+            for directory in directories:
+                try:
+                    paths = list(directory.iterdir())
+                except OSError:
+                    continue
+                for path in paths:
+                    if not path.is_file() or path.suffix.lower() in temporary_suffixes:
+                        continue
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        continue
+                    original = before.get(str(path.resolve()))
+                    if original is None or original != (stat.st_size, stat.st_mtime_ns):
+                        candidates.append((stat.st_mtime_ns, stat.st_size, path))
+
+            for _modified, size, path in sorted(candidates, reverse=True):
+                if size <= 0:
+                    continue
+                key = str(path.resolve())
+                if stable_sizes.get(key) == size:
+                    return path
+                stable_sizes[key] = size
+            time.sleep(1)
+        return None
+
+    def _configure_native_downloads(self, page, downloads_dir):
+        """Send Chrome downloads to the requested folder for a CDP profile."""
+        try:
+            browser = getattr(self, "_cdp_browser", None)
+            if browser is not None:
+                session = browser.new_browser_cdp_session()
+            else:
+                session = page.context.new_cdp_session(page)
+            session.send(
+                "Browser.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": str(Path(downloads_dir).resolve()),
+                    "eventsEnabled": True,
+                },
+            )
+            return True
+        except Exception as exc:
+            print(
+                "[INFO] Dossier Chrome contrôlé par le profil persistant: "
+                f"{exc}"
+            )
+            return False
+
+    def _download_actions_with_chrome(self, page, download_icon, downloads_dir):
+        """Click once and detect the completed MP4 on disk.
+
+        This mirrors the proven All Actions subscription scraper. A browser
+        connected over CDP can complete the download without emitting
+        Playwright's ``download`` event.
+        """
+        downloads_dir = Path(downloads_dir)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        watch_dirs = self._download_watch_directories(downloads_dir)
+        self._configure_native_downloads(page, downloads_dir)
+        before = self._snapshot_download_files(watch_dirs)
+
+        download_icon.click(timeout=5_000, no_wait_after=True)
+        print("[INFO] Téléchargement Chrome lancé; attente du MP4 terminé...")
+        source = self._wait_for_new_download(
+            watch_dirs,
+            before,
+            timeout_seconds=300,
+        )
+        if source is None:
+            raise TimeoutError(
+                "Aucun fichier Player actions terminé détecté après 300 secondes."
+            )
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise RuntimeError("Le fichier vidéo téléchargé est vide.")
+        with source.open("rb") as downloaded_file:
+            prefix = downloaded_file.read(256).lstrip()
+        if prefix.startswith((b"<", b"{", b"[")):
+            raise RuntimeError("SportsBase a renvoyé du texte au lieu du MP4.")
+
+        print(
+            "[INFO] MP4 original détecté sur le disque - "
+            f"{source.stat().st_size / (1024 * 1024):.1f} Mo"
+        )
+        return source
+
+    @staticmethod
+    def _unique_path(path):
+        if not path.exists():
+            return path
+        counter = 2
+        while True:
+            candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
+            if not candidate.exists():
+                return candidate
+            counter += 1
+
     def download_ready_videos(
         self,
         page,
         player_name: str,
         raw_clips_dir: Path,
         generated_match_titles: list,
-        max_downloads: int
+        max_downloads: int,
     ):
+        if max_downloads <= 0:
+            print("[WARN] Aucune vidéo SportsBase disponible à télécharger")
+            return []
         my_videos_page = self.open_my_videos(page)
         downloaded_files = []
-        normalized_target = f"{player_name}, All player actions".lower().strip()
-
         seen_rows = set()
         global_rounds = 0
         max_global_rounds = 20
@@ -585,6 +952,7 @@ class SportsBaseAutomation:
         def get_candidate_indexes(rows):
             row_count = rows.count()
             indexes = []
+            occurrences = {}
 
             for i in range(row_count):
                 try:
@@ -593,13 +961,46 @@ class SportsBaseAutomation:
                     if title_locator.count() == 0:
                         continue
 
-                    title_text = title_locator.inner_text().strip().lower()
-                    if normalized_target in title_text:
-                        indexes.append(i)
+                    title_text = title_locator.inner_text().strip()
+                    if self.is_player_actions_title(title_text, player_name):
+                        original_title = title_locator.inner_text().strip()
+                        date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
+                        duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
+                        fingerprint = f"{original_title}|{date_text}|{duration_text}"
+                        occurrence = occurrences.get(fingerprint, 0) + 1
+                        occurrences[fingerprint] = occurrence
+                        unique_key = f"{fingerprint}|occurrence={occurrence}"
+                        if unique_key not in seen_rows:
+                            indexes.append(i)
                 except Exception:
                     continue
 
             return indexes
+
+        def get_row_identity(rows, row_index):
+            """Identify duplicate-looking rows without collapsing a newly generated one."""
+            fingerprints = {}
+            selected = None
+            for scan_index in range(row_index + 1):
+                scan_row = rows.nth(scan_index)
+                title_locator = scan_row.locator("span.Name-sc-jbc8ns-2").first
+                if title_locator.count() == 0:
+                    continue
+                title_text = title_locator.inner_text().strip()
+                date_locator = scan_row.locator("div.DateCellContainer-sc-88jqaj-0").first
+                duration_locator = scan_row.locator("div.DurationCellContainer-sc-kz1ea2-0").first
+                date_text = date_locator.inner_text().strip() if date_locator.count() else ""
+                duration_text = duration_locator.inner_text().strip() if duration_locator.count() else ""
+                fingerprint = f"{title_text}|{date_text}|{duration_text}"
+                occurrence = fingerprints.get(fingerprint, 0) + 1
+                fingerprints[fingerprint] = occurrence
+                if scan_index == row_index:
+                    selected = (
+                        f"{fingerprint}|occurrence={occurrence}",
+                        date_text,
+                        duration_text,
+                    )
+            return selected
 
         def expand_if_needed():
             safety = 0
@@ -675,11 +1076,10 @@ class SportsBaseAutomation:
                     rows = load_rows()
                     row = rows.nth(row_index)
 
-                    title_text = row.locator("span.Name-sc-jbc8ns-2").first.inner_text().strip()
-                    date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
-                    duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
-
-                    unique_key = f"{title_text}|{date_text}|{duration_text}"
+                    identity = get_row_identity(rows, row_index)
+                    if not identity:
+                        continue
+                    unique_key, date_text, duration_text = identity
                     if unique_key in seen_rows:
                         continue
 
@@ -716,11 +1116,10 @@ class SportsBaseAutomation:
                         print(f"[DEBUG] Row {row_index} pas prête après attente: {status_text}")
                         continue
 
-                    title_text = row.locator("span.Name-sc-jbc8ns-2").first.inner_text().strip()
-                    date_text = row.locator("div.DateCellContainer-sc-88jqaj-0").first.inner_text().strip() if row.locator("div.DateCellContainer-sc-88jqaj-0").count() else ""
-                    duration_text = row.locator("div.DurationCellContainer-sc-kz1ea2-0").first.inner_text().strip() if row.locator("div.DurationCellContainer-sc-kz1ea2-0").count() else ""
-
-                    unique_key = f"{title_text}|{date_text}|{duration_text}"
+                    identity = get_row_identity(rows, row_index)
+                    if not identity:
+                        continue
+                    unique_key, date_text, duration_text = identity
                     if unique_key in seen_rows:
                         continue
 
@@ -738,19 +1137,6 @@ class SportsBaseAutomation:
                     download_icon.scroll_into_view_if_needed()
                     my_videos_page.wait_for_timeout(300)
 
-                    try:
-                        with my_videos_page.expect_download(timeout=15000) as download_info:
-                            download_icon.click()
-                        download = download_info.value
-                    except Exception:
-                        try:
-                            with my_videos_page.expect_download(timeout=15000) as download_info:
-                                download_icon.evaluate("(el) => el.click()")
-                            download = download_info.value
-                        except Exception as e:
-                            print(f"[WARN] Download row {row_index} impossible: {e}")
-                            continue
-
                     match_title = "match_unknown"
                     if reverse_pos < len(generated_match_titles):
                         match_title = generated_match_titles[reverse_pos]
@@ -760,15 +1146,36 @@ class SportsBaseAutomation:
                     safe_duration = self.sanitize_filename(duration_text.replace(":", "-")) if duration_text else "duration_unknown"
                     safe_date = self.sanitize_filename(date_text.replace(":", "-").replace(" ", "_")) if date_text else "date_unknown"
 
-                    ext = Path(download.suggested_filename).suffix if download.suggested_filename else ".mp4"
+                    print(f"[DEBUG] Clic download unique: {unique_key}")
+                    try:
+                        source = self._download_actions_with_chrome(
+                            page=my_videos_page,
+                            download_icon=download_icon,
+                            downloads_dir=raw_clips_dir,
+                        )
+                    except Exception as e:
+                        print(
+                            f"[WARN] Download row {row_index} impossible: {e}. "
+                            "Aucun second clic ne sera effectué."
+                        )
+                        continue
+
+                    ext = source.suffix or ".mp4"
                     filename = f"{safe_player_name} - {safe_match_title} - {safe_date} - {safe_duration}{ext}"
 
-                    save_path = raw_clips_dir / filename
-                    download.save_as(str(save_path))
+                    save_path = self._unique_path(raw_clips_dir / filename)
+                    if source.resolve() != save_path.resolve():
+                        shutil.move(str(source), str(save_path))
 
                     downloaded_files.append(str(save_path))
                     seen_rows.add(unique_key)
                     downloaded_this_round += 1
+                    self.notify_progress(
+                        "sportsbase_download",
+                        current=len(downloaded_files),
+                        total=max_downloads,
+                        message=f"{len(downloaded_files)}/{max_downloads} matchs téléchargés",
+                    )
 
                     print(f"[DEBUG] Fichier téléchargé: {save_path}")
                     my_videos_page.wait_for_timeout(800)

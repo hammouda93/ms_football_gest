@@ -1,33 +1,24 @@
 {% extends 'gestion_joueurs/base.html' %}
 
-{% block title %}Gestion des Dépenses{% endblock %}
+{% block title %}Gestion des dépenses{% endblock %}
 
 {% block content %}
-<h1>Liste des Dépenses</h1>
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Description</th>
-            <th>Montant</th>
-            <th>Date</th>
-            <th>Catégorie</th>
-            <th>Lié à Salaire</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for expense in expenses %}
-        <tr>
-            <td>{{ expense.description }}</td>
-            <td>{{ expense.amount }}</td>
-            <td>{{ expense.date|date:"d/m/Y" }}</td>
-            <td>{{ expense.category }}</td>
-            <td>{{ expense.salary.user.username if expense.salary else 'N/A' }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="5">Aucune dépense enregistrée.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="ui-page list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Finance</span><h1>Dépenses</h1><p>Vue synthétique de toutes les dépenses enregistrées.</p></div>
+        <div class="ui-page-actions"><a class="btn btn-primary" href="{% url 'add_expense' %}"><i class="fas fa-plus"></i> Ajouter une dépense</a></div>
+    </header>
+    <section class="ui-panel table-panel">
+        <table class="table table-hover">
+            <thead><tr><th>Description</th><th>Montant</th><th>Date</th><th>Catégorie</th><th>Liée à un salaire</th></tr></thead>
+            <tbody>
+                {% for expense in expenses %}
+                    <tr><td><strong>{{ expense.description }}</strong></td><td>{{ expense.amount }}</td><td>{{ expense.date|date:"d/m/Y" }}</td><td><span class="badge badge-secondary">{{ expense.category }}</span></td><td>{% if expense.salary %}{{ expense.salary.user.username }}{% else %}<span class="text-muted">Non</span>{% endif %}</td></tr>
+                {% empty %}
+                    <tr><td colspan="5"><div class="ui-empty-state"><i class="fas fa-receipt"></i><span>Aucune dépense enregistrée.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
 {% endblock %}

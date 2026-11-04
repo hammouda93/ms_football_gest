@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
-from premiere_automation import PremiereAutomation
+try:
+    from .premiere_automation import PremiereAutomation
+except ImportError:
+    from premiere_automation import PremiereAutomation
 
 PLAYER_FOLDER = Path(
     r"D:\Django_Projects\ms_football_gest\gestion_joueurs\automated_players\1745_Islem_Chelghoumi"

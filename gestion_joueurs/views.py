@@ -1,11 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice,Expense,Salary,FinancialReport, NonVideoIncome, Notification
+from .models import AutomationRun, AutomationWorker, Video, VideoEditor, VideoStatusHistory, Player,Payment,Invoice,Expense,Salary,FinancialReport, NonVideoIncome, Notification
 from .forms import VideoForm, VideoEditorRegistrationForm, PlayerForm, User, PaymentForm, InvoiceForm,ExpenseForm, NonVideoIncomeForm,NotificationForm
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q,Count,F,Sum
+from django.db.models import Q, Count, F, Sum, Prefetch
 from django.utils import timezone
 from datetime import timedelta,datetime
 from django.http import JsonResponse, HttpResponse
@@ -32,6 +32,7 @@ from .tasks import (
 )
 
 import requests
+import json
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
@@ -40,6 +41,142 @@ from django.views.decorators.http import require_POST
 from .utils import parse_transfermarkt_player
 from decimal import Decimal
 from django.db import transaction
+from django.urls import reverse
+from .video_status_whatsapp import (
+    PAYMENT_MODE_CHOICES,
+    build_notification_whatsapp_url,
+    build_status_notification_context,
+    build_whatsapp_url,
+    ensure_delivery_link_in_message,
+)
+from client_portal.services import (
+    deliver_portal_credentials,
+    ensure_player_portal_account,
+    issue_reusable_portal_access_link,
+    portal_access_states_for_players,
+)
+from client_portal.models import (
+    AgentPlayerRequest,
+    Organization,
+    OrganizationPlayer,
+    PortalProfile,
+    RevisionRequest,
+    VideoWorkflow,
+)
+from .automation_progress import (
+    attach_progress_to_videos,
+    claim_next_job,
+    get_or_create_active_run,
+    report_progress,
+    retry_run,
+    serialize_run,
+    video_payload,
+)
+from .whatsapp_delivery import send_whatsapp_text
+from .presentation_styles import (
+    DEFAULT_PRESENTATION_STYLE,
+    PRESENTATION_STYLES,
+)
+from sportsbase_data.forms import InlinePerformanceSubscriptionForm
+from sportsbase_data.models import (
+    PerformanceReport,
+    SportsBaseDailymotionUpload,
+    SportsBaseMatch,
+    SportsBaseSubscription,
+    SportsBaseSyncJob,
+    SportsBaseYouTubeUpload,
+)
+from prospects.models import Prospect
+
+
+def _performance_subscription_for_player(player):
+    if not player or not player.pk:
+        return None
+    try:
+        return player.sportsbase_subscription
+    except SportsBaseSubscription.DoesNotExist:
+        return None
+
+
+def _inline_performance_form(*, data=None, player=None):
+    subscription = _performance_subscription_for_player(player)
+    return InlinePerformanceSubscriptionForm(
+        data,
+        prefix="performance",
+        instance=subscription,
+        player=player,
+        initial={"season": "2025/2026"} if not subscription else None,
+    )
+
+
+def _associate_player_organization(*, player, organization, user):
+    """Add or reactivate an agent/academy link without removing other relations."""
+    if not organization:
+        return None
+    link, _created = OrganizationPlayer.objects.update_or_create(
+        organization=organization,
+        player=player,
+        defaults={
+            "is_active": True,
+            "ended_at": None,
+            "added_by": user,
+        },
+    )
+    return link
+
+
+def _active_player_organization_links(player):
+    if not player or not player.pk:
+        return OrganizationPlayer.objects.none()
+    return player.portal_organization_links.filter(
+        is_active=True,
+        organization__is_active=True,
+        organization__kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+    ).select_related('organization').order_by('organization__kind', 'organization__name')
+
+
+def _prepare_player_portal_access(request, player):
+    try:
+        profile, temporary_password, created = ensure_player_portal_account(
+            player,
+            created_by=request.user,
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return None
+
+    if not temporary_password:
+        messages.info(
+            request,
+            f"Le compte client de {player.name} existe déjà ; un nouveau lien sécurisé a été préparé.",
+        )
+
+    access_link, raw_token = issue_reusable_portal_access_link(
+        profile,
+        created_by=request.user,
+    )
+    access_url = request.build_absolute_uri(
+        reverse("portal:magic_access", args=(raw_token,))
+    )
+    login_url = request.build_absolute_uri(reverse("portal:login"))
+    delivery = deliver_portal_credentials(
+        profile,
+        temporary_password,
+        access_url=access_url,
+        login_url=login_url,
+        actor=request.user,
+        player=player,
+    )
+    return {
+        "profile": profile,
+        "access_link": access_link,
+        "access_url": access_url,
+        "login_url": login_url,
+        "login_email": profile.user.email,
+        "temporary_password": temporary_password,
+        "delivery": delivery,
+        "account_created": created,
+    }
 
 @superadmin_required
 @login_required
@@ -47,38 +184,107 @@ def create_video_highlight(request):
     player_form = PlayerForm()
     video_form = VideoForm(user=request.user)
     player = None
-    selected_player_id = request.POST.get('selected_player_id')
+    performance_form = _inline_performance_form()
+    performance_requested = False
+    selected_player_id = (
+        request.POST.get('selected_player_id')
+        or request.GET.get('player_id')
+    )
 
     print(f'Selected Player ID: {selected_player_id}')
 
+    if request.method == 'GET' and selected_player_id:
+        player = Player.objects.filter(id=selected_player_id).first()
+        if player:
+            player_form = PlayerForm(instance=player)
+            video_form = VideoForm(user=request.user, player=player)
+            performance_form = _inline_performance_form(player=player)
+            performance_requested = bool(_performance_subscription_for_player(player))
+
     if request.method == 'POST':
         if 'add_player' in request.POST:
+            portal_access = None
+            performance_requested = (
+                request.POST.get("create_performance_subscription") == "on"
+            )
             if selected_player_id:
-                try:
-                    player = Player.objects.get(id=selected_player_id)
+                player = Player.objects.filter(id=selected_player_id).first()
+                if player:
                     player_form = PlayerForm(request.POST, instance=player)
-                    if player_form.is_valid():
-                        player = player_form.save()
-                        messages.success(request, "Les informations du joueur ont été mises à jour avec succès !")
-                    else:
-                        messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
-                except Player.DoesNotExist:
+                else:
                     messages.error(request, "Le joueur sélectionné n'existe pas.")
             else:
                 player_form = PlayerForm(request.POST)
-                if player_form.is_valid():
-                    player = player_form.save()
-                    messages.success(request, "Le nouveau joueur a été ajouté avec succès !")
-                else:
-                    messages.error(request, "Veuillez corriger les erreurs dans le formulaire du joueur.")
 
-            video_form = VideoForm(user=request.user)
+            if player_form.is_valid():
+                candidate_player = player_form.save(commit=False)
+                performance_form = _inline_performance_form(
+                    data=request.POST,
+                    player=candidate_player,
+                )
+                performance_valid = (
+                    not performance_requested or performance_form.is_valid()
+                )
+                if performance_valid:
+                    with transaction.atomic():
+                        player = candidate_player
+                        player.save()
+                        _associate_player_organization(
+                            player=player,
+                            organization=player_form.cleaned_data.get('organization'),
+                            user=request.user,
+                        )
+                        if performance_requested:
+                            subscription = performance_form.save(commit=False)
+                            subscription.player = player
+                            if not subscription.created_by_id:
+                                subscription.created_by = request.user
+                            subscription.save()
+                    if player_form.cleaned_data.get('create_client_account'):
+                        portal_access = _prepare_player_portal_access(request, player)
+                    if selected_player_id:
+                        messages.success(
+                            request,
+                            "Les informations du joueur ont été mises à jour avec succès !",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            "Le nouveau joueur a été ajouté avec succès !",
+                        )
+                    if performance_requested:
+                        messages.success(
+                            request,
+                            "L’abonnement Performance est prêt pour ce joueur.",
+                        )
+                    performance_form = _inline_performance_form(player=player)
+                else:
+                    player = None
+                    messages.error(
+                        request,
+                        "Veuillez corriger les informations de l’abonnement Performance.",
+                    )
+            else:
+                performance_form = _inline_performance_form(
+                    data=request.POST,
+                    player=player_form.instance,
+                )
+                messages.error(
+                    request,
+                    "Veuillez corriger les erreurs dans le formulaire du joueur.",
+                )
+
+            video_form = VideoForm(user=request.user, player=player)
             return render(request, 'gestion_joueurs/create_video.html', {
                 'video_form': video_form,
                 'player_form': player_form,
                 'players': Player.objects.all(),
                 'new_player_added': player is not None,
                 'added_player': player,
+                'portal_access': portal_access,
+                'performance_form': performance_form,
+                'performance_requested': performance_requested,
+                'selected_player_id': selected_player_id,
             })
 
         elif 'create_video' in request.POST:
@@ -92,6 +298,8 @@ def create_video_highlight(request):
                     'players': Player.objects.all(),
                     'new_player_added': False,
                     'added_player': None,
+                    'performance_form': performance_form,
+                    'performance_requested': performance_requested,
                 })
 
             video_form = VideoForm(request.POST, user=request.user)
@@ -108,6 +316,8 @@ def create_video_highlight(request):
                     'players': Player.objects.all(),
                     'new_player_added': player is not None,
                     'added_player': player,
+                    'performance_form': _inline_performance_form(player=player),
+                    'performance_requested': bool(_performance_subscription_for_player(player)),
                 })
 
             try:
@@ -123,6 +333,8 @@ def create_video_highlight(request):
                             'players': Player.objects.all(),
                             'new_player_added': True,
                             'added_player': player,
+                            'performance_form': _inline_performance_form(player=player),
+                            'performance_requested': bool(_performance_subscription_for_player(player)),
                         })
 
                     try:
@@ -135,6 +347,8 @@ def create_video_highlight(request):
                             'players': Player.objects.all(),
                             'new_player_added': True,
                             'added_player': player,
+                            'performance_form': _inline_performance_form(player=player),
+                            'performance_requested': bool(_performance_subscription_for_player(player)),
                         })
 
                     video = video_form.save(commit=False)
@@ -187,6 +401,15 @@ def create_video_highlight(request):
                         )
 
                 messages.success(request, "La vidéo a été créée avec succès avec sa facture !")
+                if video_form.cleaned_data.get('create_client_account'):
+                    portal_access = _prepare_player_portal_access(request, player)
+                    if portal_access:
+                        portal_access["back_url"] = reverse('dashboard')
+                        return render(
+                            request,
+                            'client_portal/access_link_created.html',
+                            portal_access,
+                        )
                 return redirect('dashboard')
 
             except Player.DoesNotExist:
@@ -201,6 +424,9 @@ def create_video_highlight(request):
         'players': players,
         'new_player_added': player is not None,
         'added_player': player,
+        'performance_form': performance_form,
+        'performance_requested': performance_requested,
+        'selected_player_id': selected_player_id,
     })
 
 
@@ -273,6 +499,12 @@ def dashboard(request):
     paginator = Paginator(videos, 20)  # Show 20 videos per page
     page_number = request.GET.get('page')  # Get the page number from the query parameters
     page_obj = paginator.get_page(page_number)  # This is the page object
+    portal_states = portal_access_states_for_players(
+        video.player_id for video in page_obj.object_list
+    )
+    attach_progress_to_videos(page_obj.object_list)
+    for video in page_obj.object_list:
+        video.client_portal_state = portal_states.get(video.player_id, 'none')
 
     ongoing_videos_count  = videos.exclude(status='delivered').count()
     delivered_videos_count = videos.filter(status='delivered').count()
@@ -304,6 +536,9 @@ def dashboard(request):
         status='delivered',
         invoices__status__in=['unpaid', 'partially_paid']
     ).count()
+    automation_worker = AutomationWorker.objects.select_related(
+        'current_video__player'
+    ).first()
 
 
 
@@ -332,60 +567,395 @@ def dashboard(request):
         'unread_notifications': unread_notifications,
         'completed_videos_not_paid_count': completed_videos_not_paid_count,
         'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
+        'automation_worker': automation_worker,
     })
 
 @login_required
 def dashboard_cards_view(request):
     today = timezone.now().date()
+    now = timezone.now()
 
-    total_players = Player.objects.count()
-    total_videos_delivered = Video.objects.filter(status='delivered').count()
-    total_videos_in_progress = Video.objects.exclude(status__in=['delivered', 'problematic']).count()
-    total_late_videos = Video.objects.filter(deadline__lt=today).exclude(status__in=['delivered', 'problematic']).count()
+    player_metrics = Player.objects.aggregate(
+        total=Count('id'),
+        vip=Count('id', filter=Q(client_vip=True)),
+        loyal=Count('id', filter=Q(client_fidel=True)),
+    )
+    total_players = player_metrics['total']
+    total_vip_clients = player_metrics['vip']
+    total_loyal_clients = player_metrics['loyal']
 
-    total_unpaid_invoices = Invoice.objects.filter(status='unpaid').count()
-    total_partially_paid_invoices = Invoice.objects.filter(status='partially_paid').count()
-
-    total_vip_clients = Player.objects.filter(client_vip=True).count()
-    total_loyal_clients = Player.objects.filter(client_fidel=True).count()
+    video_metrics = Video.objects.aggregate(
+        delivered=Count('id', filter=Q(status=Video.StatusChoices.DELIVERED)),
+        in_progress=Count(
+            'id',
+            filter=~Q(
+                status__in=(
+                    Video.StatusChoices.DELIVERED,
+                    Video.StatusChoices.PROBLEMATIC,
+                )
+            ),
+        ),
+        late=Count(
+            'id',
+            filter=Q(deadline__lt=today)
+            & ~Q(
+                status__in=(
+                    Video.StatusChoices.DELIVERED,
+                    Video.StatusChoices.PROBLEMATIC,
+                )
+            ),
+        ),
+        completed_not_paid=Count(
+            'id',
+            filter=Q(
+                status=Video.StatusChoices.COMPLETED,
+                invoices__status__in=('unpaid', 'partially_paid'),
+            ),
+            distinct=True,
+        ),
+        delivered_not_paid=Count(
+            'id',
+            filter=Q(
+                status=Video.StatusChoices.DELIVERED,
+                invoices__status__in=('unpaid', 'partially_paid'),
+            ),
+            distinct=True,
+        ),
+    )
+    total_videos_delivered = video_metrics['delivered']
+    total_videos_in_progress = video_metrics['in_progress']
+    total_late_videos = video_metrics['late']
+    completed_videos_not_paid_count = video_metrics['completed_not_paid']
+    delivered_videos_not_paid_count = video_metrics['delivered_not_paid']
 
     unread_notifications = Notification.objects.filter(user=request.user, is_read=False).count()
 
-    completed_videos_not_paid_count = Video.objects.filter(
-        status='completed',
-        invoices__status__in=['unpaid', 'partially_paid']
-    ).count()
-
-    delivered_videos_not_paid_count = Video.objects.filter(
-        status='delivered',
-        invoices__status__in=['unpaid', 'partially_paid']
-    ).count()
-
-    return render(request, 'gestion_joueurs/dashboard_cards_page.html', {
+    base_context = {
+        'dashboard_updated_at': now,
         'total_players': total_players,
         'total_videos_delivered': total_videos_delivered,
         'total_videos_in_progress': total_videos_in_progress,
         'total_late_videos': total_late_videos,
+        'unread_notifications': unread_notifications,
+    }
+    if not request.user.is_superuser:
+        return render(
+            request,
+            'gestion_joueurs/dashboard_cards_page.html',
+            base_context,
+        )
+
+    invoice_metrics = Invoice.objects.aggregate(
+        unpaid=Count('id', filter=Q(status='unpaid')),
+        partially_paid=Count('id', filter=Q(status='partially_paid')),
+        total=Sum(
+            'total_amount',
+            filter=Q(status__in=('unpaid', 'partially_paid')),
+        ),
+        paid=Sum(
+            'amount_paid',
+            filter=Q(status__in=('unpaid', 'partially_paid')),
+        ),
+    )
+    total_unpaid_invoices = invoice_metrics['unpaid']
+    total_partially_paid_invoices = invoice_metrics['partially_paid']
+    outstanding_invoice_balance = max(
+        Decimal('0.00'),
+        (invoice_metrics['total'] or Decimal('0.00'))
+        - (invoice_metrics['paid'] or Decimal('0.00')),
+    )
+
+    workflow_metrics = VideoWorkflow.objects.aggregate(
+        blocked=Count(
+            'id',
+            filter=Q(stage=VideoWorkflow.Stage.BLOCKED),
+        ),
+        client_review=Count(
+            'id',
+            filter=Q(
+                stage__in=(
+                    VideoWorkflow.Stage.CLIENT_REVIEW,
+                    VideoWorkflow.Stage.REVISIONS,
+                )
+            ),
+        ),
+        urgent=Count(
+            'id',
+            filter=Q(priority=VideoWorkflow.Priority.URGENT)
+            & ~Q(stage=VideoWorkflow.Stage.DELIVERED),
+        ),
+    )
+    blocked_workflows_count = workflow_metrics['blocked']
+    client_review_workflows_count = workflow_metrics['client_review']
+    urgent_workflows_count = workflow_metrics['urgent']
+
+    automation_metrics = AutomationRun.objects.filter(is_active=True).aggregate(
+        running=Count(
+            'id',
+            filter=Q(
+                state__in=(
+                    AutomationRun.StateChoices.QUEUED,
+                    AutomationRun.StateChoices.RUNNING,
+                )
+            ),
+        ),
+        waiting=Count(
+            'id',
+            filter=Q(state=AutomationRun.StateChoices.WAITING_EXTERNAL),
+        ),
+        failed=Count(
+            'id',
+            filter=Q(state=AutomationRun.StateChoices.FAILED),
+        ),
+    )
+    automation_running_count = automation_metrics['running']
+    automation_waiting_count = automation_metrics['waiting']
+    automation_failed_count = automation_metrics['failed']
+    online_worker_cutoff = now - timedelta(seconds=90)
+    worker_metrics = AutomationWorker.objects.aggregate(
+        total=Count('id'),
+        online=Count('id', filter=Q(last_seen_at__gte=online_worker_cutoff)),
+    )
+    online_worker_count = worker_metrics['online']
+    automation_worker_count = worker_metrics['total']
+
+    active_performance_subscriptions = SportsBaseSubscription.objects.filter(
+        is_active=True,
+        starts_on__lte=today,
+    ).filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today))
+    subscription_metrics = active_performance_subscriptions.aggregate(
+        total=Count('id'),
+        ending_soon=Count(
+            'id',
+            filter=Q(
+                ends_on__isnull=False,
+                ends_on__lte=today + timedelta(days=30),
+            ),
+        ),
+        sync_issue=Count(
+            'id',
+            filter=Q(
+                last_sync_state__in=(
+                    SportsBaseSubscription.SyncState.PARTIAL,
+                    SportsBaseSubscription.SyncState.FAILED,
+                )
+            ),
+        ),
+    )
+    total_active_subscriptions = subscription_metrics['total']
+    subscriptions_ending_soon_count = subscription_metrics['ending_soon']
+    performance_sync_issue_count = subscription_metrics['sync_issue']
+    match_metrics = SportsBaseMatch.objects.filter(
+        subscription__in=active_performance_subscriptions
+    ).aggregate(
+        total=Count('id'),
+        ready=Count(
+            'id',
+            filter=Q(
+                actions_state__in=(
+                    SportsBaseMatch.ActionsState.DOWNLOADED,
+                    SportsBaseMatch.ActionsState.EMAILED,
+                )
+            ),
+        ),
+    )
+    performance_matches_count = match_metrics['total']
+    ready_all_actions_count = match_metrics['ready']
+    published_performance_reports_count = PerformanceReport.objects.filter(
+        subscription__in=active_performance_subscriptions,
+        status=PerformanceReport.Status.PUBLISHED,
+    ).count()
+    performance_job_queue_count = SportsBaseSyncJob.objects.filter(
+        status__in=(
+            SportsBaseSyncJob.Status.PENDING,
+            SportsBaseSyncJob.Status.RUNNING,
+        )
+    ).count()
+    youtube_delivery_metrics = SportsBaseYouTubeUpload.objects.aggregate(
+        issues=Count(
+            'id',
+            filter=Q(status=SportsBaseYouTubeUpload.Status.FAILED),
+        ),
+        queued=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseYouTubeUpload.Status.PENDING,
+                    SportsBaseYouTubeUpload.Status.RUNNING,
+                )
+            ),
+        ),
+    )
+    dailymotion_delivery_metrics = SportsBaseDailymotionUpload.objects.aggregate(
+        issues=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseDailymotionUpload.Status.FAILED,
+                    SportsBaseDailymotionUpload.Status.LINK_PENDING,
+                )
+            ),
+        ),
+        queued=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    SportsBaseDailymotionUpload.Status.PENDING,
+                    SportsBaseDailymotionUpload.Status.RUNNING,
+                )
+            ),
+        ),
+    )
+    youtube_delivery_issue_count = youtube_delivery_metrics['issues']
+    dailymotion_delivery_issue_count = dailymotion_delivery_metrics['issues']
+    delivery_issue_count = (
+        youtube_delivery_issue_count + dailymotion_delivery_issue_count
+    )
+    delivery_queue_count = (
+        youtube_delivery_metrics['queued']
+        + dailymotion_delivery_metrics['queued']
+    )
+    performance_attention_count = (
+        performance_sync_issue_count + delivery_issue_count
+    )
+
+    total_active_portal_accounts = PortalProfile.objects.filter(
+        is_active=True,
+        user__is_active=True,
+    ).count()
+    total_active_organizations = Organization.objects.filter(is_active=True).count()
+    total_client_players = Player.objects.filter(
+        Q(
+            portal_user_accesses__is_active=True,
+            portal_user_accesses__user__is_active=True,
+            portal_user_accesses__user__portal_profile__is_active=True,
+        )
+        | Q(
+            portal_organization_links__is_active=True,
+            portal_organization_links__organization__is_active=True,
+            portal_organization_links__organization__memberships__is_active=True,
+            portal_organization_links__organization__memberships__user__is_active=True,
+            portal_organization_links__organization__memberships__user__portal_profile__is_active=True,
+        )
+    ).distinct().count()
+    pending_agent_requests_count = AgentPlayerRequest.objects.filter(
+        status__in=(
+            AgentPlayerRequest.Status.NEW,
+            AgentPlayerRequest.Status.REVIEWING,
+        )
+    ).count()
+    open_revision_requests_count = RevisionRequest.objects.filter(
+        status__in=(
+            RevisionRequest.Status.OPEN,
+            RevisionRequest.Status.IN_PROGRESS,
+        )
+    ).count()
+    prospect_metrics = Prospect.objects.aggregate(
+        active=Count(
+            'id',
+            filter=Q(
+                status__in=(
+                    Prospect.Status.NEW,
+                    Prospect.Status.CONTACTED,
+                    Prospect.Status.INTERESTED,
+                )
+            ),
+        ),
+        new=Count('id', filter=Q(status=Prospect.Status.NEW)),
+    )
+    active_prospects_count = prospect_metrics['active']
+    new_prospects_count = prospect_metrics['new']
+    client_attention_count = (
+        pending_agent_requests_count + open_revision_requests_count
+    )
+    dashboard_attention_count = (
+        total_late_videos
+        + automation_failed_count
+        + performance_attention_count
+        + client_attention_count
+        + new_prospects_count
+    )
+
+    return render(request, 'gestion_joueurs/dashboard_cards_page.html', {
+        **base_context,
+        'dashboard_attention_count': dashboard_attention_count,
         'total_unpaid_invoices': total_unpaid_invoices,
         'total_partially_paid_invoices': total_partially_paid_invoices,
         'total_vip_clients': total_vip_clients,
         'total_loyal_clients': total_loyal_clients,
-        'unread_notifications': unread_notifications,
         'completed_videos_not_paid_count': completed_videos_not_paid_count,
         'delivered_videos_not_paid_count': delivered_videos_not_paid_count,
+        'outstanding_invoice_balance': outstanding_invoice_balance,
+        'blocked_workflows_count': blocked_workflows_count,
+        'client_review_workflows_count': client_review_workflows_count,
+        'urgent_workflows_count': urgent_workflows_count,
+        'automation_running_count': automation_running_count,
+        'automation_waiting_count': automation_waiting_count,
+        'automation_failed_count': automation_failed_count,
+        'online_worker_count': online_worker_count,
+        'automation_worker_count': automation_worker_count,
+        'total_active_subscriptions': total_active_subscriptions,
+        'performance_matches_count': performance_matches_count,
+        'ready_all_actions_count': ready_all_actions_count,
+        'published_performance_reports_count': published_performance_reports_count,
+        'subscriptions_ending_soon_count': subscriptions_ending_soon_count,
+        'performance_sync_issue_count': performance_sync_issue_count,
+        'performance_job_queue_count': performance_job_queue_count,
+        'delivery_issue_count': delivery_issue_count,
+        'delivery_queue_count': delivery_queue_count,
+        'performance_attention_count': performance_attention_count,
+        'total_active_portal_accounts': total_active_portal_accounts,
+        'total_active_organizations': total_active_organizations,
+        'total_client_players': total_client_players,
+        'pending_agent_requests_count': pending_agent_requests_count,
+        'open_revision_requests_count': open_revision_requests_count,
+        'client_attention_count': client_attention_count,
+        'active_prospects_count': active_prospects_count,
+        'new_prospects_count': new_prospects_count,
     })
 
 
 @superadmin_required
 @login_required
 def player_dashboard(request):
-    players = Player.objects.all().order_by('-player_creation_date')
+    active_video_statuses = {
+        Video.StatusChoices.PENDING,
+        Video.StatusChoices.IN_PROGRESS,
+        Video.StatusChoices.COMPLETED_COLLAB,
+        Video.StatusChoices.COMPLETED,
+    }
+    active_organization_links = OrganizationPlayer.objects.filter(
+        is_active=True,
+        organization__is_active=True,
+        organization__kind__in=(Organization.Kind.AGENT, Organization.Kind.ACADEMY),
+    ).select_related('organization').order_by('organization__kind', 'organization__name')
+    players = Player.objects.select_related('sportsbase_subscription').prefetch_related(
+        Prefetch(
+            'portal_organization_links',
+            queryset=active_organization_links,
+            to_attr='active_organization_links',
+        )
+    ).annotate(
+        video_count=Count('video', distinct=True),
+        active_video_count=Count(
+            'video',
+            filter=Q(video__status__in=active_video_statuses),
+            distinct=True,
+        ),
+        delivered_video_count=Count(
+            'video',
+            filter=Q(video__status=Video.StatusChoices.DELIVERED),
+            distinct=True,
+        ),
+    ).order_by('-player_creation_date')
     
     search_query = request.GET.get('search')
     league_filter = request.GET.get('league')
     position_filter = request.GET.get('position')
     client_fidel_filter = request.GET.get('client_fidel')
     client_vip_filter = request.GET.get('client_vip')
+    video_relation = request.GET.get('video_relation', '')
+    performance_relation = request.GET.get('performance_relation', '')
 
     if search_query:
         players = players.filter(
@@ -405,21 +975,69 @@ def player_dashboard(request):
     if client_vip_filter:
         players = players.filter(client_vip=(client_vip_filter == 'true'))
 
+    if video_relation == 'any':
+        players = players.filter(video_count__gt=0)
+    elif video_relation == 'active':
+        players = players.filter(active_video_count__gt=0)
+    elif video_relation == 'delivered':
+        players = players.filter(delivered_video_count__gt=0)
+    elif video_relation == 'none':
+        players = players.filter(video_count=0)
+
+    today = timezone.localdate()
+    active_performance = Q(
+        sportsbase_subscription__is_active=True,
+        sportsbase_subscription__starts_on__lte=today,
+    ) & (
+        Q(sportsbase_subscription__ends_on__isnull=True)
+        | Q(sportsbase_subscription__ends_on__gte=today)
+    )
+    if performance_relation == 'active':
+        players = players.filter(active_performance)
+    elif performance_relation == 'history':
+        players = players.filter(sportsbase_subscription__isnull=False).exclude(
+            active_performance
+        )
+    elif performance_relation == 'none':
+        players = players.filter(sportsbase_subscription__isnull=True)
+
     # Set up pagination
     paginator = Paginator(players, 20)  # Show 20 players per page
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    portal_states = portal_access_states_for_players(
+        [player.pk for player in page_obj.object_list]
+    )
+    for listed_player in page_obj.object_list:
+        listed_player.client_portal_state = portal_states.get(listed_player.pk, 'none')
 
-    players_count = len(players)
+    players_count = paginator.count
 
     return render(request, 'gestion_joueurs/player_dashboard.html', {
         'page_obj': page_obj,
         'messages': [],
         'request': request,
         'players_count' : players_count,
+        'video_relation': video_relation,
+        'performance_relation': performance_relation,
     })
 
 def user_login(request):
+    if request.user.is_authenticated:
+        is_internal_user = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or hasattr(request.user, 'videoeditor')
+        )
+        if is_internal_user:
+            return redirect('dashboard')
+        if hasattr(request.user, 'portal_profile'):
+            logout(request)
+            messages.info(
+                request,
+                "La session client a été fermée. Connectez-vous avec votre compte de gestion.",
+            )
+
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
@@ -431,9 +1049,6 @@ def user_login(request):
                 return redirect('dashboard')
     else:
         form = AuthenticationForm()
-    
-    if request.user.is_authenticated:
-        return redirect('dashboard')  # Rediriger si déjà connecté
     
     return render(request, 'gestion_joueurs/login.html', {'form': form})
 
@@ -451,7 +1066,59 @@ def view_profile(request):
 @login_required
 def video_status(request, video_id):
     video = get_object_or_404(Video, id=video_id)
-    return render(request, 'gestion_joueurs/video_status.html', {'video': video})
+    attach_progress_to_videos([video])
+    return render(request, 'gestion_joueurs/video_status.html', {
+        'video': video,
+        'automation_progress_runs': video.automation_progress_runs,
+    })
+
+
+def _render_update_video_status(request, video):
+    attach_progress_to_videos([video])
+    context = {
+        'video': video,
+        'automation_progress_runs': video.automation_progress_runs,
+        'presentation_styles': PRESENTATION_STYLES,
+    }
+    context.update(build_status_notification_context(video))
+    return render(request, 'gestion_joueurs/update_video_status.html', context)
+
+
+def _redirect_to_status_whatsapp(request, video, status_changed):
+    """Open a player-facing WhatsApp draft after a confirmed status change."""
+    if not status_changed or request.POST.get('notification_action') != 'whatsapp':
+        return None
+
+    payment_mode = request.POST.get('payment_message_mode', 'auto')
+    valid_payment_modes = {value for value, _label in PAYMENT_MODE_CHOICES}
+    if payment_mode not in valid_payment_modes:
+        payment_mode = 'auto'
+
+    notification_context = build_status_notification_context(video)
+    whatsapp_message = request.POST.get('whatsapp_message', '').strip()
+    if not whatsapp_message:
+        whatsapp_message = notification_context['status_whatsapp_messages'][
+            video.status
+        ][payment_mode]
+    whatsapp_message = ensure_delivery_link_in_message(
+        whatsapp_message,
+        video,
+        video.status,
+    )
+
+    whatsapp_url = build_whatsapp_url(
+        video.player.whatsapp_number,
+        whatsapp_message[:4000],
+    )
+    if whatsapp_url:
+        return redirect(whatsapp_url)
+
+    messages.warning(
+        request,
+        "Le statut a été enregistré, mais aucun numéro WhatsApp n’est renseigné pour ce joueur."
+    )
+    return None
+
 
 @login_required
 def update_video_status(request, video_id):
@@ -460,18 +1127,37 @@ def update_video_status(request, video_id):
     if request.method == 'POST':
         if request.user.is_authenticated:
             new_status = request.POST.get('status')
+            valid_statuses = {value for value, _label in Video.StatusChoices.choices}
+            if new_status not in valid_statuses:
+                messages.error(request, "Le statut sélectionné n’est pas valide.")
+                return _render_update_video_status(request, video)
+
             video_link = request.POST.get('video_link', '').strip()
             processing_mode = request.POST.get('processing_mode', 'normal')
             delivery_mode = request.POST.get('delivery_mode', 'normal')
             sportsbase_url = request.POST.get('sportsbase_url', '').strip()
             transfermarkt_url = request.POST.get('transfermarkt_url', '').strip()
             intro_automation_enabled = request.POST.get('intro_automation_enabled') == 'on'
+            intro_presentation_style = request.POST.get(
+                'intro_presentation_style',
+                video.intro_presentation_style or DEFAULT_PRESENTATION_STYLE,
+            ).strip()
 
             set_signal_processing(False)
 
             old_status = video.status
+            status_changed = old_status != new_status
             old_processing_mode = video.processing_mode
+            old_delivery_mode = video.delivery_mode
             old_intro_enabled = getattr(video, "intro_automation_enabled", False)
+            old_intro_style = (
+                getattr(video, "intro_presentation_style", "")
+                or DEFAULT_PRESENTATION_STYLE
+            )
+            valid_intro_styles = {style['value'] for style in PRESENTATION_STYLES}
+            if intro_automation_enabled and intro_presentation_style not in valid_intro_styles:
+                messages.error(request, "Le style de présentation sélectionné n’est pas valide.")
+                return _render_update_video_status(request, video)
 
             # validation : SportsBase obligatoire seulement si mode Automation vidéo
             if new_status == 'in_progress' and processing_mode == 'automation':
@@ -482,7 +1168,7 @@ def update_video_status(request, video_id):
                         request,
                         "Le lien SportsBase est obligatoire pour démarrer une vidéo en mode Automation."
                     )
-                    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+                    return _render_update_video_status(request, video)
 
                 video.player.sportsbase_url = final_sportsbase_url
 
@@ -496,7 +1182,7 @@ def update_video_status(request, video_id):
                         request,
                         "Le lien Transfermarkt est obligatoire si Générer la présentation est activé."
                     )
-                    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+                    return _render_update_video_status(request, video)
 
                 video.player.transfermarkt_url = final_transfermarkt_url
 
@@ -521,6 +1207,7 @@ def update_video_status(request, video_id):
 
             if new_status == 'in_progress':
                 video.processing_mode = processing_mode
+                video.delivery_mode = delivery_mode
 
                 if old_status != 'in_progress':
                     video.automation_started = False
@@ -531,8 +1218,13 @@ def update_video_status(request, video_id):
                     video.automation_completed = False
 
                 video.intro_automation_enabled = intro_automation_enabled
+                if intro_presentation_style in valid_intro_styles:
+                    video.intro_presentation_style = intro_presentation_style
 
-                if intro_automation_enabled and not old_intro_enabled:
+                if intro_automation_enabled and (
+                    not old_intro_enabled
+                    or old_intro_style != video.intro_presentation_style
+                ):
                     video.intro_automation_started = False
                     video.intro_automation_completed = False
 
@@ -540,7 +1232,7 @@ def update_video_status(request, video_id):
                     video.intro_automation_started = False
                     video.intro_automation_completed = False
 
-            if new_status == 'delivered':
+            if new_status in {'completed', 'delivered'}:
                 video.delivery_mode = delivery_mode
 
             if new_status != 'in_progress' and old_status == 'in_progress':
@@ -548,12 +1240,85 @@ def update_video_status(request, video_id):
 
             video.save()
 
+            if (
+                new_status == Video.StatusChoices.IN_PROGRESS
+                and processing_mode == Video.AutomationModeChoices.AUTOMATION
+                and (
+                    old_status != Video.StatusChoices.IN_PROGRESS
+                    or old_processing_mode != Video.AutomationModeChoices.AUTOMATION
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+                        is_active=True,
+                    ).exists()
+                )
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Vidéo ajoutée à la file Highlights',
+                )
+
+            if (
+                new_status == Video.StatusChoices.IN_PROGRESS
+                and intro_automation_enabled
+                and (
+                    old_status != Video.StatusChoices.IN_PROGRESS
+                    or not old_intro_enabled
+                    or old_intro_style != video.intro_presentation_style
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.INTRO,
+                        is_active=True,
+                    ).exists()
+                )
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.INTRO,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Présentation ajoutée à la file',
+                )
+
+            if (
+                new_status == Video.StatusChoices.COMPLETED
+                and delivery_mode == Video.AutomationModeChoices.AUTOMATION
+                and (
+                    old_status != Video.StatusChoices.COMPLETED
+                    or old_delivery_mode != Video.AutomationModeChoices.AUTOMATION
+                    or not AutomationRun.objects.filter(
+                        video=video,
+                        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+                        is_active=True,
+                    ).exists()
+                )
+            ):
+                report_progress(
+                    video,
+                    pipeline=AutomationRun.PipelineChoices.DELIVERY,
+                    stage=AutomationRun.StageChoices.QUEUED,
+                    state=AutomationRun.StateChoices.QUEUED,
+                    message='Livraison ajoutée à la file',
+                )
+
             messages.success(request, "Le statut de la vidéo a été mis à jour avec succès.")
+
+            whatsapp_response = _redirect_to_status_whatsapp(
+                request,
+                video,
+                status_changed,
+            )
+            if whatsapp_response:
+                return whatsapp_response
+
             return redirect('video_status', video_id=video.id)
         else:
             messages.error(request, "Vous devez être connecté pour mettre à jour le statut de la vidéo.")
 
-    return render(request, 'gestion_joueurs/update_video_status.html', {'video': video})
+    return _render_update_video_status(request, video)
 
 @superadmin_required
 @login_required
@@ -584,7 +1349,26 @@ def register_video_editor(request):
 @login_required
 def edit_player(request, player_id):
     player = get_object_or_404(Player, id=player_id)
-    videos = Video.objects.filter(player=player).prefetch_related('status_history')  # Utiliser le related_name
+    videos = Video.objects.filter(player=player).select_related(
+        'editor__user',
+        'invoices',
+    ).prefetch_related('status_history', 'payments').order_by('-video_creation_date')
+    performance_subscription = _performance_subscription_for_player(player)
+    performance_payments = (
+        performance_subscription.payments.select_related('created_by').all()
+        if performance_subscription
+        else []
+    )
+    video_payments = Payment.objects.filter(player=player).select_related(
+        'video',
+        'invoice',
+        'created_by',
+    ).order_by('-payment_date', '-pk')
+    client_portal_state = portal_access_states_for_players((player.pk,)).get(
+        player.pk,
+        'none',
+    )
+    organization_links = _active_player_organization_links(player)
 
     # Ajouter le dernier statut pour chaque vidéo
     for video in videos:
@@ -593,8 +1377,28 @@ def edit_player(request, player_id):
     if request.method == 'POST':
         form = PlayerForm(request.POST, instance=player)
         if form.is_valid():
-            form.save()
+            with transaction.atomic():
+                player = form.save()
+                organization_link = _associate_player_organization(
+                    player=player,
+                    organization=form.cleaned_data.get('organization'),
+                    user=request.user,
+                )
             messages.success(request, "Les informations du joueur ont été mises à jour avec succès.")
+            if organization_link:
+                messages.success(
+                    request,
+                    f"{player.name} est maintenant associé à {organization_link.organization.name}.",
+                )
+            if form.cleaned_data.get('create_client_account'):
+                portal_access = _prepare_player_portal_access(request, player)
+                if portal_access:
+                    portal_access["back_url"] = reverse('edit_player', args=(player.pk,))
+                    return render(
+                        request,
+                        'client_portal/access_link_created.html',
+                        portal_access,
+                    )
             return redirect('dashboard')
     else:
         form = PlayerForm(instance=player)
@@ -603,6 +1407,15 @@ def edit_player(request, player_id):
         'form': form,
         'player': player,
         'videos': videos,
+        'video_count': videos.count(),
+        'active_video_count': videos.exclude(
+            status__in={Video.StatusChoices.DELIVERED, Video.StatusChoices.PROBLEMATIC}
+        ).count(),
+        'performance_subscription': performance_subscription,
+        'performance_payments': performance_payments,
+        'video_payments': video_payments,
+        'client_portal_state': client_portal_state,
+        'organization_links': organization_links,
     })
 thread_local = threading.local()
 
@@ -611,6 +1424,7 @@ thread_local = threading.local()
 @login_required
 def edit_video(request, video_id):
     video = get_object_or_404(Video, id=video_id)
+    original_status = video.status
     video_status_history = video.status_history.all()  # Utiliser le related_name
     payments = video.payments.all()  # Assure-toi que le modèle Payment a la relation correcte
     previous_editor = video.editor
@@ -635,17 +1449,42 @@ def edit_video(request, video_id):
                     last_invoice.status = 'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
                 last_invoice.save()
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
+
+            portal_access = None
+            if form.cleaned_data.get('create_client_account'):
+                portal_access = _prepare_player_portal_access(request, video.player)
+
+            whatsapp_response = _redirect_to_status_whatsapp(
+                request,
+                video,
+                original_status != video.status,
+            )
+            if portal_access:
+                portal_access["back_url"] = reverse('edit_video', args=(video.pk,))
+                if whatsapp_response:
+                    portal_access["status_whatsapp_url"] = whatsapp_response.url
+                return render(
+                    request,
+                    'client_portal/access_link_created.html',
+                    portal_access,
+                )
+            if whatsapp_response:
+                return whatsapp_response
+
             return redirect('dashboard')
     else:
         form = VideoForm(instance=video, user=request.user)
 
-    return render(request, 'gestion_joueurs/edit_video.html', {
+    context = {
         'form': form,
         'video': video,
+        'original_video_status': original_status,
         'video_status_history': video_status_history,
         'payments': payments,
         'salaries': salaries,  # Pass salaries to the template
-    })
+    }
+    context.update(build_status_notification_context(video))
+    return render(request, 'gestion_joueurs/edit_video.html', context)
 
 
 @login_required
@@ -784,8 +1623,30 @@ def get_remaining_balance(request, video_id):
 @login_required
 def search_players(request):
     query = request.GET.get('q', '')
-    players = Player.objects.filter(name__icontains=query).values('id', 'name', 'date_of_birth', 'league', 'club', 'whatsapp_number')[:10]
-    return JsonResponse({'players': list(players)})
+    players = Player.objects.filter(name__icontains=query).order_by('name')[:10]
+    data = []
+    for player in players:
+        organization_link = _active_player_organization_links(player).first()
+        data.append({
+            'id': player.id,
+            'name': player.name,
+            'date_of_birth': (
+                player.date_of_birth.isoformat() if player.date_of_birth else ''
+            ),
+            'league': player.league,
+            'club': player.club,
+            'email': player.email or '',
+            'whatsapp_number': player.whatsapp_number or '',
+            'position': player.position,
+            'sportsbase_url': player.sportsbase_url or '',
+            'transfermarkt_url': player.transfermarkt_url or '',
+            'client_fidel': player.client_fidel,
+            'client_vip': player.client_vip,
+            'organization_id': (
+                organization_link.organization_id if organization_link else ''
+            ),
+        })
+    return JsonResponse({'players': data})
 
 @superadmin_required
 @login_required
@@ -1557,15 +2418,21 @@ def notification_list(request):
     search_query = request.GET.get('search', '')
 
     # Base queryset for notifications
-    notifications_list = Notification.objects.all().order_by('-created_at')
-    print(f"{notification_list}")
+    notifications_list = Notification.objects.select_related(
+        'user',
+        'sent_by',
+        'video__player',
+        'video__invoices',
+        'player',
+    ).order_by('-created_at')
     if not is_superuser:
         notifications_list = notifications_list.filter(user=request.user)
     else:
         if selected_user_id:
             notifications_list = notifications_list.filter(user_id=selected_user_id)
-        if search_query:
-            notifications_list = notifications_list.filter(Q(message__icontains=search_query))
+
+    if search_query:
+        notifications_list = notifications_list.filter(Q(message__icontains=search_query))
 
     # Get all users for superuser filtering options
     users = User.objects.all() if is_superuser else []
@@ -1581,6 +2448,9 @@ def notification_list(request):
     except EmptyPage:
         notifications_page = paginator.page(paginator.num_pages)  # If page is out of range, show the last page
 
+    for notification in notifications_page.object_list:
+        notification.whatsapp_url = build_notification_whatsapp_url(notification)
+
     # Pass context to the template
     return render(request, 'gestion_joueurs/notification_list.html', {
         'notifications_list': notifications_page,
@@ -1591,16 +2461,31 @@ def notification_list(request):
 
 @login_required
 def view_notification(request, notification_id):
-    # Get the notification by its ID, or 404 if not found
-    notification = get_object_or_404(Notification, id=notification_id)
+    notifications = Notification.objects.select_related(
+        'user',
+        'sent_by',
+        'video__player',
+        'video__invoices',
+        'player',
+    )
+    if not request.user.is_superuser:
+        notifications = notifications.filter(user=request.user)
+
+    notification = get_object_or_404(notifications, id=notification_id)
     
     # Mark the notification as read (if not already read)
     if not notification.is_read:
         notification.is_read = True
-        notification.save()
+        notification.save(update_fields=('is_read',))
+
+    notification_player = notification.player
+    if not notification_player and notification.video:
+        notification_player = notification.video.player
 
     return render(request, 'gestion_joueurs/view_notification.html', {
         'notification': notification,
+        'notification_player': notification_player,
+        'notification_whatsapp_url': build_notification_whatsapp_url(notification),
     })
 
 @login_required
@@ -1698,6 +2583,9 @@ def import_transfermarkt_player(request):
         ).first()
 
         if existing_player:
+            organization_link = _active_player_organization_links(
+                existing_player
+            ).first()
             return JsonResponse({
                 "success": True,
                 "exists": True,
@@ -1707,10 +2595,18 @@ def import_transfermarkt_player(request):
                     "date_of_birth": existing_player.date_of_birth.strftime("%Y-%m-%d") if existing_player.date_of_birth else "",
                     "league": existing_player.league,
                     "club": existing_player.club,
+                    "email": existing_player.email or "",
                     "whatsapp_number": existing_player.whatsapp_number or "",
                     "position": existing_player.position,
+                    "sportsbase_url": existing_player.sportsbase_url or "",
+                    "transfermarkt_url": existing_player.transfermarkt_url or url,
                     "client_fidel": existing_player.client_fidel,
                     "client_vip": existing_player.client_vip,
+                    "organization_id": (
+                        organization_link.organization_id
+                        if organization_link
+                        else ""
+                    ),
                 }
             })
 
@@ -1723,10 +2619,14 @@ def import_transfermarkt_player(request):
                 "date_of_birth": parsed_data.get("date_of_birth", ""),
                 "league": parsed_data.get("league", "OC"),
                 "club": parsed_data.get("club", ""),
+                "email": "",
                 "whatsapp_number": "",
                 "position": parsed_data.get("position", "DF"),
+                "sportsbase_url": "",
+                "transfermarkt_url": url,
                 "client_fidel": False,
                 "client_vip": False,
+                "organization_id": "",
             }
         })
 
@@ -1763,78 +2663,35 @@ from django.contrib.auth.decorators import login_required
 
 @login_required
 def automation_pending_videos(request):
-    # pipeline existant clips + premiere
     videos = Video.objects.filter(
         status='in_progress',
         processing_mode='automation',
         automation_completed=False
-    ).select_related('player', 'editor')
+    ).select_related('player', 'editor__user')
 
-    # nouveau pipeline intro
     intro_videos = Video.objects.filter(
         status='in_progress',
         intro_automation_enabled=True,
         intro_automation_completed=False
-    ).select_related('player', 'editor')
+    ).select_related('player', 'editor__user')
 
+    video_list = attach_progress_to_videos(videos)
+    intro_video_list = attach_progress_to_videos(intro_videos)
     data = []
-    for video in videos:
-        data.append({
-            'video_id': video.id,
-            'status': video.status,
-            'processing_mode': video.processing_mode,
-            'automation_started': video.automation_started,
-            'automation_completed': video.automation_completed,
-            'intro_automation_started': video.intro_automation_started,
-            'intro_automation_completed': video.intro_automation_completed,
-            'intro_photo_url': request.build_absolute_uri(video.intro_photo.url) if video.intro_photo else None,
-            'season': video.season,
-            'seasons_to_process': video.seasons_to_process,
-            'club': video.club,
-            'league': video.league,
-            'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,
-            'player': {
-                'id': video.player.id,
-                'name': video.player.name,
-                'club': video.player.club,
-                'sportsbase_url': video.player.sportsbase_url,
-                'transfermarkt_url': video.player.transfermarkt_url,
-            },
-            'editor': {
-                'id': video.editor.id,
-                'username': video.editor.user.username if video.editor and video.editor.user else None,
-            }
-        })
+    for video in video_list:
+        item = video_payload(video, request=request)
+        item['progress'] = [
+            serialize_run(run) for run in video.automation_progress_runs
+        ]
+        data.append(item)
 
     intro_data = []
-    for video in intro_videos:
-        intro_data.append({
-            'video_id': video.id,
-            'status': video.status,
-            'processing_mode': video.processing_mode,
-            'automation_started': video.automation_started,
-            'automation_completed': video.automation_completed,
-            'intro_automation_started': video.intro_automation_started,
-            'intro_automation_completed': video.intro_automation_completed,
-            'intro_photo_url': request.build_absolute_uri(video.intro_photo.url) if video.intro_photo else None,
-            'intro_automation_enabled': video.intro_automation_enabled,
-            'season': video.season,
-            'seasons_to_process': video.seasons_to_process,
-            'club': video.club,
-            'league': video.league,
-            'deadline': video.deadline.strftime('%Y-%m-%d') if video.deadline else None,
-            'player': {
-                'id': video.player.id,
-                'name': video.player.name,
-                'club': video.player.club,
-                'sportsbase_url': video.player.sportsbase_url,
-                'transfermarkt_url': video.player.transfermarkt_url,
-            },
-            'editor': {
-                'id': video.editor.id,
-                'username': video.editor.user.username if video.editor and video.editor.user else None,
-            }
-        })
+    for video in intro_video_list:
+        item = video_payload(video, request=request)
+        item['progress'] = [
+            serialize_run(run) for run in video.automation_progress_runs
+        ]
+        intro_data.append(item)
 
     print("=== VIDEOS AUTOMATION A TRAITER ===")
     for item in data:
@@ -1871,6 +2728,13 @@ def mark_automation_started(request, video_id):
 
     video.automation_started = True
     video.save(update_fields=['automation_started'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        stage=AutomationRun.StageChoices.SPORTSBASE_DISCOVERY,
+        state=AutomationRun.StateChoices.RUNNING,
+        message='Collecte SportsBase démarrée',
+    )
 
     return JsonResponse({
         'success': True,
@@ -1883,8 +2747,44 @@ def mark_automation_started(request, video_id):
 def mark_automation_completed(request, video_id):
     video = get_object_or_404(Video, id=video_id)
 
+    try:
+        payload = _automation_request_payload(request)
+        export_path = str(payload.get('export_path') or '').strip()
+        validation = payload.get('validation') or {}
+        if not export_path:
+            raise ValueError('Le chemin du MP4 final est obligatoire.')
+        if not isinstance(validation, dict) or validation.get('valid') is not True:
+            raise ValueError('Le MP4 final doit être validé avant de terminer la vidéo.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
     video.automation_completed = True
-    video.save(update_fields=['automation_completed'])
+    video.status = Video.StatusChoices.COMPLETED
+    video.save(update_fields=['automation_completed', 'status'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.HIGHLIGHTS,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='MP4 final vérifié',
+        artifacts={
+            'export_path': export_path,
+            'export_validation': validation,
+        },
+    )
+    if video.delivery_mode == Video.AutomationModeChoices.AUTOMATION:
+        report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.QUEUED,
+            state=AutomationRun.StateChoices.QUEUED,
+            message='MP4 prêt pour la mise en ligne YouTube',
+            artifacts={
+                'export_path': export_path,
+                'export_validation': validation,
+            },
+        )
 
     return JsonResponse({
         'success': True,
@@ -1905,6 +2805,13 @@ def mark_intro_automation_started(request, video_id):
     video = get_object_or_404(Video, id=video_id)
     video.intro_automation_started = True
     video.save(update_fields=['intro_automation_started'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.INTRO,
+        stage=AutomationRun.StageChoices.TRANSFERMARKT,
+        state=AutomationRun.StateChoices.RUNNING,
+        message='Préparation Transfermarkt démarrée',
+    )
     return JsonResponse({
         'success': True,
         'video_id': video.id,
@@ -1916,8 +2823,30 @@ def mark_intro_automation_started(request, video_id):
 @require_POST
 def mark_intro_automation_completed(request, video_id):
     video = get_object_or_404(Video, id=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        intro_path = str(payload.get('intro_path') or '').strip()
+        validation = payload.get('validation') or {}
+        if not intro_path:
+            raise ValueError('Le MP4 Kling est obligatoire.')
+        if not isinstance(validation, dict) or validation.get('valid') is not True:
+            raise ValueError('Le MP4 Kling doit être validé avant de terminer l’intro.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
     video.intro_automation_completed = True
     video.save(update_fields=['intro_automation_completed'])
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.INTRO,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='Intro Kling vérifiée',
+        artifacts={
+            'intro_path': intro_path,
+            'intro_validation': validation,
+        },
+    )
     return JsonResponse({
         'success': True,
         'video_id': video.id,
@@ -1925,9 +2854,325 @@ def mark_intro_automation_completed(request, video_id):
     })
 
 
+def _automation_request_payload(request):
+    if 'application/json' in request.headers.get('Content-Type', ''):
+        try:
+            value = json.loads(request.body.decode('utf-8') or '{}')
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError('Le corps JSON est invalide.') from exc
+        if not isinstance(value, dict):
+            raise ValueError('Le corps JSON doit être un objet.')
+        return value
+    return request.POST.dict()
 
 
+@login_required
+@require_POST
+def claim_automation_job(request):
+    try:
+        payload = _automation_request_payload(request)
+        pipeline = str(payload.get('pipeline') or '').strip()
+        valid_pipelines = {value for value, _label in AutomationRun.PipelineChoices.choices}
+        if pipeline not in valid_pipelines:
+            raise ValueError('Pipeline invalide.')
+        worker_id = str(
+            payload.get('worker_id') or request.user.get_username() or 'agent-local'
+        ).strip()[:120]
+        video, run = claim_next_job(pipeline=pipeline, worker_id=worker_id)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    if not video:
+        return JsonResponse({'success': True, 'job': None})
+    return JsonResponse({
+        'success': True,
+        'job': {
+            **video_payload(video, request=request),
+            'pipeline': pipeline,
+            'run': serialize_run(run),
+            'claim_token': run.claim_token,
+        },
+    })
 
 
+@login_required
+def automation_progress_detail(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    runs = video.automation_runs.filter(is_active=True)
+    return JsonResponse({
+        'success': True,
+        'video_id': video.pk,
+        'runs': [serialize_run(run, include_events=True) for run in runs],
+    })
 
 
+@login_required
+@require_POST
+def report_automation_progress(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        pipeline = str(payload.get('pipeline') or '').strip()
+        stage = str(payload.get('stage') or '').strip()
+        state = str(
+            payload.get('state') or AutomationRun.StateChoices.RUNNING
+        ).strip()
+        if pipeline not in {value for value, _label in AutomationRun.PipelineChoices.choices}:
+            raise ValueError('Pipeline invalide.')
+        if stage not in {value for value, _label in AutomationRun.StageChoices.choices}:
+            raise ValueError('Étape invalide.')
+        if state not in {value for value, _label in AutomationRun.StateChoices.choices}:
+            raise ValueError('État invalide.')
+
+        artifacts = payload.get('artifacts') or {}
+        details = payload.get('details') or {}
+        if not isinstance(artifacts, dict) or not isinstance(details, dict):
+            raise ValueError('Les artifacts et détails doivent être des objets JSON.')
+
+        run = report_progress(
+            video,
+            pipeline=pipeline,
+            stage=stage,
+            state=state,
+            progress_current=payload.get('progress_current'),
+            progress_total=payload.get('progress_total'),
+            progress_percent=payload.get('progress_percent'),
+            message=payload.get('message', ''),
+            error_code=payload.get('error_code', ''),
+            error_detail=payload.get('error_detail', ''),
+            artifacts=artifacts,
+            details=details,
+            claimed_by=payload.get('worker_id', ''),
+            claim_token=payload.get('claim_token', ''),
+            force_event=bool(payload.get('force_event', False)),
+        )
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    return JsonResponse({'success': True, 'run': serialize_run(run)})
+
+
+@login_required
+@require_POST
+def retry_automation_progress(request, video_id, pipeline):
+    video = get_object_or_404(Video, pk=video_id)
+    if not (
+        request.user.is_superuser
+        or (video.editor and video.editor.user_id == request.user.id)
+    ):
+        return JsonResponse(
+            {'success': False, 'error': 'Vous ne pouvez pas relancer cette tâche.'},
+            status=403,
+        )
+    run = get_object_or_404(
+        AutomationRun,
+        video=video,
+        pipeline=pipeline,
+        is_active=True,
+    )
+    retry_run(run)
+    messages.success(request, 'La reprise a été ajoutée à la file.')
+    return redirect('update_video_status', video_id=video.pk)
+
+
+@login_required
+@require_POST
+def automation_worker_heartbeat(request):
+    try:
+        payload = _automation_request_payload(request)
+        worker_id = str(payload.get('worker_id') or '').strip()[:120]
+        if not worker_id:
+            raise ValueError('Identifiant agent manquant.')
+        state = str(
+            payload.get('state') or AutomationWorker.StateChoices.IDLE
+        ).strip()
+        valid_states = {value for value, _label in AutomationWorker.StateChoices.choices}
+        if state not in valid_states:
+            raise ValueError('État agent invalide.')
+        current_video_id = payload.get('current_video_id') or None
+        current_video = None
+        if current_video_id:
+            current_video = Video.objects.filter(pk=current_video_id).first()
+            if not current_video:
+                raise ValueError('Vidéo courante introuvable.')
+        capabilities = payload.get('capabilities') or {}
+        if not isinstance(capabilities, dict):
+            raise ValueError('Les capacités doivent être un objet JSON.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    worker, _created = AutomationWorker.objects.update_or_create(
+        worker_id=worker_id,
+        defaults={
+            'display_name': str(payload.get('display_name') or worker_id)[:160],
+            'host_name': str(payload.get('host_name') or '')[:160],
+            'version': str(payload.get('version') or '')[:40],
+            'state': state,
+            'current_video': current_video,
+            'current_pipeline': str(payload.get('current_pipeline') or '')[:20],
+            'current_stage': str(payload.get('current_stage') or '')[:40],
+            'capabilities': capabilities,
+            'last_error': str(payload.get('last_error') or ''),
+            'last_seen_at': timezone.now(),
+        },
+    )
+    return JsonResponse({
+        'success': True,
+        'worker': {
+            'worker_id': worker.worker_id,
+            'state': worker.state,
+            'state_label': worker.get_state_display(),
+            'last_seen_at': worker.last_seen_at.isoformat(),
+        },
+    })
+
+
+@login_required
+def automation_worker_status(request):
+    workers = AutomationWorker.objects.select_related('current_video__player')[:10]
+    return JsonResponse({
+        'success': True,
+        'workers': [
+            {
+                'worker_id': worker.worker_id,
+                'display_name': worker.display_name,
+                'state': worker.state if worker.is_online else 'offline',
+                'state_label': worker.get_state_display() if worker.is_online else 'Hors ligne',
+                'is_online': worker.is_online,
+                'current_video_id': worker.current_video_id,
+                'current_player': (
+                    worker.current_video.player.name if worker.current_video else ''
+                ),
+                'current_pipeline': worker.current_pipeline,
+                'current_stage': worker.current_stage,
+                'last_error': worker.last_error,
+                'last_seen_at': worker.last_seen_at.isoformat(),
+            }
+            for worker in workers
+        ],
+    })
+
+
+@login_required
+@require_POST
+def complete_automation_delivery(request, video_id):
+    video = get_object_or_404(Video.objects.select_related('player'), pk=video_id)
+    try:
+        payload = _automation_request_payload(request)
+        youtube_url = str(payload.get('youtube_url') or '').strip()
+        from sportsbase_data.services import extract_youtube_video_id
+
+        youtube_video_id = extract_youtube_video_id(youtube_url)
+        if not youtube_video_id:
+            raise ValueError('Le lien YouTube retourné est invalide.')
+        validation = payload.get('validation') or {}
+        if not isinstance(validation, dict):
+            raise ValueError('La validation YouTube doit être un objet JSON.')
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+        stage=AutomationRun.StageChoices.YOUTUBE_VALIDATION,
+        state=AutomationRun.StateChoices.RUNNING,
+        progress_percent=75,
+        message='Lien YouTube non répertorié vérifié',
+        artifacts={
+            'youtube_url': youtube_url,
+            'youtube_video_id': youtube_video_id,
+            'youtube_validation': validation,
+        },
+    )
+    video.video_link = youtube_url
+    video.status = Video.StatusChoices.DELIVERED
+    video.delivery_automation_started = True
+    video.save(update_fields=(
+        'video_link',
+        'status',
+        'delivery_automation_started',
+    ))
+
+    notification_context = build_status_notification_context(video)
+    whatsapp_message = notification_context['status_whatsapp_messages'][
+        Video.StatusChoices.DELIVERED
+    ]['auto']
+    whatsapp_message = ensure_delivery_link_in_message(
+        whatsapp_message,
+        video,
+        Video.StatusChoices.DELIVERED,
+    )
+    whatsapp_url = build_whatsapp_url(
+        video.player.whatsapp_number,
+        whatsapp_message[:4000],
+    )
+    whatsapp_result = send_whatsapp_text(
+        video.player.whatsapp_number,
+        whatsapp_message,
+    )
+    whatsapp_artifacts = {
+        'youtube_url': youtube_url,
+        'youtube_video_id': youtube_video_id,
+        'whatsapp_url': whatsapp_url or '',
+        'whatsapp_message': whatsapp_message,
+        'whatsapp_message_id': whatsapp_result.get('message_id', ''),
+        'whatsapp_auto_send_reason': whatsapp_result.get('reason', ''),
+    }
+    if whatsapp_result.get('sent'):
+        video.delivery_automation_completed = True
+        video.save(update_fields=('delivery_automation_completed',))
+        run = report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.COMPLETED,
+            state=AutomationRun.StateChoices.SUCCEEDED,
+            progress_percent=100,
+            message='Lien YouTube livré et WhatsApp envoyé automatiquement',
+            artifacts=whatsapp_artifacts,
+        )
+    else:
+        run = report_progress(
+            video,
+            pipeline=AutomationRun.PipelineChoices.DELIVERY,
+            stage=AutomationRun.StageChoices.WHATSAPP,
+            state=AutomationRun.StateChoices.WAITING_EXTERNAL,
+            progress_percent=95,
+            message=(
+                'Vidéo livrée : confirmation de l’envoi WhatsApp attendue'
+                if whatsapp_url
+                else 'Vidéo livrée, mais aucun numéro WhatsApp n’est renseigné'
+            ),
+            error_detail=whatsapp_result.get('reason', ''),
+            artifacts=whatsapp_artifacts,
+        )
+    return JsonResponse({
+        'success': True,
+        'video_id': video.pk,
+        'status': video.status,
+        'youtube_url': youtube_url,
+        'whatsapp_url': whatsapp_url,
+        'whatsapp_sent': bool(whatsapp_result.get('sent')),
+        'run': serialize_run(run),
+    })
+
+
+@login_required
+@require_POST
+def confirm_delivery_whatsapp(request, video_id):
+    video = get_object_or_404(Video, pk=video_id)
+    if video.status != Video.StatusChoices.DELIVERED or not video.video_link:
+        messages.error(request, 'La vidéo doit être livrée avant de confirmer WhatsApp.')
+        return redirect('update_video_status', video_id=video.pk)
+    video.delivery_automation_completed = True
+    video.save(update_fields=('delivery_automation_completed',))
+    report_progress(
+        video,
+        pipeline=AutomationRun.PipelineChoices.DELIVERY,
+        stage=AutomationRun.StageChoices.COMPLETED,
+        state=AutomationRun.StateChoices.SUCCEEDED,
+        progress_percent=100,
+        message='Lien YouTube livré et notification WhatsApp confirmée',
+        artifacts={'youtube_url': video.video_link},
+    )
+    messages.success(request, 'L’envoi WhatsApp a été confirmé.')
+    return redirect('update_video_status', video_id=video.pk)

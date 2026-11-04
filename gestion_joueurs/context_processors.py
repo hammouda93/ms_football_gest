@@ -1,8 +1,18 @@
-from .models import Notification  # Importez votre modèle Notification
+from .models import Notification
+
 
 def notifications(request):
     user_notifications = []
+    unread_notifications_count = 0
     if request.user.is_authenticated:
-        user_notifications = Notification.objects.filter(user=request.user, is_read=False)  # Exclure les notifications vues
+        unread_notifications = Notification.objects.filter(
+            user=request.user,
+            is_read=False,
+        ).select_related('video', 'player').order_by('-created_at')
+        unread_notifications_count = unread_notifications.count()
+        user_notifications = unread_notifications[:8]
     
-    return {'notifications': user_notifications}
+    return {
+        'notifications': user_notifications,
+        'unread_notifications_count': unread_notifications_count,
+    }

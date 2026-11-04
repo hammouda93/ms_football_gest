@@ -1,0 +1,92 @@
+from urllib.parse import parse_qs, urlparse
+
+from django import template
+from django.conf import settings
+
+from client_portal.portal_i18n import get_portal_copy, translated_choice
+from sportsbase_data.dailymotion_links import extract_dailymotion_video_id
+
+
+register = template.Library()
+
+
+@register.simple_tag
+def portal_copy(language="fr"):
+    return get_portal_copy(language)
+
+
+@register.filter
+def portal_version_status_for(value, language):
+    return translated_choice("version", value, language)
+
+
+@register.filter
+def portal_revision_status_for(value, language):
+    return translated_choice("revision", value, language)
+
+
+@register.filter
+def portal_media_category_for(value, language):
+    return translated_choice("media", value, language)
+
+
+@register.filter
+def timecode(value):
+    if value is None:
+        return ""
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        return value
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+@register.filter
+def youtube_embed_url(value):
+    """Return a privacy-enhanced embed URL only for recognized YouTube links."""
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(str(value))
+    except (TypeError, ValueError):
+        return ""
+
+    host = parsed.netloc.lower().split(":", 1)[0]
+    video_id = ""
+    if host in {"youtu.be", "www.youtu.be"}:
+        video_id = parsed.path.strip("/").split("/", 1)[0]
+    elif host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        if parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        elif parsed.path.startswith(("/embed/", "/shorts/", "/live/")):
+            parts = parsed.path.strip("/").split("/")
+            video_id = parts[1] if len(parts) > 1 else ""
+
+    if not video_id or not all(character.isalnum() or character in "-_" for character in video_id):
+        return ""
+    return f"https://www.youtube-nocookie.com/embed/{video_id}"
+
+
+@register.filter
+def dailymotion_embed_url(value):
+    """Keep the actual private share ID supplied by Dailymotion Studio."""
+    video_id = extract_dailymotion_video_id(value)
+    if not video_id:
+        return ""
+
+    player_id = str(getattr(settings, "DAILYMOTION_PLAYER_ID", "") or "").strip()
+    if player_id and all(
+        character.isalnum() or character in "-_" for character in player_id
+    ):
+        return f"https://geo.dailymotion.com/player/{player_id}.html?video={video_id}"
+    return f"https://www.dailymotion.com/embed/video/{video_id}"
+
+
+@register.filter
+def video_embed_url(value):
+    """Resolve the supported provider without exposing provider controls in the portal."""
+    return dailymotion_embed_url(value) or youtube_embed_url(value)

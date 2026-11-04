@@ -1,0 +1,62 @@
+{% extends "client_portal/portal_base.html" %}
+{% load portal_extras %}
+{% block title %}{{ player.name }} — MS Football{% endblock %}
+{% block portal_content %}
+<nav class="portal-breadcrumb" aria-label="{{ pc.breadcrumb }}"><a href="{% url 'portal:dashboard' %}">{{ pc.my_space }}</a><span>›</span><span>{{ player.name }}</span></nav>
+
+<section class="player-profile-hero">
+    <div class="player-avatar large">{{ player.name|first|upper }}</div>
+    <div class="player-profile-copy">
+        <span class="eyebrow">{{ pc.player_record }}</span>
+        <h1>{{ player.name }}</h1>
+        <p>{{ player.club|default:pc.club_unknown }} · {{ player.get_position_display }} · {{ player.get_league_name }}</p>
+    </div>
+    {% if player.transfermarkt_url %}<a class="portal-button secondary profile-source-link" href="{{ player.transfermarkt_url }}" target="_blank" rel="noopener">{{ pc.transfermarkt_profile }} ↗</a>{% endif %}
+</section>
+
+<nav class="player-service-tabs" aria-label="Services du joueur">
+    <a class="active" href="#video-tracking"><i class="fas fa-clapperboard"></i> {{ pc.video_tracking }}</a>
+    {% if performance_subscription %}
+        <a href="{% url 'performance:portal_detail' player.pk %}"><i class="fas fa-chart-line"></i> {{ pc.performance }}</a>
+    {% else %}
+        <span class="disabled"><i class="fas fa-chart-line"></i> {{ pc.performance_disabled }}</span>
+    {% endif %}
+</nav>
+
+<section class="portal-section" id="video-tracking">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">{{ pc.production }}</span><h2>{{ pc.current_video }}</h2><p>{{ pc.current_video_help }}</p></div>
+        <span class="portal-count">{{ current_videos|length }}</span>
+    </div>
+    <div class="portal-video-list">
+        {% for video in current_videos %}
+            {% include "client_portal/includes/video_order_card.html" with video=video show_player=False portal_language=request.portal_profile.preferred_language only %}
+        {% empty %}
+            <div class="portal-empty"><strong>{{ pc.no_current_production }}</strong><span>{{ pc.new_order_appears }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="portal-section">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">{{ pc.history }}</span><h2>{{ pc.old_videos }}</h2><p>{{ pc.old_videos_help }}</p></div>
+        <span class="portal-count">{{ archived_videos|length }}</span>
+    </div>
+    <div class="portal-archive-grid">
+        {% for video in archived_videos %}
+            {% with embed_url=video.video_link|youtube_embed_url %}
+                <article class="portal-archive-card">
+                    {% if video.final_delivery_available and embed_url %}
+                        <div class="portal-video-embed"><iframe src="{{ embed_url }}" title="Vidéo {{ video.season }} de {{ player.name }}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>
+                    {% else %}
+                        <a class="archive-placeholder" href="{% url 'portal:video' video.pk %}"><i class="fas {% if video.final_delivery_available %}fa-play{% else %}fa-lock{% endif %}"></i></a>
+                    {% endif %}
+                    <div class="portal-archive-copy"><div><strong>{{ video.season }}</strong><span>{{ video.club|default:player.club }}</span></div><a href="{% url 'portal:video' video.pk %}">{{ pc.details }} →</a></div>
+                </article>
+            {% endwith %}
+        {% empty %}
+            <div class="portal-empty"><strong>{{ pc.no_historical_video }}</strong><span>{{ pc.delivered_appear_here }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

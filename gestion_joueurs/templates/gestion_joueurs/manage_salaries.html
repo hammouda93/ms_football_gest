@@ -3,16 +3,16 @@
 {% block title %}Gestion des Salaires{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h1 class="text-center">Liste des Salaires</h1>
+<div class="container mt-4 ui-page list-page salary-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Équipe</span><h1>Salaires</h1><p>Historique des rémunérations et avances des collaborateurs.</p></div>
+        <div class="ui-page-actions">
             {% if request.user.is_superuser %}
-            <div class="text-center">
-                <a href="{% url 'add_expense' %}" class="btn btn-primary">Payer un Collaborateur <i class="fas fa-plus"></i></a>
-            </div>
+                <a href="{% url 'add_expense' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Enregistrer un salaire</a>
             {% endif %}
         </div>
+    </header>
+    <div class="card">
         <div class="card-body">
             <form method="GET" class="mb-3" id="filter-form">
                 <div class="form-row">
@@ -36,7 +36,7 @@
                         <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par description" value="{{ request.GET.search }}">
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-secondary">Filtrer</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
                     </div>
                 </div>
             </form>

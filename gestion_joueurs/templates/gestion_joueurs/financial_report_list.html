@@ -3,14 +3,16 @@
 {% block title %}Liste des Rapports Financiers{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h1>Liste des Rapports Financiers</h1>
-            <a href="{% url 'financial_report' %}" class="btn btn-success mb-3">
-                <i class="fas fa-plus-circle"></i> Générer un Nouveau Rapport Financier
+<div class="container mt-4 ui-page list-page report-list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Analyse financière</span><h1>Rapports financiers</h1><p>Consultez les rapports enregistrés par période et comparez les résultats.</p></div>
+        <div class="ui-page-actions">
+            <a href="{% url 'financial_report' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Générer un rapport
             </a>
         </div>
+    </header>
+    <div class="card">
         <div class="card-body">
             {% if messages %}
                 {% for message in messages %}

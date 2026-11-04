@@ -660,7 +660,7 @@ async def process_voice(update: Update, context: CallbackContext):
 
 # Set up the Telegram Bot API and application
 def main():
-    bot_token = "7982870671:AAFqMnSwbUasAaIoVd3gB3ySvMQAZ0mFmh8"  # Replace with your actual bot token
+    bot_token = os.environ["TELEGRAM_BOT_TOKEN"]  # Replace with your actual bot token
 
     # Initialize Application
     application = Application.builder().token(bot_token).build()
