@@ -20,7 +20,8 @@ DEFAULT_PROFILE_ID = "x6445ea"
 DAILYMOTION_RPA_BUILD = "dailymotion-studio-unlimited-preview-wait-v7-20260908"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
-    r"^(upload(?: a)? vid[eé]o(?:s)?|upload|mettre en ligne(?: une vid[eé]o)?|"
+    r"^(upload(?: a)? vid[eé]o(?:s)?|upload|add(?: a| new)? video(?:s)?|"
+    r"ajouter(?: une| des)? vid[eé]o(?:s)?|mettre en ligne(?: une vid[eé]o)?|"
     r"importer(?: des vid[eé]os)?|envoyer une vid[eé]o)$", re.I
 )
 CREATE_CONTENT_LABEL = re.compile(
@@ -370,10 +371,12 @@ class DailymotionStudioUploader:
         )
 
     def _upload_button(self, page):
-        return self._visible(
-            page.get_by_role("button", name=UPLOAD_LABEL)
-        ) or self._visible(
-            page.get_by_role("link", name=UPLOAD_LABEL)
+        return (
+            self._visible(page.get_by_role("button", name=UPLOAD_LABEL))
+            or self._visible(page.get_by_role("link", name=UPLOAD_LABEL))
+            or self._visible(
+                page.locator('button[data-test-id="header-actions-primary-button"]')
+            )
         )
 
     def _create_content_button(self, page):
