@@ -687,12 +687,14 @@ class YouTubeStudioUploader:
             f'[role="radio"][name="{visibility_key}"]',
             f'[name="{visibility_key}"]',
         )
-        for _step in range(4):
+        # Details -> Video elements -> Checks -> Visibility. Do not pause
+        # for a fixed 1.2 s after every transition: the UI itself decides
+        # when Next is enabled, and each step is checked immediately.
+        for step in range(4):
             for selector in visibility_selectors:
                 radio = page.locator(selector).first
                 if radio.count() and radio.is_visible():
-                    radio.click()
-                    page.wait_for_timeout(500)
+                    radio.click(timeout=5000)
                     print(
                         "[YOUTUBE] Visibilité sélectionnée : "
                         f"{visibility_label}."
@@ -703,8 +705,7 @@ class YouTubeStudioUploader:
             ).first
             try:
                 if visibility_text.count() and visibility_text.is_visible():
-                    visibility_text.click()
-                    page.wait_for_timeout(500)
+                    visibility_text.click(timeout=5000)
                     print(
                         "[YOUTUBE] Visibilité sélectionnée : "
                         f"{visibility_label}."
@@ -712,13 +713,26 @@ class YouTubeStudioUploader:
                     return visibility_key.casefold()
             except Exception:
                 pass
+            if step == 3:
+                break
             next_button = self._first_visible(
                 page,
                 ("#next-button", "ytcp-button#next-button"),
                 timeout_ms=30000,
             )
-            next_button.click()
-            page.wait_for_timeout(1200)
+            started = time.monotonic()
+            self._wait_button_enabled(page, next_button, timeout_ms=30000)
+            waited = time.monotonic() - started
+            if waited >= 1.0:
+                print(
+                    "[YOUTUBE] YouTube a attendu {:.1f}s avant "
+                    "d’autoriser l’étape suivante.".format(waited)
+                )
+            next_button.click(timeout=10000)
+            print(
+                f"[YOUTUBE] Étape YouTube {step + 1}/3 validée "
+                "(passage immédiat)."
+            )
         raise YouTubeUploadError(
             f"L’option {visibility_label} n’a pas été trouvée."
         )
