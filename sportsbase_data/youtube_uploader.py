@@ -694,7 +694,7 @@ class YouTubeStudioUploader:
             for selector in visibility_selectors:
                 radio = page.locator(selector).first
                 if radio.count() and radio.is_visible():
-                    radio.click(timeout=5000)
+                    radio.click(timeout=15000)
                     print(
                         "[YOUTUBE] Visibilité sélectionnée : "
                         f"{visibility_label}."
