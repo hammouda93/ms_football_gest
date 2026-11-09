@@ -989,7 +989,7 @@ def save_youtube_link(match, value):
     Studio. This does not transfer the file or restart the local agent.
     """
     video_id = extract_youtube_video_id(value)
-    if not video_id:
+    if not video_id or len(video_id) != 11:
         raise ValueError(
             "Saisissez un lien YouTube valide, par exemple https://youtu.be/..."
         )
