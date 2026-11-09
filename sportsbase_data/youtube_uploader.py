@@ -182,6 +182,26 @@ class YouTubeStudioUploader:
         )
         return receipt
 
+    def _load_pending_receipt(self, job, *, content_sha256, file_size):
+        """Recover a known YouTube ID before any new upload is attempted."""
+        receipt_path = self._receipt_path(job)
+        if not receipt_path.is_file():
+            return None
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        youtube_url = str(receipt.get("youtube_url") or "").strip()
+        if (
+            receipt.get("status") != "link_assigned"
+            or receipt.get("content_sha256") != content_sha256
+            or int(receipt.get("file_size_bytes") or 0) != file_size
+            or receipt.get("youtube_channel_id") != self.channel_id
+            or not self._video_id(youtube_url)
+        ):
+            return None
+        return receipt
+
     def _save_receipt(self, job, result):
         self.receipt_dir.mkdir(parents=True, exist_ok=True)
         receipt_path = self._receipt_path(job)
@@ -667,12 +687,14 @@ class YouTubeStudioUploader:
             f'[role="radio"][name="{visibility_key}"]',
             f'[name="{visibility_key}"]',
         )
-        for _step in range(4):
+        # Details -> Video elements -> Checks -> Visibility. Do not pause
+        # for a fixed 1.2 s after every transition: the UI itself decides
+        # when Next is enabled, and each step is checked immediately.
+        for step in range(4):
             for selector in visibility_selectors:
                 radio = page.locator(selector).first
                 if radio.count() and radio.is_visible():
-                    radio.click()
-                    page.wait_for_timeout(500)
+                    radio.click(timeout=5000)
                     print(
                         "[YOUTUBE] Visibilité sélectionnée : "
                         f"{visibility_label}."
@@ -683,8 +705,7 @@ class YouTubeStudioUploader:
             ).first
             try:
                 if visibility_text.count() and visibility_text.is_visible():
-                    visibility_text.click()
-                    page.wait_for_timeout(500)
+                    visibility_text.click(timeout=5000)
                     print(
                         "[YOUTUBE] Visibilité sélectionnée : "
                         f"{visibility_label}."
@@ -692,13 +713,26 @@ class YouTubeStudioUploader:
                     return visibility_key.casefold()
             except Exception:
                 pass
+            if step == 3:
+                break
             next_button = self._first_visible(
                 page,
                 ("#next-button", "ytcp-button#next-button"),
                 timeout_ms=30000,
             )
-            next_button.click()
-            page.wait_for_timeout(1200)
+            started = time.monotonic()
+            self._wait_button_enabled(page, next_button, timeout_ms=30000)
+            waited = time.monotonic() - started
+            if waited >= 1.0:
+                print(
+                    "[YOUTUBE] YouTube a attendu {:.1f}s avant "
+                    "d’autoriser l’étape suivante.".format(waited)
+                )
+            next_button.click(timeout=10000)
+            print(
+                f"[YOUTUBE] Étape YouTube {step + 1}/3 validée "
+                "(passage immédiat)."
+            )
         raise YouTubeUploadError(
             f"L’option {visibility_label} n’a pas été trouvée."
         )
@@ -756,6 +790,104 @@ class YouTubeStudioUploader:
             page.wait_for_timeout(500)
         raise YouTubeUploadError(
             "YouTube Studio n’a pas fourni l’adresse de la vidéo dans le délai prévu."
+        )
+
+    def _video_is_published_in_studio(self, context, video_id, visibility):
+        """Require a matching video row with finalized visibility, not a stale %.
+
+        A row still marked Uploading/Pending/Draft is never considered a success.
+        The check uses a separate tab to preserve the in-progress upload dialog.
+        """
+        expected = {
+            "unlisted": ("unlisted", "non répertoriée", "non repertoriee"),
+            "public": ("public", "publique"),
+            "private": ("private", "privée", "privee"),
+        }.get(visibility, ())
+        if not expected or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+            return False
+        verification_page = context.new_page()
+        try:
+            verification_page.goto(
+                self.content_url,
+                wait_until="domcontentloaded",
+                timeout=self.navigation_timeout_ms,
+            )
+            rows = verification_page.locator("ytcp-video-row")
+            rows.first.wait_for(state="visible", timeout=15000)
+            for index in range(min(rows.count(), 60)):
+                row = rows.nth(index)
+                link = row.locator(f'a[href*="{video_id}"]').first
+                if not link.count():
+                    continue
+                href = (link.get_attribute("href") or "").strip()
+                if not any(
+                    marker in href
+                    for marker in (
+                        f"/video/{video_id}",
+                        f"v={video_id}",
+                        f"youtu.be/{video_id}",
+                    )
+                ):
+                    continue
+                row_text = row.inner_text().casefold()
+                if re.search(
+                    r"(uploading|mise en ligne|importation|pending|"
+                    r"en attente|draft|brouillon)\b",
+                    row_text,
+                    re.IGNORECASE,
+                ):
+                    continue
+                visibility_node = row.locator("ytcp-video-visibility").first
+                if not visibility_node.count():
+                    continue
+                visibility_text = visibility_node.inner_text().casefold()
+                if any(label in visibility_text for label in expected):
+                    print(
+                        "[YOUTUBE] Publication confirmée dans la liste Studio "
+                        f"pour la vidéo {video_id} ({visibility})."
+                    )
+                    return True
+            return False
+        except Exception as exc:
+            print(
+                "[YOUTUBE] Vérification Studio non concluante : "
+                f"{type(exc).__name__}"
+            )
+            return False
+        finally:
+            verification_page.close()
+
+    def _wait_for_save_or_studio_confirmation(
+        self, page, done_button, video_id, visibility
+    ):
+        """Do not make the upload percentage a prerequisite for saving."""
+        deadline = time.monotonic() + self.upload_timeout_ms / 1000
+        next_studio_check = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            try:
+                aria_disabled = (
+                    done_button.get_attribute("aria-disabled") or ""
+                ).lower()
+                if (
+                    done_button.is_visible()
+                    and done_button.is_enabled()
+                    and aria_disabled != "true"
+                    and done_button.get_attribute("disabled") is None
+                ):
+                    return True
+            except Exception:
+                pass
+            if time.monotonic() >= next_studio_check:
+                if self._video_is_published_in_studio(
+                    page.context, video_id, visibility
+                ):
+                    return False
+                next_studio_check = time.monotonic() + 30
+            page.wait_for_timeout(1000)
+        raise YouTubeUploadError(
+            "Enregistrer est resté désactivé et Studio n’a pas confirmé "
+            f"la publication de https://youtu.be/{video_id}. "
+            "L’identifiant est conservé pour éviter un upload en double."
         )
 
     def _wait_upload_transfer_complete(self, page):
@@ -948,7 +1080,7 @@ class YouTubeStudioUploader:
             "YouTube n’a pas fermé la confirmation Publier quand même."
         )
 
-    def _finish_still_processing_dialog(self, page):
+    def _finish_still_processing_dialog(self, page, *, video_id="", visibility="unlisted"):
         dialog = page.locator("ytcp-uploads-still-processing-dialog").first
         try:
             dialog.wait_for(state="visible", timeout=10000)
@@ -965,6 +1097,7 @@ class YouTubeStudioUploader:
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         last_status = ""
         upload_finished = False
+        next_studio_check = time.monotonic() + 25
 
         while time.monotonic() < deadline:
             try:
@@ -1013,6 +1146,12 @@ class YouTubeStudioUploader:
                         return True
                 except Exception:
                     return True
+            if video_id and time.monotonic() >= next_studio_check:
+                if self._video_is_published_in_studio(
+                    page.context, video_id, visibility
+                ):
+                    return "verified"
+                next_studio_check = time.monotonic() + 30
             page.wait_for_timeout(1500)
 
         if not upload_finished:
@@ -1055,6 +1194,9 @@ class YouTubeStudioUploader:
         )
         if cached_result:
             return cached_result
+        pending_receipt = self._load_pending_receipt(
+            job, content_sha256=content_sha256, file_size=file_size
+        )
         thumbnail_path = self.resolve_thumbnail_path(job)
         thumbnail_sha256 = (
             _sha256(thumbnail_path) if thumbnail_path is not None else ""
@@ -1082,6 +1224,26 @@ class YouTubeStudioUploader:
                     raise YouTubeAuthenticationRequired(
                         "Le profil Chrome YouTube n’est pas connecté à la chaîne "
                         f"configurée ({self.channel_id})."
+                    )
+
+                if pending_receipt:
+                    previous_id = self._video_id(pending_receipt["youtube_url"])
+                    previous_visibility = pending_receipt.get("visibility", "unlisted")
+                    if self._video_is_published_in_studio(
+                        context, previous_id, previous_visibility
+                    ):
+                        recovered = {**pending_receipt, "status": "uploaded"}
+                        self._save_receipt(job, recovered)
+                        print(
+                            "[YOUTUBE] Publication existante récupérée sans "
+                            "réimportation : " + pending_receipt["youtube_url"]
+                        )
+                        return recovered
+                    raise YouTubeUploadError(
+                        "L’upload précédent possède déjà un identifiant YouTube "
+                        f"({pending_receipt['youtube_url']}), mais sa publication "
+                        "n’est pas confirmée dans Studio. Vérifiez ce lien avant "
+                        "de lancer une nouvelle importation : aucun doublon créé."
                     )
 
                 file_input = self._open_upload_dialog(page)
@@ -1131,8 +1293,24 @@ class YouTubeStudioUploader:
                     )
                 print(f"[YOUTUBE] Lien attribué : {youtube_url}")
 
-                print("[YOUTUBE] Suivi immédiat du transfert avant Enregistrer…")
-                self._wait_upload_transfer_complete(page)
+                # Save the assigned ID before waiting or clicking Save. If the
+                # agent crashes, the next run can reconcile instead of reupload.
+                self._save_receipt(
+                    job,
+                    {
+                        "status": "link_assigned",
+                        "youtube_url": youtube_url,
+                        "youtube_video_id": video_id,
+                        "youtube_channel_id": self.channel_id,
+                        "content_sha256": content_sha256,
+                        "file_size_bytes": file_size,
+                        "visibility": selected_visibility,
+                    },
+                )
+                print(
+                    "[YOUTUBE] ID sauvegardé. Finalisation indépendante "
+                    "du pourcentage affiché…"
+                )
                 done_button = self._first_visible(
                     page,
                     (
@@ -1143,25 +1321,42 @@ class YouTubeStudioUploader:
                     ),
                     timeout_ms=30000,
                 )
-                self._wait_button_enabled(page, done_button, self.upload_timeout_ms)
-                print("[YOUTUBE] Enregistrement de la vidéo…")
-                try:
-                    done_button.click(timeout=15000)
-                except Exception:
-                    done_button.click(force=True, timeout=15000)
-
-                prechecks_confirmed = self._publish_anyway_if_prechecks_pending(page)
-                if not prechecks_confirmed:
-                    self._finish_still_processing_dialog(page)
-                dialog_closed = self._wait_upload_dialog_closed(
-                    page,
-                    timeout_ms=60000,
+                save_available = self._wait_for_save_or_studio_confirmation(
+                    page, done_button, video_id, selected_visibility
                 )
-                if not dialog_closed:
-                    raise YouTubeUploadError(
-                        "YouTube Studio n’a pas confirmé la fermeture du dialogue "
-                        "après Enregistrer. Vérifiez la vidéo avant toute reprise."
-                    )
+                independently_confirmed = not save_available
+                if save_available:
+                    print("[YOUTUBE] Enregistrement de la vidéo…")
+                    try:
+                        done_button.click(timeout=15000)
+                    except Exception:
+                        done_button.click(force=True, timeout=15000)
+
+                    prechecks_confirmed = self._publish_anyway_if_prechecks_pending(page)
+                    if not prechecks_confirmed:
+                        independently_confirmed = (
+                            self._finish_still_processing_dialog(
+                                page,
+                                video_id=video_id,
+                                visibility=selected_visibility,
+                            ) == "verified"
+                        )
+                    if not independently_confirmed:
+                        dialog_closed = self._wait_upload_dialog_closed(
+                            page, timeout_ms=60000
+                        )
+                        if not dialog_closed:
+                            independently_confirmed = (
+                                self._video_is_published_in_studio(
+                                    context, video_id, selected_visibility
+                                )
+                            )
+                            if not independently_confirmed:
+                                raise YouTubeUploadError(
+                                    "Enregistrement YouTube non confirmé. "
+                                    "L’identifiant a été conservé pour éviter "
+                                    f"un double upload : {youtube_url}"
+                                )
 
                 visibility_label = {
                     "public": "publique",

@@ -982,6 +982,57 @@ def apply_dailymotion_upload_result(upload, result):
 
 
 @transaction.atomic
+def save_youtube_link(match, value):
+    """Explicitly associate an already-published YouTube video to its match.
+
+    Admin-only callers must first verify the actual publication in YouTube
+    Studio. This does not transfer the file or restart the local agent.
+    """
+    video_id = extract_youtube_video_id(value)
+    if not video_id:
+        raise ValueError(
+            "Saisissez un lien YouTube valide, par exemple https://youtu.be/..."
+        )
+    canonical_url = f"https://youtu.be/{video_id}"
+    match = SportsBaseMatch.objects.select_for_update().get(pk=match.pk)
+    if SportsBaseYouTubeUpload.objects.filter(
+        youtube_video_id=video_id
+    ).exclude(match=match).exists():
+        raise ValueError("Ce lien YouTube est déjà associé à un autre match.")
+    upload, _created = SportsBaseYouTubeUpload.objects.get_or_create(
+        match=match,
+        defaults={"upload_title": _youtube_title(match)},
+    )
+    if (
+        upload.status == SportsBaseYouTubeUpload.Status.UPLOADED
+        and upload.youtube_video_id
+        and upload.youtube_video_id != video_id
+    ):
+        raise ValueError(
+            "Ce match possède déjà une autre vidéo. Vérifiez-la avant de la remplacer."
+        )
+    upload.status = SportsBaseYouTubeUpload.Status.UPLOADED
+    upload.youtube_url = canonical_url
+    upload.youtube_video_id = video_id
+    upload.error_message = ""
+    upload.finished_at = timezone.now()
+    if not upload.upload_title:
+        upload.upload_title = _youtube_title(match)
+    upload.save(
+        update_fields=(
+            "status",
+            "youtube_url",
+            "youtube_video_id",
+            "error_message",
+            "finished_at",
+            "upload_title",
+            "updated_at",
+        )
+    )
+    return upload
+
+
+@transaction.atomic
 def save_dailymotion_link(match, value):
     """Attach the private Preview URL after Studio finishes optimization."""
     dailymotion_url = canonical_dailymotion_url(value)
