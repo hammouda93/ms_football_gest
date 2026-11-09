@@ -837,7 +837,9 @@ class YouTubeStudioUploader:
                     re.IGNORECASE,
                 ):
                     continue
-                visibility_node = row.locator("ytcp-video-visibility").first
+                visibility_node = row.locator(
+                    "ytcp-video-visibility, ytcp-video-visibility-select"
+                ).first
                 if not visibility_node.count():
                     continue
                 visibility_text = visibility_node.inner_text().casefold()
