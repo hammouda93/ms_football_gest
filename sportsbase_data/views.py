@@ -57,6 +57,7 @@ from .services import (
     request_dailymotion_upload,
     retry_youtube_upload,
     save_dailymotion_link,
+    save_youtube_link,
 )
 
 
@@ -842,6 +843,32 @@ def youtube_upload_retry(request, pk):
             request,
             "L’upload sera repris par l’agent local sans resynchroniser le match.",
         )
+    return redirect("performance:management")
+
+
+@portal_admin_required
+@require_POST
+def youtube_link_save(request, match_pk):
+    match = get_object_or_404(SportsBaseMatch, pk=match_pk)
+    try:
+        upload = save_youtube_link(
+            match, request.POST.get("youtube_url", "")
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            "La vidéo YouTube existante est associée au match et visible "
+            "dans l’espace client. Aucun fichier n’a été réimporté.",
+        )
+        if request.POST.get("notify_player") == "1":
+            try:
+                report = upload.match.performance_report
+            except PerformanceReport.DoesNotExist:
+                pass
+            else:
+                send_ready_delivery_notification(report)
     return redirect("performance:management")
 
 
