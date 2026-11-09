@@ -5,152 +5,122 @@
 
   const sourceUrl = root.dataset.monitorUrl;
   const $ = (id) => document.getElementById(id);
-  const state = { data: null, filter: "all", refreshTimer: null };
 
   function setText(id, value) {
     const node = $(id);
     if (node) node.textContent = String(value == null ? "—" : value);
   }
+
   function time(value) {
     if (!value) return "—";
-    const d = new Date(value);
-    return isNaN(d.getTime()) ? "—" : d.toLocaleString("fr-FR", {
-      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-      second: "2-digit"
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? "—" : date.toLocaleString("fr-FR", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
     });
   }
-  function span(value, className) {
-    const e = document.createElement("span");
-    e.textContent = String(value == null ? "" : value);
-    if (className) e.className = className;
-    return e;
-  }
-  function empty(container, message) {
-    container.replaceChildren(span(message, "monitor-empty"));
-  }
-  function card(container, children, className) {
-    const article = document.createElement("article");
-    article.className = className;
-    children.forEach((item) => article.appendChild(item));
-    container.appendChild(article);
+
+  function span(text, className) {
+    const node = document.createElement("span");
+    node.textContent = String(text == null ? "" : text);
+    if (className) node.className = className;
+    return node;
   }
 
-  function drawWorkers(data) {
-    const container = $("monitor-worker-list");
-    container.replaceChildren();
-    if (!data.workers.length) {
-      empty(container, "Aucune session de supervision reçue. Le bouton Agent Performance reste utilisable normalement.");
-      return;
-    }
-    for (const worker of data.workers) {
-      const title = document.createElement("strong");
-      title.textContent = worker.name;
-      const status = span(
-        worker.state === "active" ? "Connecté" :
-          worker.state === "offline" ? "Signal perdu" : "Arrêté",
-        "monitor-pill monitor-" + worker.state
-      );
-      const main = document.createElement("div");
-      main.className = "monitor-worker-header";
-      main.append(title, status);
-      const details = span("Démarrage : " + time(worker.started_at) +
-        " · Dernier signal : " + time(worker.last_seen_at), "monitor-subtle");
-      const progress = span(
-        worker.state === "active" ?
-          ((worker.current_player || "Agent disponible") +
-            " · " + (worker.stage || "En attente de progression") +
-            (worker.current_match_id ? " · Match " + worker.current_match_id : "")) :
-          (worker.state === "offline" ? "Activité non confirmée : aucun signal récent" : "Session terminée"),
-        "monitor-worker-current"
-      );
-      const counters = span("Tâches prévues : " + worker.planned_jobs +
-        " · Terminées pendant la session : " + worker.finished_jobs, "monitor-subtle");
-      card(container, [main, details, progress, counters], "monitor-worker-card");
-    }
+  function empty(node, message) {
+    node.replaceChildren(span(message, "monitor-empty"));
   }
 
-  function drawEvents(data) {
-    const container = $("monitor-event-list");
-    container.replaceChildren();
-    const filtered = data.events.filter((event) =>
-      state.filter === "all" || event.level === state.filter
-    );
-    if (!filtered.length) {
-      empty(container, "Aucun événement enregistré pour cette session et ce filtre.");
-      return;
-    }
-    for (const event of filtered) {
-      const left = span(time(event.at), "monitor-event-time");
-      const body = document.createElement("div");
-      const line = span(event.message, "monitor-event-message");
-      const metadata = span(
-        [event.player, event.match_id ? "match " + event.match_id : "",
-          event.stage].filter(Boolean).join(" · "),
-        "monitor-subtle"
-      );
-      body.append(line, metadata);
-      card(container, [left, body], "monitor-event-row monitor-event-" + event.level);
-    }
-  }
-
-  function drawJobs(data) {
+  function drawJobs(jobs) {
     const container = $("monitor-task-list");
     container.replaceChildren();
-    const pending = data.jobs.filter((job) => job.status === "running" || job.status === "pending");
+    const pending = jobs.filter((job) => job.status === "running" || job.status === "pending");
     if (!pending.length) {
       empty(container, "Aucune tâche Performance en attente ou en cours.");
       return;
     }
     for (const job of pending.slice(0, 300)) {
-      const text = span(job.player + " · " + job.type, "monitor-task-name");
-      const pill = span(
-        job.status === "running" ? "En cours" : "En attente",
-        "monitor-pill monitor-" + job.status
+      const card = document.createElement("article");
+      card.className = "monitor-task-row";
+      card.append(
+        span(job.player + " · " + job.type, "monitor-task-name"),
+        span(job.status === "running" ? "En cours" : "En attente",
+          "monitor-pill monitor-" + job.status)
       );
-      card(container, [text, pill], "monitor-task-row");
+      container.appendChild(card);
     }
   }
 
-  function drawMissing(data) {
-    const container = $("monitor-missing-list");
+  function reportLine(label, value) {
+    const paragraph = document.createElement("p");
+    paragraph.className = "monitor-report-line";
+    const strong = document.createElement("strong");
+    strong.textContent = label + " : ";
+    paragraph.append(strong, document.createTextNode(value || "Non renseigné"));
+    return paragraph;
+  }
+
+  function verifiedProviderLink(item) {
+    if (!item.url || (item.kind !== "YouTube" && item.kind !== "Dailymotion")) return null;
+    try {
+      const url = new URL(item.url);
+      const allowedHosts = item.kind === "YouTube"
+        ? ["youtu.be", "www.youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com"]
+        : ["dailymotion.com", "www.dailymotion.com", "dai.ly", "www.dai.ly"];
+      if (url.protocol !== "https:" || !allowedHosts.includes(url.hostname)) return null;
+      const link = document.createElement("a");
+      link.href = url.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Voir la vidéo";
+      link.className = "monitor-report-link";
+      return link;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function drawReports(reports) {
+    const container = $("monitor-report-list");
     container.replaceChildren();
-    if (!data.missing_matches.length) {
-      empty(container, "Aucun dossier incomplet parmi les matchs de la saison des abonnements actifs.");
+    if (!reports.length) {
+      empty(container, "Aucune tâche enregistrée pour le moment. La file des joueurs reste disponible.");
       return;
     }
-    for (const match of data.missing_matches) {
-      const body = document.createElement("div");
-      body.append(
-        span(match.player + " — " + match.fixture, "monitor-task-name"),
-        span("Match " + match.match_id, "monitor-subtle")
+
+    for (const item of reports) {
+      const card = document.createElement("article");
+      card.className = "monitor-report-card";
+      const header = document.createElement("div");
+      header.className = "monitor-report-header";
+      const heading = document.createElement("div");
+      heading.append(
+        span(item.player, "monitor-task-name"),
+        span(item.kind + " · tâche " + item.id + " · " + time(item.date), "monitor-subtle")
       );
-      const details = span(
-        (match.statistics_complete ? "Players complet" : "Players incomplet") + " · " +
-        (match.analysis_available ? "Analyse disponible" : "Analyse indisponible") + " · " +
-        "All Actions : " + match.video_state +
-        (match.issue_state === "pending" ? " · À synchroniser" : " · À corriger"), "monitor-subtle"
+      header.append(
+        heading,
+        span(item.status_label, "monitor-pill monitor-" + item.status)
       );
-      card(container, [body, details], "monitor-missing-row");
+      card.append(
+        header,
+        reportLine("À faire", item.planned),
+        reportLine("Fait", item.observed),
+        reportLine("Reste", item.remaining)
+      );
+      if (item.error) card.append(reportLine("Erreur", item.error));
+      const link = verifiedProviderLink(item);
+      if (link) card.append(link);
+      container.appendChild(card);
     }
   }
 
-  function render(data) {
-    state.data = data;
-    setText("monitor-count-subs", data.metrics.subscriptions);
-    setText("monitor-count-waiting", data.metrics.waiting);
-    setText("monitor-count-running", data.metrics.running);
-    setText("monitor-count-problems", data.metrics.open_matches);
-    setText("monitor-count-affected-players", data.metrics.open_players);
-    setText("monitor-last-refresh", "Dernière actualisation : " + time(data.now));
-    drawWorkers(data);
-    drawEvents(data);
-    drawJobs(data);
-    drawMissing(data);
-  }
-
+  let refreshing = false;
   async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
+    $("monitor-refresh").disabled = true;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch(sourceUrl, {
         credentials: "same-origin", cache: "no-store",
@@ -158,21 +128,24 @@
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
-      render(data);
-      setText("monitor-connection", "Supervision connectée");
+      setText("monitor-count-subs", data.metrics.subscriptions);
+      setText("monitor-count-waiting", data.metrics.waiting);
+      setText("monitor-count-running", data.metrics.running);
+      setText("monitor-count-finished", data.metrics.finished);
+      drawJobs(data.jobs || []);
+      drawReports(data.reports || []);
+      setText("monitor-last-refresh", "Rapport consulté le " + time(data.now));
+      setText("monitor-connection", "Rapport chargé");
     } catch (_error) {
-      setText("monitor-connection", "Supervision indisponible — agent non affecté");
+      setText("monitor-connection", "Rapport indisponible — aucun impact sur l’agent");
+      empty($("monitor-report-list"), "Impossible de charger les résultats. Réessayez avec Actualiser.");
     } finally {
       clearTimeout(timeout);
+      refreshing = false;
+      $("monitor-refresh").disabled = false;
     }
   }
+
   $("monitor-refresh").addEventListener("click", refresh);
-  $("monitor-event-filter").addEventListener("change", function (event) {
-    state.filter = event.target.value;
-    if (state.data) drawEvents(state.data);
-  });
-  refresh();
-  state.refreshTimer = setInterval(function () {
-    if (document.visibilityState !== "hidden") refresh();
-  }, 10000);
+  refresh(); // No live polling: report is read on demand.
 })();

@@ -545,3 +545,19 @@
   .monitor-stage { flex-direction: column; gap: 3px; }
   .monitor-stage span { max-width: 100%; text-align: left; }
 }
+
+/* Simple, on-demand Performance agent report (no Windows live telemetry). */
+.monitor-report-intro { margin: -4px 0 12px; color: #68768b; font-size: .7rem; line-height: 1.5; }
+.monitor-report-list { max-height: 560px; }
+.monitor-report-card { padding: 13px; background: #fff; border: 1px solid #e3eaf3; border-radius: 12px; }
+.monitor-report-header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; margin-bottom: 9px; }
+.monitor-report-header > div { min-width: 0; }
+.monitor-report-line { font-size: .73rem; color: #40526a; line-height: 1.55; margin: 4px 0; overflow-wrap: anywhere; }
+.monitor-report-line strong { color: #1c2f49; }
+.monitor-report-link { display: inline-block; margin-top: 6px; font-size: .73rem; font-weight: 750; }
+.monitor-success, .monitor-uploaded { color: #146c43; background: #e9f8f1; border-color: #bde8d0; }
+.monitor-partial, .monitor-link_pending { color: #9a6300; background: #fff6df; border-color: #f1da9b; }
+@media (max-width: 500px) {
+    .monitor-report-card { padding: 11px; }
+    .monitor-report-header { flex-wrap: wrap; }
+}

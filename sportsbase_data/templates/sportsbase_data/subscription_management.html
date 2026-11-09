@@ -12,16 +12,15 @@
     {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% endif %}
 
     <section class="performance-monitor-panel" id="performance-control-center"
-             data-monitor-url="{% url 'performance:monitor_status' %}"
-             data-history-url="{% url 'performance:monitor_history' %}" aria-label="Centre de contrôle Performance">
+             data-monitor-url="{% url 'performance:monitor_status' %}" aria-label="Rapport de l’agent Performance">
         <div class="performance-monitor-heading">
             <div>
-                <span class="eyebrow">MS Worker Cloud · supervision locale</span>
-                <h2>Centre de contrôle Performance</h2>
-                <p>Activité des agents lancés depuis le bouton Agent Performance · données actualisées automatiquement.</p>
+                <span class="eyebrow">MS Worker Cloud · rapport simple</span>
+                <h2>Rapport de l’agent Performance</h2>
+                <p>Travail prévu, résultat enregistré et tâches restantes. Données issues de MS Football, sans supervision Windows en direct.</p>
             </div>
             <div class="performance-monitor-controls">
-                <small id="monitor-connection" role="status">Chargement de la supervision…</small>
+                <small id="monitor-connection" role="status">Chargement du rapport…</small>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="monitor-refresh">
                     <i class="fas fa-rotate"></i> Actualiser
                 </button>
@@ -31,76 +30,22 @@
             <div><strong id="monitor-count-subs">—</strong><span>Abonnements actifs</span></div>
             <div><strong id="monitor-count-waiting">—</strong><span>Tâches en attente</span></div>
             <div><strong id="monitor-count-running">—</strong><span>Tâches en cours</span></div>
-            <div><strong id="monitor-count-problems">—</strong><span>Matchs à corriger · <b id="monitor-count-affected-players">—</b> joueurs</span></div>
+            <div><strong id="monitor-count-finished">—</strong><span>Tâches SportsBase terminées</span></div>
         </div>
         <div class="performance-monitor-grid">
             <div class="monitor-pane">
-                <h3>Sessions Windows</h3>
-                <div id="monitor-worker-list" class="monitor-items">Connexion en cours…</div>
                 <h3>File des joueurs</h3>
                 <div id="monitor-task-list" class="monitor-items">Chargement…</div>
             </div>
             <div class="monitor-pane">
-                <div class="monitor-pane-heading">
-                    <h3>Journal en direct</h3>
-                    <label for="monitor-event-filter">Afficher
-                        <select id="monitor-event-filter" class="form-control form-control-sm">
-                            <option value="all">Tous les événements</option>
-                            <option value="warning">Avertissements</option>
-                            <option value="error">Erreurs</option>
-                        </select>
-                    </label>
-                </div>
-                <div id="monitor-event-list" class="monitor-items monitor-event-list">Chargement…</div>
+                <h3>Ce que l’agent devait faire / ce qui a été fait</h3>
+                <p class="monitor-report-intro">25 dernières tâches enregistrées : SportsBase, YouTube et Dailymotion. Les résultats non confirmés restent signalés comme tels.</p>
+                <div id="monitor-report-list" class="monitor-items monitor-report-list" aria-live="polite">Chargement…</div>
             </div>
         </div>
-        <details class="monitor-missing-panel">
-            <summary>Statistiques et analyses à vérifier (dossiers en cours)</summary>
-            <p>Matchs actuellement incomplets des abonnements actifs. Les tâches anciennes corrigées ne sont pas comptabilisées.</p>
-            <div id="monitor-missing-list" class="monitor-items">Chargement…</div>
-        </details>
-        <section class="performance-monitor-history" id="monitor-history">
-            <div class="performance-monitor-heading">
-                <div>
-                    <h3>Historique et recherches</h3>
-                    <p>Sessions Windows, tâches, événements et anomalies actuelles. Cliquez sur une ligne pour voir les étapes observées.</p>
-                </div>
-            </div>
-            <div class="monitor-history-tabs" role="group" aria-label="Section de l'historique">
-                <button type="button" class="monitor-history-tab is-selected" data-monitor-kind="sessions">Sessions</button>
-                <button type="button" class="monitor-history-tab" data-monitor-kind="jobs">Joueurs / tâches</button>
-                <button type="button" class="monitor-history-tab" data-monitor-kind="events">Journal complet</button>
-                <button type="button" class="monitor-history-tab" data-monitor-kind="issues">Problèmes ouverts</button>
-            </div>
-            <form id="monitor-history-form" class="monitor-history-form">
-                <label>Rechercher
-                    <input id="monitor-search" class="form-control" type="search" placeholder="Joueur, match, erreur ou ordinateur">
-                </label>
-                <label>État
-                    <select id="monitor-status" class="form-control">
-                        <option value="">Tous les états</option>
-                    </select>
-                </label>
-                <label>Du
-                    <input type="date" id="monitor-date-from" class="form-control">
-                </label>
-                <label>Au
-                    <input type="date" id="monitor-date-to" class="form-control">
-                </label>
-                <button class="btn btn-sm btn-primary" type="submit">Rechercher</button>
-                <button class="btn btn-sm btn-outline-secondary" id="monitor-clear" type="button">Effacer</button>
-            </form>
-            <div id="monitor-history-results" class="monitor-history-results" aria-live="polite">Chargement de l'historique…</div>
-            <nav class="monitor-history-pager" aria-label="Pages de l'historique">
-                <button type="button" id="monitor-history-previous" class="btn btn-sm btn-outline-primary">Précédent</button>
-                <span id="monitor-history-page">Page 1</span>
-                <button type="button" id="monitor-history-next" class="btn btn-sm btn-outline-primary">Suivant</button>
-            </nav>
-            <div id="monitor-history-detail" class="monitor-history-detail" hidden aria-live="polite"></div>
-        </section>
         <div class="monitor-footer">
-            <span id="monitor-last-refresh">En attente d'actualisation</span>
-            <span>Supervision uniquement · ni lancement distant ni modification des tâches.</span>
+            <span id="monitor-last-refresh">Rapport non chargé</span>
+            <span>Consultation uniquement · aucun lancement ni modification des tâches.</span>
         </div>
     </section>
 
@@ -248,4 +193,4 @@
     </section>
 </div>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'sportsbase_data/worker_monitor.js' %}" defer></script><script src="{% static 'sportsbase_data/worker_monitor_history.js' %}" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'sportsbase_data/worker_monitor.js' %}" defer></script>{% endblock %}

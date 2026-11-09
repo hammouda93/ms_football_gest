@@ -5,7 +5,6 @@ No job is created, stopped, retried, or modified by these endpoints.
 import json
 import re
 import uuid
-from datetime import timedelta
 
 from django.db.models import Count
 from django.http import JsonResponse
@@ -14,7 +13,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from client_portal.decorators import portal_admin_required, production_required
 from .services import active_subscriptions
-from .monitoring_history import current_issue_digest
+from .monitoring_report import recent_agent_reports
 from .models import (
     PerformanceAgentEvent,
     PerformanceAgentRun,
@@ -140,51 +139,13 @@ def _iso(value):
 @portal_admin_required
 @require_GET
 def monitor_snapshot(request):
-    """Compact polling payload; no remote control or confidential log output."""
+    """Read-only job queue and report; independent from Windows telemetry."""
     now = timezone.now()
-    stale_threshold = now - timedelta(seconds=90)
-    workers = []
-    for run in PerformanceAgentRun.objects.order_by("-started_at", "-pk")[:6]:
-        live = run.state == "running" and run.last_seen_at >= stale_threshold
-        workers.append({
-            "run_id": str(run.run_id),
-            "name": run.worker_name,
-            "state": "active" if live else ("stopped" if run.ended_at else "offline"),
-            "started_at": _iso(run.started_at),
-            "last_seen_at": _iso(run.last_seen_at),
-            "ended_at": _iso(run.ended_at),
-            "planned_jobs": run.planned_jobs,
-            "current_player": run.current_player if live else "",
-            "current_job_id": run.current_job_id if live else None,
-            "current_match_id": run.current_match_id if live else "",
-            "stage": run.current_stage if live else "",
-            "finished_jobs": run.events.filter(kind="job_finished").count(),
-        })
-
-    current_run = next((item for item in workers if item["state"] == "active"), None)
-    events = []
-    selected = PerformanceAgentEvent.objects.select_related("run")
-    if current_run:
-        selected = selected.filter(run__run_id=current_run["run_id"])
-    else:
-        latest_run_id = workers[0]["run_id"] if workers else None
-        selected = selected.filter(run__run_id=latest_run_id) if latest_run_id else selected.none()
-    for event in selected.order_by("-created_at", "-pk")[:75]:
-        events.append({
-            "at": _iso(event.created_at),
-            "message": event.message,
-            "kind": event.kind,
-            "level": event.level,
-            "player": event.player,
-            "job_id": event.job_id,
-            "match_id": event.match_id,
-            "stage": event.stage,
-        })
-
     state_counts = dict(
         SportsBaseSyncJob.objects.values("status").annotate(amount=Count("pk"))
         .values_list("status", "amount")
     )
+    # Preserve the existing player queue exactly as before.
     jobs = [
         {
             "id": job.pk,
@@ -203,15 +164,11 @@ def monitor_snapshot(request):
             status__in=(SportsBaseSyncJob.Status.PENDING, SportsBaseSyncJob.Status.RUNNING)
         ).order_by("created_at", "pk")[:300]
     ]
-    digest = current_issue_digest()
-    missing = digest['issues'][:25]
 
     return JsonResponse({
         "now": _iso(now),
-        "workers": workers,
-        "events": events,
         "jobs": jobs,
-        "missing_matches": missing,
+        "reports": recent_agent_reports(limit=25),
         "metrics": {
             "subscriptions": active_subscriptions().count(),
             "waiting": state_counts.get(SportsBaseSyncJob.Status.PENDING, 0),
@@ -219,8 +176,5 @@ def monitor_snapshot(request):
             "finished": state_counts.get(SportsBaseSyncJob.Status.SUCCESS, 0),
             "failed": state_counts.get(SportsBaseSyncJob.Status.FAILED, 0),
             "partial": state_counts.get(SportsBaseSyncJob.Status.PARTIAL, 0),
-            "open_matches": digest["open_matches"],
-            "open_players": digest["open_players"],
-            "pending_matches": digest["pending_matches"],
         },
     })
