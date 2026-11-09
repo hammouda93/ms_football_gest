@@ -871,7 +871,6 @@ def youtube_link_save(request, match_pk):
                 send_ready_delivery_notification(report)
     return redirect("performance:management")
 
-
 @portal_admin_required
 @require_POST
 def dailymotion_upload_request(request, match_pk):
