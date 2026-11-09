@@ -113,6 +113,8 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
     def test_steps_advance_without_fixed_wait_after_clicks(self):
         page = MagicMock()
         next_button = MagicMock()
+        next_button.first = next_button  # Locator.first must keep the same mock.
+        next_button.count.return_value = 1
         next_button.is_visible.return_value = True
         next_button.is_enabled.return_value = True
         next_button.get_attribute.return_value = None
