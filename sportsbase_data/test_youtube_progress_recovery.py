@@ -109,6 +109,42 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
             )
         )
 
+
+    def test_steps_advance_without_fixed_wait_after_clicks(self):
+        page = MagicMock()
+        next_button = MagicMock()
+        next_button.is_visible.return_value = True
+        next_button.is_enabled.return_value = True
+        next_button.get_attribute.return_value = None
+
+        radio = MagicMock()
+        radio.count.return_value = 1
+        radio.is_visible.side_effect = [False, False, False, True]
+        radio.first = radio
+
+        absent = MagicMock()
+        absent.count.return_value = 0
+        absent.first = absent
+
+        def find(selector):
+            if selector.startswith("tp-yt-paper-radio-button"):
+                return radio
+            if selector in ("#next-button", "ytcp-button#next-button"):
+                return next_button
+            return absent
+
+        page.locator.side_effect = find
+        page.get_by_text.return_value.first = absent
+        with patch.object(
+            self.uploader, "_wait_button_enabled", return_value=None
+        ):
+            self.assertEqual(
+                self.uploader._select_visibility(page, "unlisted"), "unlisted"
+            )
+        self.assertEqual(next_button.click.call_count, 3)
+        radio.click.assert_called_once()
+        page.wait_for_timeout.assert_not_called()
+
     def test_enabled_save_does_not_wait_for_a_percent(self):
         page = MagicMock()
         save_button = MagicMock()
