@@ -1,7 +1,8 @@
 {
   "BASE-CONTRACTS.json": "46493e53f003cfae7b8c75a2ac799a4a96e227d90dd07aac45f955d406dd6f3f",
   "ci_delta_target.py": "8408f8092af6aea12dbf1335582fbbe24cadff55f460587fe778173acaa753d6",
-  "ci_highlights_job.py": "5b35b04805501c5d243c5c77a9ccff67a5b1ae9eb60d61dd63f590097a1395ef",
+  "ci_highlights_job.py": "369ef9811e4d3f2dc613dc9816c75ae846f0698a97f6cec6682b9bc590624dad",
+  "ci_readback_guard.py": "a91be86a9456eec0a7668a2aede0dd19bac10e607505d28e0a65dfe747fd47ac",
   "ci_settings.py": "afe77dec0169f24e4fb3a0a4eaeb962da846509de126ce23d66da530821d8ed1",
   "expected-tests.json": "c8a25f914d28023f8ab4d55d353a26f4177652de58cfa59f2f8c8d0fed1f4b2f",
   "fix_readback.py": "34d2d2f86282a83afb1cdfca4307c9d3d0f95b23c85a0340eb47bc09f5314e4a",

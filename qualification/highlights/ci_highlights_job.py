@@ -49,8 +49,7 @@ else:
   call_command('migrate',interactive=False,verbosity=1)
  if mode in {'tests','readback'}:
   if mode=='readback':
-   from django.db import connection
-   with connection.cursor() as cursor:cursor.execute('SET default_transaction_read_only=on')
+   from ci_readback_guard import guard_readbacks
    suite=unittest.defaultTestLoader.loadTestsFromName('fix_readback')
    expected_readback=['readback_fixture.IndependentReadback.test_committed_http_targets','fix_readback.PaymentSuccessors.test_latest_payment_and_persisted_ledger_for_superseded_creates']
    assert ids(suite)==expected_readback
@@ -68,7 +67,8 @@ else:
    def addSubTest(self,t,s,e):
     super().addSubTest(t,s,e)
     if e:self.record(t,'subtestError')
-  result=unittest.TextTestRunner(verbosity=2,resultclass=Result).run(suite)
+  with (guard_readbacks(R,report) if mode=='readback' else contextlib.nullcontext()):
+   result=unittest.TextTestRunner(verbosity=2,resultclass=Result).run(suite)
   final={i:'missing' for i in execution_ids}
   for event in result.events:
    i=event['id'];status=event['status']
