@@ -350,6 +350,7 @@ def expected_graph(p,baseline,current):
   predictions=[]
   for s in p.steps:
    pk=p.results[s['as']]
+   v=s['values']
    if s['as'] in transitions:
     x=transitions[s['as']];field={'history':'history','activities':'activities','notifications':'notifications'}.get(kind)
     if field:predictions += [dict(r,**({'video_id':pk} if 'video_id' not in r else {})) for r in x[field]]
@@ -357,6 +358,9 @@ def expected_graph(p,baseline,current):
     x=changes[s['as']]
     if kind=='invoices' and s['op']=='video.conditions.create':predictions.append(dict(x['invoice'],video_id=pk))
     elif kind in ('history','notifications'):predictions += [dict(r,video_id=pk) for r in x.get(kind,[])]
+   elif s['op']=='video.activity.add':
+    x=changes[s['as']]
+    if kind=='activities':predictions.append({'video_id':v['video'],'kind':'note','visibility':x['new']['visibility'],'message':x['new']['message'],'created_by_id':p.actor_id})
    elif s['op']=='video.version.add':
     x=changes[s['as']]
     if kind=='activities':
@@ -382,7 +386,7 @@ def expected_graph(p,baseline,current):
   for key,g in expected.items():
    if g['model']==label:
     for r in current[key]['rows']:
-     if r['id'] in new:g['rows'].append(r)
+     if r['id'] in new and not any(old['id']==r['id'] for old in g['rows']):g['rows'].append(r)
     g['rows'].sort(key=lambda r:r['id'])
  financial_graph(p,expected)
  for s in p.steps:

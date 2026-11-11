@@ -216,7 +216,7 @@ class Engine:
                     if graph(p,{},_alias='default')!=pre.body['baseline']:raise ValueError('verification_conflict')
                     from gestion_joueurs.utils import actor_context
                     from .effects import effects_context
-                    with actor_context(actor), effects_context(workflow=any(s['op'] in WORKFLOWS or s['op'] in ('video.version.add','video.payment_request.add') for s in p.steps)) as effects:
+                    with actor_context(actor), effects_context(workflow=any(s['op'] in WORKFLOWS or s['op'] in ('video.version.add','video.payment_request.add','video.activity.add') for s in p.steps)) as effects:
                         results=self._apply(p.steps,actor)
                         # DS02: the date may roll between snapshot validation and save.
                         # Compare the persisted date to the signed preview before commit.

@@ -12,6 +12,7 @@ from client_portal.models import VideoActivity
 from gestion_joueurs.models import Player, Video, VideoEditor
 from .registry import SIMPLE, catalogue
 from .readback import graph, expected_graph
+from .effects import effects_context
 
 
 class VideoParityTests(TestCase):
@@ -99,7 +100,9 @@ class VideoParityTests(TestCase):
         with transaction.atomic():
             plan = self.fake_plan(step, preview)
             baseline = graph(plan, {}, _alias="default")
-            note = adapter.apply(values, self.owner.pk)
+            with effects_context(workflow=True) as effects:
+                note = adapter.apply(values, self.owner.pk)
+            plan.effects = effects
             plan.results = {"note": note.pk}
             observed = graph(plan, plan.results, _alias="default")
             self.assertEqual(observed, expected_graph(plan, baseline, observed))
