@@ -99,6 +99,9 @@ def graph(p,results,_alias=ALIAS):
    add('gestion_joueurs.Video',pk=v['video'])
    add('gestion_joueurs.Invoice',video_id=v['video'])
    add('gestion_joueurs.Payment',video_id=v['video'])
+  if s['op']=='video.activity.add':
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
   if s['op']=='prospect.convert':
    prospect=rows('prospects.Prospect',_alias=_alias,pk=v['id'])
    player_id=prospect[0]['player_id'] if prospect else None

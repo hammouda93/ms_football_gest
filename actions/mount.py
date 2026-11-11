@@ -13,7 +13,8 @@ APPROVED_OPERATIONS = frozenset(('player.create', 'organization.link', 'video.or
     'organization.contact.amend', 'prospect.contact.amend', 'finance.income.record', 'finance.expense.record', 'finance.performance.payment.record', 'prospect.convert', 'finance.highlight.payment.record', 'video.delivery.internal', 'finance.salary.record', 'video.conditions.create','video.conditions.amend',
     'player.sources.amend','player.record.create',
     'player.record.amend','player.organization.unlink',
-    'player.organization.link'))
+    'player.organization.link',
+    'video.production.amend','video.activity.add'))
 SCOPES = frozenset(('catalogue', 'prepare', 'status', 'execute', 'verify')) | frozenset(
     'op:' + name for name in APPROVED_OPERATIONS)
 
