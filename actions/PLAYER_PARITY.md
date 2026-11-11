@@ -32,3 +32,9 @@ Les contrats `organization.link` existants restent en place pour l'ajout / la r�
 - `player.organization.link` : crée ou réactive une association joueur–organisation avec un `label` et un `expected_matches` facultatifs. Réutilise `OrganizationPlayerForm` côté Django ; refuse une relation déjà active et ne crée pas de commande vidéo.
 - Le moteur ajoute un snapshot de la paire joueur–organisation et le readback suit cette relation, même si aucun lien vidéo n'est créé.
 - `organization.link` historique continue de fonctionner inchangé : il impose les packs 3/5/10 pour son flux de commande.
+
+## Correctif de pré/post vérification (incrément 4)
+- `readback.expected_graph` reconnaît maintenant les créations, réactivations et clôtures de liens joueur–organisation, sans faire confiance à une déclaration de succès non corroborée.
+- La date `ended_at` de clôture est imposée par le serveur et doit être non nulle dans le résultat réellement relu.
+- Le calcul de `age` lors du changement de date de naissance se base maintenant sur la **nouvelle** valeur demandée, pour éviter un conflit de vérification et une prévisualisation erronée.
+- Trois tests de non-régression supplémentaires contrôlent la projection avant/après et le calcul d'âge.

@@ -67,11 +67,16 @@ class ReviewedForm(SimpleFormAmendment):
         for rule in self.derived:
             if rule!='age_from_date_of_birth':raise ValueError('unreviewed_derived_rule')
             # Player.save recalculates nonempty DOB on every save; persist and preview it.
-            birth=obj.date_of_birth
+            # The ModelForm validates form.instance without mutating our original
+            # instance. Use the *proposed* DOB, never the stale stored value.
+            birth=changes.get('date_of_birth',obj.date_of_birth)
             if birth:
                 today=date.today();changes['age']=today.year-birth.year-((today.month,today.day)<(birth.month,birth.day))
-                # ModelForm excludes age; validate the final derived model value
-                # on this isolated instance before preview, plan or persistence.
+            elif 'date_of_birth' in changes:
+                # Explicitly clearing DOB must also clear stale calculated age.
+                changes['age']=None
+            if 'age' in changes:
+                # Validate the final derived model value before any write.
                 obj.age=changes['age']
                 try:obj.age=obj._meta.get_field('age').clean(obj.age,obj)
                 except ValidationError:raise ValueError('invalid_model') from None

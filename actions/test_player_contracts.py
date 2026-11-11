@@ -276,3 +276,82 @@ class PlayerParityContractTests(TestCase):
         self.assertFalse(OrganizationPlayer.objects.filter(
             player=self.player, organization=organization,
         ).exists())
+
+    def test_created_membership_post_graph_matches_signed_expected_changes(self):
+        from types import SimpleNamespace
+        from django.db import transaction
+        from client_portal.models import Organization
+        from .readback import graph, expected_graph
+        organization = Organization.objects.create(
+            name="Readback Academy", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        adapter = SIMPLE["player.organization.link"]
+        values = {"player": self.player.pk, "organization": organization.pk}
+        step = {"as": "link", "op": "player.organization.link", "values": values}
+        preview = adapter.preview(step, self.owner.pk)
+        fake_plan = SimpleNamespace(
+            actor_id=self.owner.pk, steps=[step],
+            snapshots={"__preview__": {"changes": [preview]}},
+            effects={}, results={},
+        )
+        with transaction.atomic():
+            baseline = graph(fake_plan, {}, _alias="default")
+            linked = adapter.apply(values, self.owner.pk)
+            fake_plan.results = {"link": linked.pk}
+            current = graph(fake_plan, fake_plan.results, _alias="default")
+            self.assertEqual(
+                current, expected_graph(fake_plan, baseline, current),
+            )
+
+    def test_unlink_post_graph_matches_signed_expected_changes(self):
+        from types import SimpleNamespace
+        from django.db import transaction
+        from client_portal.models import Organization, OrganizationPlayer
+        from .readback import graph, expected_graph
+        organization = Organization.objects.create(
+            name="Unlink Readback Academy",
+            kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        link = OrganizationPlayer.objects.create(
+            organization=organization, player=self.player,
+            added_by=self.owner, is_active=True,
+        )
+        adapter = SIMPLE["player.organization.unlink"]
+        step = {
+            "as": "unlink", "op": "player.organization.unlink",
+            "values": {"id": link.pk},
+        }
+        preview = adapter.preview(step, self.owner.pk)
+        fake_plan = SimpleNamespace(
+            actor_id=self.owner.pk, steps=[step],
+            snapshots={"__preview__": {"changes": [preview]}},
+            effects={}, results={"unlink": link.pk},
+        )
+        with transaction.atomic():
+            baseline = graph(fake_plan, {}, _alias="default")
+            adapter.apply({"id": link.pk}, self.owner.pk)
+            current = graph(fake_plan, fake_plan.results, _alias="default")
+            self.assertEqual(
+                current, expected_graph(fake_plan, baseline, current),
+            )
+
+    def test_dob_change_preview_and_age_follow_new_date(self):
+        from datetime import date as date_type
+        adapter = SIMPLE["player.record.amend"]
+        new_dob = date_type(2000, 12, 5)
+        values = {"id": self.player.pk, "date_of_birth": new_dob.isoformat()}
+        preview = adapter.preview({
+            "as": "dob", "op": "player.record.amend", "values": values,
+        }, self.owner.pk)
+        today = date_type.today()
+        expected_age = (
+            today.year - new_dob.year
+            - ((today.month, today.day) < (new_dob.month, new_dob.day))
+        )
+        self.assertEqual(preview["new"]["age"], expected_age)
+        adapter.apply(values, self.owner.pk)
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.date_of_birth, new_dob)
+        self.assertEqual(self.player.age, expected_age)

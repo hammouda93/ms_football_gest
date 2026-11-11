@@ -247,7 +247,24 @@ def expected_graph(p,baseline,current):
   op=s['op'];v={k:resolve(x) for k,x in s['values'].items()};pk=p.results[s['as']];label=rules[op]['model']
   if s['as'] in changes:
    x=changes[s['as']]
-   if op=='prospect.convert':
+   if op=='player.organization.link':
+    # Created/reopened memberships have one explicit business effect.
+    # The same membership can appear both by ID and by player/org pair.
+    patch(label,pk,dict(x['new'],
+       player_id=v['player'],organization_id=v['organization'],
+       added_by_id=p.actor_id),x['old'] is None,('id','created_at'))
+   elif op=='player.organization.unlink':
+    # ended_at is assigned by the server clock at execution, not by Hermes.
+    # Accept only a non-null observed timestamp for the approved closure;
+    # all other persisted columns still have to match the sealed PRE.
+    actual=[r for g in current.values() if g['model']==label
+            for r in g['rows'] if r['id']==pk]
+    if not actual or any(r['ended_at'] is None for r in actual):
+     raise ValueError('verification_relation_not_closed')
+    if len({r['ended_at'] for r in actual})!=1:
+     raise ValueError('verification_relation_inconsistent')
+    patch(label,pk,dict(is_active=False,ended_at=actual[0]['ended_at']))
+   elif op=='prospect.convert':
     group=next(g for g in current.values() if g['model']=='prospects.Prospect' and g['filter']=={'pk':pk})
     player=group['rows'][0]['player_id'];projected=x['player']
     if projected['id'] is not None and player!=projected['id']:raise ValueError('verification_ids')
