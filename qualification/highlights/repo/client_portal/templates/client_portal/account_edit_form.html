@@ -1,0 +1,30 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+
+{% block title %}Modifier le compte portail{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'client_portal/portal.css' %}">{% endblock %}
+
+{% block content %}
+<div class="production-page narrow-page">
+    <nav class="ui-breadcrumb"><a href="{% url 'portal:management' %}">Espaces clients</a><span>›</span><span>{{ profile.display_name }}</span></nav>
+    <header class="production-heading">
+        <div><span class="eyebrow">Préférences du compte</span><h1>Modifier l’espace client</h1><p>La langue choisie s’applique au suivi vidéo et à Performance dès la prochaine page chargée.</p></div>
+    </header>
+    <section class="portal-panel form-panel">
+        {% if linked_player %}
+        <div class="form-assurance">
+            <i class="fas fa-user-shield"></i>
+            <div><strong>Joueur lié : {{ linked_player.name }}</strong><p>{{ linked_player.club|default:"Club non renseigné" }} · sa fiche joueur ne sera pas modifiée.</p></div>
+        </div>
+        {% endif %}
+        <form method="post" class="compact-form">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="form-actions">
+                <a class="btn btn-secondary" href="{% url 'portal:management' %}">Annuler</a>
+                <button class="btn btn-primary" type="submit"><i class="fas fa-floppy-disk"></i> Enregistrer les préférences</button>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}

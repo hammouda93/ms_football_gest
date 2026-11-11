@@ -121,6 +121,7 @@ def graph(p,results,_alias=ALIAS):
     add('gestion_joueurs.Player',pk=video[0]['player_id'])
     if video[0]['client_organization_id']:add('client_portal.Organization',pk=video[0]['client_organization_id'])
    for label in ['client_portal.VideoWorkflow',*EFFECTS.values()]:add(label,video_id=pk)
+   if s['op'] in ('video.conditions.create','video.conditions.amend'):add('gestion_joueurs.Payment',video_id=pk)
  financial_graph(p,out)
  if len(out)>96 or len(json.dumps(out))>480000:raise ValueError('verification_bound')
  return out
@@ -258,6 +259,14 @@ def expected_graph(p,baseline,current):
        if row['id']==pk:row['updated_at']=group['rows'][0]['updated_at']
    else:
     patch(label,pk,x['new'],x['old'] is None,x.get('generated',[]))
+    if op=='video.conditions.amend':patch('gestion_joueurs.Invoice',x['invoice']['id'],x['invoice']['new'])
+    if op=='video.conditions.create':
+     invoices=[r for g in current.values() if g['model']=='gestion_joueurs.Invoice' for r in g['rows'] if r['video_id']==pk]
+     if len(invoices)!=1:raise ValueError('verification_invoice_count')
+     if x['payment']:
+      payments=[r for g in current.values() if g['model']=='gestion_joueurs.Payment' for r in g['rows'] if r['video_id']==pk]
+      if len(payments)!=1:raise ValueError('verification_payment_count')
+      patch('gestion_joueurs.Payment',payments[0]['id'],dict(x['payment'],video_id=pk,invoice_id=invoices[0]['id']),True,('id','payment_date'))
     if op=='finance.salary.record':
      patch('gestion_joueurs.Video',v['video'],{'salary_paid_status':x['video']['new']})
      expenses=[r for g in current.values() if g['model']=='gestion_joueurs.Expense' for r in g['rows'] if r['salary_id']==pk]
@@ -310,6 +319,10 @@ def expected_graph(p,baseline,current):
    if s['as'] in transitions:
     x=transitions[s['as']];field={'history':'history','activities':'activities','notifications':'notifications'}.get(kind)
     if field:predictions += [dict(r,**({'video_id':pk} if 'video_id' not in r else {})) for r in x[field]]
+   elif s['op'] in ('video.conditions.create','video.conditions.amend'):
+    x=changes[s['as']]
+    if kind=='invoices' and s['op']=='video.conditions.create':predictions.append(dict(x['invoice'],video_id=pk))
+    elif kind in ('history','notifications'):predictions += [dict(r,video_id=pk) for r in x.get(kind,[])]
    elif s['op']=='video.order':
     if kind=='invoices':predictions.append({'video_id':pk,'total_amount':orders[s['as']]['price'],'amount_paid':'0.00','status':'unpaid','created_by_id':p.actor_id,'payment_method':None})
     # The signal's create history is deterministic; notification only if editor.

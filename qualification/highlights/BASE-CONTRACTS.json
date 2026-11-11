@@ -1,0 +1,1416 @@
+{
+  "player.create": {
+    "model": "gestion_joueurs.Player",
+    "fields": [
+      "name",
+      "club",
+      "league",
+      "position",
+      "date_of_birth"
+    ],
+    "required": [
+      "name",
+      "club",
+      "league",
+      "position",
+      "date_of_birth"
+    ]
+  },
+  "organization.link": {
+    "model": "client_portal.OrganizationPlayer",
+    "fields": [
+      "player",
+      "organization",
+      "expected_matches"
+    ],
+    "required": [
+      "player",
+      "organization",
+      "expected_matches"
+    ]
+  },
+  "video.order": {
+    "model": "gestion_joueurs.Video",
+    "fields": [
+      "player",
+      "editor",
+      "client_organization",
+      "whatsapp_conversation_date",
+      "deadline_from_whatsapp",
+      "match_package",
+      "season",
+      "advance_payment",
+      "info"
+    ],
+    "required": [
+      "player",
+      "editor",
+      "client_organization",
+      "whatsapp_conversation_date",
+      "deadline_from_whatsapp",
+      "match_package",
+      "season",
+      "advance_payment",
+      "info"
+    ]
+  },
+  "player.amend": {
+    "model": "gestion_joueurs.Player",
+    "fields": [
+      "id",
+      "club",
+      "position"
+    ],
+    "required": [
+      "id"
+    ]
+  },
+  "video.amend": {
+    "model": "gestion_joueurs.Video",
+    "fields": [
+      "id",
+      "info"
+    ],
+    "required": [
+      "id",
+      "info"
+    ]
+  },
+  "organization.details.amend": {
+    "model": "client_portal.Organization",
+    "fields": [
+      "id",
+      "name",
+      "contact_name",
+      "country"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "name": {
+        "type": "string",
+        "label": "Nom",
+        "requiredByForm": true,
+        "maxLength": 160
+      },
+      "contact_name": {
+        "type": "string",
+        "label": "Contact principal",
+        "requiredByForm": false,
+        "maxLength": 120
+      },
+      "country": {
+        "type": "string",
+        "label": "Pays",
+        "requiredByForm": false,
+        "maxLength": 80
+      }
+    },
+    "family": "simple_form_amendment/v1",
+    "permission": "active_superuser + active_organization",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "finance",
+      "jobs"
+    ],
+    "sourceForm": "client_portal.forms.OrganizationForm"
+  },
+  "prospect.details.amend": {
+    "model": "prospects.Prospect",
+    "fields": [
+      "id",
+      "internal_notes",
+      "country",
+      "club"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "internal_notes": {
+        "type": "string",
+        "label": "Notes internes",
+        "requiredByForm": false,
+        "maxLength": 8000
+      },
+      "country": {
+        "type": "string",
+        "label": "Pays",
+        "requiredByForm": false,
+        "maxLength": 80
+      },
+      "club": {
+        "type": "string",
+        "label": "Club actuel",
+        "requiredByForm": false,
+        "maxLength": 120
+      }
+    },
+    "family": "simple_form_amendment/v1",
+    "permission": "active_superuser + existing_prospect",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "finance",
+      "jobs"
+    ],
+    "sourceForm": "prospects.forms.ProspectManagementForm"
+  },
+  "player.business.amend": {
+    "model": "gestion_joueurs.Player",
+    "fields": [
+      "id",
+      "email",
+      "whatsapp_number",
+      "client_fidel",
+      "client_vip"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "email": {
+        "type": "string",
+        "maxLength": 320,
+        "label": "Adresse e-mail",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 15,
+        "label": "WhatsApp Number",
+        "requiredByForm": false
+      },
+      "client_fidel": {
+        "type": "boolean",
+        "label": "Client Fid\u00e8le",
+        "requiredByForm": false
+      },
+      "client_vip": {
+        "type": "boolean",
+        "label": "Client VIP",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "gestion_joueurs.forms.PlayerForm",
+    "excludedFields": [
+      "id",
+      "name",
+      "club",
+      "date_of_birth",
+      "league",
+      "position",
+      "player_creation_date",
+      "sportsbase_url",
+      "transfermarkt_url"
+    ],
+    "calculatedFields": [
+      "age"
+    ],
+    "excludedFormFields": [
+      "name",
+      "date_of_birth",
+      "league",
+      "club",
+      "position",
+      "sportsbase_url",
+      "transfermarkt_url",
+      "organization",
+      "create_client_account"
+    ],
+    "permission": "active_superuser + existing_player",
+    "effects": [
+      "selected_columns_only",
+      "age_from_date_of_birth"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "organization.contact.amend": {
+    "model": "client_portal.Organization",
+    "fields": [
+      "id",
+      "email",
+      "whatsapp_number",
+      "contact_name"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "email": {
+        "type": "string",
+        "maxLength": 254,
+        "label": "E-mail",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 24,
+        "label": "WhatsApp",
+        "requiredByForm": false
+      },
+      "contact_name": {
+        "type": "string",
+        "maxLength": 120,
+        "label": "Contact principal",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "client_portal.forms.OrganizationForm",
+    "excludedFields": [
+      "id",
+      "name",
+      "kind",
+      "country",
+      "google_sheet_id",
+      "google_sheet_tab",
+      "google_sheet_last_synced_at",
+      "google_sheet_last_error",
+      "is_active",
+      "created_by_id",
+      "created_at",
+      "updated_at"
+    ],
+    "calculatedFields": [],
+    "excludedFormFields": [
+      "name",
+      "kind",
+      "country",
+      "is_active"
+    ],
+    "permission": "active_superuser + active_organization",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "prospect.contact.amend": {
+    "model": "prospects.Prospect",
+    "fields": [
+      "id",
+      "email",
+      "whatsapp_number"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "email": {
+        "type": "string",
+        "maxLength": 254,
+        "label": "Adresse e-mail",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 16,
+        "label": "Num\u00e9ro WhatsApp",
+        "requiredByForm": true
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "prospects.forms.ProspectManagementForm",
+    "excludedFields": [
+      "id",
+      "full_name",
+      "transfermarkt_url",
+      "date_of_birth",
+      "country",
+      "club",
+      "league",
+      "position",
+      "season",
+      "service_type",
+      "match_links",
+      "desired_deadline",
+      "message",
+      "source",
+      "status",
+      "internal_notes",
+      "player_id",
+      "created_at",
+      "updated_at"
+    ],
+    "calculatedFields": [],
+    "excludedFormFields": [
+      "transfermarkt_url",
+      "full_name",
+      "date_of_birth",
+      "country",
+      "club",
+      "league",
+      "position",
+      "season",
+      "service_type",
+      "match_links",
+      "desired_deadline",
+      "message",
+      "status",
+      "internal_notes"
+    ],
+    "permission": "active_superuser + existing_prospect",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "player.profile.create": {
+    "model": "gestion_joueurs.Player",
+    "fields": [
+      "name",
+      "date_of_birth",
+      "club",
+      "league",
+      "position",
+      "whatsapp_number"
+    ],
+    "required": [
+      "name",
+      "club",
+      "league",
+      "position"
+    ],
+    "schema": {
+      "name": {
+        "type": "string",
+        "maxLength": 100,
+        "label": "Player Name",
+        "requiredByForm": true
+      },
+      "date_of_birth": {
+        "type": "string",
+        "format": "date",
+        "label": "date_of_birth",
+        "requiredByForm": false
+      },
+      "club": {
+        "type": "string",
+        "maxLength": 100,
+        "label": "Club Name",
+        "requiredByForm": true
+      },
+      "league": {
+        "type": "string",
+        "enum": [
+          "L1",
+          "L2",
+          "LY",
+          "OC"
+        ],
+        "label": "League",
+        "requiredByForm": true
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "GK",
+          "DF",
+          "MF",
+          "FW"
+        ],
+        "label": "Position",
+        "requiredByForm": true
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 15,
+        "label": "WhatsApp Number",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "gestion_joueurs.forms.PlayerForm",
+    "excludedFields": [
+      "id",
+      "email",
+      "client_fidel",
+      "client_vip",
+      "player_creation_date",
+      "sportsbase_url",
+      "transfermarkt_url"
+    ],
+    "calculatedFields": [
+      "age"
+    ],
+    "excludedFormFields": [
+      "email",
+      "sportsbase_url",
+      "transfermarkt_url",
+      "client_fidel",
+      "client_vip",
+      "organization",
+      "create_client_account"
+    ],
+    "permission": "active_superuser + new_player",
+    "effects": [
+      "create_row",
+      "age_from_date_of_birth"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "organization.profile.create": {
+    "model": "client_portal.Organization",
+    "fields": [
+      "name",
+      "kind",
+      "contact_name",
+      "country",
+      "whatsapp_number"
+    ],
+    "required": [
+      "name",
+      "kind"
+    ],
+    "schema": {
+      "name": {
+        "type": "string",
+        "maxLength": 160,
+        "label": "Nom",
+        "requiredByForm": true
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "agent",
+          "academy",
+          "club"
+        ],
+        "label": "Type",
+        "requiredByForm": true
+      },
+      "contact_name": {
+        "type": "string",
+        "maxLength": 120,
+        "label": "Contact principal",
+        "requiredByForm": false
+      },
+      "country": {
+        "type": "string",
+        "maxLength": 80,
+        "label": "Pays",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 24,
+        "label": "WhatsApp",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "client_portal.forms.OrganizationForm",
+    "excludedFields": [
+      "id",
+      "email",
+      "google_sheet_id",
+      "google_sheet_tab",
+      "google_sheet_last_synced_at",
+      "google_sheet_last_error",
+      "is_active",
+      "created_by_id",
+      "created_at",
+      "updated_at"
+    ],
+    "calculatedFields": [],
+    "excludedFormFields": [
+      "email",
+      "is_active"
+    ],
+    "permission": "active_superuser + new_organization",
+    "effects": [
+      "create_row"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "organization.profile.amend": {
+    "model": "client_portal.Organization",
+    "fields": [
+      "id",
+      "name",
+      "contact_name",
+      "country",
+      "whatsapp_number"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "name": {
+        "type": "string",
+        "maxLength": 160,
+        "label": "Nom",
+        "requiredByForm": true
+      },
+      "contact_name": {
+        "type": "string",
+        "maxLength": 120,
+        "label": "Contact principal",
+        "requiredByForm": false
+      },
+      "country": {
+        "type": "string",
+        "maxLength": 80,
+        "label": "Pays",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 24,
+        "label": "WhatsApp",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "client_portal.forms.OrganizationForm",
+    "excludedFields": [
+      "id",
+      "kind",
+      "email",
+      "google_sheet_id",
+      "google_sheet_tab",
+      "google_sheet_last_synced_at",
+      "google_sheet_last_error",
+      "is_active",
+      "created_by_id",
+      "created_at",
+      "updated_at"
+    ],
+    "calculatedFields": [],
+    "excludedFormFields": [
+      "kind",
+      "email",
+      "is_active"
+    ],
+    "permission": "active_superuser + active_organization",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "prospect.profile.amend": {
+    "model": "prospects.Prospect",
+    "fields": [
+      "id",
+      "full_name",
+      "date_of_birth",
+      "whatsapp_number",
+      "country",
+      "club",
+      "league",
+      "position",
+      "message",
+      "internal_notes"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "full_name": {
+        "type": "string",
+        "maxLength": 120,
+        "label": "Nom du joueur",
+        "requiredByForm": true
+      },
+      "date_of_birth": {
+        "type": "string",
+        "format": "date",
+        "label": "Date de naissance",
+        "requiredByForm": false
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 16,
+        "label": "Num\u00e9ro WhatsApp",
+        "requiredByForm": true
+      },
+      "country": {
+        "type": "string",
+        "maxLength": 80,
+        "label": "Pays",
+        "requiredByForm": false
+      },
+      "club": {
+        "type": "string",
+        "maxLength": 120,
+        "label": "Club actuel",
+        "requiredByForm": false
+      },
+      "league": {
+        "type": "string",
+        "enum": [
+          "L1",
+          "L2",
+          "LY",
+          "OC"
+        ],
+        "label": "Championnat",
+        "requiredByForm": true
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "goalkeeper",
+          "defender",
+          "midfielder",
+          "forward",
+          "other"
+        ],
+        "label": "Poste",
+        "requiredByForm": true
+      },
+      "message": {
+        "type": "string",
+        "maxLength": 8000,
+        "label": "Informations compl\u00e9mentaires",
+        "requiredByForm": false
+      },
+      "internal_notes": {
+        "type": "string",
+        "maxLength": 8000,
+        "label": "Notes internes",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "prospects.forms.ProspectManagementForm",
+    "excludedFields": [
+      "id",
+      "transfermarkt_url",
+      "email",
+      "season",
+      "service_type",
+      "match_links",
+      "desired_deadline",
+      "source",
+      "status",
+      "player_id",
+      "created_at",
+      "updated_at"
+    ],
+    "calculatedFields": [],
+    "excludedFormFields": [
+      "transfermarkt_url",
+      "email",
+      "season",
+      "service_type",
+      "match_links",
+      "desired_deadline",
+      "status"
+    ],
+    "permission": "active_superuser + existing_prospect",
+    "effects": [
+      "selected_columns_only"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "player.profile.amend": {
+    "model": "gestion_joueurs.Player",
+    "fields": [
+      "id",
+      "name",
+      "date_of_birth",
+      "club",
+      "league",
+      "position",
+      "whatsapp_number"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "name": {
+        "type": "string",
+        "maxLength": 100,
+        "label": "Player Name",
+        "requiredByForm": true
+      },
+      "date_of_birth": {
+        "type": "string",
+        "format": "date",
+        "label": "date_of_birth",
+        "requiredByForm": false
+      },
+      "club": {
+        "type": "string",
+        "maxLength": 100,
+        "label": "Club Name",
+        "requiredByForm": true
+      },
+      "league": {
+        "type": "string",
+        "enum": [
+          "L1",
+          "L2",
+          "LY",
+          "OC"
+        ],
+        "label": "League",
+        "requiredByForm": true
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "GK",
+          "DF",
+          "MF",
+          "FW"
+        ],
+        "label": "Position",
+        "requiredByForm": true
+      },
+      "whatsapp_number": {
+        "type": "string",
+        "maxLength": 15,
+        "label": "WhatsApp Number",
+        "requiredByForm": false
+      }
+    },
+    "family": "reviewed_scalar_form/v1",
+    "sourceForm": "gestion_joueurs.forms.PlayerForm",
+    "excludedFields": [
+      "id",
+      "email",
+      "client_fidel",
+      "client_vip",
+      "player_creation_date",
+      "sportsbase_url",
+      "transfermarkt_url"
+    ],
+    "calculatedFields": [
+      "age"
+    ],
+    "excludedFormFields": [
+      "email",
+      "sportsbase_url",
+      "transfermarkt_url",
+      "client_fidel",
+      "client_vip",
+      "organization",
+      "create_client_account"
+    ],
+    "permission": "active_superuser + existing_player",
+    "effects": [
+      "selected_columns_only",
+      "age_from_date_of_birth"
+    ],
+    "excludedEffects": [
+      "external",
+      "access",
+      "accounts",
+      "emails",
+      "finance",
+      "jobs",
+      "status",
+      "conversion",
+      "production"
+    ]
+  },
+  "finance.income.record": {
+    "model": "gestion_joueurs.NonVideoIncome",
+    "fields": [
+      "category",
+      "description",
+      "amount",
+      "date"
+    ],
+    "required": [
+      "category",
+      "description",
+      "amount",
+      "date"
+    ],
+    "schema": {
+      "category": {
+        "type": "string",
+        "requiredByForm": true,
+        "enum": [
+          "freelance",
+          "deposit",
+          "coach_cv",
+          "marketing",
+          "sponsorship",
+          "donation",
+          "partnership",
+          "media",
+          "other"
+        ]
+      },
+      "description": {
+        "type": "string",
+        "requiredByForm": true
+      },
+      "amount": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "decimal",
+        "maxDigits": 10,
+        "decimalPlaces": 2
+      },
+      "date": {
+        "type": "string",
+        "requiredByForm": false,
+        "format": "date"
+      }
+    },
+    "family": "internal_registration/v1",
+    "permission": "active_superuser",
+    "sourceForm": "gestion_joueurs.forms.NonVideoIncomeForm",
+    "effects": [
+      "application_record_only"
+    ],
+    "excludedEffects": [
+      "provider_payment",
+      "external",
+      "accounts",
+      "jobs",
+      "publication",
+      "delivery"
+    ]
+  },
+  "finance.expense.record": {
+    "model": "gestion_joueurs.Expense",
+    "fields": [
+      "category",
+      "description",
+      "amount",
+      "date"
+    ],
+    "required": [
+      "category",
+      "description",
+      "amount",
+      "date"
+    ],
+    "schema": {
+      "category": {
+        "type": "string",
+        "requiredByForm": true,
+        "enum": [
+          "Transport",
+          "Entertainement",
+          "Internet",
+          "marketing",
+          "operational",
+          "salary",
+          "equipment",
+          "other"
+        ]
+      },
+      "description": {
+        "type": "string",
+        "requiredByForm": false
+      },
+      "amount": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "decimal",
+        "maxDigits": 10,
+        "decimalPlaces": 2
+      },
+      "date": {
+        "type": "string",
+        "requiredByForm": false,
+        "format": "date"
+      }
+    },
+    "family": "internal_registration/v1",
+    "permission": "active_superuser",
+    "sourceForm": "gestion_joueurs.forms.ExpenseForm",
+    "effects": [
+      "application_record_only"
+    ],
+    "excludedEffects": [
+      "provider_payment",
+      "external",
+      "accounts",
+      "jobs",
+      "publication",
+      "delivery"
+    ]
+  },
+  "finance.performance.payment.record": {
+    "model": "sportsbase_data.PerformanceSubscriptionPayment",
+    "fields": [
+      "amount",
+      "payment_date",
+      "payment_method",
+      "reference",
+      "notes",
+      "subscription"
+    ],
+    "required": [
+      "amount",
+      "payment_date",
+      "payment_method",
+      "reference",
+      "notes",
+      "subscription"
+    ],
+    "schema": {
+      "amount": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "decimal",
+        "maxDigits": 10,
+        "decimalPlaces": 2
+      },
+      "payment_date": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "date"
+      },
+      "payment_method": {
+        "type": "string",
+        "requiredByForm": true,
+        "enum": [
+          "cash",
+          "bank_transfer",
+          "la_poste",
+          "online",
+          "other"
+        ]
+      },
+      "reference": {
+        "type": "string",
+        "requiredByForm": false
+      },
+      "notes": {
+        "type": "string",
+        "requiredByForm": false
+      },
+      "subscription": {
+        "type": "integer"
+      }
+    },
+    "family": "internal_registration/v1",
+    "permission": "active_superuser",
+    "sourceForm": "sportsbase_data.forms.PerformanceSubscriptionPaymentForm",
+    "effects": [
+      "application_record_only"
+    ],
+    "excludedEffects": [
+      "provider_payment",
+      "external",
+      "accounts",
+      "jobs",
+      "publication",
+      "delivery"
+    ]
+  },
+  "prospect.convert": {
+    "model": "prospects.Prospect",
+    "fields": [
+      "id"
+    ],
+    "required": [
+      "id"
+    ],
+    "schema": {
+      "id": {
+        "type": "integer"
+      }
+    },
+    "family": "prospect_conversion/v1",
+    "permission": "active_superuser",
+    "sourceService": "prospects.services.convert_prospect_to_player",
+    "effects": [
+      "find_or_create_or_enrich_player",
+      "prospect_converted"
+    ],
+    "excludedEffects": [
+      "video",
+      "invoice",
+      "accounts",
+      "external",
+      "jobs"
+    ],
+    "result": "prospect ID; player ID verified in linked row; no player alias"
+  },
+  "finance.highlight.payment.record": {
+    "model": "gestion_joueurs.Payment",
+    "fields": [
+      "payment_type",
+      "amount",
+      "payment_method",
+      "video",
+      "video"
+    ],
+    "required": [
+      "payment_type",
+      "amount",
+      "payment_method",
+      "video",
+      "video"
+    ],
+    "schema": {
+      "payment_type": {
+        "type": "string",
+        "requiredByForm": true,
+        "enum": [
+          "advance",
+          "final",
+          "partial"
+        ]
+      },
+      "amount": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "decimal",
+        "maxDigits": 10,
+        "decimalPlaces": 2
+      },
+      "payment_method": {
+        "type": "string",
+        "requiredByForm": false,
+        "enum": [
+          "cash",
+          "bank_transfer",
+          "la_poste"
+        ]
+      },
+      "video": {
+        "type": "integer"
+      }
+    },
+    "family": "internal_registration/v1",
+    "permission": "active_superuser",
+    "sourceForm": "gestion_joueurs.forms.PaymentForm",
+    "effects": [
+      "payment",
+      "invoice_amount_paid_and_status"
+    ],
+    "excludedEffects": [
+      "provider_payment",
+      "external",
+      "accounts",
+      "jobs",
+      "publication",
+      "delivery"
+    ],
+    "sourceView": "gestion_joueurs.views.record_payment",
+    "preconditions": [
+      "existing_invoice",
+      "positive_amount_not_exceeding_balance",
+      "single_step"
+    ]
+  },
+  "finance.salary.record": {
+    "model": "gestion_joueurs.Salary",
+    "fields": [
+      "editor",
+      "video",
+      "amount",
+      "salary_amount",
+      "date",
+      "description",
+      "salary_paid_status"
+    ],
+    "required": [
+      "editor",
+      "video",
+      "amount",
+      "salary_amount",
+      "date",
+      "description",
+      "salary_paid_status"
+    ],
+    "schema": {
+      "editor": {
+        "type": "integer"
+      },
+      "video": {
+        "type": "integer"
+      },
+      "amount": {
+        "type": "string",
+        "requiredByForm": true,
+        "format": "decimal",
+        "decimalPlaces": 2,
+        "maxDigits": 10
+      },
+      "salary_amount": {
+        "type": "string",
+        "requiredByForm": false,
+        "format": "decimal",
+        "decimalPlaces": 2,
+        "maxDigits": 10
+      },
+      "date": {
+        "type": "string",
+        "requiredByForm": false
+      },
+      "description": {
+        "type": "string",
+        "requiredByForm": false
+      },
+      "salary_paid_status": {
+        "type": "string",
+        "requiredByForm": false,
+        "enum": [
+          "partially_paid",
+          "paid"
+        ]
+      }
+    },
+    "family": "salary_orchestration/v1",
+    "sourceForm": "gestion_joueurs.forms.ExpenseForm",
+    "sourceView": "gestion_joueurs.views.add_expense",
+    "permission": "active_superuser + video_selected_for_editor",
+    "effects": [
+      "Salary",
+      "Expense",
+      "Video.salary_paid_status"
+    ],
+    "excludedEffects": [
+      "provider_payment",
+      "external",
+      "messages",
+      "jobs"
+    ],
+    "composition": "single_step_only",
+    "amountSemantics": "amount is expense; salary_amount is salary; preserved separately"
+  },
+  "video.status.transition": {
+    "model": "gestion_joueurs.Video",
+    "fields": [
+      "id",
+      "status"
+    ],
+    "required": [
+      "id",
+      "status"
+    ],
+    "family": "production_transition/v1",
+    "schema": {
+      "status": {
+        "requiredByForm": true,
+        "type": "string",
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed_collab",
+          "problematic"
+        ]
+      }
+    },
+    "sourceForm": "client_portal.forms.ProductionVideoStatusForm",
+    "permission": "active superuser or assigned VideoEditor; actual form restricts transitions",
+    "closed": [
+      "delivered",
+      "external",
+      "publication",
+      "delivery",
+      "access",
+      "finance",
+      "jobs"
+    ],
+    "effects": [
+      "status_history",
+      "workflow",
+      "stage_activity",
+      "internal_notifications"
+    ],
+    "selection": "target-bound choices in preview; catalogue enums are descriptive"
+  },
+  "video.workflow.transition": {
+    "model": "gestion_joueurs.Video",
+    "fields": [
+      "id",
+      "stage",
+      "priority",
+      "progress",
+      "next_action",
+      "blocked_reason"
+    ],
+    "required": [
+      "id",
+      "stage",
+      "priority",
+      "progress",
+      "next_action",
+      "blocked_reason"
+    ],
+    "family": "production_transition/v1",
+    "schema": {
+      "stage": {
+        "requiredByForm": true,
+        "type": "string",
+        "enum": [
+          "",
+          "new_order",
+          "awaiting_deposit",
+          "awaiting_media",
+          "downloading",
+          "editing",
+          "client_review",
+          "revisions",
+          "awaiting_balance",
+          "ready_delivery",
+          "delivered",
+          "blocked"
+        ]
+      },
+      "priority": {
+        "requiredByForm": true,
+        "type": "string",
+        "enum": [
+          "low",
+          "normal",
+          "high",
+          "urgent"
+        ]
+      },
+      "progress": {
+        "requiredByForm": true,
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "next_action": {
+        "requiredByForm": false,
+        "type": "string",
+        "maxLength": 240
+      },
+      "blocked_reason": {
+        "requiredByForm": false,
+        "type": "string"
+      }
+    },
+    "sourceForm": "client_portal.forms.VideoWorkflowForm",
+    "permission": "active superuser or assigned VideoEditor; actual form restricts transitions",
+    "closed": [
+      "delivered",
+      "external",
+      "publication",
+      "delivery",
+      "access",
+      "finance",
+      "jobs"
+    ],
+    "effects": [
+      "status_history",
+      "workflow",
+      "stage_activity",
+      "internal_notifications"
+    ],
+    "selection": "target-bound choices in preview; catalogue enums are descriptive"
+  },
+  "video.delivery.internal": {
+    "model": "gestion_joueurs.Video",
+    "fields": [
+      "id",
+      "video_link"
+    ],
+    "required": [
+      "id",
+      "video_link"
+    ],
+    "schema": {
+      "id": {
+        "type": "integer"
+      },
+      "video_link": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "family": "internal_delivery/v1",
+    "sourceForm": "client_portal.forms.ProductionVideoStatusForm",
+    "permission": "active_superuser",
+    "effects": [
+      "status_history",
+      "delivery_date_if_missing",
+      "workflow_sync",
+      "stage_activity"
+    ],
+    "excludedEffects": [
+      "send",
+      "upload",
+      "publication",
+      "portal_visibility_change",
+      "access_generation",
+      "jobs"
+    ],
+    "composition": "single_step_only"
+  }
+}

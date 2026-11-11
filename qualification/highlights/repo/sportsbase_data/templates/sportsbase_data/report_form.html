@@ -1,0 +1,32 @@
+{% extends "gestion_joueurs/base.html" %}
+{% load static %}
+{% block title %}Modifier le rapport · {{ report.subscription.player.name }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'sportsbase_data/performance.css' %}">{% endblock %}
+{% block content %}
+<div class="performance-form-page">
+    <nav class="ui-breadcrumb"><a href="{% url 'performance:management' %}">Abonnements Performance</a><span>›</span><span>Rapport de {{ report.subscription.player.name }}</span></nav>
+    <header class="report-editor-heading">
+        <div><span class="eyebrow">Validation de l’analyste</span><h1>{{ report.title }}</h1><p>Les données chiffrées restent synchronisées. Vos textes et observations sont conservés et remplacent la proposition initiale. La langue est imposée par l’abonnement du joueur.</p></div>
+        {% if report.status == "published" %}<a class="btn btn-outline-primary" href="{% url 'performance:report_pdf' report.pk %}" target="_blank"><i class="fas fa-file-pdf"></i> Prévisualiser le PDF</a>{% endif %}
+    </header>
+    <section class="report-editor-context">
+        <span><i class="fas fa-user"></i> {{ report.subscription.player.name }}</span>
+        <span><i class="fas fa-language"></i> {{ report.get_language_display }}</span>
+        <span><i class="fas fa-chart-line"></i> {{ report.get_report_type_display }}</span>
+        {% if report.match %}<span><i class="fas fa-futbol"></i> {{ report.match.home_team }} – {{ report.match.away_team }}</span>{% endif %}
+    </section>
+    <form method="post" class="performance-subscription-form report-editor-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="performance-form-grid">
+            {% for field in form %}
+                <label class="{% if field.name == 'executive_summary' or field.name == 'strengths' or field.name == 'improvement_areas' or field.name == 'analyst_notes' %}report-wide-field{% endif %}">
+                    <span>{{ field.label }}</span>{{ field }}
+                    {% for error in field.errors %}<em class="field-error">{{ error }}</em>{% endfor %}
+                </label>
+            {% endfor %}
+        </div>
+        <div class="performance-form-actions"><a class="btn btn-outline-secondary" href="{% url 'performance:management' %}">Retour</a><button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> Enregistrer et actualiser le PDF</button></div>
+    </form>
+</div>
+{% endblock %}

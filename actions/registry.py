@@ -83,6 +83,8 @@ from .finance import HIGHLIGHT
 SIMPLE.update(HIGHLIGHT)
 from .salaries import SALARIES
 SIMPLE.update(SALARIES)
+from .highlights import HIGHLIGHTS
+SIMPLE.update(HIGHLIGHTS)
 
 def catalogue():
     from copy import deepcopy

@@ -1,0 +1,33 @@
+[
+  {
+    "module": "review_probes",
+    "ids": [
+      "review_probes.IndependentCounterexamples.test_amend_preview_contains_paid_and_balance_context",
+      "review_probes.IndependentCounterexamples.test_catalogue_season_enum_does_not_advertise_model_rejected_choices",
+      "review_probes.IndependentCounterexamples.test_nullable_editor_user_is_refused_structurally_before_preview"
+    ]
+  },
+  {
+    "module": "fix_tests",
+    "ids": [
+      "fix_tests.FixTests.test_hl01_exact_signed_financial_projection_and_preserved_payments",
+      "fix_tests.FixTests.test_hl03_real_http_refuses_nullable_editor_before_preview_without_business_writes"
+    ]
+  },
+  {
+    "module": "test_highlights",
+    "ids": [
+      "test_highlights.HighlightsTests.test_amend_post_detects_old_payment_tampering",
+      "test_highlights.HighlightsTests.test_amend_terms_editor_and_invoice_preserves_old_payments",
+      "test_highlights.HighlightsTests.test_create_exact_direct_terms_and_advance",
+      "test_highlights.HighlightsTests.test_existing_contracts_and_lifecycle_preserved",
+      "test_highlights.HighlightsTests.test_history_inconsistent_refused_before_amend",
+      "test_highlights.HighlightsTests.test_idempotency_integrity_pre_expiry_and_amend_money_boundaries",
+      "test_highlights.HighlightsTests.test_initial_payment_variants_and_no_external_effects",
+      "test_highlights.HighlightsTests.test_old_payment_drift_refused_before_apply",
+      "test_highlights.HighlightsTests.test_package_amend_reconciles_invoice_exactly",
+      "test_highlights.HighlightsTests.test_package_exact_price_automatic_deadline_and_boundaries",
+      "test_highlights.HighlightsTests.test_permissions_scopes_pre_and_composition_refusal"
+    ]
+  }
+]

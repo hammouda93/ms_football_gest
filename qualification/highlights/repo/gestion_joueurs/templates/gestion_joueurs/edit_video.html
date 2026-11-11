@@ -1,0 +1,337 @@
+{% extends 'gestion_joueurs/base.html' %}
+{% load crispy_forms_tags static %}
+
+{% block title %}Modifier La Vidéo - {{ video.player.name }}{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'gestion_joueurs/css/deadline_planner.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 ui-page workflow-page video-form-page">
+    
+    <div class="card mb-4">
+        <div class="card-header text-center">
+            <h5 class="text-center text-muted">{{ video }}</h5>
+            <div class="text-center">
+                <span class="badge badge-secondary">{{ video.status }}</span>
+                <span class="badge badge-primary">Total Paiement: {{ video.total_payment }}</span>
+                <span class="badge badge-warning">Échéance: {{ video.deadline }}</span>
+            </div>
+        </div>
+    </div>
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    <div class="row">
+        <!-- Card for the form -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form
+                        method="POST"
+                        id="video-edit-form"
+                        data-original-status="{{ original_video_status }}"
+                    >
+                        {% csrf_token %}
+                        <input type="hidden" name="notification_action" id="edit_notification_action" value="skip">
+                        {{ form|crispy }}
+                        {% include 'gestion_joueurs/includes/deadline_planning_assistant.html' with planner_mode='edit' planner_video_id=video.pk %}
+                        <button type="submit" class="btn btn-primary btn-block mt-3" aria-label="Mettre à jour la vidéo">Mettre à jour la Vidéo</button>
+                        <div class="d-flex justify-content-between mt-3">
+                            <a href="{% url 'dashboard' %}" class="btn btn-secondary">Retour au tableau de bord</a>
+                            <a href="{% url 'edit_player' video.player.id %}" class="btn btn-info">Modifier le joueur</a> 
+                        </div>
+
+                        <div
+                            class="modal fade"
+                            id="edit-status-notification-modal"
+                            tabindex="-1"
+                            role="dialog"
+                            aria-labelledby="edit-status-notification-title"
+                            aria-hidden="true"
+                        >
+                            <div class="modal-dialog" role="document">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="edit-status-notification-title">
+                                            Informer {{ video.player.name }} du nouveau statut ?
+                                        </h5>
+                                        <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="alert alert-light border">
+                                            <strong>Situation de paiement enregistrée :</strong>
+                                            {{ payment_snapshot.status_label }}<br>
+                                            <small>
+                                                Payé : {{ payment_snapshot.amount_paid_display }} /
+                                                {{ payment_snapshot.total_display }} —
+                                                Solde : {{ payment_snapshot.remaining_display }}
+                                            </small>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="edit_payment_message_mode">
+                                                Information de paiement à inclure
+                                            </label>
+                                            <select
+                                                name="payment_message_mode"
+                                                id="edit_payment_message_mode"
+                                                class="form-control"
+                                                form="video-edit-form"
+                                            >
+                                                {% for value, label in payment_mode_choices %}
+                                                    <option value="{{ value }}">{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <small
+                                                class="form-text text-primary"
+                                                id="edit-payment-recommendation"
+                                            ></small>
+                                        </div>
+
+                                        {% if player_has_whatsapp %}
+                                            <div class="alert alert-info mb-0">
+                                                WhatsApp s’ouvrira avec un message prérempli à partir du
+                                                nouveau statut, du paiement et de la deadline. Vous pourrez
+                                                encore modifier le texte avant de l’envoyer.
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-warning mb-0">
+                                                Aucun numéro WhatsApp n’est enregistré pour ce joueur.
+                                                La vidéo peut être mise à jour sans notification.
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="modal-footer flex-column flex-sm-row">
+                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                                            Annuler
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" id="edit-save-without-whatsapp">
+                                            Mettre à jour sans WhatsApp
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn btn-success"
+                                            id="edit-save-with-whatsapp"
+                                            {% if not player_has_whatsapp %}disabled{% endif %}
+                                        >
+                                            <i class="fab fa-whatsapp"></i>
+                                            Mettre à jour et ouvrir WhatsApp
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card for payment and status history -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <h5 class="text-center  mr-2">Historique des Statuts</h5>
+                    {% if video_status_history %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>                           
+                                    <th>Date de Changement</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for status in video_status_history %}
+                                    <tr>
+                                        <td>{{ status.changed_at|date:"d-m-Y" }}</td>
+                                        <td>{{ status.status }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucun historique de statut disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Card for payment history -->
+            <div class="card mb-4">
+                <div class="card-body" style="color: black;">
+                    <div class="row d-flex justify-content-center">
+                        <h5 class="text-center  mr-2">Informations de Paiement</h5>
+                        {% if video.invoices.status == 'paid' %}
+                            <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                        {% else %}
+                            <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    
+                    {% if payments %}
+                        <table class="table table-striped small-table">
+                            <thead>
+                                <tr>                                   
+                                    <th>Date de Paiement</th>
+                                    <th>Type de Paiement</th>
+                                    <th>Montant</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                    <tr>
+                                        <td>{{ payment.payment_date|date:"d-m-Y" }}</td>
+                                        <td>{{ payment.payment_type }}</td>
+                                        <td>{{ payment.amount }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucune information de paiement disponible.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% if video.editor.user.is_superuser  %}
+            
+            {% else %}
+                <!-- Card for Collaborator Payment (Paiement Collaborateur) -->         
+                <div class="card mb-4">
+                    <div class="card-body" style="color: black;">
+                        <div class="row d-flex justify-content-center">
+                            <h5 class="text-center  mr-2">Paiement Collaborateur</h5>
+                            {% if video.salary_paid_status == 'paid' %}
+                                <i class="fas fa-check-circle text-success mt-1 "  aria-hidden="true"></i> 
+                            {% else %}
+                                <i class="fas fa-times-circle text-danger mt-1" aria-hidden="true"></i>
+                            {% endif %}
+                        </div>
+                        
+                        {% if salaries %}
+                            <table class="table table-striped small-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date de Paiement</th>
+                                        <th>Montant</th>
+                                        <th>Dépense Associée</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for salary in salaries %}
+                                        <tr>
+                                            <td>{{ salary.date|date:"d-m-Y" }}</td>
+                                            <td>{{ salary.amount }}</td>
+                                            <td>
+                                                {% if salary.expense %}
+                                                    {{ salary.expense.description }} - {{ salary.expense.amount }}
+                                                {% else %}
+                                                    Aucune dépense liée.
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p>Aucune information de paiement collaborateur disponible.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}    
+        </div>
+    </div>
+</div>
+
+{{ status_payment_recommendations|json_script:"edit-status-payment-recommendations" }}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('video-edit-form');
+        const statusSelect = document.getElementById('id_status');
+        const notificationAction = document.getElementById('edit_notification_action');
+        const paymentModeSelect = document.getElementById('edit_payment_message_mode');
+        const paymentRecommendation = document.getElementById('edit-payment-recommendation');
+        const saveWithoutWhatsapp = document.getElementById('edit-save-without-whatsapp');
+        const saveWithWhatsapp = document.getElementById('edit-save-with-whatsapp');
+        const notificationModal = document.getElementById('edit-status-notification-modal');
+        const recommendationsElement = document.getElementById(
+            'edit-status-payment-recommendations'
+        );
+
+        if (!form || !statusSelect || !recommendationsElement) {
+            return;
+        }
+
+        // Bootstrap ajoute le voile directement dans <body>. La fenêtre doit se
+        // trouver au même niveau pour rester claire, visible et cliquable.
+        if (notificationModal && notificationModal.parentElement !== document.body) {
+            document.body.appendChild(notificationModal);
+        }
+
+        const recommendations = JSON.parse(recommendationsElement.textContent);
+        let confirmationCompleted = false;
+
+        function updateRecommendation() {
+            const recommendation = recommendations[statusSelect.value] || {};
+            if (paymentRecommendation) {
+                paymentRecommendation.textContent = recommendation.label
+                    ? `Recommandation : ${recommendation.label}`
+                    : '';
+            }
+
+            const automaticOption = paymentModeSelect.querySelector(
+                'option[value="auto"]'
+            );
+            if (automaticOption) {
+                automaticOption.textContent = recommendation.label
+                    ? `Automatique — ${recommendation.label}`
+                    : 'Selon le paiement enregistré';
+            }
+        }
+
+        function submitConfirmed(action) {
+            notificationAction.value = action;
+            confirmationCompleted = true;
+            $('#edit-status-notification-modal').modal('hide');
+
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        }
+
+        form.addEventListener('submit', function (event) {
+            const statusChanged = statusSelect.value !== form.dataset.originalStatus;
+            if (confirmationCompleted || !statusChanged) {
+                return;
+            }
+
+            event.preventDefault();
+            paymentModeSelect.value = 'auto';
+            updateRecommendation();
+            $('#edit-status-notification-modal').modal('show');
+        });
+
+        paymentModeSelect.addEventListener('change', updateRecommendation);
+        saveWithoutWhatsapp.addEventListener('click', function () {
+            submitConfirmed('skip');
+        });
+        saveWithWhatsapp.addEventListener('click', function () {
+            submitConfirmed('whatsapp');
+        });
+    });
+</script>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'gestion_joueurs/js/deadline_planner.js' %}"></script>
+    <script src="{% static 'gestion_joueurs/js/academy_order.js' %}"></script>
+{% endblock %}

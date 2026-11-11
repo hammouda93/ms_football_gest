@@ -1,0 +1,34 @@
+{% load portal_extras %}
+{% portal_copy portal_language as pc %}
+<a class="portal-video-card portal-order-card{% if video.client_action_count %} has-required-actions{% endif %}" href="{% url 'portal:video' video.pk %}" aria-label="{{ pc.open_order }} {{ video.season }} — {{ video.player.name }}">
+    <div class="portal-order-heading">
+        <div class="portal-order-identity">
+            <span class="status-dot stage-{{ video.production_stage }}" aria-hidden="true"></span>
+            <div>
+                <strong>{% if show_player %}{{ video.player.name }} · {% endif %}{{ video.season }}</strong>
+                <small>{{ video.club|default:video.player.club|default:pc.club_unknown }}</small>
+            </div>
+        </div>
+        <span class="stage-pill stage-{{ video.production_stage }}">{{ video.production_stage_label }}</span>
+    </div>
+
+    <div class="portal-progress" aria-label="{{ pc.progress }} {{ video.production_progress }}%"><div style="width: {{ video.production_progress }}%"></div></div>
+    <div class="portal-order-progress-copy">
+        <strong>{{ video.production_progress }}%</strong>
+        <span>{{ video.production_next_action }}</span>
+        <span><i class="fas fa-calendar-day" aria-hidden="true"></i> {{ video.deadline|date:"d/m/Y" }}</span>
+    </div>
+
+    {% if video.client_actions %}
+        <div class="portal-required-actions" aria-label="Actions requises">
+            <strong>{{ pc.required_actions }}</strong>
+            <div>
+                {% for action in video.client_actions %}<span class="portal-action-chip {{ action.tone }}"><i class="fas {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</span>{% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <div class="portal-order-clear"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ pc.no_action_required }}</div>
+    {% endif %}
+
+    <div class="portal-order-open">{{ pc.open_order_detail }} <i class="fas fa-arrow-right" aria-hidden="true"></i></div>
+</a>

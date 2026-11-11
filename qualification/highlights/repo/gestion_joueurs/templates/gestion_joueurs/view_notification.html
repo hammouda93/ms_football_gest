@@ -1,0 +1,135 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Voir la notification{% endblock %}
+
+{% block content %}
+<div class="container mt-4 ui-page detail-page notification-detail-page">
+    <div class="card mb-4">
+        <div class="card-header">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                <div>
+                    <h4 class="text-left mb-2">Notification</h4>
+                    {% if notification.sent_by %}
+                        <span class="badge badge-primary">{{ notification.sent_by.username }}</span>
+                    {% else %}
+                        <span class="badge badge-info">Créée automatiquement</span>
+                    {% endif %}
+                    <i class="fas fa-arrow-right mx-1 text-muted"></i>
+                    <span class="badge badge-secondary">{{ notification.user.username }}</span>
+                </div>
+                <small class="text-muted mt-2 mt-md-0">
+                    <i class="far fa-clock mr-1"></i>
+                    {% if notification.sent_at %}
+                        {{ notification.sent_at|date:"d/m/Y H:i" }}
+                    {% else %}
+                        {{ notification.created_at|date:"d/m/Y H:i" }}
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div class="alert alert-light border notification-internal-message">
+                <small class="text-uppercase text-muted d-block mb-1">Message interne</small>
+                <p class="mb-0">{{ notification.message }}</p>
+            </div>
+
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <div class="border rounded p-3 h-100">
+                        <strong>Type</strong>
+                        <div class="mt-1">{{ notification.get_notification_type_display }}</div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <div class="border rounded p-3 h-100">
+                        <strong>État de lecture</strong>
+                        <div class="mt-1">
+                            {% if notification.is_read %}
+                                <span class="badge badge-success">Lue</span>
+                            {% else %}
+                                <span class="badge badge-danger">Non lue</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if notification.video %}
+                <div class="border rounded p-3 mb-3">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                        <div>
+                            <strong>Vidéo</strong>
+                            <div>{{ notification.video }}</div>
+                            <small class="text-muted">
+                                Statut : {{ notification.video.get_status_display }} —
+                                Deadline : {{ notification.video.deadline|date:"d/m/Y" }}
+                            </small>
+                        </div>
+                        <div class="mt-3 mt-md-0">
+                            <a href="{% url 'view_video' notification.video.id %}" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-eye mr-1"></i>Voir
+                            </a>
+                            <a href="{% url 'update_video_status' notification.video.id %}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-sync-alt mr-1"></i>Changer le statut
+                            </a>
+                            {% if request.user.is_superuser %}
+                                <a href="{% url 'record_payment' notification.video.id %}" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-dollar-sign mr-1"></i>Paiement
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if notification_player %}
+                <div class="border rounded p-3 mb-3">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                        <div>
+                            <strong>Joueur</strong>
+                            <div>{{ notification_player }}</div>
+                            <small class="text-muted">
+                                WhatsApp : {{ notification_player.whatsapp_number|default:"Non renseigné" }}
+                            </small>
+                        </div>
+                        {% if request.user.is_superuser %}
+                            <a href="{% url 'edit_player' notification_player.id %}" class="btn btn-outline-primary btn-sm mt-3 mt-md-0">
+                                <i class="fas fa-user-edit mr-1"></i>Voir le joueur
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if notification_whatsapp_url %}
+                <div class="alert alert-success">
+                    <strong>Message joueur prêt.</strong>
+                    Le texte reprend le statut, la situation de paiement, la date et la deadline.
+                    Vous pourrez encore le modifier dans WhatsApp avant de l’envoyer.
+                </div>
+            {% elif notification.video and notification_player and not notification_player.whatsapp_number %}
+                <div class="alert alert-warning">
+                    Ajoutez d’abord le numéro WhatsApp du joueur pour pouvoir lui transmettre cette notification.
+                </div>
+            {% endif %}
+
+            <div class="notification-detail-actions d-flex flex-column flex-sm-row justify-content-center mt-3">
+                {% if notification_whatsapp_url %}
+                    <a
+                        href="{{ notification_whatsapp_url }}"
+                        class="btn btn-success mb-2 mb-sm-0 mr-sm-2"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <i class="fab fa-whatsapp mr-1"></i>Envoyer avec WhatsApp
+                    </a>
+                {% endif %}
+                <a href="{% url 'notification_list' %}" class="btn btn-secondary">
+                    Retour aux notifications
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

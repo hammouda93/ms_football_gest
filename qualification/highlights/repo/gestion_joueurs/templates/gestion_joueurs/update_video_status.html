@@ -1,0 +1,528 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Mettre à jour le statut de la vidéo{% endblock %}
+
+{% block extra_css %}
+<style>
+    .presentation-style-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .7rem;
+    }
+    .presentation-style-option {
+        position: relative;
+        margin: 0;
+    }
+    .presentation-style-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .presentation-style-card {
+        display: flex;
+        align-items: flex-start;
+        gap: .75rem;
+        height: 100%;
+        padding: .85rem;
+        border: 1px solid #d7dfeb;
+        border-radius: .75rem;
+        background: #fff;
+        cursor: pointer;
+        transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .presentation-style-card:hover {
+        border-color: #8ab3ff;
+        box-shadow: 0 5px 14px rgba(31, 91, 195, .08);
+    }
+    .presentation-style-option input:checked + .presentation-style-card {
+        border-color: #2161d1;
+        background: #f3f7ff;
+        box-shadow: 0 0 0 2px rgba(33, 97, 209, .13);
+    }
+    .presentation-style-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 2.25rem;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: .65rem;
+        color: #2161d1;
+        background: #eaf1ff;
+    }
+    .presentation-style-copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    .presentation-style-copy strong {
+        color: #12233f;
+        font-size: .86rem;
+    }
+    .presentation-style-copy small {
+        color: #637089;
+        line-height: 1.35;
+    }
+    .presentation-style-meta {
+        color: #2161d1;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    @media (max-width: 767.98px) {
+        .presentation-style-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 ui-page workflow-page status-update-page">
+    <div class="card">
+        <div class="card-header text-center">
+            <h2 class="mb-0">Mettre à jour le statut de la vidéo</h2>
+            <h5 class="text-muted">{{ video }}</h5>
+        </div>
+        <div class="card-body">
+            {% if messages %}
+                <div class="alert alert-info">
+                    {% for message in messages %}
+                        {{ message }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <h4 class="mt-3">Avancement de l’automatisation</h4>
+            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=automation_progress_runs %}
+
+            <form
+                method="POST"
+                enctype="multipart/form-data"
+                id="status-update-form"
+                data-original-status="{{ video.status }}"
+            >
+                {% csrf_token %}
+                <input type="hidden" name="editor" value="{{ video.editor.id }}">
+                <input type="hidden" name="notification_action" id="notification_action" value="skip">
+
+                <div class="form-group">
+                    <label for="status">Statut</label>
+                    <select name="status" class="form-control" id="status" onchange="toggleStatusFields()">
+                        <option value="pending" {% if video.status == 'pending' %}selected{% endif %}>En attente</option>
+                        <option value="in_progress" {% if video.status == 'in_progress' %}selected{% endif %}>En cours</option>
+                        <option value="completed_collab" {% if video.status == 'completed_collab' %}selected{% endif %}>Fini par le collaborateur</option>
+                        {% if request.user.is_superuser %}
+                        <option value="completed" {% if video.status == 'completed' %}selected{% endif %}>Fini</option>
+                        <option value="delivered" {% if video.status == 'delivered' %}selected{% endif %}>Livré</option>
+                        {% endif %}
+                        <option value="problematic" {% if video.status == 'problematic' %}selected{% endif %} hidden>Problématique</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="processing-mode-container" style="display: none;">
+                    <label for="processing_mode">Mode de traitement</label>
+                    <select name="processing_mode" class="form-control" id="processing_mode" onchange="toggleStatusFields()">
+                        <option value="normal" {% if video.processing_mode == 'normal' %}selected{% endif %}>Normal</option>
+                        <option value="automation" {% if video.processing_mode == 'automation' %}selected{% endif %}>Automation</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="sportsbase-url-container" style="display: none;">
+                    <label for="sportsbase_url">Lien SportsBase du joueur</label>
+                    <input
+                        type="url"
+                        name="sportsbase_url"
+                        class="form-control"
+                        id="sportsbase_url"
+                        placeholder="Entrez le lien SportsBase du joueur"
+                        value="{{ video.player.sportsbase_url|default:'' }}"
+                    >
+                    {% if video.player.sportsbase_url %}
+                        <small class="form-text text-success">Lien SportsBase déjà enregistré pour ce joueur.</small>
+                    {% endif %}
+                    <small class="form-text text-muted">
+                        Obligatoire si le mode de traitement est Automation.
+                    </small>
+                </div>
+                <div class="form-group" id="intro-automation-container" style="display: none;">
+                    <div class="form-check">
+                        <input
+                            type="checkbox"
+                            name="intro_automation_enabled"
+                            class="form-check-input"
+                            id="intro_automation_enabled"
+                            {% if video.intro_automation_enabled %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="intro_automation_enabled">
+                            Générer la présentation
+                        </label>
+                    </div>
+                    <div class="form-group" id="transfermarkt-url-container" style="display: none;">
+                        <label for="transfermarkt_url">Lien Transfermarkt du joueur</label>
+                        <input
+                            type="url"
+                            name="transfermarkt_url"
+                            class="form-control"
+                            id="transfermarkt_url"
+                            placeholder="Entrez le lien Transfermarkt du joueur"
+                            value="{{ video.player.transfermarkt_url|default:'' }}"
+                        >
+                        {% if video.player.transfermarkt_url %}
+                            <small class="form-text text-success">Lien Transfermarkt déjà enregistré pour ce joueur.</small>
+                        {% endif %}
+                        <small class="form-text text-muted">
+                            Obligatoire si Générer la présentation est activé.
+                        </small>
+                    </div>
+                    <div class="form-group mt-3" id="presentation-style-container" style="display: none;">
+                        <label class="d-block mb-2">Style de présentation</label>
+                        <div class="presentation-style-grid" role="radiogroup" aria-label="Style de présentation">
+                            {% for style in presentation_styles %}
+                                <div class="presentation-style-option">
+                                    <input
+                                        type="radio"
+                                        name="intro_presentation_style"
+                                        id="intro-style-{{ style.value }}"
+                                        value="{{ style.value }}"
+                                        {% if video.intro_presentation_style == style.value %}checked{% endif %}
+                                    >
+                                    <label class="presentation-style-card" for="intro-style-{{ style.value }}">
+                                        <span class="presentation-style-icon" aria-hidden="true">
+                                            <i class="fas {{ style.icon }}"></i>
+                                        </span>
+                                        <span class="presentation-style-copy">
+                                            <span class="presentation-style-meta">
+                                                {{ style.category }}{% if style.value == 'stadium_golden_hour' %} · Recommandé{% endif %}
+                                            </span>
+                                            <strong>{{ style.label }}</strong>
+                                            <small>{{ style.summary }}</small>
+                                        </span>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <small class="form-text text-muted">
+                            Le choix adapte automatiquement les prompts de l’image ChatGPT et de l’animation Kling.
+                        </small>
+                    </div>
+                    <small class="form-text text-muted">
+                        Si activé, l’agent préparera automatiquement le dossier local
+                        <strong>Uploads_ChatGPT_Kling</strong> pour l’intro du joueur.
+                    </small>
+
+                    {% if video.intro_automation_completed %}
+                        <small class="form-text text-success">
+                            Présentation intro déjà préparée.
+                        </small>
+                    {% elif video.intro_automation_started %}
+                        <small class="form-text text-warning">
+                            Présentation intro en cours de préparation.
+                        </small>
+                    {% endif %}
+                </div>
+                <div class="form-group" id="delivery-mode-container" style="display: none;">
+                    <label for="delivery_mode">Livraison après export</label>
+                    <select name="delivery_mode" class="form-control" id="delivery_mode" onchange="toggleStatusFields()">
+                        <option value="normal" {% if video.delivery_mode == 'normal' %}selected{% endif %}>Normal</option>
+                        <option value="automation" {% if video.delivery_mode == 'automation' %}selected{% endif %}>Automation</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        En mode Automation, le MP4 vérifié est envoyé sur YouTube en non répertorié, puis le lien et WhatsApp sont préparés.
+                    </small>
+                </div>
+
+                <div class="form-group" id="video-link-container" style="display: none;">
+                    <label for="video_link">Lien de la vidéo</label>
+                    <input
+                        type="url"
+                        name="video_link"
+                        class="form-control"
+                        id="video_link"
+                        placeholder="Entrez l'URL de la vidéo"
+                        value="{{ video.video_link|default:'' }}"
+                    >
+                </div>
+
+                <div id="automation-launch-hint" class="alert alert-info" style="display: none;">
+                    En enregistrant, la tâche sera envoyée directement à l’agent vidéo Windows.
+                    Aucun terminal ni VS Code n’est nécessaire.
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="status-submit-button">Mettre à jour</button>
+                <a href="{% url 'video_status' video.id %}" class="btn btn-secondary btn-block mt-3">Retour au statut de la vidéo</a>
+                <button type="button" class="btn btn-danger btn-block mt-3" onclick="confirmProblematic()">Marquer comme problématique</button>
+
+                <div
+                    class="modal fade"
+                    id="status-notification-modal"
+                    tabindex="-1"
+                    role="dialog"
+                    aria-labelledby="status-notification-title"
+                    aria-hidden="true"
+                >
+                    <div class="modal-dialog modal-lg" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="status-notification-title">
+                                    Informer {{ video.player.name }} du nouveau statut ?
+                                </h5>
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-light border">
+                                    <strong>Situation de paiement enregistrée :</strong>
+                                    {{ payment_snapshot.status_label }}<br>
+                                    <small>
+                                        Payé : {{ payment_snapshot.amount_paid_display }} /
+                                        {{ payment_snapshot.total_display }} —
+                                        Solde : {{ payment_snapshot.remaining_display }}
+                                    </small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="payment_message_mode">Information de paiement à inclure</label>
+                                    <select
+                                        name="payment_message_mode"
+                                        id="payment_message_mode"
+                                        class="form-control"
+                                        form="status-update-form"
+                                    >
+                                        {% for value, label in payment_mode_choices %}
+                                            <option value="{{ value }}">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="form-text text-primary" id="payment-recommendation"></small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="whatsapp_message">Message proposé — modifiable avant ouverture</label>
+                                    <textarea
+                                        name="whatsapp_message"
+                                        id="whatsapp_message"
+                                        class="form-control"
+                                        form="status-update-form"
+                                        rows="11"
+                                        maxlength="4000"
+                                    ></textarea>
+                                </div>
+
+                                {% if player_has_whatsapp %}
+                                    <div class="alert alert-info mb-0">
+                                        WhatsApp s’ouvrira avec ce texte prérempli. Le message ne sera pas
+                                        envoyé tant que vous n’appuierez pas vous-même sur « Envoyer » dans WhatsApp.
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-warning mb-0">
+                                        Aucun numéro WhatsApp n’est enregistré pour ce joueur. Vous pouvez
+                                        enregistrer le statut sans envoyer de message.
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="modal-footer flex-column flex-sm-row">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                                    Annuler
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="save-without-whatsapp">
+                                    Mettre à jour sans WhatsApp
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-success"
+                                    id="save-with-whatsapp"
+                                    {% if not player_has_whatsapp %}disabled{% endif %}
+                                >
+                                    <i class="fab fa-whatsapp"></i>
+                                    Mettre à jour et ouvrir WhatsApp
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{ status_whatsapp_messages|json_script:"status-whatsapp-messages" }}
+{{ status_payment_recommendations|json_script:"status-payment-recommendations" }}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        toggleStatusFields();
+
+        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
+        if (introAutomationCheckbox) {
+            introAutomationCheckbox.addEventListener('change', toggleStatusFields);
+        }
+
+        initialiseStatusNotificationConfirmation();
+    });
+
+    function initialiseStatusNotificationConfirmation() {
+        const form = document.getElementById('status-update-form');
+        const statusSelect = document.getElementById('status');
+        const notificationAction = document.getElementById('notification_action');
+        const paymentModeSelect = document.getElementById('payment_message_mode');
+        const whatsappMessage = document.getElementById('whatsapp_message');
+        const paymentRecommendation = document.getElementById('payment-recommendation');
+        const videoLinkInput = document.getElementById('video_link');
+        const saveWithoutWhatsapp = document.getElementById('save-without-whatsapp');
+        const saveWithWhatsapp = document.getElementById('save-with-whatsapp');
+        const notificationModal = document.getElementById('status-notification-modal');
+
+        const messageOptionsElement = document.getElementById('status-whatsapp-messages');
+        const recommendationsElement = document.getElementById('status-payment-recommendations');
+
+        if (!form || !statusSelect || !messageOptionsElement || !recommendationsElement) {
+            return;
+        }
+
+        // Bootstrap ajoute le voile directement dans <body>. La fenêtre doit se
+        // trouver au même niveau pour rester claire, visible et cliquable.
+        if (notificationModal && notificationModal.parentElement !== document.body) {
+            document.body.appendChild(notificationModal);
+        }
+
+        const messageOptions = JSON.parse(messageOptionsElement.textContent);
+        const recommendations = JSON.parse(recommendationsElement.textContent);
+        let confirmationCompleted = false;
+
+        function addCurrentDeliveryLink(message, status) {
+            const videoLink = videoLinkInput ? videoLinkInput.value.trim() : '';
+            if (status !== 'delivered' || !videoLink || message.includes(videoLink)) {
+                return message;
+            }
+
+            const signature = '\n\nMoataz — MS Football';
+            const linkParagraph = `\n\nVoici le lien de la vidéo : ${videoLink}`;
+            if (message.includes(signature)) {
+                return message.replace(signature, `${linkParagraph}${signature}`);
+            }
+            return `${message}${linkParagraph}`;
+        }
+
+        function updateMessagePreview() {
+            const status = statusSelect.value;
+            const paymentMode = paymentModeSelect.value;
+            const recommendation = recommendations[status] || {};
+            const statusMessages = messageOptions[status] || {};
+
+            if (paymentRecommendation) {
+                paymentRecommendation.textContent = recommendation.label
+                    ? `Recommandation : ${recommendation.label}`
+                    : '';
+            }
+
+            const automaticOption = paymentModeSelect.querySelector('option[value="auto"]');
+            if (automaticOption) {
+                automaticOption.textContent = recommendation.label
+                    ? `Automatique — ${recommendation.label}`
+                    : 'Selon le paiement enregistré';
+            }
+
+            const proposedMessage = statusMessages[paymentMode] || statusMessages.auto || '';
+            whatsappMessage.value = addCurrentDeliveryLink(proposedMessage, status);
+        }
+
+        function submitConfirmed(action) {
+            notificationAction.value = action;
+            confirmationCompleted = true;
+            $('#status-notification-modal').modal('hide');
+
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        }
+
+        form.addEventListener('submit', function (event) {
+            const statusChanged = statusSelect.value !== form.dataset.originalStatus;
+            if (confirmationCompleted || !statusChanged) {
+                return;
+            }
+
+            event.preventDefault();
+            paymentModeSelect.value = 'auto';
+            updateMessagePreview();
+            $('#status-notification-modal').modal('show');
+        });
+
+        paymentModeSelect.addEventListener('change', updateMessagePreview);
+        saveWithoutWhatsapp.addEventListener('click', function () {
+            submitConfirmed('skip');
+        });
+        saveWithWhatsapp.addEventListener('click', function () {
+            submitConfirmed('whatsapp');
+        });
+    }
+
+    function toggleStatusFields() {
+        const statusSelect = document.getElementById('status');
+        const processingModeSelect = document.getElementById('processing_mode');
+
+        const processingModeContainer = document.getElementById('processing-mode-container');
+        const sportsbaseUrlContainer = document.getElementById('sportsbase-url-container');
+        const introAutomationContainer = document.getElementById('intro-automation-container');
+        const transfermarktUrlContainer = document.getElementById('transfermarkt-url-container');
+        const presentationStyleContainer = document.getElementById('presentation-style-container');
+        const deliveryModeContainer = document.getElementById('delivery-mode-container');
+        const deliveryModeSelect = document.getElementById('delivery_mode');
+        const videoLinkContainer = document.getElementById('video-link-container');
+        const automationLaunchHint = document.getElementById('automation-launch-hint');
+        const submitButton = document.getElementById('status-submit-button');
+
+        const introAutomationCheckbox = document.getElementById('intro_automation_enabled');
+
+        const status = statusSelect ? statusSelect.value : '';
+        const processingMode = processingModeSelect ? processingModeSelect.value : 'normal';
+        const introAutomationEnabled = introAutomationCheckbox ? introAutomationCheckbox.checked : false;
+        const deliveryMode = deliveryModeSelect ? deliveryModeSelect.value : 'normal';
+
+        const isInProgress = status === 'in_progress';
+        const isAutomation = processingMode === 'automation';
+        const isDelivered = status === 'delivered';
+        const willLaunchAutomation = (
+            (isInProgress && (isAutomation || introAutomationEnabled))
+            || (status === 'completed' && deliveryMode === 'automation')
+        );
+
+        processingModeContainer.style.display = isInProgress ? 'block' : 'none';
+
+        // SportsBase seulement pour automation vidéo
+        sportsbaseUrlContainer.style.display = (isInProgress && isAutomation) ? 'block' : 'none';
+
+        // Générer la présentation visible directement dès que statut = En cours
+        introAutomationContainer.style.display = isInProgress ? 'block' : 'none';
+
+        // Transfermarkt seulement si la case est cochée
+        transfermarktUrlContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
+        presentationStyleContainer.style.display = (isInProgress && introAutomationEnabled) ? 'block' : 'none';
+
+        deliveryModeContainer.style.display = (isInProgress || status === 'completed' || isDelivered) ? 'block' : 'none';
+        videoLinkContainer.style.display = isDelivered ? 'block' : 'none';
+        automationLaunchHint.style.display = willLaunchAutomation ? 'block' : 'none';
+        submitButton.textContent = willLaunchAutomation
+            ? 'Enregistrer et lancer l’automatisation'
+            : 'Mettre à jour';
+    }
+
+    function confirmProblematic() {
+        if (confirm("Êtes-vous sûr de vouloir marquer cette vidéo comme problématique ?")) {
+            document.getElementById('status').value = 'problematic';
+            toggleStatusFields();
+            const form = document.getElementById('status-update-form');
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                const submitEvent = new Event('submit', {cancelable: true});
+                if (form.dispatchEvent(submitEvent)) {
+                    form.submit();
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

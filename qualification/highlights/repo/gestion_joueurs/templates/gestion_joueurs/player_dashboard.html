@@ -1,0 +1,240 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Tableau de bord des Joueurs{% endblock %}
+
+{% block content %}
+<div class="container mt-4 ui-page list-page player-list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Clients</span><h1>Joueurs</h1><p>{{ players_count }} fiche{{ players_count|pluralize }} · recherchez par club, ligue ou poste.</p></div>
+        <div class="ui-page-actions">
+            {% if request.user.is_superuser %}
+            <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-0 mt-0">
+                <i class="fas fa-user-plus"></i> Nouveau joueur
+            </a>
+            {% endif %}
+        </div>
+    </header>
+    <div class="card">
+        <div class="card-body">
+            <form method="GET" class="mb-3" id="filter-form">
+                <div class="form-row">
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par joueur/club" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col">
+                        <select id="league-select" name="league" class="form-control">
+                            <option value="">Toutes les ligues</option>
+                            <option value="L1" {% if request.GET.league == "L1" %}selected{% endif %}>Ligue 1 Tunisie</option>
+                            <option value="L2" {% if request.GET.league == "L2" %}selected{% endif %}>Ligue 2 Tunisie</option>
+                            <option value="LY" {% if request.GET.league == "LY" %}selected{% endif %}>Libye</option>
+                            <option value="OC" {% if request.GET.league == "OC" %}selected{% endif %}>Autre Pays</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select id="position-select" name="position" class="form-control">
+                            <option value="">Toutes les positions</option>
+                            <option value="GK" {% if request.GET.position == "GK" %}selected{% endif %}>Goalkeeper</option>
+                            <option value="DF" {% if request.GET.position == "DF" %}selected{% endif %}>Defender</option>
+                            <option value="MF" {% if request.GET.position == "MF" %}selected{% endif %}>Midfielder</option>
+                            <option value="FW" {% if request.GET.position == "FW" %}selected{% endif %}>Forward</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select id="video-relation-select" name="video_relation" class="form-control">
+                            <option value="">Toutes les vidéos</option>
+                            <option value="any" {% if video_relation == 'any' %}selected{% endif %}>Avec vidéos</option>
+                            <option value="active" {% if video_relation == 'active' %}selected{% endif %}>Vidéo en cours</option>
+                            <option value="delivered" {% if video_relation == 'delivered' %}selected{% endif %}>Vidéo livrée</option>
+                            <option value="none" {% if video_relation == 'none' %}selected{% endif %}>Sans vidéo</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select id="performance-relation-select" name="performance_relation" class="form-control">
+                            <option value="">Tous les abonnements</option>
+                            <option value="active" {% if performance_relation == 'active' %}selected{% endif %}>Performance actif</option>
+                            <option value="history" {% if performance_relation == 'history' %}selected{% endif %}>Performance ancien</option>
+                            <option value="none" {% if performance_relation == 'none' %}selected{% endif %}>Sans Performance</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select id="client-fidel-select" name="client_fidel" class="form-control">
+                            <option value="">Client Fidèle</option>
+                            <option value="true" {% if request.GET.client_fidel == "true" %}selected{% endif %}>Oui</option>
+                            <option value="false" {% if request.GET.client_fidel == "false" %}selected{% endif %}>Non</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select id="client-vip-select" name="client_vip" class="form-control">
+                            <option value="">Client VIP</option>
+                            <option value="true" {% if request.GET.client_vip == "true" %}selected{% endif %}>Oui</option>
+                            <option value="false" {% if request.GET.client_vip == "false" %}selected{% endif %}>Non</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
+                    </div>
+                </div>
+            </form>
+
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+
+            {% if page_obj %}
+                <table class="table table-striped table-bordered table-hover mt-3 small-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th scope="col">Joueur</th>
+                            <th scope="col">Club</th>
+                            <th scope="col">Ligue</th>
+                            <th scope="col">Position</th>
+                            <th scope="col">Agent / académie</th>
+                            <th scope="col">Vidéos Highlights</th>
+                            <th scope="col">Abonnement Performance</th>
+                            <th scope="col">Espace client</th>
+                            {% if request.user.is_superuser %}
+                            <th scope="col" class="text-center">Action</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for player in page_obj %}
+                            <tr>
+                                <td><strong>{{ player.name }}</strong></td>
+                                <td>{{ player.club }}</td>
+                                <td>{{ player.get_league_name }}</td>
+                                <td>{{ player.position }}</td>
+                                <td>
+                                    {% for link in player.active_organization_links %}
+                                        <a class="badge badge-info" href="{% url 'portal:organization_detail' link.organization.pk %}" title="{{ link.organization.get_kind_display }}"><i class="fas fa-users"></i> {{ link.organization.name }}</a>
+                                    {% empty %}
+                                        <span class="badge badge-light"><i class="fas fa-minus"></i> Aucune</span>
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    <span class="badge badge-primary" title="Nombre total de vidéos"><i class="fas fa-video"></i> {{ player.video_count }}</span>
+                                    {% if player.active_video_count %}<span class="badge badge-warning" title="Vidéos non livrées"><i class="fas fa-spinner"></i> {{ player.active_video_count }} en cours</span>{% endif %}
+                                    {% if player.delivered_video_count %}<span class="badge badge-success" title="Vidéos livrées"><i class="fas fa-check"></i> {{ player.delivered_video_count }}</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if player.sportsbase_subscription %}
+                                        {% if player.sportsbase_subscription.access_enabled %}
+                                            <span class="badge badge-success"><i class="fas fa-chart-line"></i> Actif</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary"><i class="fas fa-clock-rotate-left"></i> Ancien / inactif</span>
+                                        {% endif %}
+                                        <small class="d-block mt-1">{{ player.sportsbase_subscription.season }} · {{ player.sportsbase_subscription.amount_paid|floatformat:2 }}/{{ player.sportsbase_subscription.total_amount|floatformat:2 }} {{ player.sportsbase_subscription.currency }}</small>
+                                    {% else %}
+                                        <span class="badge badge-light"><i class="fas fa-minus"></i> Aucun</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if player.client_portal_state == 'active' %}
+                                        <span class="badge badge-success"><i class="fas fa-user-check"></i> Actif</span>
+                                    {% elif player.client_portal_state == 'inactive' %}
+                                        <span class="badge badge-warning"><i class="fas fa-user-lock"></i> Désactivé</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary"><i class="fas fa-user-slash"></i> Aucun</span>
+                                    {% endif %}
+                                    {% if player.client_fidel %}<span class="badge badge-info">Fidèle</span>{% endif %}
+                                    {% if player.client_vip %}<span class="badge badge-primary">VIP</span>{% endif %}
+                                </td>
+                                {% if request.user.is_superuser %}
+                                <td class="text-center">
+                                    <div class="btn-group" role="group">
+                                        <a href="{% url 'edit_player' player.id %}" class="btn btn-success btn-sm" title="Modifier le joueur">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </a>
+                                        <a href="{% url 'create_video_request' %}?player_id={{ player.id }}" class="btn btn-primary btn-sm" title="Créer une vidéo">
+                                            <i class="fas fa-video"></i>
+                                        </a>
+                                        {% if player.sportsbase_subscription %}
+                                            <a href="{% url 'performance:subscription_edit' player.sportsbase_subscription.pk %}" class="btn btn-outline-primary btn-sm" title="Voir l’abonnement Performance"><i class="fas fa-chart-line"></i></a>
+                                        {% else %}
+                                            <a href="{% url 'performance:subscription_create' %}?player_id={{ player.id }}" class="btn btn-outline-secondary btn-sm" title="Créer l’abonnement Performance"><i class="fas fa-chart-line"></i></a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                {% endif %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <!-- Pagination Controls -->
+                <nav>
+                    <ul class="pagination justify-content-center pagination-sm">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.position %}&position={{ request.GET.position }}{% endif %}{% if request.GET.client_fidel %}&client_fidel={{ request.GET.client_fidel }}{% endif %}{% if request.GET.client_vip %}&client_vip={{ request.GET.client_vip }}{% endif %}{% if video_relation %}&video_relation={{ video_relation }}{% endif %}{% if performance_relation %}&performance_relation={{ performance_relation }}{% endif %}" aria-label="Première">
+                                    <span aria-hidden="true">&laquo;&laquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.position %}&position={{ request.GET.position }}{% endif %}{% if request.GET.client_fidel %}&client_fidel={{ request.GET.client_fidel }}{% endif %}{% if request.GET.client_vip %}&client_vip={{ request.GET.client_vip }}{% endif %}{% if video_relation %}&video_relation={{ video_relation }}{% endif %}{% if performance_relation %}&performance_relation={{ performance_relation }}{% endif %}" aria-label="Précédent">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        <li class="page-item active" aria-current="page">
+                            <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                        </li>
+
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.position %}&position={{ request.GET.position }}{% endif %}{% if request.GET.client_fidel %}&client_fidel={{ request.GET.client_fidel }}{% endif %}{% if request.GET.client_vip %}&client_vip={{ request.GET.client_vip }}{% endif %}{% if video_relation %}&video_relation={{ video_relation }}{% endif %}{% if performance_relation %}&performance_relation={{ performance_relation }}{% endif %}" aria-label="Suivant">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.position %}&position={{ request.GET.position }}{% endif %}{% if request.GET.client_fidel %}&client_fidel={{ request.GET.client_fidel }}{% endif %}{% if request.GET.client_vip %}&client_vip={{ request.GET.client_vip }}{% endif %}{% if video_relation %}&video_relation={{ video_relation }}{% endif %}{% if performance_relation %}&performance_relation={{ performance_relation }}{% endif %}" aria-label="Dernière">
+                                    <span aria-hidden="true">&raquo;&raquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% else %}
+                <div class="alert alert-warning" role="alert">
+                    Aucun joueur à afficher.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const leagueSelect = document.getElementById('league-select');
+        const positionSelect = document.getElementById('position-select');
+        const clientFidelSelect = document.getElementById('client-fidel-select');
+        const clientVipSelect = document.getElementById('client-vip-select');
+        const videoRelationSelect = document.getElementById('video-relation-select');
+        const performanceRelationSelect = document.getElementById('performance-relation-select');
+
+        const submitForm = () => {
+            filterForm.submit();
+        };
+
+        leagueSelect.addEventListener('change', submitForm);
+        positionSelect.addEventListener('change', submitForm);
+        clientFidelSelect.addEventListener('change', submitForm);
+        clientVipSelect.addEventListener('change', submitForm);
+        videoRelationSelect.addEventListener('change', submitForm);
+        performanceRelationSelect.addEventListener('change', submitForm);
+
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+    });
+</script>
+{% endblock %}

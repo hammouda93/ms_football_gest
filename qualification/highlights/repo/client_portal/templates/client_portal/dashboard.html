@@ -1,0 +1,121 @@
+{% extends "client_portal/portal_base.html" %}
+{% load static %}
+{% load portal_extras %}
+{% block title %}{{ pc.my_space }} — MS Football{% endblock %}
+{% block portal_content %}
+<section class="portal-hero">
+    <div>
+        {% if portal_overview_admin %}
+            <span class="eyebrow">Vue administrateur Performance</span>
+            <h1>Tous les espaces clients abonnés</h1>
+            <p>Consultation centralisée et en lecture seule de tous les joueurs ayant un abonnement Performance actif.</p>
+        {% else %}
+            <span class="eyebrow">{{ pc.dashboard }}</span>
+            <h1>{{ pc.hello }} {{ request.portal_profile.display_name }}</h1>
+            <p>{{ pc.dashboard_intro }}</p>
+        {% endif %}
+    </div>
+    {% if organizations %}
+        <div class="organization-badges" aria-label="{{ pc.linked_organizations }}">
+            {% for organization in organizations %}<span>{{ organization.name }}</span>{% endfor %}
+        </div>
+    {% endif %}
+</section>
+
+<section class="portal-service-switcher" aria-label="MS Football">
+    <a class="portal-service-card video" href="#videos">
+        <span class="service-icon"><i class="fas fa-clapperboard"></i></span>
+        <span><small>{{ pc.production_service }}</small><strong>{{ pc.video_tracking }}</strong><em>{{ active_count }} {{ pc.orders_in_progress }}</em></span>
+        <b aria-hidden="true">→</b>
+    </a>
+    <a class="portal-service-card performance" href="{% url 'performance:portal_overview' %}">
+        <span class="service-icon"><i class="fas fa-chart-line"></i></span>
+        <span><small>{{ pc.annual_subscription }}</small><strong>{{ pc.performances }}</strong><em>{{ performance_subscriptions|length }} {{ pc.players_followed }}</em></span>
+        <b aria-hidden="true">→</b>
+    </a>
+</section>
+
+<section class="portal-metrics" aria-label="{{ pc.space_summary }}">
+    <article><span>{{ pc.followed_players }}</span><strong>{{ players|length }}</strong><small>{{ pc.in_your_space }}</small></article>
+    <article><span>{{ pc.in_production }}</span><strong>{{ active_count }}</strong><small>{{ pc.active_orders }}</small></article>
+    <article class="{% if required_action_count %}needs-attention{% endif %}"><span>{{ pc.to_validate }}</span><strong>{{ review_count }}</strong><small>{{ required_action_count }} {{ pc.required_actions_total }}</small></article>
+</section>
+
+<section class="portal-section" id="players">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">{{ pc.squad }}</span><h2>{{ pc.my_players }}</h2><p>{{ pc.open_player_records }}</p></div>
+        <span class="portal-count">{{ players|length }}</span>
+    </div>
+    <div class="player-card-grid">
+        {% for player in players %}
+            <a class="player-portal-card" href="{% url 'portal:player' player.pk %}">
+                <div class="player-avatar">{{ player.name|first|upper }}</div>
+                <div class="player-portal-copy">
+                    <strong>{{ player.name }}</strong>
+                    <span>{{ player.club|default:pc.club_unknown }}</span>
+                    <small>{{ player.get_position_display }} · {{ player.get_league_name }}</small>
+                    <div class="player-relationship-stats">
+                        <span><i class="fas fa-clapperboard" aria-hidden="true"></i> {{ player.portal_active_count }} {{ pc.active }}</span>
+                        {% if player.portal_review_count %}<span class="attention"><i class="fas fa-circle-check" aria-hidden="true"></i> {{ player.portal_review_count }} {{ pc.validation_short }}</span>{% endif %}
+                        {% if player.portal_performance_subscription %}<span class="performance-active"><i class="fas fa-chart-line" aria-hidden="true"></i> {{ pc.performance_active }}</span>{% endif %}
+                    </div>
+                </div>
+                <b aria-hidden="true">→</b>
+            </a>
+        {% empty %}
+            <div class="portal-empty"><strong>{{ pc.no_player }}</strong><span>{{ pc.no_player_help }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="portal-section" id="videos">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">{{ pc.current }}</span><h2>{{ pc.current_productions }}</h2><p>{{ pc.production_glance }}</p></div>
+        <span class="portal-count">{{ current_videos|length }}</span>
+    </div>
+    <div class="portal-video-list">
+        {% for video in current_videos %}
+            {% include "client_portal/includes/video_order_card.html" with video=video show_player=True portal_language=request.portal_profile.preferred_language only %}
+        {% empty %}
+            <div class="portal-empty"><strong>{{ pc.no_current_production }}</strong><span>{{ pc.production_appears }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="portal-section" id="history">
+    <div class="portal-section-heading">
+        <div><span class="eyebrow">{{ pc.video_library }}</span><h2>{{ pc.video_history }}</h2><p>{{ pc.video_history_help }}</p></div>
+        <span class="portal-count">{{ archived_videos|length }}</span>
+    </div>
+    <div class="portal-archive-grid">
+        {% for video in archived_videos %}
+            {% with embed_url=video.video_link|youtube_embed_url %}
+                <article class="portal-archive-card">
+                    {% if video.final_delivery_available and embed_url %}
+                        <div class="portal-video-embed"><iframe src="{{ embed_url }}" title="Vidéo de {{ video.player.name }} — {{ video.season }}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>
+                    {% else %}
+                        <a class="archive-placeholder" href="{% url 'portal:video' video.pk %}"><i class="fas {% if video.final_delivery_available %}fa-play{% else %}fa-lock{% endif %}"></i></a>
+                    {% endif %}
+                    <div class="portal-archive-copy"><div><strong>{{ video.player.name }}</strong><span>{{ video.season }} · {{ video.club|default:video.player.club }}</span></div><a href="{% url 'portal:video' video.pk %}">{{ pc.view_record }} →</a></div>
+                </article>
+            {% endwith %}
+        {% empty %}
+            <div class="portal-empty"><strong>{{ pc.no_old_video }}</strong><span>{{ pc.delivered_appear }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+{% if can_request_players %}
+    <details class="portal-section agent-request-panel">
+        <summary><span>{{ pc.add_player }}</span><small>{{ pc.verified_request }}</small></summary>
+        <div class="details-content">
+            <p>{{ pc.request_player_help }}</p>
+            <form method="post" action="{% url 'portal:agent_player_request' %}" class="portal-form">
+                {% csrf_token %}
+                {{ agent_request_form.as_p }}
+                <button class="portal-button primary" type="submit">{{ pc.send_request }}</button>
+            </form>
+        </div>
+    </details>
+{% endif %}
+{% endblock %}

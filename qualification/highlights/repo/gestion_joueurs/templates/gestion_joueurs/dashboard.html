@@ -1,0 +1,372 @@
+{% extends 'gestion_joueurs/base.html' %}
+
+{% block title %}Tableau de bord{% endblock %}
+
+{% block content %}
+<div class="container mt-4 ui-page list-page video-list-page">
+    <header class="ui-page-header">
+        <div class="ui-page-title-group"><span class="ui-eyebrow">Production</span><h1>Commandes vidéo</h1><p>Recherchez, filtrez et pilotez chaque production depuis une seule liste.</p></div>
+        <div class="ui-page-actions">
+            {% if request.user.is_superuser %}
+                <a href="{% url 'create_video_request' %}" class="btn btn-primary mb-0 mt-0">
+                    <i class="fas fa-plus"></i> Nouvelle vidéo
+                </a>
+                <a href="?{% if request.GET.show_problematic == 'true' %}{% else %}show_problematic=true{% endif %}" 
+                    class="btn {% if request.GET.show_problematic == 'true' %}btn-secondary{% else %}btn-danger{% endif %}">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    {% if request.GET.show_problematic == 'true' %}Toutes les vidéos{% else %}Priorités{% endif %}
+                </a>
+            {% endif %}
+        </div>
+    </header>
+    <div
+        id="automation-worker-status"
+        class="automation-worker-status {% if automation_worker and automation_worker.is_online %}is-online{% else %}is-offline{% endif %}"
+        data-status-url="{% url 'automation_worker_status' %}"
+    >
+        <span class="automation-worker-dot" aria-hidden="true"></span>
+        <div>
+            <strong id="automation-worker-label">
+                {% if automation_worker and automation_worker.is_online %}
+                    Agent {{ automation_worker.get_state_display|lower }}
+                {% else %}
+                    Agent hors ligne
+                {% endif %}
+            </strong>
+            <small id="automation-worker-detail">
+                {% if automation_worker and automation_worker.is_online and automation_worker.current_video %}
+                    {{ automation_worker.current_video.player.name }} · {{ automation_worker.current_stage }}
+                {% elif automation_worker %}
+                    Dernier contact {{ automation_worker.last_seen_at|timesince }}
+                {% else %}
+                    L’agent Windows n’a pas encore envoyé de signal.
+                {% endif %}
+            </small>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <form method="GET" class="mb-3" id="filter-form">
+                <input type="hidden" name="tab" value="{{ request.GET.tab|default:'ongoing' }}">
+                
+                <div class="form-row">
+                    <div class="col">
+                        <select id="editor-select" name="editor" class="form-control">
+                            <option value="">Tous les éditeurs</option>
+                            {% for editor in editors %}
+                                <option value="{{ editor.user.username }}" 
+                                    {% if request.GET.editor == editor.user.username %}selected{% endif %}>
+                                    {{ editor.user.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="text" id="search-input" name="search" class="form-control" placeholder="Rechercher par joueur ou éditeur" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col">
+                        <select id="status-select" name="status" class="form-control">
+                            <option value="">Tous les statuts</option>
+                            <option value="pending" {% if status == "pending" %}selected{% endif %}>En attente</option>
+                            <option value="in_progress" {% if status == "in_progress" %}selected{% endif %}>En cours</option>
+                            <option value="completed_collab" {% if status == "completed_collab" %}selected{% endif %}>Fini par le collaborateur</option>
+                            {% if request.user.is_superuser %}
+                            <option value="completed" {% if status == "completed" %}selected{% endif %}>Fini</option>
+                            <option value="delivered" {% if status == "delivered" %}selected{% endif %}>Livré</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select name="deadline_filter" class="form-control" onchange="this.form.submit()">
+                            <option value="all" {% if deadline_filter == 'all' %}selected{% endif %}>Deadline</option>
+                            <option value="past" {% if deadline_filter == 'past' %}selected{% endif %}>Passés</option>
+                            <option value="today" {% if deadline_filter == 'today' %}selected{% endif %}>Aujourd'hui</option>
+                            <option value="3_days" {% if deadline_filter == '3_days' %}selected{% endif %}>Dans 3 jours</option>
+                            <option value="1_week" {% if deadline_filter == '1_week' %}selected{% endif %}>Dans 1 semaine</option>
+                            <option value="2_weeks" {% if deadline_filter == '2_weeks' %}selected{% endif %}>Dans 2 semaines</option>
+                            <option value="1_month" {% if deadline_filter == '1_month' %}selected{% endif %}>Dans 1 mois</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select id="league-select" name="league" class="form-control">
+                            <option value="">Toutes les ligues</option>
+                            <option value="L1" {% if request.GET.league == "L1" %}selected{% endif %}>Ligue 1 Tunisie</option>
+                            <option value="L2" {% if request.GET.league == "L2" %}selected{% endif %}>Ligue 2 Tunisie</option>
+                            <option value="LY" {% if request.GET.league == "LY" %}selected{% endif %}>Libye</option>
+                            <option value="OC" {% if request.GET.league == "OC" %}selected{% endif %}>Autre Pays</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrer</button>
+                    </div>
+                </div>
+            </form>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'danger' }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+
+            <!-- Tabs for Video Categories -->
+            <ul class="nav nav-tabs" id="videoTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.GET.tab == 'ongoing' %}active{% endif %}" 
+                       href="?tab=ongoing&search={{ request.GET.search|default:'' }}&status={{ request.GET.status|default:'' }}&deadline_filter={{ request.GET.deadline_filter|default:'' }}&league={{ request.GET.league|default:'' }}&editor={{ request.GET.editor}}">
+                       En cours <span class="tab-count">{{ ongoing_videos_count }}</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.GET.tab == 'delivered' %}active{% endif %}" 
+                       href="?tab=delivered&search={{ request.GET.search|default:'' }}&status={{ request.GET.status|default:'' }}&deadline_filter={{ request.GET.deadline_filter|default:'' }}&league={{ request.GET.league|default:'' }}&editor={{ request.GET.editor}}">
+                       Livrées <span class="tab-count">{{ delivered_videos_count }}</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="videoTabsContent">
+                <div class="tab-pane {% if request.GET.tab == 'delivered' %} fade{% else %} show active{% endif %}" id="ongoing" role="tabpanel" aria-labelledby="ongoing-tab">
+                    {% if videos %}
+                        <div class="ui-table-scroll video-orders-table-wrap">
+                        <table class="table table-striped table-hover small-table ui-responsive-table video-orders-table">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th scope="col">Joueur</th>
+                                    <th scope="col">Éditeur</th>
+                                    <th scope="col">Statut</th>
+                                    <th scope="col">Automatisation</th>
+                                    <th scope="col">Deadline</th>
+                                    <th scope="col">Ligue</th>
+                                    <th scope="col">Relation client</th>
+                                    <th scope="col" class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for video in videos %}
+                                    <tr>
+                                        <td data-label="Joueur"><strong>{{ video.player.name }}</strong></td>
+                                        <td data-label="Éditeur">{{ video.editor.user.username }}</td>
+                                        <td data-label="Statut">
+                                            <span class="badge 
+                                                {% if video.status == 'completed' %}badge-success{% elif video.status == 'in_progress' %}badge-warning{% else %}badge-secondary{% endif %}">
+                                                {{ video.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td data-label="Automatisation">
+                                            {% include 'gestion_joueurs/includes/automation_progress.html' with automation_progress_runs=video.automation_progress_runs compact=True %}
+                                        </td>
+                                        <td data-label="Deadline" class="{% if video.deadline == today %}text-danger{% elif video.deadline <= three_days_from_now and video.deadline > today %}text-warning{% endif %}">
+                                            {{ video.deadline|date:"d/m/Y" }}
+                                        </td>
+                                        <td data-label="Ligue">{{ video.get_league_name }}</td>
+                                        <td data-label="Relation client">
+                                            {% if video.client_portal_state == 'active' %}
+                                                <span class="client-space-badge active"><i class="fas fa-user-check"></i> Espace actif</span>
+                                            {% elif video.client_portal_state == 'inactive' %}
+                                                <span class="client-space-badge inactive"><i class="fas fa-user-lock"></i> Espace désactivé</span>
+                                            {% else %}
+                                                <span class="client-space-badge none"><i class="fas fa-user-slash"></i> Sans espace</span>
+                                            {% endif %}
+                                        </td>
+                                        <td data-label="Actions" class="text-center">
+                                            <div class="btn-group" role="group">
+                                                <a href="{% url 'portal:production_video' video.id %}" class="btn btn-sm {% if video.client_portal_state == 'active' %}btn-success client-space-action{% else %}btn-outline-primary{% endif %}" title="Ouvrir le dossier de communication client" aria-label="Ouvrir le dossier de communication de {{ video.player.name }}">
+                                                    <i class="fas {% if video.client_portal_state == 'active' %}fa-comments{% else %}fa-clapperboard{% endif %}"></i>
+                                                </a>
+                                                <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Modifier le statut">
+                                                    <i class="fas fa-sync-alt"></i>
+                                                </a>
+                                                {% if request.user.is_superuser %}
+                                                    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-outline-success btn-sm" title="Modifier le joueur">
+                                                        <i class="fas fa-user-pen"></i>
+                                                    </a>
+                                                    <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo">
+                                                        <i class="fas fa-pencil-alt"></i>
+                                                    </a>
+                                                    <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement">
+                                                        <i class="fas fa-dollar-sign"></i>
+                                                    </a>
+                                                    {% if video.intro_automation_completed %}
+                                                        <span class="btn btn-success btn-sm" title="Présentation intro prête">
+                                                            <i class="fas fa-image"></i>
+                                                        </span>
+                                                    {% elif video.intro_automation_enabled %}
+                                                        <span class="btn btn-warning btn-sm" title="Présentation intro activée">
+                                                            <i class="fas fa-image"></i>
+                                                        </span>
+                                                    {% else %}
+                                                        <a href="{% url 'update_video_status' video.id %}" class="btn btn-dark btn-sm" title="Activer la présentation intro">
+                                                            <i class="fas fa-image"></i>
+                                                        </a>
+                                                    {% endif %}
+                                                {%else%}
+                                                    <a href="{% url 'view_video' video.id %}" class="btn btn-primary btn-sm" title="Voir la video">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning" role="alert">
+                            Aucune vidéo en cours à afficher.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="tab-pane fade {% if request.GET.tab == 'delivered' %}show active{% endif %}" id="delivered" role="tabpanel" aria-labelledby="delivered-tab">
+                    {% if videos %}
+                        <div class="ui-table-scroll video-orders-table-wrap">
+                        <table class="table table-striped table-hover small-table ui-responsive-table video-orders-table">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th scope="col">Joueur</th>
+                                    <th scope="col">Éditeur</th>
+                                    <th scope="col">Statut</th>
+                                    <th scope="col">Deadline</th>
+                                    <th scope="col">Ligue</th>
+                                    <th scope="col">Relation client</th>
+                                    <th scope="col" class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for video in videos %}
+                                    <tr>
+                                        <td data-label="Joueur"><strong>{{ video.player.name }}</strong></td>
+                                        <td data-label="Éditeur">{{ video.editor.user.username }}</td>
+                                        <td data-label="Statut"><span class="badge badge-success">{{ video.get_status_display }}</span></td>
+                                        <td data-label="Deadline">{{ video.deadline|date:"d/m/Y" }}</td>
+                                        <td data-label="Ligue">{{ video.get_league_name }}</td>
+                                        <td data-label="Relation client">
+                                            {% if video.client_portal_state == 'active' %}
+                                                <span class="client-space-badge active"><i class="fas fa-user-check"></i> Espace actif</span>
+                                            {% elif video.client_portal_state == 'inactive' %}
+                                                <span class="client-space-badge inactive"><i class="fas fa-user-lock"></i> Espace désactivé</span>
+                                            {% else %}
+                                                <span class="client-space-badge none"><i class="fas fa-user-slash"></i> Sans espace</span>
+                                            {% endif %}
+                                        </td>
+                                        <td data-label="Actions" class="text-center">
+                                            <div class="btn-group" role="group">
+                                                <a href="{% url 'portal:production_video' video.id %}" class="btn btn-sm {% if video.client_portal_state == 'active' %}btn-success client-space-action{% else %}btn-outline-primary{% endif %}" title="Ouvrir le dossier de communication client" aria-label="Ouvrir le dossier de communication de {{ video.player.name }}"><i class="fas {% if video.client_portal_state == 'active' %}fa-comments{% else %}fa-clapperboard{% endif %}"></i></a>
+                                                <a href="{% url 'video_status' video.id %}" class="btn btn-info btn-sm" title="Voir le statut"><i class="fas fa-eye"></i></a>
+                                                <a href="{% url 'update_video_status' video.id %}" class="btn btn-warning btn-sm" title="Modifier le statut"><i class="fas fa-sync-alt"></i></a>
+                                                {% if request.user.is_superuser %}    
+                                                    <a href="{% url 'edit_player' video.player.id %}" class="btn btn-outline-success btn-sm" title="Modifier le joueur"><i class="fas fa-user-pen"></i></a>
+                                                    <a href="{% url 'edit_video' video.id %}" class="btn btn-success btn-sm" title="Modifier la vidéo"><i class="fas fa-pencil-alt"></i></a>
+                                                    <a href="{% url 'record_payment' video.id %}" class="btn btn-primary btn-sm" title="Créer un Paiement"><i class="fas fa-dollar-sign"></i></a>
+                                                {% endif %}
+                                                <a href="{% url 'view_video' video.id %}" class="btn btn-primary btn-sm" title="Voir la video">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning" role="alert">
+                            Aucune vidéo livrée à afficher.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            <nav>
+                <ul class="pagination justify-content-center pagination-sm">
+                    {% if videos.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.deadline_filter %}&deadline_filter={{ request.GET.deadline_filter }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}{% if request.GET.editor %}&editor={{ request.GET.editor }}{% endif %}" aria-label="Première">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ videos.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.deadline_filter %}&deadline_filter={{ request.GET.deadline_filter }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}{% if request.GET.editor %}&editor={{ request.GET.editor }}{% endif %}" aria-label="Précédent">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                    
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">{{ videos.number }} / {{ videos.paginator.num_pages }}</span>
+                    </li>
+                    
+                    {% if videos.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ videos.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.deadline_filter %}&deadline_filter={{ request.GET.deadline_filter }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}{% if request.GET.editor %}&editor={{ request.GET.editor }}{% endif %}" aria-label="Suivant">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ videos.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.deadline_filter %}&deadline_filter={{ request.GET.deadline_filter }}{% endif %}{% if request.GET.league %}&league={{ request.GET.league }}{% endif %}{% if request.GET.tab %}&tab={{ request.GET.tab }}{% endif %}{% if request.GET.editor %}&editor={{ request.GET.editor }}{% endif %}" aria-label="Dernière">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterForm = document.getElementById('filter-form');
+        const searchInput = document.getElementById('search-input');
+        const statusSelect = document.getElementById('status-select');
+        const leagueSelect = document.getElementById('league-select');
+        const editorSelect = document.getElementById('editor-select');
+        const workerBox = document.getElementById('automation-worker-status');
+        const workerLabel = document.getElementById('automation-worker-label');
+        const workerDetail = document.getElementById('automation-worker-detail');
+
+        const submitForm = () => {
+            filterForm.submit();
+        };
+
+        statusSelect.addEventListener('change', submitForm);
+        leagueSelect.addEventListener('change', submitForm);
+        editorSelect.addEventListener('change',submitForm);
+        searchInput.addEventListener('input', function() {
+            const searchValue = this.value;
+
+            clearTimeout(window.searchTimeout);
+            window.searchTimeout = setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('search', searchValue);
+                window.location.href = url;
+            }, 600); // 600ms delay
+        });
+
+        async function refreshWorkerStatus() {
+            if (!workerBox) return;
+            try {
+                const response = await fetch(workerBox.dataset.statusUrl, {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                });
+                if (!response.ok) return;
+                const payload = await response.json();
+                const worker = payload.workers && payload.workers[0];
+                const online = Boolean(worker && worker.is_online);
+                workerBox.classList.toggle('is-online', online);
+                workerBox.classList.toggle('is-offline', !online);
+                workerLabel.textContent = online
+                    ? `Agent ${worker.state_label.toLowerCase()}`
+                    : 'Agent hors ligne';
+                workerDetail.textContent = online && worker.current_player
+                    ? `${worker.current_player} · ${worker.current_stage || worker.current_pipeline}`
+                    : (worker ? 'Aucun traitement en cours' : 'L’agent Windows n’a pas encore envoyé de signal.');
+            } catch (_error) {
+                // Le prochain rafraîchissement retentera sans gêner la page.
+            }
+        }
+        window.setInterval(refreshWorkerStatus, 15000);
+        refreshWorkerStatus();
+    });
+</script>
+{% endblock %}
