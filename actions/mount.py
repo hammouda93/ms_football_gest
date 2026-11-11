@@ -14,7 +14,8 @@ APPROVED_OPERATIONS = frozenset(('player.create', 'organization.link', 'video.or
     'player.sources.amend','player.record.create',
     'player.record.amend','player.organization.unlink',
     'player.organization.link',
-    'video.production.amend','video.activity.add'))
+    'video.production.amend','video.activity.add',
+    'video.version.add','video.payment_request.add'))
 SCOPES = frozenset(('catalogue', 'prepare', 'status', 'execute', 'verify')) | frozenset(
     'op:' + name for name in APPROVED_OPERATIONS)
 

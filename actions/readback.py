@@ -28,6 +28,8 @@ FIELDS={
  'client_portal.Organization':'id name kind contact_name email whatsapp_number country google_sheet_id google_sheet_tab google_sheet_last_synced_at google_sheet_last_error is_active created_by_id created_at updated_at',
  'prospects.Prospect':'id full_name transfermarkt_url date_of_birth whatsapp_number email country club league position season service_type match_links desired_deadline message source status internal_notes player_id created_at updated_at',
  'client_portal.OrganizationPlayer':'id organization_id player_id label expected_matches is_active ended_at added_by_id created_at',
+ 'client_portal.VideoVersion':'id video_id version_number title preview_url final_url notes status uploaded_by_id approved_by_id approved_at created_at',
+ 'client_portal.PaymentRequest':'id video_id label amount due_date payment_url status created_by_id created_at updated_at',
  'client_portal.VideoWorkflow':'id video_id stage priority progress next_action blocked_reason updated_by_id created_at updated_at',
  'gestion_joueurs.VideoStatusHistory':'id video_id editor_id status changed_at comment created_by_id',
  'client_portal.VideoActivity':'id video_id kind visibility message metadata created_by_id created_at',
@@ -99,6 +101,14 @@ def graph(p,results,_alias=ALIAS):
    add('gestion_joueurs.Video',pk=v['video'])
    add('gestion_joueurs.Invoice',video_id=v['video'])
    add('gestion_joueurs.Payment',video_id=v['video'])
+  if s['op']=='video.version.add':
+   add('client_portal.VideoVersion',video_id=v['video'])
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
+  if s['op']=='video.payment_request.add':
+   add('client_portal.PaymentRequest',video_id=v['video'])
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
   if s['op']=='video.activity.add':
    add('client_portal.VideoActivity',video_id=v['video'])
    add('gestion_joueurs.Video',pk=v['video'])
@@ -218,6 +228,7 @@ def _after(actor,ticket,scopes=None):
   return {'verdict':'verified' if ok else 'mismatch','plan':str(p.pk),'digest':p.digest,'observedHash':digest(current),'expectedHash':digest(expected),'ids':p.results}
 
 def expected_graph(p,baseline,current):
+ from decimal import Decimal
  """Apply approved old/new to private PRE rows; generated columns are excluded.
  The POST is real persisted data; only explicit generated fields are copied.
  """
@@ -279,6 +290,9 @@ def expected_graph(p,baseline,current):
        if row['id']==pk:row['updated_at']=group['rows'][0]['updated_at']
    else:
     patch(label,pk,x['new'],x['old'] is None,x.get('generated',[]))
+    if op=='video.version.add':
+     for former in x['replaced_ids']:
+      patch('client_portal.VideoVersion',former,{'status':'replaced'})
     if op=='video.conditions.amend':patch('gestion_joueurs.Invoice',x['invoice']['id'],x['invoice']['new'])
     if op=='video.conditions.create':
      invoices=[r for g in current.values() if g['model']=='gestion_joueurs.Invoice' for r in g['rows'] if r['video_id']==pk]
@@ -343,6 +357,14 @@ def expected_graph(p,baseline,current):
     x=changes[s['as']]
     if kind=='invoices' and s['op']=='video.conditions.create':predictions.append(dict(x['invoice'],video_id=pk))
     elif kind in ('history','notifications'):predictions += [dict(r,video_id=pk) for r in x.get(kind,[])]
+   elif s['op']=='video.version.add':
+    x=changes[s['as']]
+    if kind=='activities':
+     predictions.append({'video_id':v['video'],'kind':'version','visibility':'client','message':f"La version {x['new']['version_number']} est disponible pour validation.",'created_by_id':p.actor_id})
+   elif s['op']=='video.payment_request.add':
+    x=changes[s['as']]
+    if kind=='activities':
+     predictions.append({'video_id':v['video'],'kind':'payment','visibility':'client','message':f"Une demande de paiement « {x['new']['label']} » de {Decimal(x['new']['amount']):.2f} est disponible.",'created_by_id':p.actor_id})
    elif s['op']=='video.order':
     if kind=='invoices':predictions.append({'video_id':pk,'total_amount':orders[s['as']]['price'],'amount_paid':'0.00','status':'unpaid','created_by_id':p.actor_id,'payment_method':None})
     # The signal's create history is deterministic; notification only if editor.

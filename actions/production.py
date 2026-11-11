@@ -188,7 +188,221 @@ class VideoActivityAdd(ProductionBase):
         )
 
 
+
+class VideoVersionAdd(ProductionBase):
+    operation = "video.version.add"
+    model = VideoVersion
+
+    def contract(self):
+        return {
+            "model": self.model._meta.label,
+            "fields": ["video", "title", "preview_url", "final_url", "notes"],
+            "required": ["video", "preview_url"],
+            "schema": {
+                "video": {"type": "integer"},
+                "title": {"type": "string", "maxLength": 160},
+                "preview_url": {"type": "string", "format": "uri"},
+                "final_url": {"type": "string", "format": "uri"},
+                "notes": {"type": "string", "maxLength": 4000},
+            },
+            "family": "video_version/v1",
+            "sourceForm": "client_portal.forms.VideoVersionForm",
+            "permission": "active_superuser",
+            "effects": [
+                "version_created", "pending_versions_replaced",
+                "client_visible_activity_record",
+            ],
+            "excludedEffects": [
+                "publication", "external_send", "youtube_upload",
+                "video_status", "invoice", "jobs",
+            ],
+            "composition": "single_step_only",
+        }
+
+    def versions(self, video_id, lock=False):
+        q = VideoVersion.objects.filter(video_id=video_id).order_by("pk")
+        if lock:
+            q = q.select_for_update()
+        versions = list(q[:257])
+        if len(versions) > 256:
+            raise ValueError("version_limit")
+        return versions
+
+    def cleaned(self, values, actor_id, lock=False):
+        self.video(values["video"], actor_id, lock)
+        if set(values) - set(self.contract()["fields"]):
+            raise ValueError("field_forbidden")
+        form = VideoVersionForm({
+            "title": values.get("title", ""),
+            "preview_url": values["preview_url"],
+            "final_url": values.get("final_url", ""),
+            "notes": values.get("notes", ""),
+        })
+        if not form.is_valid():
+            raise ValueError("invalid_version_form")
+        versions = self.versions(values["video"], lock)
+        number = max((x.version_number for x in versions), default=0) + 1
+        if number > 32767:
+            raise ValueError("version_limit")
+        return form.cleaned_data, number, [
+            x.pk for x in versions if x.status == VideoVersion.Status.PENDING
+        ]
+
+    def snapshot(self, values, actor_id, lock=False):
+        original = super().snapshot(values, actor_id, lock)
+        versions = self.versions(values["video"], lock)
+        return digest({
+            "base": original,
+            "versions": [
+                scalar({f.attname: getattr(v, f.attname) for f in v._meta.concrete_fields})
+                for v in versions
+            ],
+        })
+
+    def preview(self, step, actor_id):
+        changes, number, previous = self.cleaned(step["values"], actor_id)
+        return scalar({
+            "as": step["as"], "op": step["op"],
+            "id": None, "old": None,
+            "new": {
+                "video_id": step["values"]["video"],
+                "version_number": number,
+                "title": changes["title"],
+                "preview_url": changes["preview_url"],
+                "final_url": changes["final_url"],
+                "notes": changes["notes"],
+                "status": VideoVersion.Status.PENDING,
+                "uploaded_by_id": actor_id,
+                "approved_by_id": None,
+                "approved_at": None,
+            },
+            "replaced_ids": previous,
+            "generated": ["id", "created_at"],
+            "contract": self.contract(),
+        })
+
+    def apply(self, values, actor_id):
+        changes, number, previous = self.cleaned(values, actor_id, lock=True)
+        if previous:
+            VideoVersion.objects.filter(
+                pk__in=previous,
+                video_id=values["video"],
+                status=VideoVersion.Status.PENDING,
+            ).update(status=VideoVersion.Status.REPLACED)
+        version = VideoVersion.objects.create(
+            video_id=values["video"], version_number=number,
+            title=changes["title"], preview_url=changes["preview_url"],
+            final_url=changes["final_url"], notes=changes["notes"],
+            status=VideoVersion.Status.PENDING,
+            uploaded_by_id=actor_id,
+        )
+        VideoActivity.objects.create(
+            video_id=values["video"], kind=VideoActivity.Kind.VERSION,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message=f"La version {number} est disponible pour validation.",
+            created_by_id=actor_id,
+        )
+        return version
+
+
+class VideoPaymentRequestAdd(ProductionBase):
+    operation = "video.payment_request.add"
+    model = PaymentRequest
+
+    def contract(self):
+        return {
+            "model": self.model._meta.label,
+            "fields": ["video", "label", "amount", "due_date", "payment_url"],
+            "required": ["video", "label", "amount"],
+            "schema": {
+                "video": {"type": "integer"},
+                "label": {"type": "string", "maxLength": 120},
+                "amount": {"type": "string"},
+                "due_date": {"type": "string", "format": "date"},
+                "payment_url": {"type": "string", "format": "uri"},
+            },
+            "family": "video_payment_request/v1",
+            "sourceForm": "client_portal.forms.PaymentRequestForm",
+            "permission": "active_superuser",
+            "effects": ["payment_request_created", "client_visible_activity_record"],
+            "excludedEffects": [
+                "payment_capture", "bank_transfer", "provider_api_call",
+                "email", "whatsapp", "invoice_settled", "jobs",
+            ],
+            "composition": "single_step_only",
+        }
+
+    def cleaned(self, values, actor_id, lock=False):
+        from urllib.parse import urlsplit
+
+        self.video(values["video"], actor_id, lock)
+        if set(values) - set(self.contract()["fields"]):
+            raise ValueError("field_forbidden")
+        # No embedded credentials or query tokens may enter a sealed proposal.
+        url = values.get("payment_url", "")
+        if url:
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme != "https" or not parsed.hostname
+                or parsed.username or parsed.password
+                or parsed.query or parsed.fragment
+            ):
+                raise ValueError("public_payment_link_required")
+        form = PaymentRequestForm({
+            "label": values["label"],
+            "amount": values["amount"],
+            "due_date": values.get("due_date", ""),
+            "payment_url": url,
+        })
+        if not form.is_valid():
+            raise ValueError("invalid_payment_request_form")
+        if form.cleaned_data["amount"] <= 0:
+            raise ValueError("invalid_amount")
+        return form.cleaned_data
+
+    def preview(self, step, actor_id):
+        values = step["values"]
+        data = self.cleaned(values, actor_id)
+        return scalar({
+            "as": step["as"], "op": step["op"],
+            "id": None, "old": None,
+            "new": {
+                "video_id": values["video"],
+                "label": data["label"],
+                "amount": data["amount"],
+                "due_date": data["due_date"],
+                "payment_url": data["payment_url"],
+                "status": PaymentRequest.Status.PENDING,
+                "created_by_id": actor_id,
+            },
+            "generated": ["id", "created_at", "updated_at"],
+            "contract": self.contract(),
+        })
+
+    def apply(self, values, actor_id):
+        data = self.cleaned(values, actor_id, lock=True)
+        obj = PaymentRequest.objects.create(
+            video_id=values["video"],
+            label=data["label"], amount=data["amount"],
+            due_date=data["due_date"], payment_url=data["payment_url"],
+            status=PaymentRequest.Status.PENDING,
+            created_by_id=actor_id,
+        )
+        VideoActivity.objects.create(
+            video_id=values["video"], kind=VideoActivity.Kind.PAYMENT,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message=(
+                f"Une demande de paiement « {obj.label} » de "
+                f"{obj.amount:.2f} est disponible."
+            ),
+            created_by_id=actor_id,
+        )
+        return obj
+
+
 PRODUCTION = {
     "video.production.amend": VideoProductionSettings(),
     "video.activity.add": VideoActivityAdd(),
+    "video.version.add": VideoVersionAdd(),
+    "video.payment_request.add": VideoPaymentRequestAdd(),
 }
