@@ -452,6 +452,19 @@ class VideoRevisionResolve(ProductionBase):
             raise ValueError("invalid_revision_form")
         return revision, form.cleaned_data
 
+    def snapshot(self, values, actor_id, lock=False):
+        revision = self.target(values["id"], actor_id, lock)
+        q = RevisionRequest.objects.filter(pk=revision.pk)
+        if lock:
+            q = q.select_for_update()
+        related_video = Video.objects.filter(pk=revision.version.video_id)
+        if lock:
+            related_video = related_video.select_for_update()
+        return digest({
+            "revision": list(q.values()),
+            "video": list(related_video.values()),
+        })
+
     def preview(self, step, actor_id):
         revision, data = self.cleaned(step["values"], actor_id)
         terminal = data["status"] in (

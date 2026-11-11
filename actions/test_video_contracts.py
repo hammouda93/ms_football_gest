@@ -134,3 +134,125 @@ class VideoParityTests(TestCase):
             contracts["video.activity.add"]["required"],
             ["video", "message", "visibility"],
         )
+
+    def check_production_plan_post(self, step):
+        adapter = SIMPLE[step["op"]]
+        preview = adapter.preview(step, self.owner.pk)
+        plan = self.fake_plan(step, preview)
+        with transaction.atomic():
+            baseline = graph(plan, {}, _alias="default")
+            with effects_context(workflow=True) as effects:
+                obj = adapter.apply(step["values"], self.owner.pk)
+            plan.effects = effects
+            plan.results = {step["as"]: obj.pk}
+            current = graph(plan, plan.results, _alias="default")
+            self.assertEqual(current, expected_graph(plan, baseline, current))
+        return obj
+
+    def test_add_video_version_replaces_pending_and_verifies_timeline(self):
+        from client_portal.models import VideoVersion
+        original = VideoVersion.objects.create(
+            video=self.video, version_number=1,
+            title="Previous", preview_url="https://example.com/preview/old",
+            uploaded_by=self.owner,
+        )
+        adapter = SIMPLE["video.version.add"]
+        step = {
+            "as": "version", "op": "video.version.add",
+            "values": {
+                "video": self.video.pk, "title": "Revision V2",
+                "preview_url": "https://example.com/preview/new",
+                "final_url": "", "notes": "Check highlights",
+            },
+        }
+        self.assertEqual(adapter.preview(step, self.owner.pk)["new"]["version_number"], 2)
+        created = self.check_production_plan_post(step)
+        self.assertEqual(created.version_number, 2)
+        self.assertEqual(created.status, VideoVersion.Status.PENDING)
+        original.refresh_from_db()
+        self.assertEqual(original.status, VideoVersion.Status.REPLACED)
+        self.assertEqual(VideoActivity.objects.filter(
+            video=self.video, kind=VideoActivity.Kind.VERSION,
+        ).count(), 1)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
+
+    def test_add_payment_request_is_not_payment_and_verifies_activity(self):
+        from client_portal.models import PaymentRequest
+        step = {
+            "as": "request", "op": "video.payment_request.add",
+            "values": {
+                "video": self.video.pk,
+                "label": "Acompte client",
+                "amount": "125.00",
+                "payment_url": "https://payments.example.com/pay/abc",
+            },
+        }
+        created = self.check_production_plan_post(step)
+        self.assertEqual(created.status, PaymentRequest.Status.PENDING)
+        self.assertEqual(created.amount, Decimal("125.00"))
+        self.assertEqual(VideoActivity.objects.filter(
+            video=self.video, kind=VideoActivity.Kind.PAYMENT,
+        ).count(), 1)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.total_payment, Decimal("350.00"))
+        self.assertEqual(self.video.advance_payment, Decimal("0.00"))
+
+    def test_payment_link_disallows_embedded_credentials_or_query_tokens(self):
+        adapter = SIMPLE["video.payment_request.add"]
+        for url in (
+            "http://payments.example.com/pay/abc",
+            "https://name:pass@payments.example.com/pay/abc",
+            "https://payments.example.com/pay/abc?secret=123",
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                adapter.cleaned({
+                    "video": self.video.pk, "label": "Deposit",
+                    "amount": "100.00", "payment_url": url,
+                }, self.owner.pk)
+
+    def test_resolve_video_revision_and_verify_client_timeline(self):
+        from client_portal.models import VideoVersion, RevisionRequest
+        version = VideoVersion.objects.create(
+            video=self.video, version_number=1,
+            preview_url="https://example.com/preview/one",
+            uploaded_by=self.owner,
+        )
+        revision = RevisionRequest.objects.create(
+            version=version, comment="Please extend midfield sequence",
+            requested_by=self.editor_user,
+        )
+        step = {
+            "as": "revision", "op": "video.revision.resolve",
+            "values": {
+                "id": revision.pk,
+                "status": RevisionRequest.Status.RESOLVED,
+                "staff_response": "Longer sequence added.",
+            },
+        }
+        preview = SIMPLE["video.revision.resolve"].preview(step, self.owner.pk)
+        self.assertEqual(preview["old"]["status"], RevisionRequest.Status.OPEN)
+        self.assertEqual(preview["new"]["resolved_at"], "set_at_execution")
+        resolved = self.check_production_plan_post(step)
+        self.assertEqual(resolved.status, RevisionRequest.Status.RESOLVED)
+        self.assertEqual(resolved.resolved_by_id, self.owner.pk)
+        self.assertIsNotNone(resolved.resolved_at)
+        self.assertEqual(VideoActivity.objects.filter(
+            video=self.video, kind=VideoActivity.Kind.REVIEW,
+        ).count(), 1)
+
+    def test_revision_refuses_out_of_policy_status(self):
+        from client_portal.models import VideoVersion, RevisionRequest
+        version = VideoVersion.objects.create(
+            video=self.video, version_number=1,
+            preview_url="https://example.com/preview/one",
+        )
+        revision = RevisionRequest.objects.create(
+            version=version, comment="Wrong scene",
+        )
+        with self.assertRaises(ValueError):
+            SIMPLE["video.revision.resolve"].cleaned({
+                "id": revision.pk, "status": "approved",
+            }, self.owner.pk)
+        revision.refresh_from_db()
+        self.assertEqual(revision.status, RevisionRequest.Status.OPEN)

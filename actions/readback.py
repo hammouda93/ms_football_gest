@@ -297,14 +297,15 @@ def expected_graph(p,baseline,current):
       for row in g['rows']:
        if row['id']==pk:row['updated_at']=group['rows'][0]['updated_at']
    else:
+    projected=dict(x['new'])
     if op=='video.revision.resolve':
      actual=[r for g in current.values() if g['model']==label for r in g['rows'] if r['id']==pk]
      if len(actual)!=1:raise ValueError('verification_revision_missing')
-     x['new']['updated_at']=actual[0]['updated_at']
-     if x['new']['resolved_at']=='set_at_execution':
+     projected['updated_at']=actual[0]['updated_at']
+     if projected['resolved_at']=='set_at_execution':
       if not actual[0]['resolved_at']:raise ValueError('verification_resolved_at_missing')
-      x['new']['resolved_at']=actual[0]['resolved_at']
-    patch(label,pk,x['new'],x['old'] is None,x.get('generated',[]))
+      projected['resolved_at']=actual[0]['resolved_at']
+    patch(label,pk,projected,x['old'] is None,x.get('generated',[]))
     if op=='video.version.add':
      for former in x['replaced_ids']:
       patch('client_portal.VideoVersion',former,{'status':'replaced'})
