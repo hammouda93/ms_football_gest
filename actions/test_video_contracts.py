@@ -305,6 +305,10 @@ class VideoParityTests(TestCase):
             user=self.owner, video=self.video,
         ).is_valid())
         values = {"id": self.video.pk}
+        from .engine import Engine
+        Engine(self.owner.pk).validate([{
+            "as": "delivery", "op": "video.delivery.internal", "values": values,
+        }])
         obj, clean = delivery.cleaned(values, self.owner.pk)
         self.assertEqual(obj.pk, self.video.pk)
         self.assertEqual(clean["video_link"], "")
@@ -444,3 +448,50 @@ class VideoParityTests(TestCase):
         self.assertIsNotNone(proposed["delivery_date"])
         video.refresh_from_db()
         self.assertIsNone(video.delivery_date)
+
+    def test_all_five_general_statuses_pass_hermes_validation_and_apply(self):
+        from .engine import Engine
+        from .workflow import WORKFLOWS
+        from gestion_joueurs.models import Invoice, VideoStatusHistory
+        from gestion_joueurs.utils import actor_context
+        adapter = WORKFLOWS["video.status.transition"]
+        all_general = (
+            Video.StatusChoices.PENDING,
+            Video.StatusChoices.IN_PROGRESS,
+            Video.StatusChoices.COMPLETED_COLLAB,
+            Video.StatusChoices.COMPLETED,
+            Video.StatusChoices.PROBLEMATIC,
+        )
+        for index, status in enumerate(all_general):
+            with self.subTest(status=status):
+                video = Video.objects.create(
+                    player=self.player, editor=self.editor,
+                    status=Video.StatusChoices.PENDING,
+                    advance_payment=Decimal("0.00"),
+                    total_payment=Decimal("350.00"),
+                    deadline=timezone.localdate() + timedelta(days=7),
+                    season="2025/2026",
+                    club=self.player.club, league=self.player.league,
+                )
+                Invoice.objects.create(
+                    video=video,
+                    total_amount=Decimal("350.00"),
+                    amount_paid=Decimal("0.00"),
+                    status="unpaid",
+                    created_by=self.owner,
+                )
+                step = {
+                    "as": "status", "op": "video.status.transition",
+                    "values": {"id": video.pk, "status": status},
+                }
+                Engine(self.owner.pk).validate([step])
+                preview = adapter.preview(step, self.owner.pk)
+                self.assertEqual(preview["newStatus"], status)
+                with transaction.atomic():
+                    with actor_context(self.owner), effects_context(workflow=True):
+                        adapter.apply(step["values"], self.owner.pk)
+                video.refresh_from_db()
+                self.assertEqual(video.status, status)
+                self.assertTrue(VideoStatusHistory.objects.filter(
+                    video=video, status=status,
+                ).exists())
