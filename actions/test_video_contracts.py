@@ -482,7 +482,7 @@ class VideoParityTests(TestCase):
                 )
                 step = {
                     "as": "status", "op": "video.status.transition",
-                    "values": {"id": video.pk, "status": status},
+                    "values": {"id": video.pk, "status": str(status)},
                 }
                 Engine(self.owner.pk).validate([step])
                 preview = adapter.preview(step, self.owner.pk)
