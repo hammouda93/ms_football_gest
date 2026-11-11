@@ -1,4 +1,4 @@
-"""Align stored Video season choices with the 2026/2027 VideoForm option."""
+"""Align Video season choices with 2026/2027 and 2027/2028 VideoForm options."""
 from django.db import migrations, models
 
 
@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
                     ("2024/2025", "2024/2025"),
                     ("2025/2026", "2025/2026"),
                     ("2026/2027", "2026/2027"),
+                    ("2027/2028", "2027/2028"),
                 ],
                 default="2024/2025",
                 max_length=10,

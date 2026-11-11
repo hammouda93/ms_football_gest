@@ -274,25 +274,66 @@ class VideoParityTests(TestCase):
         self.video.refresh_from_db()
         self.assertIsNone(self.video.delivery_date)
 
-    def test_current_season_is_valid_in_highlights_form_and_contract(self):
+    def test_future_seasons_are_valid_in_highlights_form_model_and_hermes(self):
         from gestion_joueurs.forms import VideoForm
         from .highlights import HIGHLIGHTS
-        self.assertIn(
-            "2026/2027",
-            HIGHLIGHTS["video.conditions.create"].contract()["schema"]["season"]["enum"],
+        contract_seasons = set(
+            HIGHLIGHTS["video.conditions.create"].contract()["schema"]["season"]["enum"]
         )
-        data = {
-            "editor": self.editor.pk,
-            "status": Video.StatusChoices.PENDING,
-            "advance_payment": "0",
-            "total_payment": "350",
-            "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
-            "season": "2026/2027",
-            "seasons_to_process": "1",
-            "matches_processed": "0",
+        model_seasons = {
+            value for value, _ in Video._meta.get_field("season").choices
         }
-        form = VideoForm(data, user=self.owner)
-        self.assertTrue(form.is_valid(), form.errors)
+        form_seasons = {
+            value for value, _ in VideoForm().fields["season"].choices
+        }
+        for season in ("2026/2027", "2027/2028"):
+            with self.subTest(season=season):
+                self.assertIn(season, contract_seasons)
+                self.assertIn(season, model_seasons)
+                self.assertIn(season, form_seasons)
+                data = {
+                    "editor": self.editor.pk,
+                    "status": Video.StatusChoices.PENDING,
+                    "advance_payment": "0",
+                    "total_payment": "350",
+                    "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
+                    "season": season,
+                    "seasons_to_process": "1",
+                    "matches_processed": "0",
+                }
+                form = VideoForm(data, user=self.owner)
+                self.assertTrue(form.is_valid(), form.errors)
+
+    def test_new_video_screen_creates_orders_for_both_future_seasons(self):
+        from django.urls import reverse
+        self.client.force_login(self.owner)
+        for season in ("2026/2027", "2027/2028"):
+            with self.subTest(season=season):
+                response = self.client.post(
+                    reverse("create_video_request"),
+                    {
+                        "create_video": "1",
+                        "player": str(self.player.pk),
+                        "editor": str(self.editor.pk),
+                        "status": "pending",
+                        "total_payment": "350.00",
+                        "advance_payment": "0.00",
+                        "deadline": (
+                            timezone.localdate() + timedelta(days=10)
+                        ).isoformat(),
+                        "season": season,
+                        "seasons_to_process": "1",
+                        "matches_processed": "0",
+                        "info": "Test season creation",
+                    },
+                )
+                self.assertEqual(response.status_code, 302)
+                video = Video.objects.get(
+                    player=self.player, season=season,
+                    info="Test season creation",
+                )
+                self.assertEqual(video.invoices.total_amount, Decimal("350.00"))
+                self.assertEqual(video.invoices.amount_paid, Decimal("0.00"))
 
     def test_delivery_without_link_is_allowed_by_contract_and_form(self):
         from .workflow import WORKFLOWS
