@@ -217,3 +217,62 @@ class PlayerParityContractTests(TestCase):
             )
         link.refresh_from_db()
         self.assertTrue(link.is_active)
+
+    def test_new_membership_without_video_pack_and_safe_reactivation(self):
+        from client_portal.models import Organization, OrganizationPlayer
+        organization = Organization.objects.create(
+            name="Academy New", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        adapter = SIMPLE["player.organization.link"]
+        values = {"player": self.player.pk, "organization": organization.pk}
+        preview = adapter.preview({
+            "as": "new_link", "op": "player.organization.link", "values": values,
+        }, self.owner.pk)
+        self.assertIsNone(preview["old"])
+        self.assertIsNone(preview["new"]["expected_matches"])
+        self.assertFalse(OrganizationPlayer.objects.filter(
+            player=self.player, organization=organization,
+        ).exists())
+        link = adapter.apply(values, self.owner.pk)
+        self.assertTrue(link.is_active)
+        self.assertIsNone(link.expected_matches)
+        self.assertEqual(link.organization_id, organization.pk)
+        with self.assertRaises(ValueError):
+            adapter.cleaned(values, self.owner.pk)
+        SIMPLE["player.organization.unlink"].apply(
+            {"id": link.pk}, self.owner.pk,
+        )
+        link.refresh_from_db()
+        self.assertFalse(link.is_active)
+        reactivated = adapter.apply({
+            **values, "label": "Return to Academy", "expected_matches": 5,
+        }, self.owner.pk)
+        link.refresh_from_db()
+        self.assertEqual(reactivated.pk, link.pk)
+        self.assertTrue(link.is_active)
+        self.assertIsNone(link.ended_at)
+        self.assertEqual(link.label, "Return to Academy")
+        self.assertEqual(link.expected_matches, 5)
+
+    def test_link_requires_valid_organization_and_refuses_invalid_pack(self):
+        from client_portal.models import Organization, OrganizationPlayer
+        organization = Organization.objects.create(
+            name="Inactive Academy", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=False,
+        )
+        adapter = SIMPLE["player.organization.link"]
+        with self.assertRaises(ValueError):
+            adapter.cleaned({
+                "player": self.player.pk, "organization": organization.pk,
+            }, self.owner.pk)
+        organization.is_active = True
+        organization.save(update_fields=["is_active"])
+        with self.assertRaises(ValueError):
+            adapter.cleaned({
+                "player": self.player.pk, "organization": organization.pk,
+                "expected_matches": 7,
+            }, self.owner.pk)
+        self.assertFalse(OrganizationPlayer.objects.filter(
+            player=self.player, organization=organization,
+        ).exists())

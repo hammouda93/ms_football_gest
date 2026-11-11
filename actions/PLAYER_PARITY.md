@@ -27,3 +27,8 @@ Pas de changement à `agent_api`, `data_access`, aux comptes portail ou aux work
 Les contrats `organization.link` existants restent en place pour l'ajout / la réactivation. Les comptes clients, liens d'accès et messages de bienvenue restent hors périmètre : leurs services peuvent créer des identifiants et envoyer des e-mails, donc ils nécessitent un contrat explicite séparé.
 
 **Validation statique seulement :** les tests ont été écrits mais pas exécutés et la nouvelle configuration Heroku n'a pas été changée.
+
+## Incrément 3 — Association sans pack obligatoire
+- `player.organization.link` : crée ou réactive une association joueur–organisation avec un `label` et un `expected_matches` facultatifs. Réutilise `OrganizationPlayerForm` côté Django ; refuse une relation déjà active et ne crée pas de commande vidéo.
+- Le moteur ajoute un snapshot de la paire joueur–organisation et le readback suit cette relation, même si aucun lien vidéo n'est créé.
+- `organization.link` historique continue de fonctionner inchangé : il impose les packs 3/5/10 pour son flux de commande.

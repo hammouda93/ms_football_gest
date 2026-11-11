@@ -9,6 +9,125 @@ from django.utils import timezone
 from client_portal.models import OrganizationPlayer
 
 
+class PlayerOrganizationLink:
+    """Add/reactivate an organization relationship without requiring a video pack."""
+
+    model = OrganizationPlayer
+
+    def contract(self):
+        return {
+            "model": self.model._meta.label,
+            "fields": ["player", "organization", "label", "expected_matches"],
+            "required": ["player", "organization"],
+            "schema": {
+                "player": {"type": "integer"},
+                "organization": {"type": "integer"},
+                "label": {"type": "string", "maxLength": 100},
+                "expected_matches": {"type": "integer", "enum": [3, 5, 10]},
+            },
+            "family": "player_organization_link/v1",
+            "permission": "active_superuser",
+            "sourceView": "client_portal.views.organization_player_add",
+            "effects": ["membership_created_or_reactivated"],
+            "excludedEffects": [
+                "video", "invoice", "accounts", "emails", "whatsapp",
+                "jobs", "publication",
+            ],
+        }
+
+    def cleaned(self, values, actor_id, lock=False):
+        from client_portal.forms import OrganizationPlayerForm
+        from client_portal.models import Organization
+        from gestion_joueurs.models import Player
+
+        PlayerOrganizationUnlink._authorize(actor_id)
+        if not {"player", "organization"} <= set(values):
+            raise ValueError("missing_field")
+        if set(values) - set(self.contract()["fields"]):
+            raise ValueError("field_forbidden")
+        qs = Organization.objects.select_for_update() if lock else Organization.objects
+        try:
+            organization = qs.get(pk=values["organization"], is_active=True)
+        except Organization.DoesNotExist:
+            raise ValueError("organization_unavailable") from None
+        player_qs = Player.objects.select_for_update() if lock else Player.objects
+        try:
+            player = player_qs.get(pk=values["player"])
+        except Player.DoesNotExist:
+            raise ValueError("player_missing") from None
+        link_qs = (
+            OrganizationPlayer.objects.select_for_update()
+            if lock else OrganizationPlayer.objects
+        )
+        current = link_qs.filter(
+            player=player, organization=organization,
+        ).first()
+        if current and current.is_active and current.ended_at is None:
+            raise ValueError("link_already_active")
+        form = OrganizationPlayerForm(
+            data={"player": player.pk, "label": values.get("label", "")},
+            organization=organization,
+        )
+        if not form.is_valid():
+            raise ValueError("invalid_organization_player_form")
+        if "expected_matches" in values and values["expected_matches"] not in (3, 5, 10):
+            raise ValueError("invalid_expected_matches")
+        return current, {
+            "player": player,
+            "organization": organization,
+            "label": values.get("label", current.label if current else ""),
+            "expected_matches": values.get(
+                "expected_matches",
+                current.expected_matches if current else None,
+            ),
+        }
+
+    def preview(self, step, actor_id):
+        current, cleaned = self.cleaned(step["values"], actor_id)
+        return {
+            "as": step["as"], "op": step["op"],
+            "id": current.pk if current else None,
+            "player": {
+                "id": cleaned["player"].pk, "name": cleaned["player"].name,
+            },
+            "organization": {
+                "id": cleaned["organization"].pk,
+                "name": cleaned["organization"].name,
+            },
+            "old": None if current is None else {
+                "is_active": current.is_active,
+                "ended_at": current.ended_at.isoformat() if current.ended_at else None,
+                "label": current.label,
+                "expected_matches": current.expected_matches,
+            },
+            "new": {
+                "is_active": True,
+                "ended_at": None,
+                "label": cleaned["label"],
+                "expected_matches": cleaned["expected_matches"],
+            },
+            "contract": self.contract(),
+        }
+
+    def apply(self, values, actor_id):
+        from django.contrib.auth import get_user_model
+
+        current, cleaned = self.cleaned(values, actor_id, lock=True)
+        actor = get_user_model().objects.get(pk=actor_id)
+        defaults = {
+            "is_active": True,
+            "ended_at": None,
+            "added_by": actor,
+            "label": cleaned["label"],
+            "expected_matches": cleaned["expected_matches"],
+        }
+        link, _created = OrganizationPlayer.objects.update_or_create(
+            player=cleaned["player"], organization=cleaned["organization"],
+            defaults=defaults,
+        )
+        return link
+
+
 class PlayerOrganizationUnlink:
     model = OrganizationPlayer
 
@@ -114,4 +233,7 @@ class PlayerOrganizationUnlink:
         return link
 
 
-PLAYER_LINKS = {"player.organization.unlink": PlayerOrganizationUnlink()}
+PLAYER_LINKS = {
+    "player.organization.link": PlayerOrganizationLink(),
+    "player.organization.unlink": PlayerOrganizationUnlink(),
+}

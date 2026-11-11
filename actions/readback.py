@@ -112,7 +112,7 @@ def graph(p,results,_alias=ALIAS):
    x=v.get(name)
    if isinstance(x,dict):x=results.get(x['ref'])
    if type(x) is int:add(label,pk=x)
-  if s['op']=='organization.link':
+  if s['op'] in ('organization.link','player.organization.link'):
    x=v['player'];x=results.get(x['ref']) if isinstance(x,dict) else x
    if type(x) is int:add('client_portal.OrganizationPlayer',player_id=x,organization_id=v['organization'])
   if rules[s['op']]['model']=='gestion_joueurs.Video' and pk:

@@ -142,7 +142,7 @@ class Engine:
                     u=users.values().filter(pk=row['user_id']).first()
                     out['auth.User:'+str(row['user_id'])]=hashlib.sha256(json.dumps(u,sort_keys=True,default=str).encode()).hexdigest()
         for s in steps:
-            if s['op'] not in ('organization.link','video.order'):continue
+            if s['op'] not in ('organization.link','video.order','player.organization.link'):continue
             v=s['values'];player=concrete(v.get('player'));organization=v.get('organization',v.get('client_organization'))
             if type(player) is not int or type(organization) is not int:continue
             links=OrganizationPlayer.objects.filter(player_id=player,organization_id=organization).order_by('pk')
