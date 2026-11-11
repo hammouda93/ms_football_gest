@@ -111,6 +111,8 @@ DEFINITIONS={
     # No account provisioning or organization association is implied by either action.
     'player.sources.amend':ReviewedForm(Player,PlayerForm,('sportsbase_url','transfermarkt_url'),'existing_player',('age_from_date_of_birth',)),
     'player.record.create':ReviewedForm(Player,PlayerForm,('name','date_of_birth','club','league','position','email','whatsapp_number','sportsbase_url','transfermarkt_url','client_fidel','client_vip'),'new_player',('age_from_date_of_birth',),mode='create',duplicate_fields=('name','date_of_birth')),
+    # One-step full form edit: the old narrow contracts remain unchanged.
+    'player.record.amend':ReviewedForm(Player,PlayerForm,('name','date_of_birth','club','league','position','email','whatsapp_number','sportsbase_url','transfermarkt_url','client_fidel','client_vip'),'existing_player',('age_from_date_of_birth',)),
     'organization.contact.amend':ReviewedForm(Organization,OrganizationForm,('email','whatsapp_number','contact_name'),'active_organization'),
     'prospect.contact.amend':ReviewedForm(Prospect,ProspectManagementForm,('email','whatsapp_number'),'existing_prospect',lookup_field='full_name'),
     'player.profile.create':ReviewedForm(Player,PlayerForm,('name','date_of_birth','club','league','position','whatsapp_number'),'new_player',('age_from_date_of_birth',),mode='create',duplicate_fields=('name','date_of_birth')),

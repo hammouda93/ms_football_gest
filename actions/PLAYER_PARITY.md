@@ -19,3 +19,11 @@ L'association à une organisation reste une opération séparée (`organization.
 5. Confirmer que le plugin Hermes voit les contrats, les utilise et relit les valeurs après exécution.
 
 Pas de changement à `agent_api`, `data_access`, aux comptes portail ou aux workers locaux.
+
+## Incrément 2 — Modification complète et associations
+- `player.record.amend` : mise à jour d'un ou plusieurs champs de la fiche dans une seule préparation, avec `PlayerForm`.
+- `player.organization.unlink` : clôture d'une association joueur-organisation **par ID de relation**, sans supprimer le joueur, l'organisation ni l'historique. Recherche de relations actives par début de nom du joueur.
+
+Les contrats `organization.link` existants restent en place pour l'ajout / la réactivation. Les comptes clients, liens d'accès et messages de bienvenue restent hors périmètre : leurs services peuvent créer des identifiants et envoyer des e-mails, donc ils nécessitent un contrat explicite séparé.
+
+**Validation statique seulement :** les tests ont été écrits mais pas exécutés et la nouvelle configuration Heroku n'a pas été changée.

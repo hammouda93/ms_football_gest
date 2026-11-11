@@ -124,3 +124,96 @@ class PlayerParityContractTests(TestCase):
             SIMPLE["player.profile.amend"].fields,
             ("name", "date_of_birth", "club", "league", "position", "whatsapp_number"),
         )
+
+    def test_full_player_record_amend_changes_many_fields_at_once(self):
+        adapter = SIMPLE["player.record.amend"]
+        values = {
+            "id": self.player.pk,
+            "name": "Updated Player",
+            "club": "Updated Club",
+            "league": "OC",
+            "position": "MF",
+            "email": "updated@example.invalid",
+            "sportsbase_url": "https://sportsbase.example/player/48",
+            "transfermarkt_url": "https://www.transfermarkt.com/sample/profil/spieler/48",
+            "client_fidel": True,
+            "client_vip": True,
+        }
+        preview = adapter.preview({
+            "as": "profile", "op": "player.record.amend", "values": values,
+        }, self.owner.pk)
+        self.assertEqual(preview["old"]["club"], "Old FC")
+        self.assertEqual(preview["new"]["club"], "Updated Club")
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.club, "Old FC")
+        adapter.apply(values, self.owner.pk)
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.name, "Updated Player")
+        self.assertEqual(self.player.club, "Updated Club")
+        self.assertEqual(self.player.email, "updated@example.invalid")
+        self.assertTrue(self.player.client_vip)
+        self.assertTrue(self.player.client_fidel)
+        self.assertEqual(
+            self.player.transfermarkt_url,
+            "https://www.transfermarkt.com/sample/profil/spieler/48",
+        )
+
+    def test_player_organization_unlink_closes_only_one_membership(self):
+        from client_portal.models import Organization, OrganizationPlayer
+        organization = Organization.objects.create(
+            name="First Academy", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        other_organization = Organization.objects.create(
+            name="Second Academy", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        link = OrganizationPlayer.objects.create(
+            organization=organization, player=self.player,
+            added_by=self.owner, is_active=True,
+        )
+        other_link = OrganizationPlayer.objects.create(
+            organization=other_organization, player=self.player,
+            added_by=self.owner, is_active=True,
+        )
+        adapter = SIMPLE["player.organization.unlink"]
+        before = adapter.preview({
+            "as": "unlink", "op": "player.organization.unlink",
+            "values": {"id": link.pk},
+        }, self.owner.pk)
+        self.assertEqual(before["player"]["id"], self.player.pk)
+        self.assertTrue(before["old"]["is_active"])
+        link.refresh_from_db()
+        self.assertTrue(link.is_active)
+        lookup = adapter.lookup("Existing", 10, self.owner.pk)
+        self.assertEqual(len(lookup["rows"]), 2)
+        adapter.apply({"id": link.pk}, self.owner.pk)
+        link.refresh_from_db()
+        other_link.refresh_from_db()
+        self.assertFalse(link.is_active)
+        self.assertIsNotNone(link.ended_at)
+        self.assertTrue(other_link.is_active)
+        self.assertIsNone(other_link.ended_at)
+        self.assertTrue(Player.objects.filter(pk=self.player.pk).exists())
+        with self.assertRaises(ValueError):
+            adapter.apply({"id": link.pk}, self.owner.pk)
+
+    def test_player_organization_unlink_rejects_non_superuser(self):
+        from client_portal.models import Organization, OrganizationPlayer
+        organization = Organization.objects.create(
+            name="Test Academy", kind=Organization.Kind.ACADEMY,
+            created_by=self.owner, is_active=True,
+        )
+        link = OrganizationPlayer.objects.create(
+            organization=organization, player=self.player,
+            is_active=True,
+        )
+        standard = get_user_model().objects.create_user(
+            username="ordinary", password="test-only-password",
+        )
+        with self.assertRaises(PermissionError):
+            SIMPLE["player.organization.unlink"].cleaned(
+                {"id": link.pk}, standard.pk,
+            )
+        link.refresh_from_db()
+        self.assertTrue(link.is_active)
