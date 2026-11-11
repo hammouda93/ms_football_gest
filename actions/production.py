@@ -63,7 +63,7 @@ class ProductionBase:
 class VideoProductionSettings(ProductionBase):
     operation = "video.production.amend"
     model = Video
-    fields = ("matches_processed", "seasons_to_process", "client_portal_visible")
+    fields = ("matches_processed", "seasons_to_process", "client_portal_visible", "delivery_date")
 
     def contract(self):
         return {
@@ -75,6 +75,7 @@ class VideoProductionSettings(ProductionBase):
                 "matches_processed": {"type": "integer"},
                 "seasons_to_process": {"type": "integer", "enum": [1, 2]},
                 "client_portal_visible": {"type": "boolean"},
+                "delivery_date": {"type": "string", "format": "date"},
             },
             "family": "video_production_settings/v1",
             "permission": "active_superuser",

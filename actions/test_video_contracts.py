@@ -256,3 +256,40 @@ class VideoParityTests(TestCase):
             }, self.owner.pk)
         revision.refresh_from_db()
         self.assertEqual(revision.status, RevisionRequest.Status.OPEN)
+
+    def test_correct_historical_delivery_date_without_changing_status(self):
+        adapter = SIMPLE["video.production.amend"]
+        delivery_date = (timezone.localdate() - timedelta(days=2)).isoformat()
+        values = {"id": self.video.pk, "delivery_date": delivery_date}
+        preview = adapter.preview({
+            "as": "datefix", "op": "video.production.amend", "values": values,
+        }, self.owner.pk)
+        self.assertIsNone(preview["old"]["delivery_date"])
+        self.assertEqual(preview["new"]["delivery_date"], delivery_date)
+        adapter.apply(values, self.owner.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.delivery_date.isoformat(), delivery_date)
+        self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
+        adapter.apply({"id": self.video.pk, "delivery_date": ""}, self.owner.pk)
+        self.video.refresh_from_db()
+        self.assertIsNone(self.video.delivery_date)
+
+    def test_current_season_is_valid_in_highlights_form_and_contract(self):
+        from gestion_joueurs.forms import VideoForm
+        from .highlights import HIGHLIGHTS
+        self.assertIn(
+            "2026/2027",
+            HIGHLIGHTS["video.conditions.create"].contract()["schema"]["season"]["enum"],
+        )
+        data = {
+            "editor": self.editor.pk,
+            "status": Video.StatusChoices.PENDING,
+            "advance_payment": "0",
+            "total_payment": "350",
+            "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
+            "season": "2026/2027",
+            "seasons_to_process": "1",
+            "matches_processed": "0",
+        }
+        form = VideoForm(data, user=self.owner)
+        self.assertTrue(form.is_valid(), form.errors)
