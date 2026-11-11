@@ -85,6 +85,10 @@ from .salaries import SALARIES
 SIMPLE.update(SALARIES)
 from .highlights import HIGHLIGHTS
 SIMPLE.update(HIGHLIGHTS)
+from .production import PRODUCTION
+SIMPLE.update(PRODUCTION)
+from .player_links import PLAYER_LINKS
+SIMPLE.update(PLAYER_LINKS)
 
 def catalogue():
     from copy import deepcopy

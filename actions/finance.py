@@ -1,5 +1,6 @@
 """Exact internal branch of record_payment, using its real form and view."""
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from django.contrib.messages.storage.cookie import CookieStorage
 from django.test import RequestFactory
@@ -12,13 +13,38 @@ import hashlib,json
 
 class HighlightPayment(InternalRecord):
     def contract(self):
-        c=super().contract();c['fields'].append('video');c['required'].append('video');c['schema']['video']={'type':'integer'}
+        c=super().contract()
+        # The base InternalRecord contract aliases fields and required to one
+        # list. Split them before changing their contents.
+        c['fields']=list(dict.fromkeys([*c['fields'],'video']))
+        c['required']=[name for name in c['fields'] if name!='payment_type']
+        c['schema']['video']={'type':'integer'}
+        # The application derives partial/final from the *resulting balance*.
+        # Keep payment_type as an accepted legacy field, not a required input.
+        c['schema']['payment_type']['derivedFrom']='invoice_balance_after_payment'
+        c['schema']['payment_type']['optionalInput']=True
         c['sourceView']='gestion_joueurs.views.record_payment';c['preconditions']=['existing_invoice','positive_amount_not_exceeding_balance','single_step'];c['effects']=['payment','invoice_amount_paid_and_status']
+        c['inputExample']={'video':1980,'amount':'150.00','payment_method':'bank_transfer'}
+        c['currency']='TND'
+        c['paymentTypePolicy']='optional input accepted for compatibility; persisted type always calculated from remaining invoice balance'
         return c
     def cleaned(self,values,actor_id,lock=False):
-        obj,changes=super().cleaned(values,actor_id,lock)
+        if set(values)-{'video','amount','payment_method','payment_type'} or not {'video','amount','payment_method'}<=set(values):
+            raise ValueError('field_forbidden')
+        # The form still validates any explicitly supplied historical type;
+        # when Hermes omits it, supply the internal form with a valid placeholder.
+        form_values=dict(values)
+        form_values.setdefault('payment_type','partial')
+        try:
+            obj,changes=super().cleaned(form_values,actor_id,lock)
+        except ValidationError:
+            raise ValueError('invalid_payment_form') from None
         qs=Invoice.objects.select_for_update() if lock else Invoice.objects
-        invoice=qs.get(video_id=values['video']);video=Video.objects.get(pk=values['video'])
+        try:
+            invoice=qs.get(video_id=values['video'])
+            video=Video.objects.get(pk=values['video'])
+        except (Invoice.DoesNotExist,Video.DoesNotExist):
+            raise ValueError('invoice_or_video_missing') from None
         amount=changes['amount'];paid=invoice.amount_paid+amount
         if amount>invoice.total_amount-invoice.amount_paid:raise ValueError('overpayment')
         changes.update(video_id=video.pk,player_id=video.player_id,invoice_id=invoice.pk,remaining_balance=invoice.total_amount-paid,payment_type='partial' if paid<invoice.total_amount else 'final')
@@ -42,9 +68,11 @@ class HighlightPayment(InternalRecord):
         x['financial']={'before':financial_projection('highlight',parent,journal),'after':financial_projection('highlight',parent,journal,Decimal(step['values']['amount']))}
         return x
     def apply(self,values,actor_id):
-        self.cleaned(values,actor_id,True)
+        _obj,clean=self.cleaned(values,actor_id,True)
         previous=set(Payment.objects.filter(video_id=values['video']).values_list('pk',flat=True))
-        request=RequestFactory().post('/internal-registration/',{k:values[k] for k in self.fields});request.user=User.objects.get(pk=actor_id);request._messages=CookieStorage(request)
+        # Pass the derived type to the unchanged Django form, never require
+        # Hermes to guess whether the payment will close the invoice.
+        request=RequestFactory().post('/internal-registration/',{k:clean[k] for k in self.fields});request.user=User.objects.get(pk=actor_id);request._messages=CookieStorage(request)
         response=record_payment(request,values['video'])
         if response.status_code!=302:raise ValueError('payment_view_failed')
         return Payment.objects.get(video_id=values['video'],pk__in=Payment.objects.filter(video_id=values['video']).exclude(pk__in=previous).values_list('pk',flat=True))

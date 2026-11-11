@@ -207,6 +207,8 @@ class Video(models.Model):
         ('2023/2024', '2023/2024'),
         ('2024/2025', '2024/2025'),
         ('2025/2026', '2025/2026'),
+        ('2026/2027', '2026/2027'),
+        ('2027/2028', '2027/2028'),
     ]
     season = models.CharField(max_length=10, choices=SEASONS, default='2024/2025')
     club = models.CharField(max_length=100, default="", verbose_name="Club Name")

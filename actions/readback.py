@@ -28,6 +28,9 @@ FIELDS={
  'client_portal.Organization':'id name kind contact_name email whatsapp_number country google_sheet_id google_sheet_tab google_sheet_last_synced_at google_sheet_last_error is_active created_by_id created_at updated_at',
  'prospects.Prospect':'id full_name transfermarkt_url date_of_birth whatsapp_number email country club league position season service_type match_links desired_deadline message source status internal_notes player_id created_at updated_at',
  'client_portal.OrganizationPlayer':'id organization_id player_id label expected_matches is_active ended_at added_by_id created_at',
+ 'client_portal.VideoVersion':'id video_id version_number title preview_url final_url notes status uploaded_by_id approved_by_id approved_at created_at',
+ 'client_portal.PaymentRequest':'id video_id label amount due_date payment_url status created_by_id created_at updated_at',
+ 'client_portal.RevisionRequest':'id version_id requested_by_id timecode_seconds comment status staff_response resolved_by_id resolved_at created_at updated_at',
  'client_portal.VideoWorkflow':'id video_id stage priority progress next_action blocked_reason updated_by_id created_at updated_at',
  'gestion_joueurs.VideoStatusHistory':'id video_id editor_id status changed_at comment created_by_id',
  'client_portal.VideoActivity':'id video_id kind visibility message metadata created_by_id created_at',
@@ -99,6 +102,24 @@ def graph(p,results,_alias=ALIAS):
    add('gestion_joueurs.Video',pk=v['video'])
    add('gestion_joueurs.Invoice',video_id=v['video'])
    add('gestion_joueurs.Payment',video_id=v['video'])
+  if s['op']=='video.revision.resolve':
+   from client_portal.models import RevisionRequest
+   revision=RevisionRequest.objects.using(_alias).filter(pk=v['id']).values('version__video_id','version_id').first()
+   if not revision:raise ValueError('verification_revision_missing')
+   add('client_portal.VideoVersion',pk=revision['version_id'])
+   add('gestion_joueurs.Video',pk=revision['version__video_id'])
+   add('client_portal.VideoActivity',video_id=revision['version__video_id'])
+  if s['op']=='video.version.add':
+   add('client_portal.VideoVersion',video_id=v['video'])
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
+  if s['op']=='video.payment_request.add':
+   add('client_portal.PaymentRequest',video_id=v['video'])
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
+  if s['op']=='video.activity.add':
+   add('client_portal.VideoActivity',video_id=v['video'])
+   add('gestion_joueurs.Video',pk=v['video'])
   if s['op']=='prospect.convert':
    prospect=rows('prospects.Prospect',_alias=_alias,pk=v['id'])
    player_id=prospect[0]['player_id'] if prospect else None
@@ -112,7 +133,7 @@ def graph(p,results,_alias=ALIAS):
    x=v.get(name)
    if isinstance(x,dict):x=results.get(x['ref'])
    if type(x) is int:add(label,pk=x)
-  if s['op']=='organization.link':
+  if s['op'] in ('organization.link','player.organization.link'):
    x=v['player'];x=results.get(x['ref']) if isinstance(x,dict) else x
    if type(x) is int:add('client_portal.OrganizationPlayer',player_id=x,organization_id=v['organization'])
   if rules[s['op']]['model']=='gestion_joueurs.Video' and pk:
@@ -215,6 +236,7 @@ def _after(actor,ticket,scopes=None):
   return {'verdict':'verified' if ok else 'mismatch','plan':str(p.pk),'digest':p.digest,'observedHash':digest(current),'expectedHash':digest(expected),'ids':p.results}
 
 def expected_graph(p,baseline,current):
+ from decimal import Decimal
  """Apply approved old/new to private PRE rows; generated columns are excluded.
  The POST is real persisted data; only explicit generated fields are copied.
  """
@@ -247,7 +269,24 @@ def expected_graph(p,baseline,current):
   op=s['op'];v={k:resolve(x) for k,x in s['values'].items()};pk=p.results[s['as']];label=rules[op]['model']
   if s['as'] in changes:
    x=changes[s['as']]
-   if op=='prospect.convert':
+   if op=='player.organization.link':
+    # Created/reopened memberships have one explicit business effect.
+    # The same membership can appear both by ID and by player/org pair.
+    patch(label,pk,dict(x['new'],
+       player_id=v['player'],organization_id=v['organization'],
+       added_by_id=p.actor_id),x['old'] is None,('id','created_at'))
+   elif op=='player.organization.unlink':
+    # ended_at is assigned by the server clock at execution, not by Hermes.
+    # Accept only a non-null observed timestamp for the approved closure;
+    # all other persisted columns still have to match the sealed PRE.
+    actual=[r for g in current.values() if g['model']==label
+            for r in g['rows'] if r['id']==pk]
+    if not actual or any(r['ended_at'] is None for r in actual):
+     raise ValueError('verification_relation_not_closed')
+    if len({r['ended_at'] for r in actual})!=1:
+     raise ValueError('verification_relation_inconsistent')
+    patch(label,pk,dict(is_active=False,ended_at=actual[0]['ended_at']))
+   elif op=='prospect.convert':
     group=next(g for g in current.values() if g['model']=='prospects.Prospect' and g['filter']=={'pk':pk})
     player=group['rows'][0]['player_id'];projected=x['player']
     if projected['id'] is not None and player!=projected['id']:raise ValueError('verification_ids')
@@ -258,7 +297,18 @@ def expected_graph(p,baseline,current):
       for row in g['rows']:
        if row['id']==pk:row['updated_at']=group['rows'][0]['updated_at']
    else:
-    patch(label,pk,x['new'],x['old'] is None,x.get('generated',[]))
+    projected=dict(x['new'])
+    if op=='video.revision.resolve':
+     actual=[r for g in current.values() if g['model']==label for r in g['rows'] if r['id']==pk]
+     if len(actual)!=1:raise ValueError('verification_revision_missing')
+     projected['updated_at']=actual[0]['updated_at']
+     if projected['resolved_at']=='set_at_execution':
+      if not actual[0]['resolved_at']:raise ValueError('verification_resolved_at_missing')
+      projected['resolved_at']=actual[0]['resolved_at']
+    patch(label,pk,projected,x['old'] is None,x.get('generated',[]))
+    if op=='video.version.add':
+     for former in x['replaced_ids']:
+      patch('client_portal.VideoVersion',former,{'status':'replaced'})
     if op=='video.conditions.amend':patch('gestion_joueurs.Invoice',x['invoice']['id'],x['invoice']['new'])
     if op=='video.conditions.create':
      invoices=[r for g in current.values() if g['model']=='gestion_joueurs.Invoice' for r in g['rows'] if r['video_id']==pk]
@@ -316,6 +366,7 @@ def expected_graph(p,baseline,current):
   predictions=[]
   for s in p.steps:
    pk=p.results[s['as']]
+   v=s['values']
    if s['as'] in transitions:
     x=transitions[s['as']];field={'history':'history','activities':'activities','notifications':'notifications'}.get(kind)
     if field:predictions += [dict(r,**({'video_id':pk} if 'video_id' not in r else {})) for r in x[field]]
@@ -323,6 +374,22 @@ def expected_graph(p,baseline,current):
     x=changes[s['as']]
     if kind=='invoices' and s['op']=='video.conditions.create':predictions.append(dict(x['invoice'],video_id=pk))
     elif kind in ('history','notifications'):predictions += [dict(r,video_id=pk) for r in x.get(kind,[])]
+   elif s['op']=='video.revision.resolve':
+    x=changes[s['as']]
+    if kind=='activities':
+     names={'in_progress':'En cours','resolved':'Résolue','rejected':'Non retenue'}
+     predictions.append({'video_id':x['video_id'],'kind':'review','visibility':'client','message':f"Correction mise à jour : {names[x['new']['status']] }.",'created_by_id':p.actor_id})
+   elif s['op']=='video.activity.add':
+    x=changes[s['as']]
+    if kind=='activities':predictions.append({'video_id':v['video'],'kind':'note','visibility':x['new']['visibility'],'message':x['new']['message'],'created_by_id':p.actor_id})
+   elif s['op']=='video.version.add':
+    x=changes[s['as']]
+    if kind=='activities':
+     predictions.append({'video_id':v['video'],'kind':'version','visibility':'client','message':f"La version {x['new']['version_number']} est disponible pour validation.",'created_by_id':p.actor_id})
+   elif s['op']=='video.payment_request.add':
+    x=changes[s['as']]
+    if kind=='activities':
+     predictions.append({'video_id':v['video'],'kind':'payment','visibility':'client','message':f"Une demande de paiement « {x['new']['label']} » de {Decimal(x['new']['amount']):.2f} est disponible.",'created_by_id':p.actor_id})
    elif s['op']=='video.order':
     if kind=='invoices':predictions.append({'video_id':pk,'total_amount':orders[s['as']]['price'],'amount_paid':'0.00','status':'unpaid','created_by_id':p.actor_id,'payment_method':None})
     # The signal's create history is deterministic; notification only if editor.
@@ -340,7 +407,7 @@ def expected_graph(p,baseline,current):
   for key,g in expected.items():
    if g['model']==label:
     for r in current[key]['rows']:
-     if r['id'] in new:g['rows'].append(r)
+     if r['id'] in new and not any(old['id']==r['id'] for old in g['rows']):g['rows'].append(r)
     g['rows'].sort(key=lambda r:r['id'])
  financial_graph(p,expected)
  for s in p.steps:

@@ -24,7 +24,7 @@ class Engine:
         import json,re
         if not isinstance(steps,list) or not 1<=len(steps)<=12 or len(json.dumps(steps))>24000:raise ValueError('invalid_plan')
         seen={};targets=set()
-        if len(steps)>1 and any(s.get('op') in ('prospect.convert','finance.performance.payment.record','finance.highlight.payment.record','video.delivery.internal','finance.salary.record','video.conditions.create','video.conditions.amend') for s in steps if isinstance(s,dict)):raise ValueError('plan_dependency_not_simulable')
+        if len(steps)>1 and any(s.get('op') in ('prospect.convert','finance.performance.payment.record','finance.highlight.payment.record','video.delivery.internal','finance.salary.record','video.conditions.create','video.conditions.amend','video.activity.add','video.production.amend','video.version.add','video.payment_request.add','video.revision.resolve') for s in steps if isinstance(s,dict)):raise ValueError('plan_dependency_not_simulable')
         relations={'player':'gestion_joueurs.Player'}
         for s in steps:
             if not isinstance(s,dict) or set(s)!={'as','op','values'}:raise ValueError('invalid_step')
@@ -44,7 +44,7 @@ class Engine:
                     declared=rule.get('schema',{}).get(k,{}).get('type')
                     expected=bool if declared=='boolean' or k=='deadline_from_whatsapp' else (int if declared=='integer' or k in ('id','player','organization','editor','client_organization','match_package','expected_matches','progress') else str)
                     if type(x) is not expected:raise ValueError('invalid_type')
-                    if expected is int and (x<0 or (x==0 and k!='progress')):raise ValueError('invalid_type')
+                    if expected is int and (x<0 or (x==0 and k not in ('progress','matches_processed'))):raise ValueError('invalid_type')
                     if expected is str and len(x)>8000:raise ValueError('invalid_value')
             if s['op']=='organization.link' and v['expected_matches'] not in (3,5,10):raise ValueError('invalid_link')
             if s['op']=='player.create' and objects:
@@ -108,7 +108,7 @@ class Engine:
         import hashlib,json
         out={'__preview__':self.preview(steps)}
         for s in steps:
-            if s['op'] in ('finance.performance.payment.record','prospect.convert','finance.highlight.payment.record','finance.salary.record','video.conditions.amend'):
+            if s['op'] in ('finance.performance.payment.record','prospect.convert','finance.highlight.payment.record','finance.salary.record','video.conditions.amend','video.activity.add','video.production.amend','video.version.add','video.payment_request.add','video.revision.resolve'):
                 out[s['as']]=SIMPLE[s['op']].snapshot(s['values'],self.actor_id,lock)
             if s['op'] in WORKFLOWS:
                 out[s['as']]=WORKFLOWS[s['op']].snapshot(s['values'],self.actor_id,lock)
@@ -142,7 +142,7 @@ class Engine:
                     u=users.values().filter(pk=row['user_id']).first()
                     out['auth.User:'+str(row['user_id'])]=hashlib.sha256(json.dumps(u,sort_keys=True,default=str).encode()).hexdigest()
         for s in steps:
-            if s['op'] not in ('organization.link','video.order'):continue
+            if s['op'] not in ('organization.link','video.order','player.organization.link'):continue
             v=s['values'];player=concrete(v.get('player'));organization=v.get('organization',v.get('client_organization'))
             if type(player) is not int or type(organization) is not int:continue
             links=OrganizationPlayer.objects.filter(player_id=player,organization_id=organization).order_by('pk')
@@ -216,7 +216,7 @@ class Engine:
                     if graph(p,{},_alias='default')!=pre.body['baseline']:raise ValueError('verification_conflict')
                     from gestion_joueurs.utils import actor_context
                     from .effects import effects_context
-                    with actor_context(actor), effects_context(workflow=any(s['op'] in WORKFLOWS for s in p.steps)) as effects:
+                    with actor_context(actor), effects_context(workflow=any(s['op'] in WORKFLOWS or s['op'] in ('video.version.add','video.payment_request.add','video.activity.add','video.revision.resolve') for s in p.steps)) as effects:
                         results=self._apply(p.steps,actor)
                         # DS02: the date may roll between snapshot validation and save.
                         # Compare the persisted date to the signed preview before commit.
