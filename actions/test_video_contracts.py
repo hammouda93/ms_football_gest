@@ -427,3 +427,20 @@ class VideoParityTests(TestCase):
             self.assertTrue(VideoStatusHistory.objects.filter(
                 video=self.video, status=target,
             ).exists())
+
+    def test_production_preview_never_mutates_original_instance(self):
+        adapter = SIMPLE["video.production.amend"]
+        video = self.video
+        before = video.delivery_date
+        values = {
+            "id": video.pk,
+            "delivery_date": (timezone.localdate() - timedelta(days=1)).isoformat(),
+        }
+        # Django ModelForms mutate their instance during validation. The
+        # adapter must validate a copy before preparing any signed proposal.
+        obj, proposed = adapter.cleaned(values, self.owner.pk)
+        self.assertIsNone(before)
+        self.assertIsNone(obj.delivery_date)
+        self.assertIsNotNone(proposed["delivery_date"])
+        video.refresh_from_db()
+        self.assertIsNone(video.delivery_date)

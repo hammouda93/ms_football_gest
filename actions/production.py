@@ -3,6 +3,7 @@
 Only existing Django model forms and explicit business columns are accepted.
 No upload, external notification, payment capture, or worker claim is triggered.
 """
+import copy
 import hashlib
 import json
 from decimal import Decimal
@@ -99,7 +100,7 @@ class VideoProductionSettings(ProductionBase):
             raise ValueError("field_forbidden")
         data = model_to_dict(video)
         data.update({k: values[k] for k in chosen})
-        form = VideoForm(data, instance=video, user=self.actor(actor_id))
+        form = VideoForm(data, instance=copy.copy(video), user=self.actor(actor_id))
         if not form.is_valid():
             raise ValueError("invalid_video_form")
         changes = {k: form.cleaned_data[k] for k in chosen}

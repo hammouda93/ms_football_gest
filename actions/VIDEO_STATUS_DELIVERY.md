@@ -27,3 +27,6 @@ de prévisualisation et de vérification après exécution restent applicables.
 Tests CI SQLite exécutés automatiquement sur la branche, avec tests Joueurs
 et Vidéos. La qualification PostgreSQL et l'intégration réelle avec Hermes
 restent requises avant déploiement. Aucune configuration Heroku n'est modifiée.
+
+## Précaution de préparation sans écriture
+Le formulaire `VideoForm` peut modifier son `instance` pendant `is_valid()` même avant `save()`. Le contrat `video.production.amend` valide désormais une copie détachée de la vidéo. Les prévisualisations de date de livraison n'altèrent ni la ligne SQL ni l'objet cible conservé pour les projections.
