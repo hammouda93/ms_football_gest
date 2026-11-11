@@ -293,3 +293,137 @@ class VideoParityTests(TestCase):
         }
         form = VideoForm(data, user=self.owner)
         self.assertTrue(form.is_valid(), form.errors)
+
+    def test_delivery_without_link_is_allowed_by_contract_and_form(self):
+        from .workflow import WORKFLOWS
+        from client_portal.forms import ProductionVideoStatusForm
+        delivery = WORKFLOWS["video.delivery.internal"]
+        self.assertEqual(delivery.contract()["required"], ["id"])
+        self.assertTrue(delivery.contract()["linkOptional"])
+        self.assertTrue(ProductionVideoStatusForm(
+            {"status": "delivered", "video_link": ""},
+            user=self.owner, video=self.video,
+        ).is_valid())
+        values = {"id": self.video.pk}
+        obj, clean = delivery.cleaned(values, self.owner.pk)
+        self.assertEqual(obj.pk, self.video.pk)
+        self.assertEqual(clean["video_link"], "")
+        preview = delivery.preview({
+            "as": "delivery", "op": "video.delivery.internal",
+            "values": values,
+        }, self.owner.pk)
+        self.assertEqual(preview["newStatus"], "delivered")
+        self.assertFalse(preview["portal"]["final_link_present_after"])
+        self.assertFalse(preview["portal"]["final_available_after"])
+        self.assertFalse(preview["portal"]["sent"])
+        self.assertIsNone(preview["videoChanges"]["video_link"])
+
+    def test_delivery_without_link_persists_and_verifies_transition(self):
+        from .workflow import WORKFLOWS
+        from gestion_joueurs.utils import actor_context
+        from gestion_joueurs.models import VideoStatusHistory
+        delivery = WORKFLOWS["video.delivery.internal"]
+        values = {"id": self.video.pk}
+        step = {"as": "delivery", "op": "video.delivery.internal", "values": values}
+        preview = delivery.preview(step, self.owner.pk)
+        plan = self.fake_plan(step, preview)
+        plan.snapshots = {"__preview__": {"transitions": [preview]}}
+        with transaction.atomic():
+            baseline = graph(plan, {}, _alias="default")
+            with actor_context(self.owner), effects_context(workflow=True) as effects:
+                video = delivery.apply(values, self.owner.pk)
+            plan.effects = effects
+            plan.results = {"delivery": video.pk}
+            current = graph(plan, plan.results, _alias="default")
+            self.assertEqual(current, expected_graph(plan, baseline, current))
+        video.refresh_from_db()
+        self.assertEqual(video.status, Video.StatusChoices.DELIVERED)
+        self.assertFalse(video.video_link)
+        self.assertIsNotNone(video.delivery_date)
+        self.assertEqual(VideoStatusHistory.objects.filter(
+            video=video, status=Video.StatusChoices.DELIVERED,
+        ).count(), 1)
+
+    def test_delivery_blank_explicitly_clears_old_link_but_omission_keeps_it(self):
+        from .workflow import WORKFLOWS
+        delivery = WORKFLOWS["video.delivery.internal"]
+        self.video.video_link = "https://example.com/previous"
+        self.video.save(update_fields=["video_link"])
+        omitted = delivery.preview({
+            "as": "delivery", "op": "video.delivery.internal",
+            "values": {"id": self.video.pk},
+        }, self.owner.pk)
+        self.assertEqual(
+            omitted["videoChanges"]["video_link"], "https://example.com/previous",
+        )
+        explicit_blank = delivery.preview({
+            "as": "delivery", "op": "video.delivery.internal",
+            "values": {"id": self.video.pk, "video_link": ""},
+        }, self.owner.pk)
+        self.assertEqual(explicit_blank["videoChanges"]["video_link"], "")
+        delivery.apply({"id": self.video.pk, "video_link": ""}, self.owner.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.DELIVERED)
+        self.assertEqual(self.video.video_link, "")
+
+    def test_invalid_supplied_delivery_link_is_still_rejected(self):
+        from .workflow import WORKFLOWS
+        delivery = WORKFLOWS["video.delivery.internal"]
+        for url in (
+            "http://example.com/video",
+            "https://example.com/video?token=secret",
+            "https://user:pass@example.com/video",
+            "https://example.com/%252e%252e/",
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                delivery.cleaned({
+                    "id": self.video.pk, "video_link": url,
+                }, self.owner.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.status, Video.StatusChoices.PENDING)
+
+    def test_admin_status_catalogue_exposes_every_non_delivery_status(self):
+        from .workflow import WORKFLOWS
+        status = WORKFLOWS["video.status.transition"].contract()
+        actual = set(status["schema"]["status"]["enum"])
+        expected = set(Video.StatusChoices.values) - {Video.StatusChoices.DELIVERED}
+        self.assertEqual(actual, expected)
+        self.assertEqual(
+            status["delegatedStatusOperations"]["delivered"],
+            "video.delivery.internal",
+        )
+        from client_portal.forms import ProductionVideoStatusForm
+        form = ProductionVideoStatusForm(user=self.owner, video=self.video)
+        self.assertEqual(
+            {v for v, _ in form.fields["status"].choices},
+            set(Video.StatusChoices.values),
+        )
+
+    def test_completed_and_problematic_statuses_are_real_internal_transitions(self):
+        from .workflow import WORKFLOWS
+        from gestion_joueurs.models import Invoice, VideoStatusHistory
+        from gestion_joueurs.utils import actor_context
+        Invoice.objects.create(
+            video=self.video, total_amount=Decimal("350.00"),
+            amount_paid=Decimal("0.00"), status="unpaid",
+            created_by=self.owner,
+        )
+        adapter = WORKFLOWS["video.status.transition"]
+        for target in (
+            Video.StatusChoices.COMPLETED,
+            Video.StatusChoices.PROBLEMATIC,
+        ):
+            step = {
+                "as": "status", "op": "video.status.transition",
+                "values": {"id": self.video.pk, "status": target},
+            }
+            preview = adapter.preview(step, self.owner.pk)
+            self.assertEqual(preview["newStatus"], target)
+            with transaction.atomic():
+                with actor_context(self.owner), effects_context(workflow=True):
+                    adapter.apply(step["values"], self.owner.pk)
+            self.video.refresh_from_db()
+            self.assertEqual(self.video.status, target)
+            self.assertTrue(VideoStatusHistory.objects.filter(
+                video=self.video, status=target,
+            ).exists())

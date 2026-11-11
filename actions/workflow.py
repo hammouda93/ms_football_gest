@@ -36,7 +36,17 @@ class ProductionTransition:
             if getattr(f,'max_length',None):r['maxLength']=f.max_length
             if n=='progress':r.update(minimum=0,maximum=100)
             schema[n]=r
-        return {'model':Video._meta.label,'fields':['id',*names],'required':['id',*names], 'family':'production_transition/v1','schema':schema,'sourceForm':form.__class__.__module__+'.'+form.__class__.__name__,'permission':'active superuser or assigned VideoEditor; actual form restricts transitions','closed':['delivered','external','publication','delivery','access','finance','jobs'],'effects':['status_history','workflow','stage_activity','internal_notifications'],'selection':'target-bound choices in preview; catalogue enums are descriptive'}
+        # The unbound form lists editor statuses only. The catalogue must also
+        # expose admin-only 'completed' so Hermes can choose all legal statuses.
+        # 'delivered' stays behind the separate reviewed delivery contract.
+        if self.kind=='status':
+            schema['status']['enum']=[
+                state for state,_ in Video.StatusChoices.choices if state!='delivered'
+            ]
+        contract={'model':Video._meta.label,'fields':['id',*names],'required':['id',*names], 'family':'production_transition/v1','schema':schema,'sourceForm':form.__class__.__module__+'.'+form.__class__.__name__,'permission':'active superuser or assigned VideoEditor; actual form restricts transitions','closed':['delivered','external','publication','delivery','access','finance','jobs'],'effects':['status_history','workflow','stage_activity','internal_notifications'],'selection':'target-bound choices in preview; catalogue enums are descriptive'}
+        if self.kind=='status':
+            contract['delegatedStatusOperations']={'delivered':'video.delivery.internal'}
+        return contract
     def actor(self,actor_id):
         actor=User.objects.get(pk=actor_id,is_active=True)
         if not actor.is_superuser and not VideoEditor.objects.filter(user=actor).exists():raise PermissionError('permission_denied')
