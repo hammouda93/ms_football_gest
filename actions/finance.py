@@ -1,5 +1,6 @@
 """Exact internal branch of record_payment, using its real form and view."""
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from django.contrib.messages.storage.cookie import CookieStorage
 from django.test import RequestFactory
@@ -12,10 +13,14 @@ import hashlib,json
 
 class HighlightPayment(InternalRecord):
     def contract(self):
-        c=super().contract();c['fields'].append('video');c['required'].append('video');c['schema']['video']={'type':'integer'}
+        c=super().contract()
+        # The base InternalRecord contract aliases fields and required to one
+        # list. Split them before changing their contents.
+        c['fields']=list(dict.fromkeys([*c['fields'],'video']))
+        c['required']=[name for name in c['fields'] if name!='payment_type']
+        c['schema']['video']={'type':'integer'}
         # The application derives partial/final from the *resulting balance*.
         # Keep payment_type as an accepted legacy field, not a required input.
-        c['required'].remove('payment_type')
         c['schema']['payment_type']['derivedFrom']='invoice_balance_after_payment'
         c['schema']['payment_type']['optionalInput']=True
         c['sourceView']='gestion_joueurs.views.record_payment';c['preconditions']=['existing_invoice','positive_amount_not_exceeding_balance','single_step'];c['effects']=['payment','invoice_amount_paid_and_status']
@@ -30,7 +35,10 @@ class HighlightPayment(InternalRecord):
         # when Hermes omits it, supply the internal form with a valid placeholder.
         form_values=dict(values)
         form_values.setdefault('payment_type','partial')
-        obj,changes=super().cleaned(form_values,actor_id,lock)
+        try:
+            obj,changes=super().cleaned(form_values,actor_id,lock)
+        except ValidationError:
+            raise ValueError('invalid_payment_form') from None
         qs=Invoice.objects.select_for_update() if lock else Invoice.objects
         try:
             invoice=qs.get(video_id=values['video'])

@@ -144,7 +144,9 @@ class HighlightPaymentContractTests(TestCase):
         self.assertFalse(Payment.objects.filter(video=self.video).exists())
 
     def test_stale_payment_plan_snapshot_detects_prior_payment(self):
-        vals=self.values("150.00")
+        # A second payment of this amount is still valid, so we can verify
+        # that the earlier prepared snapshot is stale rather than overpaid.
+        vals=self.values("100.00")
         before=self.adapter.snapshot(vals,self.admin.pk)
         with transaction.atomic(),actor_context(self.admin):
             self.adapter.apply(vals,self.admin.pk)
