@@ -30,6 +30,7 @@ FIELDS={
  'client_portal.OrganizationPlayer':'id organization_id player_id label expected_matches is_active ended_at added_by_id created_at',
  'client_portal.VideoVersion':'id video_id version_number title preview_url final_url notes status uploaded_by_id approved_by_id approved_at created_at',
  'client_portal.PaymentRequest':'id video_id label amount due_date payment_url status created_by_id created_at updated_at',
+ 'client_portal.RevisionRequest':'id version_id requested_by_id timecode_seconds comment status staff_response resolved_by_id resolved_at created_at updated_at',
  'client_portal.VideoWorkflow':'id video_id stage priority progress next_action blocked_reason updated_by_id created_at updated_at',
  'gestion_joueurs.VideoStatusHistory':'id video_id editor_id status changed_at comment created_by_id',
  'client_portal.VideoActivity':'id video_id kind visibility message metadata created_by_id created_at',
@@ -101,6 +102,13 @@ def graph(p,results,_alias=ALIAS):
    add('gestion_joueurs.Video',pk=v['video'])
    add('gestion_joueurs.Invoice',video_id=v['video'])
    add('gestion_joueurs.Payment',video_id=v['video'])
+  if s['op']=='video.revision.resolve':
+   from client_portal.models import RevisionRequest
+   revision=RevisionRequest.objects.using(_alias).filter(pk=v['id']).values('version__video_id','version_id').first()
+   if not revision:raise ValueError('verification_revision_missing')
+   add('client_portal.VideoVersion',pk=revision['version_id'])
+   add('gestion_joueurs.Video',pk=revision['version__video_id'])
+   add('client_portal.VideoActivity',video_id=revision['version__video_id'])
   if s['op']=='video.version.add':
    add('client_portal.VideoVersion',video_id=v['video'])
    add('client_portal.VideoActivity',video_id=v['video'])
@@ -289,6 +297,13 @@ def expected_graph(p,baseline,current):
       for row in g['rows']:
        if row['id']==pk:row['updated_at']=group['rows'][0]['updated_at']
    else:
+    if op=='video.revision.resolve':
+     actual=[r for g in current.values() if g['model']==label for r in g['rows'] if r['id']==pk]
+     if len(actual)!=1:raise ValueError('verification_revision_missing')
+     x['new']['updated_at']=actual[0]['updated_at']
+     if x['new']['resolved_at']=='set_at_execution':
+      if not actual[0]['resolved_at']:raise ValueError('verification_resolved_at_missing')
+      x['new']['resolved_at']=actual[0]['resolved_at']
     patch(label,pk,x['new'],x['old'] is None,x.get('generated',[]))
     if op=='video.version.add':
      for former in x['replaced_ids']:
@@ -358,6 +373,11 @@ def expected_graph(p,baseline,current):
     x=changes[s['as']]
     if kind=='invoices' and s['op']=='video.conditions.create':predictions.append(dict(x['invoice'],video_id=pk))
     elif kind in ('history','notifications'):predictions += [dict(r,video_id=pk) for r in x.get(kind,[])]
+   elif s['op']=='video.revision.resolve':
+    x=changes[s['as']]
+    if kind=='activities':
+     names={'in_progress':'En cours','resolved':'Résolue','rejected':'Non retenue'}
+     predictions.append({'video_id':x['video_id'],'kind':'review','visibility':'client','message':f"Correction mise à jour : {names[x['new']['status']] }.",'created_by_id':p.actor_id})
    elif s['op']=='video.activity.add':
     x=changes[s['as']]
     if kind=='activities':predictions.append({'video_id':v['video'],'kind':'note','visibility':x['new']['visibility'],'message':x['new']['message'],'created_by_id':p.actor_id})

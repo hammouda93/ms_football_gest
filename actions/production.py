@@ -400,9 +400,113 @@ class VideoPaymentRequestAdd(ProductionBase):
         return obj
 
 
+
+class VideoRevisionResolve(ProductionBase):
+    operation = "video.revision.resolve"
+    model = RevisionRequest
+
+    def contract(self):
+        return {
+            "model": self.model._meta.label,
+            "fields": ["id", "status", "staff_response"],
+            "required": ["id", "status"],
+            "schema": {
+                "id": {"type": "integer"},
+                "status": {
+                    "type": "string",
+                    "enum": ["in_progress", "resolved", "rejected"],
+                },
+                "staff_response": {"type": "string", "maxLength": 4000},
+            },
+            "family": "video_revision/v1",
+            "sourceForm": "client_portal.forms.RevisionResolutionForm",
+            "permission": "active_superuser",
+            "effects": [
+                "revision_status_and_response",
+                "client_visible_activity_record",
+            ],
+            "excludedEffects": [
+                "email", "whatsapp", "version_approval",
+                "publication", "jobs", "payment",
+            ],
+            "composition": "single_step_only",
+        }
+
+    def target(self, pk, actor_id, lock=False):
+        self.actor(actor_id)
+        q = RevisionRequest.objects.select_for_update() if lock else RevisionRequest.objects
+        try:
+            return q.select_related("version__video").get(pk=pk)
+        except RevisionRequest.DoesNotExist:
+            raise ValueError("revision_missing") from None
+
+    def cleaned(self, values, actor_id, lock=False):
+        revision = self.target(values["id"], actor_id, lock)
+        if set(values) - set(self.contract()["fields"]):
+            raise ValueError("field_forbidden")
+        form = RevisionResolutionForm({
+            "status": values["status"],
+            "staff_response": values.get("staff_response", ""),
+        })
+        if not form.is_valid():
+            raise ValueError("invalid_revision_form")
+        return revision, form.cleaned_data
+
+    def preview(self, step, actor_id):
+        revision, data = self.cleaned(step["values"], actor_id)
+        terminal = data["status"] in (
+            RevisionRequest.Status.RESOLVED, RevisionRequest.Status.REJECTED,
+        )
+        return scalar({
+            "as": step["as"], "op": step["op"],
+            "id": revision.pk,
+            "video_id": revision.version.video_id,
+            "old": {
+                "status": revision.status,
+                "staff_response": revision.staff_response,
+                "resolved_by_id": revision.resolved_by_id,
+                "resolved_at": revision.resolved_at,
+            },
+            "new": {
+                "status": data["status"],
+                "staff_response": data["staff_response"],
+                "resolved_by_id": actor_id if terminal else None,
+                "resolved_at": "set_at_execution" if terminal else None,
+            },
+            "generated": ["resolved_at", "updated_at"],
+            "contract": self.contract(),
+        })
+
+    def apply(self, values, actor_id):
+        revision, data = self.cleaned(values, actor_id, lock=True)
+        revision.status = data["status"]
+        revision.staff_response = data["staff_response"]
+        if revision.status in (
+            RevisionRequest.Status.RESOLVED, RevisionRequest.Status.REJECTED,
+        ):
+            revision.resolved_at = timezone.now()
+            revision.resolved_by_id = actor_id
+        else:
+            revision.resolved_at = None
+            revision.resolved_by = None
+        revision.save(update_fields=[
+            "status", "staff_response", "resolved_at", "resolved_by",
+            "updated_at",
+        ])
+        VideoActivity.objects.create(
+            video=revision.version.video,
+            kind=VideoActivity.Kind.REVIEW,
+            visibility=VideoActivity.Visibility.CLIENT,
+            message=f"Correction mise à jour : {revision.get_status_display()}.",
+            created_by_id=actor_id,
+        )
+        return revision
+
+
 PRODUCTION = {
     "video.production.amend": VideoProductionSettings(),
     "video.activity.add": VideoActivityAdd(),
     "video.version.add": VideoVersionAdd(),
     "video.payment_request.add": VideoPaymentRequestAdd(),
+    "video.revision.resolve": VideoRevisionResolve(),
 }
