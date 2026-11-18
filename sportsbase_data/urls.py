@@ -67,6 +67,11 @@ urlpatterns = [
         name="youtube_upload_retry",
     ),
     path(
+        "gestion/performances/youtube/match/<int:match_pk>/lien/",
+        views.youtube_link_save,
+        name="youtube_link_save",
+    ),
+    path(
         "gestion/performances/dailymotion/match/<int:match_pk>/publier/",
         views.dailymotion_upload_request,
         name="dailymotion_upload_request",
