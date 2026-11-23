@@ -136,3 +136,99 @@ class YouTubeTransferGateTests(SimpleTestCase):
                 {"percent": "94", "uploading": True, "status": message}
             ])
             self.assertFalse(self.uploader._upload_completion_detected(page))
+
+
+class FakeVideoProcessingClose:
+    def __init__(self, dialog):
+        self.dialog = dialog
+        self.click_count = 0
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return 1
+
+    def is_visible(self):
+        return self.dialog.visible
+
+    def is_enabled(self):
+        return True
+
+    def click(self, **_kwargs):
+        self.click_count += 1
+        self.dialog.visible = False
+
+
+class FakeVideoProcessingDialog:
+    def __init__(self):
+        self.visible = True
+        self.button = FakeVideoProcessingClose(self)
+        self.hidden_waited = False
+
+    def is_visible(self):
+        return self.visible
+
+    def locator(self, _selector):
+        return self.button
+
+    def get_by_role(self, _role, **_kwargs):
+        return self.button
+
+    def wait_for(self, *, state, timeout):
+        self.hidden_waited = state == "hidden" and timeout == 15000
+        assert not self.visible
+
+
+class FakeVideoProcessingDialogs:
+    def __init__(self, dialog):
+        self.dialog = dialog
+
+    def count(self):
+        return 1
+
+    def nth(self, _index):
+        return self.dialog
+
+
+class FakeVideoProcessingPage:
+    def __init__(self):
+        self.dialog = FakeVideoProcessingDialog()
+        self.waits = 0
+
+    def locator(self, _selector):
+        return FakeVideoProcessingDialogs(self.dialog)
+
+    def wait_for_timeout(self, _ms):
+        self.waits += 1
+
+
+class YouTubeProcessingCloseTests(SimpleTestCase):
+    def test_close_processing_modal_without_waiting_for_checks(self):
+        page = FakeVideoProcessingPage()
+        closed = YouTubeStudioUploader._close_video_processing_dialog(
+            page, timeout_ms=1000
+        )
+        self.assertTrue(closed)
+        self.assertEqual(page.dialog.button.click_count, 1)
+        self.assertTrue(page.dialog.hidden_waited)
+        self.assertEqual(page.waits, 0)
+
+    def test_no_processing_modal_is_harmless(self):
+        class MissingDialogs:
+            def count(self):
+                return 0
+
+        class MissingPage:
+            def locator(self, _selector):
+                return MissingDialogs()
+
+            def wait_for_timeout(self, _milliseconds):
+                return None
+
+        self.assertFalse(
+            YouTubeStudioUploader._close_video_processing_dialog(
+                MissingPage(), timeout_ms=0
+            )
+        )
