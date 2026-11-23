@@ -128,7 +128,29 @@ class YouTubeTransferGateTests(SimpleTestCase):
              "status": "Upload complete. Processing will begin shortly"}
         ])
         self.uploader._wait_upload_transfer_complete(page)
-        self.assertGreaterEqual(page.polls, 2)
+        # A single completion message is enough: it may disappear next poll.
+        self.assertEqual(page.polls, 0)
+
+    def test_complete_message_not_lost_when_checking_replaces_it(self):
+        page = FakeUploadPage([
+            {"percent": "", "uploading": True,
+             "status": "Upload complete ... Processing will begin shortly"},
+            {"percent": "", "uploading": True,
+             "status": "Processing up to HD ... 3 minutes left"},
+            {"percent": "", "uploading": True,
+             "status": "Checking 0% ... 10 minutes left"},
+        ])
+        self.uploader._wait_upload_transfer_complete(page)
+        self.assertEqual(page.polls, 0)
+
+    def test_checking_percent_alone_is_not_transfer_completion(self):
+        page = FakeUploadPage(
+            [{"percent": "", "uploading": True,
+              "status": "Checking 6% ... 5 minutes left"}],
+            close_after=3,
+        )
+        with self.assertRaisesRegex(YouTubeUploadError, "Chrome"):
+            self.uploader._wait_upload_transfer_complete(page)
 
     def test_partial_upload_text_is_not_a_completion_signal(self):
         for message in ("Uploading 94%", "Video uploaded 94%", "Upload 99%"):
