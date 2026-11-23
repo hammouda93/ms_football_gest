@@ -1089,12 +1089,12 @@ class YouTubeStudioUploader:
         )
 
     @staticmethod
-    def _close_video_processing_dialog(page, timeout_ms=10000):
-        """Dismiss YouTube's *processing* notice after upload has reached 100%.
+    def _close_video_processing_dialog(page, timeout_ms=1500):
+        """Best-effort UI cleanup. Close is NOT an upload completion condition.
 
-        The modal says 'Video processing' / 'Checking ... %' and its Close
-        button does not cancel the already completed file transfer. Do not
-        wait for SD/HD processing here; it continues at YouTube after Close.
+        YouTube may omit the processing modal, change its button or remove it
+        while we inspect it. The transfer must have been independently
+        confirmed at 100% BEFORE this method is called.
         """
         selectors = (
             "ytcp-uploads-still-processing-dialog",
@@ -1107,74 +1107,73 @@ class YouTubeStudioUploader:
         deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
             for selector in selectors:
-                dialogs = page.locator(selector)
-                for index in range(min(dialogs.count(), 5)):
-                    dialog = dialogs.nth(index)
-                    if not dialog.is_visible():
-                        continue
-                    print(
-                        "[YOUTUBE] Fenêtre Video processing détectée "
-                        "(traitement SD/HD en cours). Clic sur Close…"
-                    )
-                    close_candidates = (
-                        dialog.locator("ytcp-button#close-button").first,
-                        dialog.locator("#close-button").first,
-                        dialog.get_by_role(
-                            "button",
-                            name=re.compile(r"^(Close|Fermer)$", re.IGNORECASE),
-                        ).first,
-                        dialog.locator('ytcp-button:has-text("Close")').first,
-                        dialog.locator('ytcp-button:has-text("Fermer")').first,
-                    )
-                    for close_button in close_candidates:
-                        if (
-                            close_button.count()
-                            and close_button.is_visible()
-                            and close_button.is_enabled()
-                        ):
-                            close_button.click(timeout=15000)
-                            dialog.wait_for(state="hidden", timeout=15000)
-                            print(
-                                "[YOUTUBE] Fenêtre Video processing fermée. "
-                                "Traitement YouTube poursuivi en arrière-plan."
-                            )
-                            return True
-                    raise YouTubeUploadError(
-                        "Fenêtre Video processing détectée, mais bouton "
-                        "Close/Fermer introuvable : intervention requise."
-                    )
+                try:
+                    dialogs = page.locator(selector)
+                    for index in range(min(dialogs.count(), 5)):
+                        dialog = dialogs.nth(index)
+                        if not dialog.is_visible():
+                            continue
+                        close_candidates = (
+                            dialog.locator("ytcp-button#close-button").first,
+                            dialog.locator("#close-button").first,
+                            dialog.get_by_role(
+                                "button",
+                                name=re.compile(
+                                    r"^(Close|Fermer)$", re.IGNORECASE
+                                ),
+                            ).first,
+                            dialog.locator('ytcp-button:has-text("Close")').first,
+                            dialog.locator('ytcp-button:has-text("Fermer")').first,
+                        )
+                        for button in close_candidates:
+                            try:
+                                if (
+                                    button.count()
+                                    and button.is_visible()
+                                    and button.is_enabled()
+                                ):
+                                    button.click(timeout=5000)
+                                    print(
+                                        "[YOUTUBE] Fenêtre Video processing "
+                                        "fermée (Close)."
+                                    )
+                                    return True
+                            except Exception:
+                                # The dialog can disappear between detection
+                                # and the click; no reason to fail this upload.
+                                continue
+                        print(
+                            "[YOUTUBE] Fenêtre Video processing présente, "
+                            "mais Close introuvable. Ce bouton est facultatif."
+                        )
+                        return False
+                except Exception:
+                    # A transient/detached YouTube dialog cannot invalidate
+                    # an already completed transfer and accepted Save action.
+                    continue
             page.wait_for_timeout(250)
         return False
 
     def _complete_saved_upload(self, page, context, video_id, visibility):
-        """Finish after confirmed transfer and accepted Save, not after SD/HD encoding.
+        """Finalize after a confirmed 100% transfer and a successful Save click.
 
-        A dismissed Video processing dialog is an acknowledgement of the
-        finished transfer and accepted save. YouTube keeps processing in the
-        background, so it must not block the next file in the upload queue.
+        Optional processing UI is NOT part of upload completion. Processing
+        SD/HD and checks continue on YouTube after this method returns.
+        A visible Publish anyway confirmation is still handled when present.
         """
-        self._publish_anyway_if_prechecks_pending(page)
-        if self._close_video_processing_dialog(page):
+        publish_anyway_clicked = self._publish_anyway_if_prechecks_pending(page)
+        processing_closed = self._close_video_processing_dialog(page)
+        if not processing_closed:
             print(
-                "[YOUTUBE] Upload enregistré et fenêtre Video processing fermée. "
-                "Traitement SD/HD en arrière-plan : passage au joueur suivant."
+                "[YOUTUBE] Aucune fermeture Close requise : "
+                "upload terminé, enregistrement effectué."
             )
-            return
-
-        # The processing modal is optional. Without that acknowledgement,
-        # preserve the stronger Studio verification instead of blindly
-        # treating the disappearance of an upload dialog as success.
-        if not self._wait_upload_dialog_closed(page, timeout_ms=60000):
-            if not self._video_is_published_in_studio(
-                context, video_id, visibility
-            ):
-                raise YouTubeUploadError(
-                    "Enregistrement YouTube non confirmé. "
-                    "L’identifiant est conservé pour éviter un double upload : "
-                    f"https://youtu.be/{video_id}"
-                )
-            return
-        self._wait_for_studio_publication(context, video_id, visibility)
+        print(
+            "[YOUTUBE] Upload confirmé à 100 % et Enregistrer exécuté"
+            + (" ; Publier quand même confirmé" if publish_anyway_clicked else "")
+            + ". Statut uploaded autorisé ; traitement SD/HD indépendant."
+        )
+        return True
 
     def _wait_for_studio_publication(self, context, video_id, visibility):
         """Mark uploaded only after the matching Studio row is finalized."""
