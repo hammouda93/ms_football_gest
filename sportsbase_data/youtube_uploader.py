@@ -862,7 +862,7 @@ class YouTubeStudioUploader:
     def _wait_for_save_or_studio_confirmation(
         self, page, done_button, video_id, visibility
     ):
-        """Do not make the upload percentage a prerequisite for saving."""
+        """Wait for Save after the file transfer has been verified complete."""
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         next_studio_check = time.monotonic() + 25
         while time.monotonic() < deadline:
@@ -893,127 +893,133 @@ class YouTubeStudioUploader:
         )
 
     def _wait_upload_transfer_complete(self, page):
-        progress = page.locator("ytcp-video-upload-progress").first
-        appearance_deadline = time.monotonic() + 60
-        while time.monotonic() < appearance_deadline:
-            try:
-                if progress.count() and progress.is_visible():
-                    break
-            except Exception:
-                pass
-            if self._upload_completion_detected(page):
-                print(
-                    "[YOUTUBE] Transfert terminé avant la première "
-                    "lecture du pourcentage."
-                )
-                return
-            page.wait_for_timeout(250)
-        else:
-            raise YouTubeUploadError(
-                "YouTube n’a affiché ni progression ni confirmation de fin "
-                "de transfert."
-            )
+        """Wait for proof that the file transfer ended before clicking Save.
+
+        A video ID, an enabled Save button, a missing progress element and
+        a stale percentage are NOT proof of completed transfer.
+        """
+        print(
+            "[YOUTUBE] Visibilité définie : attente du transfert complet "
+            "avant Enregistrer…"
+        )
         deadline = time.monotonic() + self.upload_timeout_ms / 1000
         last_status = ""
         consecutive_complete_checks = 0
-
+        progress_seen = False
         while time.monotonic() < deadline:
-            try:
-                is_uploading = progress.get_attribute("uploading") is not None
-                status_locator = progress.locator(".progress-label").first
-                status = (
-                    status_locator.inner_text().strip()
-                    if status_locator.count()
-                    else ""
+            if page.is_closed():
+                raise YouTubeUploadError(
+                    "La fenêtre Chrome a été fermée pendant le transfert. "
+                    "La publication n'est pas confirmée."
                 )
+
+            progress = page.locator("ytcp-video-upload-progress").first
+            progress_visible = progress.count() > 0 and progress.is_visible()
+            status = ""
+            percentage = ""
+            is_uploading = False
+            explicit_complete = False
+
+            if progress_visible:
+                progress_seen = True
+                uploading_attribute = progress.get_attribute("uploading")
+                is_uploading = (
+                    uploading_attribute is not None
+                    and uploading_attribute.strip().lower() not in ("false", "0")
+                )
+                status_locator = progress.locator(".progress-label").first
+                if status_locator.count():
+                    status = status_locator.inner_text().strip()
+                if not status:
+                    status = progress.inner_text().strip()
                 bars = progress.locator(
                     'tp-yt-paper-progress[aria-label*="upload" i], '
                     'tp-yt-paper-progress[aria-label*="mise en ligne" i]'
                 )
-                percentage = ""
                 if bars.count():
                     percentage = (
                         bars.first.get_attribute("aria-valuenow") or ""
                     ).strip()
-
-                display_status = status or (
-                    f"Upload {percentage}%" if percentage else "Upload en cours"
-                )
-                if display_status and display_status != last_status:
-                    print(f"[YOUTUBE] {display_status}")
-                    last_status = display_status
-
-                percentage_complete = False
-                try:
-                    percentage_complete = bool(
-                        percentage and float(percentage) >= 100
+                if not percentage:
+                    match = re.search(
+                        r"(?:upload(?:ing)?|mise en ligne|importation)"
+                        r"[^\d]{0,35}(\d{1,3})\s*%",
+                        status,
+                        re.IGNORECASE,
                     )
-                except ValueError:
-                    percentage_complete = False
+                    if match:
+                        percentage = match.group(1)
 
-                status_complete = bool(
+                explicit_complete = bool(
                     re.search(
-                        r"(upload complete|uploaded|mise en ligne terminée|"
-                        r"importation terminée)",
+                        r"(upload complete|upload successful|video uploaded"
+                        r"|mise en ligne terminée|importation terminée"
+                        r"|transfert terminé|processing will begin shortly"
+                        r"|traitement va bientôt commencer)",
                         status,
                         re.IGNORECASE,
                     )
                 )
 
-                if not is_uploading or percentage_complete or status_complete:
-                    consecutive_complete_checks += 1
-                else:
-                    consecutive_complete_checks = 0
+            percent_complete = False
+            try:
+                percent_complete = bool(
+                    percentage and float(percentage) >= 100
+                )
+            except ValueError:
+                pass
 
-                # Deux lectures successives évitent de considérer comme terminé
-                # un composant transitoire recréé au passage de 99 à 100 %.
-                if consecutive_complete_checks >= 2:
-                    print(
-                        "[YOUTUBE] Transfert du fichier terminé. "
-                        "Les vérifications YouTube peuvent commencer."
-                    )
-                    return
-            except Exception:
-                # YouTube recrée parfois le composant au moment où le transfert
-                # se termine. On recherche alors sa nouvelle instance visible.
-                try:
-                    progress = self._first_visible(
-                        page,
-                        ("ytcp-video-upload-progress",),
-                        timeout_ms=10000,
-                    )
-                except YouTubeUploadError:
-                    print(
-                        "[YOUTUBE] Le composant de transfert a disparu : "
-                        "upload terminé."
-                    )
-                    return
-            page.wait_for_timeout(500)
+            # The completion banner also covers very fast transfers, where
+            # the progress widget can disappear before the first poll.
+            completion_banner = self._upload_completion_detected(page)
+            transfer_finished = (
+                completion_banner
+                or explicit_complete
+                or (progress_visible and percent_complete and not is_uploading)
+            )
+            current_status = status or (
+                f"Upload {percentage}%" if percentage else
+                ("Progression indisponible" if progress_seen else "Transfert en cours")
+            )
+            if current_status != last_status:
+                print(f"[YOUTUBE] {current_status}")
+                last_status = current_status
+
+            if transfer_finished:
+                consecutive_complete_checks += 1
+            else:
+                consecutive_complete_checks = 0
+            if consecutive_complete_checks >= 3:
+                print(
+                    "[YOUTUBE] Transfert confirmé terminé (100 % ou "
+                    "confirmation explicite de YouTube). "
+                    "Autorisation d'enregistrer."
+                )
+                return
+            page.wait_for_timeout(1000)
 
         raise YouTubeUploadError(
-            "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
+            "Transfert YouTube non confirmé avant le délai configuré. "
+            "Vidéo NON marquée uploaded ; ne pas lancer le fichier suivant."
         )
 
     @staticmethod
     def _upload_completion_detected(page):
+        """Only accept an explicit end-of-transfer notice (not 'Uploaded 94%')."""
         hosts = page.locator(
             "ytcp-video-upload-progress, ytcp-uploads-dialog, "
             "ytcp-video-upload-dialog"
         )
-        try:
-            count = min(hosts.count(), 10)
-        except Exception:
-            return False
+        count = min(hosts.count(), 10)
         for index in range(count):
-            try:
-                text = hosts.nth(index).inner_text()
-            except Exception:
-                continue
+            text = hosts.nth(index).inner_text() or ""
             if re.search(
-                r"(upload complete|uploaded|mise en ligne terminée|"
-                r"importation terminée|transfert terminé|"
-                r"processing will begin shortly|traitement va bientôt commencer)",
-                text or "",
+                r"(upload complete|upload successful|video uploaded"
+                r"|mise en ligne terminée|importation terminée"
+                r"|transfert terminé|processing will begin shortly"
+                r"|traitement va bientôt commencer"
+                r"|100\s*%\s*uploaded)",
+                text,
                 re.IGNORECASE,
             ):
                 return True
@@ -1179,6 +1185,19 @@ class YouTubeStudioUploader:
             close_button.click(force=True, timeout=15000)
         return True
 
+    def _wait_for_studio_publication(self, context, video_id, visibility):
+        """Mark uploaded only after the matching Studio row is finalized."""
+        deadline = time.monotonic() + min(self.upload_timeout_ms, 180000) / 1000
+        while time.monotonic() < deadline:
+            if self._video_is_published_in_studio(context, video_id, visibility):
+                return
+            time.sleep(5)
+        raise YouTubeUploadError(
+            "Transfert terminé mais publication non confirmée dans YouTube Studio "
+            f"pour https://youtu.be/{video_id}. L'identifiant est conservé "
+            "pour éviter un doublon ; statut uploaded interdit."
+        )
+
     def upload(self, job):
         video_path = self.resolve_video_path(job)
         youtube_options = job.get("youtube") or {}
@@ -1310,9 +1329,10 @@ class YouTubeStudioUploader:
                     },
                 )
                 print(
-                    "[YOUTUBE] ID sauvegardé. Finalisation indépendante "
-                    "du pourcentage affiché…"
+                    "[YOUTUBE] ID sauvegardé (anti-doublon). "
+                    "La publication attend la fin du transfert."
                 )
+                self._wait_upload_transfer_complete(page)
                 done_button = self._first_visible(
                     page,
                     (
@@ -1360,6 +1380,9 @@ class YouTubeStudioUploader:
                                     f"un double upload : {youtube_url}"
                                 )
 
+                self._wait_for_studio_publication(
+                    context, video_id, selected_visibility
+                )
                 visibility_label = {
                     "public": "publique",
                     "unlisted": "non répertoriée",
