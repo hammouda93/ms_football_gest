@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from .agent_config import dailymotion_upload_enabled, youtube_upload_enabled
 from .dailymotion_uploader import DailymotionStudioUploader
 from .scraper import SportsBaseSubscriptionScraper
-from .youtube_uploader import YouTubeStudioUploader
+from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
 
 
 load_dotenv()
@@ -306,6 +306,15 @@ class SportsBaseAgentClient:
                     f"[YOUTUBE] Tâche {youtube_job['job_id']} terminée — "
                     f"{result['status']}"
                 )
+                if result.get("status") != "uploaded":
+                    # Never start another upload after an interrupted transfer:
+                    # the preceding Chrome session may have been incomplete.
+                    raise YouTubeUploadError(
+                        f"Tâche {youtube_job['job_id']} non confirmée. "
+                        "La file YouTube est arrêtée pour éviter des uploads "
+                        "simultanés ou incomplets. Vérifier YouTube Studio "
+                        "avant de redémarrer l'agent."
+                    )
                 return True
 
         if not self.dailymotion_enabled:
@@ -349,6 +358,9 @@ class SportsBaseAgentClient:
                     time.sleep(self.poll_interval)
             except KeyboardInterrupt:
                 print("[SPORTSBASE] Arrêt demandé.")
+                return
+            except YouTubeUploadError as exc:
+                print(f"[YOUTUBE][ARRÊT DE SÉCURITÉ] {exc}")
                 return
             except Exception as exc:
                 print(f"[SPORTSBASE][ERROR] {exc}")
