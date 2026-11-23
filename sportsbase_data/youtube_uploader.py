@@ -952,7 +952,7 @@ class YouTubeStudioUploader:
 
                 explicit_complete = bool(
                     re.search(
-                        r"(upload complete|upload successful|video uploaded"
+                        r"(upload complete|upload successful"
                         r"|mise en ligne terminée|importation terminée"
                         r"|transfert terminé|processing will begin shortly"
                         r"|traitement va bientôt commencer)",
@@ -973,9 +973,9 @@ class YouTubeStudioUploader:
             # the progress widget can disappear before the first poll.
             completion_banner = self._upload_completion_detected(page)
             transfer_finished = (
-                completion_banner
-                or explicit_complete
-                or (progress_visible and percent_complete and not is_uploading)
+                (progress_visible and not is_uploading
+                 and (completion_banner or explicit_complete or percent_complete))
+                or (not progress_visible and completion_banner)
             )
             current_status = status or (
                 f"Upload {percentage}%" if percentage else
@@ -1014,7 +1014,7 @@ class YouTubeStudioUploader:
         for index in range(count):
             text = hosts.nth(index).inner_text() or ""
             if re.search(
-                r"(upload complete|upload successful|video uploaded"
+                r"(upload complete|upload successful"
                 r"|mise en ligne terminée|importation terminée"
                 r"|transfert terminé|processing will begin shortly"
                 r"|traitement va bientôt commencer"
