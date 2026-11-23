@@ -232,3 +232,65 @@ class YouTubeProcessingCloseTests(SimpleTestCase):
                 MissingPage(), timeout_ms=0
             )
         )
+
+
+class YouTubeFinishAfterCloseTests(SimpleTestCase):
+    def test_close_processing_goes_directly_to_uploaded_path(self):
+        uploader = object.__new__(YouTubeStudioUploader)
+        calls = []
+        uploader._publish_anyway_if_prechecks_pending = (
+            lambda _page: calls.append("publish_if_present")
+        )
+        uploader._close_video_processing_dialog = (
+            lambda _page: calls.append("close") or True
+        )
+        uploader._wait_upload_dialog_closed = (
+            lambda *_args, **_kwargs: self.fail(
+                "Already closed: do not wait for other dialogs"
+            )
+        )
+        uploader._wait_for_studio_publication = (
+            lambda *_args: self.fail(
+                "Processing modal closed: do not wait for SD/HD processing"
+            )
+        )
+
+        uploader._complete_saved_upload(
+            object(), object(), "CuK3Na4aLgw", "unlisted"
+        )
+        self.assertEqual(calls, ["publish_if_present", "close"])
+
+    def test_no_processing_modal_keeps_studio_confirmation(self):
+        uploader = object.__new__(YouTubeStudioUploader)
+        calls = []
+        uploader._publish_anyway_if_prechecks_pending = (
+            lambda _page: False
+        )
+        uploader._close_video_processing_dialog = lambda _page: False
+        uploader._wait_upload_dialog_closed = (
+            lambda *_args, **_kwargs: True
+        )
+        uploader._wait_for_studio_publication = (
+            lambda *_args: calls.append("verified")
+        )
+
+        uploader._complete_saved_upload(
+            object(), object(), "CuK3Na4aLgw", "unlisted"
+        )
+        self.assertEqual(calls, ["verified"])
+
+    def test_failed_confirmation_does_not_mark_uploaded(self):
+        uploader = object.__new__(YouTubeStudioUploader)
+        uploader._publish_anyway_if_prechecks_pending = lambda _page: False
+        uploader._close_video_processing_dialog = lambda _page: False
+        uploader._wait_upload_dialog_closed = (
+            lambda *_args, **_kwargs: False
+        )
+        uploader._video_is_published_in_studio = (
+            lambda *_args: False
+        )
+
+        with self.assertRaises(YouTubeUploadError):
+            uploader._complete_saved_upload(
+                object(), object(), "CuK3Na4aLgw", "unlisted"
+            )
