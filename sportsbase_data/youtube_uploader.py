@@ -969,13 +969,33 @@ class YouTubeStudioUploader:
             except ValueError:
                 pass
 
-            # The completion banner also covers very fast transfers, where
-            # the progress widget can disappear before the first poll.
+            # YouTube displays "Upload complete" only briefly before
+            # switching the same widget to HD processing and copyright checks.
+            # It is definitive evidence of a finished *file transfer*.
+            # Do not require three consecutive readings of this transient
+            # message, and do not require the "uploading" attribute to vanish:
+            # that attribute can persist while YouTube is processing.
+            if explicit_complete:
+                print(
+                    "[YOUTUBE] Upload complete confirmé par YouTube. "
+                    "Traitement HD et Checking indépendants : "
+                    "passage à Enregistrer."
+                )
+                return
+
+            # The completion banner can also cover very fast transfers.
             completion_banner = self._upload_completion_detected(page)
+            if completion_banner:
+                print(
+                    "[YOUTUBE] Fin du transfert confirmée par YouTube. "
+                    "Passage à Enregistrer sans attendre Checking."
+                )
+                return
+
+            # Fallback when the explicit completion message was missed:
+            # 100% is not enough until YouTube stops the transfer.
             transfer_finished = (
-                (progress_visible and not is_uploading
-                 and (completion_banner or explicit_complete or percent_complete))
-                or (not progress_visible and completion_banner)
+                progress_visible and percent_complete and not is_uploading
             )
             current_status = status or (
                 f"Upload {percentage}%" if percentage else
