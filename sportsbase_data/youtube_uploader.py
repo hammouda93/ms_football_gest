@@ -1146,6 +1146,36 @@ class YouTubeStudioUploader:
             page.wait_for_timeout(250)
         return False
 
+    def _complete_saved_upload(self, page, context, video_id, visibility):
+        """Finish after confirmed transfer and accepted Save, not after SD/HD encoding.
+
+        A dismissed Video processing dialog is an acknowledgement of the
+        finished transfer and accepted save. YouTube keeps processing in the
+        background, so it must not block the next file in the upload queue.
+        """
+        self._publish_anyway_if_prechecks_pending(page)
+        if self._close_video_processing_dialog(page):
+            print(
+                "[YOUTUBE] Upload enregistré et fenêtre Video processing fermée. "
+                "Traitement SD/HD en arrière-plan : passage au joueur suivant."
+            )
+            return
+
+        # The processing modal is optional. Without that acknowledgement,
+        # preserve the stronger Studio verification instead of blindly
+        # treating the disappearance of an upload dialog as success.
+        if not self._wait_upload_dialog_closed(page, timeout_ms=60000):
+            if not self._video_is_published_in_studio(
+                context, video_id, visibility
+            ):
+                raise YouTubeUploadError(
+                    "Enregistrement YouTube non confirmé. "
+                    "L’identifiant est conservé pour éviter un double upload : "
+                    f"https://youtu.be/{video_id}"
+                )
+            return
+        self._wait_for_studio_publication(context, video_id, visibility)
+
     def _wait_for_studio_publication(self, context, video_id, visibility):
         """Mark uploaded only after the matching Studio row is finalized."""
         deadline = time.monotonic() + min(self.upload_timeout_ms, 180000) / 1000
@@ -1307,7 +1337,6 @@ class YouTubeStudioUploader:
                 save_available = self._wait_for_save_or_studio_confirmation(
                     page, done_button, video_id, selected_visibility
                 )
-                independently_confirmed = not save_available
                 if save_available:
                     print("[YOUTUBE] Enregistrement de la vidéo…")
                     try:
@@ -1315,31 +1344,15 @@ class YouTubeStudioUploader:
                     except Exception:
                         done_button.click(force=True, timeout=15000)
 
-                    # The transfer was verified before clicking Save.
-                    # 'Video processing' is YouTube's later SD/HD conversion;
-                    # dismiss its Close modal instead of waiting for processing.
-                    self._publish_anyway_if_prechecks_pending(page)
-                    self._close_video_processing_dialog(page)
-                    if not independently_confirmed:
-                        dialog_closed = self._wait_upload_dialog_closed(
-                            page, timeout_ms=60000
-                        )
-                        if not dialog_closed:
-                            independently_confirmed = (
-                                self._video_is_published_in_studio(
-                                    context, video_id, selected_visibility
-                                )
-                            )
-                            if not independently_confirmed:
-                                raise YouTubeUploadError(
-                                    "Enregistrement YouTube non confirmé. "
-                                    "L’identifiant a été conservé pour éviter "
-                                    f"un double upload : {youtube_url}"
-                                )
-
-                self._wait_for_studio_publication(
-                    context, video_id, selected_visibility
-                )
+                    self._complete_saved_upload(
+                        page, context, video_id, selected_visibility
+                    )
+                else:
+                    # No Save click was needed because Studio had already
+                    # confirmed the publication in a separate tab.
+                    self._wait_for_studio_publication(
+                        context, video_id, selected_visibility
+                    )
                 visibility_label = {
                     "public": "publique",
                     "unlisted": "non répertoriée",
