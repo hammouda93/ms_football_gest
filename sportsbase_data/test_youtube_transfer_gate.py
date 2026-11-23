@@ -260,37 +260,45 @@ class YouTubeFinishAfterCloseTests(SimpleTestCase):
         )
         self.assertEqual(calls, ["publish_if_present", "close"])
 
-    def test_no_processing_modal_keeps_studio_confirmation(self):
+    def test_no_processing_modal_and_no_publish_anyway_does_not_block(self):
         uploader = object.__new__(YouTubeStudioUploader)
         calls = []
         uploader._publish_anyway_if_prechecks_pending = (
-            lambda _page: False
+            lambda _page: calls.append("publish_absent") or False
         )
-        uploader._close_video_processing_dialog = lambda _page: False
-        uploader._wait_upload_dialog_closed = (
-            lambda *_args, **_kwargs: True
+        uploader._close_video_processing_dialog = (
+            lambda _page: calls.append("close_absent") or False
         )
         uploader._wait_for_studio_publication = (
-            lambda *_args: calls.append("verified")
+            lambda *_args: self.fail("SD/HD must not block a saved upload")
         )
 
-        uploader._complete_saved_upload(
-            object(), object(), "CuK3Na4aLgw", "unlisted"
-        )
-        self.assertEqual(calls, ["verified"])
+        self.assertTrue(uploader._complete_saved_upload(
+            object(), object(), "EfUDnSY4Es0", "unlisted"
+        ))
+        self.assertEqual(calls, ["publish_absent", "close_absent"])
 
-    def test_failed_confirmation_does_not_mark_uploaded(self):
+    def test_missing_close_button_does_not_fail_after_save(self):
         uploader = object.__new__(YouTubeStudioUploader)
-        uploader._publish_anyway_if_prechecks_pending = lambda _page: False
-        uploader._close_video_processing_dialog = lambda _page: False
-        uploader._wait_upload_dialog_closed = (
-            lambda *_args, **_kwargs: False
-        )
-        uploader._video_is_published_in_studio = (
-            lambda *_args: False
+        page = FakeVideoProcessingPage()
+        page.dialog.button.is_visible = lambda: False
+        uploader._publish_anyway_if_prechecks_pending = lambda _page: True
+
+        self.assertTrue(uploader._complete_saved_upload(
+            page, object(), "EfUDnSY4Es0", "unlisted"
+        ))
+        self.assertEqual(page.dialog.button.click_count, 0)
+
+    def test_publish_confirmation_error_still_raises(self):
+        uploader = object.__new__(YouTubeStudioUploader)
+        def fail_publish(_page):
+            raise YouTubeUploadError("Publish anyway confirmation failed")
+        uploader._publish_anyway_if_prechecks_pending = fail_publish
+        uploader._close_video_processing_dialog = (
+            lambda _page: self.fail("Do not ignore Publish errors")
         )
 
-        with self.assertRaises(YouTubeUploadError):
+        with self.assertRaisesRegex(YouTubeUploadError, "confirmation failed"):
             uploader._complete_saved_upload(
-                object(), object(), "CuK3Na4aLgw", "unlisted"
+                object(), object(), "EfUDnSY4Es0", "unlisted"
             )
