@@ -1088,102 +1088,63 @@ class YouTubeStudioUploader:
             "YouTube n’a pas fermé la confirmation Publier quand même."
         )
 
-    def _finish_still_processing_dialog(self, page, *, video_id="", visibility="unlisted"):
-        dialog = page.locator("ytcp-uploads-still-processing-dialog").first
-        try:
-            dialog.wait_for(state="visible", timeout=10000)
-        except PlaywrightTimeoutError:
-            return False
+    @staticmethod
+    def _close_video_processing_dialog(page, timeout_ms=10000):
+        """Dismiss YouTube's *processing* notice after upload has reached 100%.
 
-        print(
-            "[YOUTUBE] YouTube confirme l’enregistrement, mais le fichier est "
-            "encore en cours d’envoi."
+        The modal says 'Video processing' / 'Checking ... %' and its Close
+        button does not cancel the already completed file transfer. Do not
+        wait for SD/HD processing here; it continues at YouTube after Close.
+        """
+        selectors = (
+            "ytcp-uploads-still-processing-dialog",
+            "ytcp-video-processing-dialog",
+            'tp-yt-paper-dialog:has-text("Video processing")',
+            '[role="dialog"]:has-text("Video processing")',
+            'tp-yt-paper-dialog:has-text("Traitement de la vidéo")',
+            '[role="dialog"]:has-text("Traitement de la vidéo")',
         )
-        print("[YOUTUBE] Attente de la fin réelle du transfert…")
-
-        progress = dialog.locator("ytcp-video-upload-progress").first
-        deadline = time.monotonic() + self.upload_timeout_ms / 1000
-        last_status = ""
-        upload_finished = False
-        next_studio_check = time.monotonic() + 25
-
+        deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
-            try:
-                progress_exists = progress.count() > 0
-                is_uploading = (
-                    progress_exists
-                    and progress.get_attribute("uploading") is not None
-                )
-                status_locator = progress.locator(".progress-label").first
-                status = (
-                    status_locator.inner_text().strip()
-                    if status_locator.count()
-                    else ""
-                )
-                bars = progress.locator(
-                    'tp-yt-paper-progress[aria-label*="upload" i], '
-                    'tp-yt-paper-progress[aria-label*="mise en ligne" i]'
-                )
-                percentage = ""
-                if bars.count():
-                    percentage = (
-                        bars.first.get_attribute("aria-valuenow") or ""
-                    ).strip()
-                display_status = status or (
-                    f"Upload {percentage}%" if percentage else "Upload en cours"
-                )
-                if display_status and display_status != last_status:
-                    print(f"[YOUTUBE] {display_status}")
-                    last_status = display_status
-
-                if not progress_exists or not is_uploading:
-                    upload_finished = True
-                    break
-                try:
-                    if percentage and float(percentage) >= 100:
-                        # L’attribut uploading disparaît généralement juste après
-                        # que la barre atteint 100 %.
-                        page.wait_for_timeout(1500)
-                except ValueError:
-                    pass
-            except Exception:
-                # Le composant peut être recréé par YouTube au passage de 99 à
-                # 100 %. S’il disparaît, le transfert est terminé.
-                try:
+            for selector in selectors:
+                dialogs = page.locator(selector)
+                for index in range(min(dialogs.count(), 5)):
+                    dialog = dialogs.nth(index)
                     if not dialog.is_visible():
-                        return True
-                except Exception:
-                    return True
-            if video_id and time.monotonic() >= next_studio_check:
-                if self._video_is_published_in_studio(
-                    page.context, video_id, visibility
-                ):
-                    return "verified"
-                next_studio_check = time.monotonic() + 30
-            page.wait_for_timeout(1500)
-
-        if not upload_finished:
-            raise YouTubeUploadError(
-                "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
-            )
-
-        print("[YOUTUBE] Transfert terminé. Fermeture de la confirmation…")
-        close_button = self._first_visible(
-            page,
-            (
-                "ytcp-uploads-still-processing-dialog ytcp-button#close-button",
-                "ytcp-uploads-still-processing-dialog #close-button",
-                'ytcp-uploads-still-processing-dialog button[aria-label="Close"]',
-                'ytcp-uploads-still-processing-dialog button[aria-label="Fermer"]',
-            ),
-            timeout_ms=30000,
-        )
-        self._wait_button_enabled(page, close_button, timeout_ms=30000)
-        try:
-            close_button.click(timeout=15000)
-        except Exception:
-            close_button.click(force=True, timeout=15000)
-        return True
+                        continue
+                    print(
+                        "[YOUTUBE] Fenêtre Video processing détectée "
+                        "(traitement SD/HD en cours). Clic sur Close…"
+                    )
+                    close_candidates = (
+                        dialog.locator("ytcp-button#close-button").first,
+                        dialog.locator("#close-button").first,
+                        dialog.get_by_role(
+                            "button",
+                            name=re.compile(r"^(Close|Fermer)$", re.IGNORECASE),
+                        ).first,
+                        dialog.locator('ytcp-button:has-text("Close")').first,
+                        dialog.locator('ytcp-button:has-text("Fermer")').first,
+                    )
+                    for close_button in close_candidates:
+                        if (
+                            close_button.count()
+                            and close_button.is_visible()
+                            and close_button.is_enabled()
+                        ):
+                            close_button.click(timeout=15000)
+                            dialog.wait_for(state="hidden", timeout=15000)
+                            print(
+                                "[YOUTUBE] Fenêtre Video processing fermée. "
+                                "Traitement YouTube poursuivi en arrière-plan."
+                            )
+                            return True
+                    raise YouTubeUploadError(
+                        "Fenêtre Video processing détectée, mais bouton "
+                        "Close/Fermer introuvable : intervention requise."
+                    )
+            page.wait_for_timeout(250)
+        return False
 
     def _wait_for_studio_publication(self, context, video_id, visibility):
         """Mark uploaded only after the matching Studio row is finalized."""
@@ -1354,15 +1315,11 @@ class YouTubeStudioUploader:
                     except Exception:
                         done_button.click(force=True, timeout=15000)
 
-                    prechecks_confirmed = self._publish_anyway_if_prechecks_pending(page)
-                    if not prechecks_confirmed:
-                        independently_confirmed = (
-                            self._finish_still_processing_dialog(
-                                page,
-                                video_id=video_id,
-                                visibility=selected_visibility,
-                            ) == "verified"
-                        )
+                    # The transfer was verified before clicking Save.
+                    # 'Video processing' is YouTube's later SD/HD conversion;
+                    # dismiss its Close modal instead of waiting for processing.
+                    self._publish_anyway_if_prechecks_pending(page)
+                    self._close_video_processing_dialog(page)
                     if not independently_confirmed:
                         dialog_closed = self._wait_upload_dialog_closed(
                             page, timeout_ms=60000
