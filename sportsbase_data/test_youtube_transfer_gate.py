@@ -212,7 +212,9 @@ class YouTubeProcessingCloseTests(SimpleTestCase):
         )
         self.assertTrue(closed)
         self.assertEqual(page.dialog.button.click_count, 1)
-        self.assertTrue(page.dialog.hidden_waited)
+        # The Close click is sufficient; do not wait for SD/HD processing.
+        self.assertFalse(page.dialog.visible)
+        self.assertFalse(page.dialog.hidden_waited)
         self.assertEqual(page.waits, 0)
 
     def test_no_processing_modal_is_harmless(self):
