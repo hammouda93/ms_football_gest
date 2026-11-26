@@ -7,6 +7,7 @@ from crispy_forms.layout import Submit
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from client_portal.models import Organization
+import json
 from decimal import Decimal
 from datetime import timedelta
 
@@ -141,6 +142,8 @@ class VideoForm(forms.ModelForm):
         player = kwargs.pop('player', None)
         super(VideoForm, self).__init__(*args, **kwargs)
         self.is_editing = bool(self.instance and self.instance.pk)
+        self.original_terms = (self.instance.client_organization_id, self.instance.match_package,
+                               self.instance.total_payment)
 
         self.fields['client_organization'].queryset = Organization.objects.filter(
             is_active=True
@@ -159,8 +162,24 @@ class VideoForm(forms.ModelForm):
         self.fields['deadline_from_whatsapp'].help_text = (
             "Si cochée, la deadline sera enregistrée à 5 jours après la date WhatsApp."
         )
-        self.fields['match_package'].help_text = (
-            "Tarifs académie : 3 matchs = 300 DT, 5 = 350 DT, 10 = 400 DT."
+        package_field = self.fields['match_package']
+        # Keep model choices migration-compatible, without obsolete form labels.
+        package_field.choices = [("", "---------")] + [
+            (count, f"{count} matchs") for count in Video.MATCH_PACKAGE_PRICES
+        ]
+        tariff_data = Video.match_package_tariff_data()
+        package_field.widget.attrs['data-package-tariffs'] = json.dumps(tariff_data)
+        package_field.widget.attrs['data-existing-order'] = 'true' if self.is_editing else 'false'
+        if self.is_editing:
+            package_field.help_text = (
+                "Prix historique conservé. Pour changer le pack, l’organisation ou le tarif, "
+                "saisissez explicitement le tarif applicable."
+            )
+        else:
+            package_field.help_text = "Sélectionnez une organisation et un pack pour afficher le tarif."
+        self.fields['total_payment'].help_text = (
+            "Le tarif du pack est calculé par le serveur à la création. "
+            "En édition, le montant enregistré est conservé sauf modification explicite."
         )
         self.fields['matches_processed'].help_text = (
             "Progression réelle de la commande, par exemple 3 sur 5 matchs."
@@ -182,6 +201,14 @@ class VideoForm(forms.ModelForm):
             )
             if active_link:
                 self.fields['client_organization'].initial = active_link.organization
+
+        selected_org = (self.data.get(self.add_prefix('client_organization')) if self.is_bound
+                        else self.fields['client_organization'].initial or self.original_terms[0])
+        selected_id = getattr(selected_org, 'pk', selected_org)
+        tariff = Video.match_package_tariff(selected_id)
+        package_field.help_text += " Tarif actuel : " + ", ".join(
+            f"{count} matchs = {price} DT" for count, price in tariff.items()
+        ) + "."
 
         self.fields['deadline'].label = "Deadline de livraison"
         self.fields['deadline'].widget.attrs['data-deadline-planner-target'] = 'true'
@@ -235,9 +262,16 @@ class VideoForm(forms.ModelForm):
 
         if match_package:
             package_count = int(match_package)
-            cleaned_data["total_payment"] = Decimal(
-                str(Video.MATCH_PACKAGE_PRICES[package_count])
-            )
+            if organization:
+                price = Decimal(str(Video.match_package_tariff(organization.pk)[package_count]))
+                if not self.is_editing:
+                    cleaned_data["total_payment"] = price
+                elif (organization.pk, match_package, cleaned_data.get("total_payment")) != self.original_terms:
+                    if cleaned_data.get("total_payment") != price:
+                        self.add_error(
+                            "total_payment",
+                            f"Confirmez explicitement le tarif applicable de {price} DT pour ce pack.",
+                        )
             if matches_processed > package_count:
                 self.add_error(
                     "matches_processed",
@@ -246,6 +280,11 @@ class VideoForm(forms.ModelForm):
 
         advance_payment = cleaned_data.get("advance_payment")
         total_payment = cleaned_data.get("total_payment")
+
+        if self.is_editing and total_payment is not None and total_payment != self.original_terms[2]:
+            invoice = Invoice.objects.filter(video_id=self.instance.pk).order_by('-invoice_date').first()
+            if invoice and total_payment < invoice.amount_paid:
+                self.add_error("total_payment", "Le total ne peut pas être inférieur au montant déjà payé.")
 
         if advance_payment is not None and total_payment is not None:
             if advance_payment > total_payment:

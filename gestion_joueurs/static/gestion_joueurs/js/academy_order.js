@@ -16,11 +16,10 @@ document.addEventListener('DOMContentLoaded', function () {
         'div_id_matches_processed',
     ];
 
-    const prices = {
-        '3': '300.00',
-        '5': '350.00',
-        '10': '400.00',
-    };
+    const tariffs = matchPackage ? JSON.parse(matchPackage.dataset.packageTariffs || '{}') : {};
+    const existingOrder = matchPackage && matchPackage.dataset.existingOrder === 'true';
+    const help = document.getElementById('hint_id_match_package');
+    let autoPriced = false;
 
     function refreshAcademyFields() {
         const linked = Boolean(organization.value);
@@ -35,13 +34,23 @@ document.addEventListener('DOMContentLoaded', function () {
             if (deadlineToggle) deadlineToggle.checked = false;
         }
 
+        const prices = tariffs[organization.value] || tariffs.default || {};
+        if (help) {
+            const current = Object.entries(prices).map(([count, price]) => count + ' matchs = ' + price + ' DT').join(', ');
+            help.textContent = (existingOrder
+                ? 'Prix historique conservé. Toute modification tarifaire doit être explicite. '
+                : '') + 'Tarif actuel : ' + current + '.';
+        }
         if (totalPayment) {
             const packagePrice = linked && matchPackage ? prices[matchPackage.value] : null;
-            if (packagePrice) {
-                totalPayment.value = packagePrice;
+            if (!existingOrder && packagePrice != null) {
+                totalPayment.value = Number(packagePrice).toFixed(2);
                 totalPayment.readOnly = true;
+                autoPriced = true;
             } else {
+                if (!existingOrder && autoPriced) totalPayment.value = '';
                 totalPayment.readOnly = false;
+                autoPriced = false;
             }
         }
     }

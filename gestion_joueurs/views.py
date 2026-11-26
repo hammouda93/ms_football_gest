@@ -1440,14 +1440,15 @@ def edit_video(request, video_id):
     if request.method == 'POST':
         form = VideoForm(request.POST, instance=video, user=request.user)
         if form.is_valid():
-            form.save()
-            if last_invoice:
-                last_invoice.total_amount = form.cleaned_data.get('total_payment')
-                if last_invoice.amount_paid == 0:
-                    last_invoice.status = 'unpaid'
-                else:
-                    last_invoice.status = 'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
-                last_invoice.save()
+            with transaction.atomic():
+                form.save()
+                if last_invoice and form.cleaned_data['total_payment'] != form.original_terms[2]:
+                    last_invoice.total_amount = form.cleaned_data['total_payment']
+                    if last_invoice.amount_paid == 0:
+                        last_invoice.status = 'unpaid'
+                    else:
+                        last_invoice.status = 'partially_paid' if last_invoice.amount_paid < last_invoice.total_amount else 'paid'
+                    last_invoice.save(update_fields=['total_amount', 'status'])
             messages.success(request, "Les informations de la vidéo ont été mises à jour avec succès.")
 
             portal_access = None

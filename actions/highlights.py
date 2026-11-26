@@ -124,7 +124,10 @@ class HighlightAmend(HighlightCreate):
         from django.db.models import Sum
         journal=Payment.objects.filter(video=old).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         financial_old=dict(total_amount=format(invoice.total_amount,'.2f'),amount_paid=format(invoice.amount_paid,'.2f'),payment_journal_total=format(journal,'.2f'),remaining_balance=format(invoice.total_amount-invoice.amount_paid,'.2f'),status=invoice.status)
-        financial_new=financial_old|dict(total_amount=format(obj.total_payment,'.2f'),remaining_balance=format(obj.total_payment-invoice.amount_paid,'.2f'),status=status)
+        # Non-price amendments do not repair or rewrite historical invoices.
+        financial_new=financial_old.copy()
+        if obj.total_payment!=old.total_payment:
+            financial_new.update(total_amount=format(obj.total_payment,'.2f'),remaining_balance=format(obj.total_payment-invoice.amount_paid,'.2f'),status=status)
         return {'as':step['as'],'op':step['op'],'old':scalar({k:getattr(old,k) for k in new}),'new':new,
                 'invoice':{'id':invoice.pk,'old':{k:v for k,v in financial_old.items() if k not in ('payment_journal_total','remaining_balance')},'new':{k:v for k,v in financial_new.items() if k not in ('payment_journal_total','remaining_balance')}},
                 'financial':{'old':financial_old,'new':financial_new},

@@ -1570,6 +1570,7 @@ class PlayerRelationshipManagementTests(TestCase):
         )
 
 
+@override_settings(ELITE_ATHLETES_ORGANIZATION_ID=999999)
 class VideoAcademyOrderTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
@@ -1680,6 +1681,7 @@ class VideoAcademyOrderTests(TestCase):
             form = VideoForm(
                 data=self.form_data(
                     status=Video.StatusChoices.DELIVERED,
+                    total_payment="350.00",
                     matches_processed="5",
                     delivery_date=corrected_date.isoformat(),
                 ),

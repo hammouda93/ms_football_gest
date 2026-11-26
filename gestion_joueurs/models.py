@@ -114,6 +114,23 @@ class Video(models.Model):
         5: 350,
         10: 400,
     }
+    ELITE_MATCH_PACKAGE_PRICES = {3: 350, 5: 500, 10: 700}
+
+    @classmethod
+    def match_package_tariff(cls, organization_id=None):
+        """Current creation tariff, not a valuation of existing orders."""
+        from django.conf import settings
+        elite_id = getattr(settings, "ELITE_ATHLETES_ORGANIZATION_ID", 2)
+        return (cls.ELITE_MATCH_PACKAGE_PRICES
+                if organization_id is not None and str(organization_id) == str(elite_id)
+                else cls.MATCH_PACKAGE_PRICES)
+
+    @classmethod
+    def match_package_tariff_data(cls):
+        from django.conf import settings
+        elite_id = getattr(settings, "ELITE_ATHLETES_ORGANIZATION_ID", 2)
+        return {"default": cls.match_package_tariff(),
+                str(elite_id): cls.match_package_tariff(elite_id)}
 
     class AutomationModeChoices(models.TextChoices):
         NORMAL = 'normal', 'Normal'
