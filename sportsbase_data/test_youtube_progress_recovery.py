@@ -197,8 +197,10 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         page.wait_for_timeout.assert_not_called()
 
     def test_disabled_publish_anyway_is_not_clicked(self):
+        from .youtube_uploader import YouTubeUploadError
         page, _, button = self._optional_confirmation_page(present=True, enabled=False)
-        self.assertFalse(self.uploader._publish_anyway_if_prechecks_pending(page))
+        with self.assertRaisesRegex(YouTubeUploadError, "non cliquable"):
+            self.uploader._publish_anyway_if_prechecks_pending(page)
         button.click.assert_not_called()
         page.wait_for_timeout.assert_not_called()
 
@@ -206,49 +208,63 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         from playwright.sync_api import TimeoutError
         page, _, button = self._optional_confirmation_page(present=True)
         button.click.side_effect = TimeoutError("dialog disappeared")
+        button.is_visible.side_effect = [True, False] + [False] * 4
         self.assertFalse(self.uploader._publish_anyway_if_prechecks_pending(page))
         self.assertTrue(button.click.called)
         for call in button.click.call_args_list:
             self.assertEqual(call.kwargs, {"timeout": 1500})
 
-    def test_absent_optional_dialogs_do_not_delay_studio_confirmation(self):
+    def test_normal_save_without_prompt_skips_studio_verification(self):
         page, _, _ = self._optional_confirmation_page()
-        page.locator.return_value.first.is_visible.return_value = False
-        with patch.object(self.uploader, "_video_is_published_in_studio", return_value=True) as verify, \
-             patch("sportsbase_data.youtube_uploader.time.sleep") as sleep:
-            self.uploader._wait_for_studio_publication(
-                page.context, VIDEO_ID, "unlisted", page=page
-            )
-        verify.assert_called_once_with(page.context, VIDEO_ID, "unlisted")
-        sleep.assert_not_called()
+        save = MagicMock()
+        save.is_visible.return_value = True
+        save.is_enabled.return_value = True
+        save.get_attribute.return_value = None
+        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+        save.click.assert_called_once_with(timeout=15000)
+        verify.assert_not_called()
         page.wait_for_timeout.assert_not_called()
 
-    def test_late_publish_dialog_is_handled_during_verification(self):
-        page = MagicMock()
-        page.is_closed.return_value = False
-        with patch.object(self.uploader, "_publish_anyway_if_prechecks_pending", side_effect=[False, True]) as click, \
-             patch.object(self.uploader, "_finish_still_processing_dialog", return_value=False), \
-             patch.object(self.uploader, "_video_is_published_in_studio", side_effect=[False, False, True]) as verify, \
-             patch("sportsbase_data.youtube_uploader.time.sleep"):
-            self.uploader._wait_for_studio_publication(
-                page.context, VIDEO_ID, "unlisted", page=page
-            )
-        self.assertEqual(click.call_count, 2)
-        self.assertEqual(verify.call_count, 3)
+    def test_normal_save_with_prompt_skips_studio_verification(self):
+        page, _, button = self._optional_confirmation_page(present=True)
+        save = MagicMock()
+        save.is_visible.return_value = True
+        save.is_enabled.return_value = True
+        save.get_attribute.return_value = None
+        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+        save.click.assert_called_once_with(timeout=15000)
+        button.click.assert_called_once_with(timeout=1500)
+        verify.assert_not_called()
+        page.wait_for_timeout.assert_not_called()
 
-    def test_absent_confirmation_never_bypasses_failed_studio_verification(self):
-        from .youtube_uploader import YouTubeUploadError
-        page = MagicMock()
-        page.is_closed.return_value = False
-        with patch.object(self.uploader, "_publish_anyway_if_prechecks_pending", return_value=False), \
-             patch.object(self.uploader, "_finish_still_processing_dialog", return_value=False), \
-             patch.object(self.uploader, "_video_is_published_in_studio", return_value=False), \
-             patch("sportsbase_data.youtube_uploader.time.monotonic", side_effect=[0, 1, 181]), \
-             patch("sportsbase_data.youtube_uploader.time.sleep"):
-            with self.assertRaisesRegex(YouTubeUploadError, "statut uploaded interdit"):
-                self.uploader._wait_for_studio_publication(
-                    page.context, VIDEO_ID, "unlisted", page=page
-                )
+    def test_page_closed_after_save_does_not_trigger_studio_check(self):
+        page, _, button = self._optional_confirmation_page()
+        page.is_closed.return_value = True
+        save = MagicMock()
+        save.is_visible.return_value = True
+        save.is_enabled.return_value = True
+        save.get_attribute.return_value = None
+        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+        button.click.assert_not_called()
+        page.locator.assert_not_called()
+        verify.assert_not_called()
+
+    def test_failed_save_does_not_mark_completion(self):
+        from playwright.sync_api import TimeoutError
+        page, _, button = self._optional_confirmation_page()
+        save = MagicMock()
+        save.is_visible.return_value = True
+        save.is_enabled.return_value = True
+        save.get_attribute.return_value = None
+        save.click.side_effect = TimeoutError("save failed")
+        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            with self.assertRaises(TimeoutError):
+                self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+        button.click.assert_not_called()
+        verify.assert_not_called()
 
 
 if __name__ == "__main__":

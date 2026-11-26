@@ -1026,179 +1026,70 @@ class YouTubeStudioUploader:
                 return True
         return False
 
-    @staticmethod
-    def _wait_upload_dialog_closed(page, timeout_ms=45000):
-        dialogs = page.locator(
-            "ytcp-uploads-dialog, ytcp-video-upload-dialog, "
-            "ytcp-uploads-still-processing-dialog, "
-            "ytcp-prechecks-warning-dialog, "
-            "tp-yt-paper-dialog:has(button[aria-label=\"Publier quand même\"]), "
-            "tp-yt-paper-dialog:has(button[aria-label=\"Publish anyway\"])"
-        )
-        deadline = time.monotonic() + timeout_ms / 1000
-        while time.monotonic() < deadline:
-            try:
-                visible = any(
-                    dialogs.nth(index).is_visible()
-                    for index in range(dialogs.count())
-                )
-            except Exception:
-                visible = False
-            if not visible:
-                return True
-            page.wait_for_timeout(500)
-        return False
-
     def _publish_anyway_if_prechecks_pending(self, page):
-        """Only click a visible, enabled, explicitly named optional confirmation.
-
-        No waiting for an absent button and no forced click. The final Studio
-        verification can probe again if the dialog appears asynchronously.
-        """
+        """Click an explicit, visible optional confirmation, without waiting for absence."""
+        if page.is_closed():
+            return False
         pattern = re.compile(r"^(?:Publier quand même|Publish anyway)$", re.I)
-        for scope in ("ytcp-prechecks-warning-dialog", "tp-yt-paper-dialog"):
-            dialog = page.locator(scope)
-            candidates = (
-                dialog.get_by_role("button", name=pattern),
-                dialog.locator(
-                    'ytcp-button[aria-label="Publier quand même"], '
-                    'ytcp-button[aria-label="Publish anyway"]'
-                ),
-            )
-            for matches in candidates:
-                for index in range(matches.count()):
-                    button = matches.nth(index)
-                    try:
+        blocked = False
+        try:
+            for scope in ("ytcp-prechecks-warning-dialog", "tp-yt-paper-dialog"):
+                dialog = page.locator(scope)
+                candidates = (
+                    dialog.get_by_role("button", name=pattern),
+                    dialog.locator(
+                        'ytcp-button[aria-label="Publier quand même"], '
+                        'ytcp-button[aria-label="Publish anyway"]'
+                    ),
+                )
+                for matches in candidates:
+                    for index in range(matches.count()):
+                        button = matches.nth(index)
+                        if not button.is_visible():
+                            continue
                         if (
-                            not button.is_visible()
-                            or not button.is_enabled(timeout=500)
+                            not button.is_enabled(timeout=500)
                             or (button.get_attribute("aria-disabled", timeout=500) or "").lower() == "true"
                             or button.get_attribute("disabled", timeout=500) is not None
                         ):
+                            blocked = True
                             continue
-                        button.click(timeout=1500)
-                    except PlaywrightError:
-                        # The optional dialog may disappear or be rerendered.
-                        # Never force the click or infer publication from this.
-                        continue
-                    print("[YOUTUBE] Bouton Publier quand même cliqué.")
-                    return True
+                        try:
+                            button.click(timeout=1500)
+                        except PlaywrightError:
+                            if page.is_closed():
+                                return False
+                            if button.is_visible():
+                                blocked = True
+                            continue
+                        print("[YOUTUBE] Bouton Publier quand même cliqué.")
+                        return True
+        except PlaywrightError:
+            if page.is_closed():
+                return False
+            raise
+        if blocked:
+            raise YouTubeUploadError(
+                "Publier quand même est visible mais non cliquable. "
+                "L’identifiant est conservé pour éviter un doublon."
+            )
         return False
 
-    def _finish_still_processing_dialog(self, page, *, video_id="", visibility="unlisted"):
-        dialog = page.locator("ytcp-uploads-still-processing-dialog").first
-        if not dialog.is_visible():
-            return False
+    def _complete_after_transfer(self, page, done_button, video_id, visibility):
+        """Accept Save (+ optional confirmation) after the transfer gate.
 
-        print(
-            "[YOUTUBE] YouTube confirme l’enregistrement, mais le fichier est "
-            "encore en cours d’envoi."
-        )
-        print("[YOUTUBE] Attente de la fin réelle du transfert…")
-
-        progress = dialog.locator("ytcp-video-upload-progress").first
-        deadline = time.monotonic() + self.upload_timeout_ms / 1000
-        last_status = ""
-        upload_finished = False
-        next_studio_check = time.monotonic() + 25
-
-        while time.monotonic() < deadline:
-            try:
-                progress_exists = progress.count() > 0
-                is_uploading = (
-                    progress_exists
-                    and progress.get_attribute("uploading") is not None
-                )
-                status_locator = progress.locator(".progress-label").first
-                status = (
-                    status_locator.inner_text().strip()
-                    if status_locator.count()
-                    else ""
-                )
-                bars = progress.locator(
-                    'tp-yt-paper-progress[aria-label*="upload" i], '
-                    'tp-yt-paper-progress[aria-label*="mise en ligne" i]'
-                )
-                percentage = ""
-                if bars.count():
-                    percentage = (
-                        bars.first.get_attribute("aria-valuenow") or ""
-                    ).strip()
-                display_status = status or (
-                    f"Upload {percentage}%" if percentage else "Upload en cours"
-                )
-                if display_status and display_status != last_status:
-                    print(f"[YOUTUBE] {display_status}")
-                    last_status = display_status
-
-                if not progress_exists or not is_uploading:
-                    upload_finished = True
-                    break
-                try:
-                    if percentage and float(percentage) >= 100:
-                        # L’attribut uploading disparaît généralement juste après
-                        # que la barre atteint 100 %.
-                        page.wait_for_timeout(1500)
-                except ValueError:
-                    pass
-            except Exception:
-                # Le composant peut être recréé par YouTube au passage de 99 à
-                # 100 %. S’il disparaît, le transfert est terminé.
-                try:
-                    if not dialog.is_visible():
-                        return True
-                except Exception:
-                    return True
-            if video_id and time.monotonic() >= next_studio_check:
-                if self._video_is_published_in_studio(
-                    page.context, video_id, visibility
-                ):
-                    return "verified"
-                next_studio_check = time.monotonic() + 30
-            page.wait_for_timeout(1500)
-
-        if not upload_finished:
-            raise YouTubeUploadError(
-                "Le transfert YouTube n’a pas atteint 100 % dans le délai configuré."
-            )
-
-        print("[YOUTUBE] Transfert terminé. Fermeture de la confirmation…")
-        close_button = self._first_visible(
-            page,
-            (
-                "ytcp-uploads-still-processing-dialog ytcp-button#close-button",
-                "ytcp-uploads-still-processing-dialog #close-button",
-                'ytcp-uploads-still-processing-dialog button[aria-label="Close"]',
-                'ytcp-uploads-still-processing-dialog button[aria-label="Fermer"]',
-            ),
-            timeout_ms=30000,
-        )
-        self._wait_button_enabled(page, close_button, timeout_ms=30000)
-        try:
-            close_button.click(timeout=15000)
-        except Exception:
-            close_button.click(force=True, timeout=15000)
-        return True
-
-    def _wait_for_studio_publication(self, context, video_id, visibility, *, page=None):
-        """Check optional confirmations without delaying the first Studio probe."""
-        deadline = time.monotonic() + min(self.upload_timeout_ms, 180000) / 1000
-        prechecks_clicked = False
-        while time.monotonic() < deadline:
-            if page is not None and not page.is_closed():
-                if not prechecks_clicked:
-                    prechecks_clicked = self._publish_anyway_if_prechecks_pending(page)
-                self._finish_still_processing_dialog(
-                    page, video_id=video_id, visibility=visibility
-                )
-            if self._video_is_published_in_studio(context, video_id, visibility):
-                return
-            time.sleep(5)
-        raise YouTubeUploadError(
-            "Transfert terminé mais publication non confirmée dans YouTube Studio "
-            f"pour https://youtu.be/{video_id}. L'identifiant est conservé "
-            "pour éviter un doublon ; statut uploaded interdit."
-        )
+        Normal completion deliberately does not open another Studio tab. A
+        prior interrupted receipt still requires independent reconciliation.
+        """
+        if not self._wait_for_save_or_studio_confirmation(
+            page, done_button, video_id, visibility
+        ):
+            return
+        print("[YOUTUBE] Enregistrement de la vidéo…")
+        done_button.click(timeout=15000)
+        if not self._publish_anyway_if_prechecks_pending(page):
+            print("[YOUTUBE] Pas de confirmation supplémentaire à traiter.")
+        print("[YOUTUBE] Enregistrement demandé après transfert complet. Fin de la tâche.")
 
     def upload(self, job):
         video_path = self.resolve_video_path(job)
@@ -1345,21 +1236,8 @@ class YouTubeStudioUploader:
                     ),
                     timeout_ms=30000,
                 )
-                save_available = self._wait_for_save_or_studio_confirmation(
+                self._complete_after_transfer(
                     page, done_button, video_id, selected_visibility
-                )
-                if save_available:
-                    print("[YOUTUBE] Enregistrement de la vidéo…")
-                    try:
-                        done_button.click(timeout=15000)
-                    except Exception:
-                        done_button.click(force=True, timeout=15000)
-
-                # Do not block on optional dialogs. Studio remains the authority
-                # before marking uploaded; late confirmations are handled there.
-                self._wait_for_studio_publication(
-                    context, video_id, selected_visibility,
-                    page=page if save_available else None,
                 )
                 visibility_label = {
                     "public": "publique",
@@ -1367,7 +1245,7 @@ class YouTubeStudioUploader:
                     "private": "privée",
                 }[selected_visibility]
                 print(
-                    f"[YOUTUBE] Vidéo {visibility_label} disponible : "
+                    f"[YOUTUBE] Vidéo {visibility_label} envoyée : "
                     f"{youtube_url}"
                 )
                 result = {
@@ -1386,4 +1264,12 @@ class YouTubeStudioUploader:
                 self._save_receipt(job, result)
                 return result
             finally:
-                context.close()
+                try:
+                    context.close()
+                except PlaywrightError as exc:
+                    if type(exc).__name__ != "TargetClosedError" and not re.search(
+                        r"(target page, context or browser has been closed|browser.*closed|context.*closed)",
+                        str(exc), re.I,
+                    ):
+                        raise
+                    print("[YOUTUBE] Chrome est déjà fermé.")
