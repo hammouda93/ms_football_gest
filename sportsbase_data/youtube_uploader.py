@@ -10,6 +10,7 @@ import time
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlparse
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -1049,50 +1050,44 @@ class YouTubeStudioUploader:
         return False
 
     def _publish_anyway_if_prechecks_pending(self, page):
-        """Confirm publication when YouTube checks are still running."""
-        selectors = (
-            "ytcp-prechecks-warning-dialog ytcp-button#secondary-action-button",
-            "ytcp-prechecks-warning-dialog button[aria-label=\"Publier quand même\"]",
-            "ytcp-prechecks-warning-dialog button[aria-label=\"Publish anyway\"]",
-            "tp-yt-paper-dialog button[aria-label=\"Publier quand même\"]",
-            "tp-yt-paper-dialog button[aria-label=\"Publish anyway\"]",
-        )
-        try:
-            publish_anyway = self._first_visible(
-                page,
-                selectors,
-                timeout_ms=10000,
+        """Only click a visible, enabled, explicitly named optional confirmation.
+
+        No waiting for an absent button and no forced click. The final Studio
+        verification can probe again if the dialog appears asynchronously.
+        """
+        pattern = re.compile(r"^(?:Publier quand même|Publish anyway)$", re.I)
+        for scope in ("ytcp-prechecks-warning-dialog", "tp-yt-paper-dialog"):
+            dialog = page.locator(scope)
+            candidates = (
+                dialog.get_by_role("button", name=pattern),
+                dialog.locator(
+                    'ytcp-button[aria-label="Publier quand même"], '
+                    'ytcp-button[aria-label="Publish anyway"]'
+                ),
             )
-        except YouTubeUploadError:
-            return False
-
-        print(
-            "[YOUTUBE] Vérifications encore en cours : clic sur "
-            "Publier quand même…"
-        )
-        self._wait_button_enabled(page, publish_anyway, timeout_ms=30000)
-        try:
-            publish_anyway.click(timeout=15000)
-        except Exception:
-            publish_anyway.click(force=True, timeout=15000)
-
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            try:
-                if not publish_anyway.is_visible():
+            for matches in candidates:
+                for index in range(matches.count()):
+                    button = matches.nth(index)
+                    try:
+                        if (
+                            not button.is_visible()
+                            or not button.is_enabled(timeout=500)
+                            or (button.get_attribute("aria-disabled", timeout=500) or "").lower() == "true"
+                            or button.get_attribute("disabled", timeout=500) is not None
+                        ):
+                            continue
+                        button.click(timeout=1500)
+                    except PlaywrightError:
+                        # The optional dialog may disappear or be rerendered.
+                        # Never force the click or infer publication from this.
+                        continue
+                    print("[YOUTUBE] Bouton Publier quand même cliqué.")
                     return True
-            except Exception:
-                return True
-            page.wait_for_timeout(250)
-        raise YouTubeUploadError(
-            "YouTube n’a pas fermé la confirmation Publier quand même."
-        )
+        return False
 
     def _finish_still_processing_dialog(self, page, *, video_id="", visibility="unlisted"):
         dialog = page.locator("ytcp-uploads-still-processing-dialog").first
-        try:
-            dialog.wait_for(state="visible", timeout=10000)
-        except PlaywrightTimeoutError:
+        if not dialog.is_visible():
             return False
 
         print(
@@ -1185,10 +1180,17 @@ class YouTubeStudioUploader:
             close_button.click(force=True, timeout=15000)
         return True
 
-    def _wait_for_studio_publication(self, context, video_id, visibility):
-        """Mark uploaded only after the matching Studio row is finalized."""
+    def _wait_for_studio_publication(self, context, video_id, visibility, *, page=None):
+        """Check optional confirmations without delaying the first Studio probe."""
         deadline = time.monotonic() + min(self.upload_timeout_ms, 180000) / 1000
+        prechecks_clicked = False
         while time.monotonic() < deadline:
+            if page is not None and not page.is_closed():
+                if not prechecks_clicked:
+                    prechecks_clicked = self._publish_anyway_if_prechecks_pending(page)
+                self._finish_still_processing_dialog(
+                    page, video_id=video_id, visibility=visibility
+                )
             if self._video_is_published_in_studio(context, video_id, visibility):
                 return
             time.sleep(5)
@@ -1346,7 +1348,6 @@ class YouTubeStudioUploader:
                 save_available = self._wait_for_save_or_studio_confirmation(
                     page, done_button, video_id, selected_visibility
                 )
-                independently_confirmed = not save_available
                 if save_available:
                     print("[YOUTUBE] Enregistrement de la vidéo…")
                     try:
@@ -1354,34 +1355,11 @@ class YouTubeStudioUploader:
                     except Exception:
                         done_button.click(force=True, timeout=15000)
 
-                    prechecks_confirmed = self._publish_anyway_if_prechecks_pending(page)
-                    if not prechecks_confirmed:
-                        independently_confirmed = (
-                            self._finish_still_processing_dialog(
-                                page,
-                                video_id=video_id,
-                                visibility=selected_visibility,
-                            ) == "verified"
-                        )
-                    if not independently_confirmed:
-                        dialog_closed = self._wait_upload_dialog_closed(
-                            page, timeout_ms=60000
-                        )
-                        if not dialog_closed:
-                            independently_confirmed = (
-                                self._video_is_published_in_studio(
-                                    context, video_id, selected_visibility
-                                )
-                            )
-                            if not independently_confirmed:
-                                raise YouTubeUploadError(
-                                    "Enregistrement YouTube non confirmé. "
-                                    "L’identifiant a été conservé pour éviter "
-                                    f"un double upload : {youtube_url}"
-                                )
-
+                # Do not block on optional dialogs. Studio remains the authority
+                # before marking uploaded; late confirmations are handled there.
                 self._wait_for_studio_publication(
-                    context, video_id, selected_visibility
+                    context, video_id, selected_visibility,
+                    page=page if save_available else None,
                 )
                 visibility_label = {
                     "public": "publique",

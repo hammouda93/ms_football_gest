@@ -161,5 +161,95 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         page.wait_for_timeout.assert_not_called()
 
 
+    @staticmethod
+    def _optional_confirmation_page(*, present=False, enabled=True):
+        page = MagicMock()
+        page.is_closed.return_value = False
+        dialog = MagicMock()
+        page.locator.return_value = dialog
+        matches = MagicMock()
+        matches.count.return_value = int(present)
+        button = matches.nth.return_value
+        button.is_visible.return_value = True
+        button.is_enabled.return_value = enabled
+        button.get_attribute.return_value = None
+        dialog.get_by_role.return_value = matches
+        dialog.locator.return_value = matches
+        return page, dialog, button
+
+    def test_missing_publish_anyway_skips_without_wait_or_click(self):
+        page, dialog, button = self._optional_confirmation_page()
+        self.assertFalse(self.uploader._publish_anyway_if_prechecks_pending(page))
+        button.click.assert_not_called()
+        page.wait_for_timeout.assert_not_called()
+        for call in dialog.get_by_role.call_args_list:
+            pattern = call.kwargs["name"]
+            self.assertTrue(pattern.fullmatch("Publish anyway"))
+            self.assertTrue(pattern.fullmatch("Publier quand même"))
+            self.assertFalse(pattern.fullmatch("Cancel"))
+        for call in dialog.locator.call_args_list:
+            self.assertNotIn("secondary-action-button", call.args[0])
+
+    def test_enabled_named_publish_anyway_clicks_once_without_force(self):
+        page, _, button = self._optional_confirmation_page(present=True)
+        self.assertTrue(self.uploader._publish_anyway_if_prechecks_pending(page))
+        button.click.assert_called_once_with(timeout=1500)
+        page.wait_for_timeout.assert_not_called()
+
+    def test_disabled_publish_anyway_is_not_clicked(self):
+        page, _, button = self._optional_confirmation_page(present=True, enabled=False)
+        self.assertFalse(self.uploader._publish_anyway_if_prechecks_pending(page))
+        button.click.assert_not_called()
+        page.wait_for_timeout.assert_not_called()
+
+    def test_disappearing_publish_anyway_does_not_force_click(self):
+        from playwright.sync_api import TimeoutError
+        page, _, button = self._optional_confirmation_page(present=True)
+        button.click.side_effect = TimeoutError("dialog disappeared")
+        self.assertFalse(self.uploader._publish_anyway_if_prechecks_pending(page))
+        self.assertTrue(button.click.called)
+        for call in button.click.call_args_list:
+            self.assertEqual(call.kwargs, {"timeout": 1500})
+
+    def test_absent_optional_dialogs_do_not_delay_studio_confirmation(self):
+        page, _, _ = self._optional_confirmation_page()
+        page.locator.return_value.first.is_visible.return_value = False
+        with patch.object(self.uploader, "_video_is_published_in_studio", return_value=True) as verify, \
+             patch("sportsbase_data.youtube_uploader.time.sleep") as sleep:
+            self.uploader._wait_for_studio_publication(
+                page.context, VIDEO_ID, "unlisted", page=page
+            )
+        verify.assert_called_once_with(page.context, VIDEO_ID, "unlisted")
+        sleep.assert_not_called()
+        page.wait_for_timeout.assert_not_called()
+
+    def test_late_publish_dialog_is_handled_during_verification(self):
+        page = MagicMock()
+        page.is_closed.return_value = False
+        with patch.object(self.uploader, "_publish_anyway_if_prechecks_pending", side_effect=[False, True]) as click, \
+             patch.object(self.uploader, "_finish_still_processing_dialog", return_value=False), \
+             patch.object(self.uploader, "_video_is_published_in_studio", side_effect=[False, False, True]) as verify, \
+             patch("sportsbase_data.youtube_uploader.time.sleep"):
+            self.uploader._wait_for_studio_publication(
+                page.context, VIDEO_ID, "unlisted", page=page
+            )
+        self.assertEqual(click.call_count, 2)
+        self.assertEqual(verify.call_count, 3)
+
+    def test_absent_confirmation_never_bypasses_failed_studio_verification(self):
+        from .youtube_uploader import YouTubeUploadError
+        page = MagicMock()
+        page.is_closed.return_value = False
+        with patch.object(self.uploader, "_publish_anyway_if_prechecks_pending", return_value=False), \
+             patch.object(self.uploader, "_finish_still_processing_dialog", return_value=False), \
+             patch.object(self.uploader, "_video_is_published_in_studio", return_value=False), \
+             patch("sportsbase_data.youtube_uploader.time.monotonic", side_effect=[0, 1, 181]), \
+             patch("sportsbase_data.youtube_uploader.time.sleep"):
+            with self.assertRaisesRegex(YouTubeUploadError, "statut uploaded interdit"):
+                self.uploader._wait_for_studio_publication(
+                    page.context, VIDEO_ID, "unlisted", page=page
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
