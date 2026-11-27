@@ -230,25 +230,35 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         save.click.assert_called_once_with(timeout=15000)
         verify.assert_not_called()
 
-    def test_late_publish_and_final_confirmation(self):
+    def test_publish_anyway_then_close(self):
         page, _, button = self._optional_confirmation_page(present=True)
-        with patch.object(self.uploader, "_close_published_confirmation", side_effect=[False, False, False, True]), \
+        with patch.object(self.uploader, "_close_published_confirmation", side_effect=[False, True]) as close, \
              patch.object(self.uploader, "_video_is_published_in_studio") as verify:
             self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
         button.click.assert_called_once_with(timeout=1500)
-        page.wait_for_timeout.assert_called_once_with(500)
+        close.assert_called_with(page, VIDEO_ID, after_publish=True)
         verify.assert_not_called()
 
-    def test_no_confirmation_and_no_draft_check_success_is_unconfirmed(self):
+    def test_publish_anyway_without_close_is_not_failure(self):
+        page, _, button = self._optional_confirmation_page(present=True)
+        with patch.object(self.uploader, "_close_published_confirmation", return_value=False) as close, \
+             patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
+        button.click.assert_called_once_with(timeout=1500)
+        self.assertEqual(close.call_count, 5)
+        self.assertEqual(page.wait_for_timeout.call_count, 3)
+        verify.assert_not_called()
+
+    def test_save_without_any_confirmation_is_unconfirmed_and_skips_studio(self):
         from .youtube_uploader import YouTubePostSaveUnconfirmed
-        page, dialog, _ = self._optional_confirmation_page()
-        dialog.count.return_value = 0
-        with patch.object(self.uploader, "_close_published_confirmation", return_value=False), \
-             patch.object(self.uploader, "_video_is_published_in_studio", return_value=False) as verify, \
-             patch("sportsbase_data.youtube_uploader.time.monotonic", side_effect=[0, 0, 0, 13]):
+        page, _, _ = self._optional_confirmation_page()
+        with patch.object(self.uploader, "_wait_for_save_or_studio_confirmation", return_value=True), \
+             patch.object(self.uploader, "_close_published_confirmation", return_value=False), \
+             patch.object(self.uploader, "_video_is_published_in_studio") as verify, \
+             patch("sportsbase_data.youtube_uploader.time.monotonic", side_effect=[0, 0, 6]):
             with self.assertRaisesRegex(YouTubePostSaveUnconfirmed, VIDEO_ID):
                 self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
-        verify.assert_called_once_with(page.context, VIDEO_ID, "unlisted", page=page)
+        verify.assert_not_called()
 
     def test_page_closed_after_save_is_not_success(self):
         from .youtube_uploader import YouTubePostSaveUnconfirmed
@@ -297,7 +307,11 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         button.click.reset_mock()
         dialog.inner_text.return_value = "Draft saved"
         self.assertFalse(self.uploader._close_published_confirmation(page, VIDEO_ID))
+        self.assertFalse(self.uploader._close_published_confirmation(page, VIDEO_ID, after_publish=True))
         button.click.assert_not_called()
+        dialog.inner_text.return_value = "Your video is processing"
+        self.assertTrue(self.uploader._close_published_confirmation(page, VIDEO_ID, after_publish=True))
+        button.click.assert_called_once_with(timeout=1500)
 
 
 if __name__ == "__main__":

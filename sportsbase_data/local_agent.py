@@ -337,13 +337,13 @@ class SportsBaseAgentClient:
             f"{dailymotion_job['player']['name']} — match "
             f"{dailymotion_job['match']['match_id']}"
         )
+        category_missing = False
         try:
             result = self.dailymotion_uploader.upload(dailymotion_job)
         except Exception as exc:
             error = str(exc)
-            if "introuvable" in error and "category|cat[eé]gorie" in error:
-                print("[DAILYMOTION] Catégorie introuvable : tâche ignorée, passage à la suivante.")
-            else:
+            category_missing = "introuvable" in error and "category|cat[eé]gorie" in error
+            if not category_missing:
                 print(f"[DAILYMOTION][ERREUR] {exc}")
                 traceback.print_exc()
             result = {"status": "failed", "error": error}
@@ -352,6 +352,8 @@ class SportsBaseAgentClient:
             f"[DAILYMOTION] Tâche {dailymotion_job['job_id']} terminée — "
             f"{result['status']}"
         )
+        if category_missing:
+            print("[DAILYMOTION] Catégorie introuvable : tâche ignorée, passage à la suivante.")
         return True
 
     def run_forever(self):

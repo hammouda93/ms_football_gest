@@ -1086,25 +1086,28 @@ class YouTubeStudioUploader:
             )
         return False
 
-    def _close_published_confirmation(self, page, video_id):
-        """Only close a final success dialog, never the upload wizard/draft."""
+    def _close_published_confirmation(self, page, video_id, *, after_publish=False):
+        """Close an explicit final dialog; after Publish anyway its Close is optional."""
         success = re.compile(
             r"\b(?:video (?:published|saved)|vidéo (?:publiée|enregistrée)|"
             r"publication (?:terminée|réussie)|video has been published)\b", re.I
         )
         close_name = re.compile(r"^(?:close|fermer|done|terminé|ok)$", re.I)
         for scope in ("ytcp-video-publish-dialog", "ytcp-video-published-dialog",
-                      "ytcp-uploads-still-processing-dialog", "tp-yt-paper-dialog"):
+                      "ytcp-video-share-dialog", "ytcp-uploads-still-processing-dialog",
+                      "tp-yt-paper-dialog"):
             dialogs = page.locator(scope)
             for index in range(dialogs.count()):
                 dialog = dialogs.nth(index)
                 if not dialog.is_visible():
                     continue
                 message = dialog.inner_text(timeout=1000)
-                if not success.search(message) or re.search(
+                if re.search(
                     r"\b(?:draft|brouillon|uploading|importation en cours)\b",
                     message, re.I,
                 ):
+                    continue
+                if not success.search(message) and not after_publish:
                     continue
                 # If a video link is displayed, it must belong to this upload.
                 links = dialog.locator('a[href*="youtu.be/"], a[href*="youtube.com/watch"]')
@@ -1114,6 +1117,17 @@ class YouTubeStudioUploader:
                 } - {""}
                 if ids and video_id not in ids:
                     continue
+                if after_publish and scope == "tp-yt-paper-dialog":
+                    # Generic dialogs may be the upload wizard itself.
+                    # Only use Close on a final popup, not on a visible
+                    # Save/Next/Publish anyway control or a warning modal.
+                    if not success.search(message) and not ids:
+                        blockers = dialog.get_by_role("button", name=re.compile(
+                            r"^(?:save|enregistrer|next|suivant|publish anyway|publier quand même|cancel|annuler)$",
+                            re.I,
+                        ))
+                        if any(blockers.nth(n).is_visible() for n in range(blockers.count())):
+                            continue
                 button = dialog.get_by_role("button", name=close_name).first
                 if not button.count():
                     button = dialog.locator(
@@ -1123,13 +1137,13 @@ class YouTubeStudioUploader:
                 if button.count() and button.is_visible() and button.is_enabled(timeout=500):
                     try:
                         button.click(timeout=1500)
-                        print("[YOUTUBE] Confirmation finale : bouton Fermer cliqué.")
+                        print("[YOUTUBE] Bouton Close/Fermer cliqué.")
+                        return True
                     except PlaywrightError:
-                        # The success message was already read. The modal can
-                        # disappear itself while the Close action is dispatched.
                         pass
-                print("[YOUTUBE] Confirmation finale de YouTube reçue.")
-                return True
+                if success.search(message) and not after_publish:
+                    print("[YOUTUBE] Confirmation finale de YouTube reçue.")
+                    return True
         return False
 
     def _complete_after_transfer(self, page, done_button, video_id, visibility):
@@ -1145,44 +1159,41 @@ class YouTubeStudioUploader:
             raise YouTubePostSaveUnconfirmed(
                 f"Enregistrement non confirmé : https://youtu.be/{video_id}"
             ) from exc
-        clicked = False
-        deadline = time.monotonic() + 12
-        print("[YOUTUBE] Attente courte de la confirmation finale…")
+        deadline = time.monotonic() + 5
+        print("[YOUTUBE] Recherche courte de la confirmation…")
         while time.monotonic() < deadline:
             try:
                 if page.is_closed():
                     break
                 if self._close_published_confirmation(page, video_id):
                     return
-                if not clicked:
-                    try:
-                        clicked = self._publish_anyway_if_prechecks_pending(page)
-                    except YouTubeUploadError:
-                        # The button may become enabled during this short window.
-                        pass
-                if self._close_published_confirmation(page, video_id):
+                try:
+                    clicked = self._publish_anyway_if_prechecks_pending(page)
+                except YouTubeUploadError:
+                    clicked = False
+                if clicked:
+                    # The transfer is complete and Publish anyway was clicked.
+                    # Close is optional; never reopen Studio or declare failure
+                    # solely because the final popup is missing.
+                    for attempt in range(4):
+                        try:
+                            if page.is_closed() or self._close_published_confirmation(
+                                page, video_id, after_publish=True
+                            ):
+                                break
+                            if attempt < 3:
+                                page.wait_for_timeout(500)
+                        except PlaywrightError:
+                            break
+                    print("[YOUTUBE] Publication demandée ; passage à la tâche suivante.")
                     return
                 page.wait_for_timeout(500)
             except PlaywrightError:
                 if page.is_closed():
                     break
-                # Rerendering is normal; retry within the same short window.
                 time.sleep(0.25)
-        # No final popup: a single bounded check in the SAME tab is sufficient.
-        # Do not navigate while a save/confirmation wizard is still visible.
-        try:
-            if not page.is_closed():
-                active = page.locator(
-                    "ytcp-uploads-dialog, ytcp-video-upload-dialog, "
-                    "ytcp-prechecks-warning-dialog, ytcp-uploads-still-processing-dialog"
-                )
-                if not any(active.nth(n).is_visible() for n in range(active.count())):
-                    if self._video_is_published_in_studio(
-                        page.context, video_id, visibility, page=page
-                    ):
-                        return
-        except PlaywrightError:
-            pass
+        # Save without a final confirmation is not equivalent to publication.
+        # Preserve the ID and continue the queue without a second Studio check.
         raise YouTubePostSaveUnconfirmed(
             "Transfert terminé, publication non confirmée (brouillon possible). "
             f"Lien conservé : https://youtu.be/{video_id}. "
@@ -1343,7 +1354,7 @@ class YouTubeStudioUploader:
                     "private": "privée",
                 }[selected_visibility]
                 print(
-                    f"[YOUTUBE] Vidéo {visibility_label} confirmée : "
+                    f"[YOUTUBE] Vidéo {visibility_label} envoyée : "
                     f"{youtube_url}"
                 )
                 result = {
