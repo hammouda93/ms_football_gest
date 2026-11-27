@@ -18,7 +18,9 @@ from dotenv import load_dotenv
 from .agent_config import dailymotion_upload_enabled, youtube_upload_enabled
 from .dailymotion_uploader import DailymotionStudioUploader
 from .scraper import SportsBaseSubscriptionScraper
-from .youtube_uploader import YouTubeStudioUploader, YouTubeUploadError
+from .youtube_uploader import (
+    YouTubeStudioUploader, YouTubeUploadError, YouTubePostSaveUnconfirmed,
+)
 
 
 load_dotenv()
@@ -295,8 +297,13 @@ class SportsBaseAgentClient:
                     f"{youtube_job['player']['name']} — match "
                     f"{youtube_job['match']['match_id']}"
                 )
+                post_save_unconfirmed = False
                 try:
                     result = self.youtube_uploader.upload(youtube_job)
+                except YouTubePostSaveUnconfirmed as exc:
+                    post_save_unconfirmed = True
+                    print(f"[YOUTUBE][À VÉRIFIER] {exc}")
+                    result = {"status": "failed", "error": str(exc)}
                 except Exception as exc:
                     print(f"[YOUTUBE][ERREUR] {exc}")
                     traceback.print_exc()
@@ -306,6 +313,9 @@ class SportsBaseAgentClient:
                     f"[YOUTUBE] Tâche {youtube_job['job_id']} terminée — "
                     f"{result['status']}"
                 )
+                if post_save_unconfirmed:
+                    print("[YOUTUBE] Transfert terminé ; passage à la tâche suivante.")
+                    return True
                 if result.get("status") != "uploaded":
                     # Never start another upload after an interrupted transfer:
                     # the preceding Chrome session may have been incomplete.
@@ -330,9 +340,13 @@ class SportsBaseAgentClient:
         try:
             result = self.dailymotion_uploader.upload(dailymotion_job)
         except Exception as exc:
-            print(f"[DAILYMOTION][ERREUR] {exc}")
-            traceback.print_exc()
-            result = {"status": "failed", "error": str(exc)}
+            error = str(exc)
+            if "introuvable" in error and "category|cat[eé]gorie" in error:
+                print("[DAILYMOTION] Catégorie introuvable : tâche ignorée, passage à la suivante.")
+            else:
+                print(f"[DAILYMOTION][ERREUR] {exc}")
+                traceback.print_exc()
+            result = {"status": "failed", "error": error}
         self.submit_dailymotion_result(dailymotion_job["job_id"], result)
         print(
             f"[DAILYMOTION] Tâche {dailymotion_job['job_id']} terminée — "

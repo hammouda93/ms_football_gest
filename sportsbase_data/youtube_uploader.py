@@ -28,6 +28,10 @@ class YouTubeUploadError(RuntimeError):
     pass
 
 
+class YouTubePostSaveUnconfirmed(YouTubeUploadError):
+    """Transfer finished, but publication could not be confirmed."""
+
+
 class YouTubeAuthenticationRequired(YouTubeUploadError):
     pass
 
@@ -793,7 +797,7 @@ class YouTubeStudioUploader:
             "YouTube Studio n’a pas fourni l’adresse de la vidéo dans le délai prévu."
         )
 
-    def _video_is_published_in_studio(self, context, video_id, visibility):
+    def _video_is_published_in_studio(self, context, video_id, visibility, *, page=None):
         """Require a matching video row with finalized visibility, not a stale %.
 
         A row still marked Uploading/Pending/Draft is never considered a success.
@@ -806,15 +810,18 @@ class YouTubeStudioUploader:
         }.get(visibility, ())
         if not expected or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
             return False
-        verification_page = context.new_page()
+        verification_page = page
+        owns_page = page is None
         try:
+            if owns_page:
+                verification_page = context.new_page()
             verification_page.goto(
                 self.content_url,
                 wait_until="domcontentloaded",
-                timeout=self.navigation_timeout_ms,
+                timeout=self.navigation_timeout_ms if owns_page else 8000,
             )
             rows = verification_page.locator("ytcp-video-row")
-            rows.first.wait_for(state="visible", timeout=15000)
+            rows.first.wait_for(state="visible", timeout=15000 if owns_page else 5000)
             for index in range(min(rows.count(), 60)):
                 row = rows.nth(index)
                 link = row.locator(f'a[href*="{video_id}"]').first
@@ -858,7 +865,11 @@ class YouTubeStudioUploader:
             )
             return False
         finally:
-            verification_page.close()
+            if owns_page and verification_page is not None:
+                try:
+                    verification_page.close()
+                except PlaywrightError:
+                    pass
 
     def _wait_for_save_or_studio_confirmation(
         self, page, done_button, video_id, visibility
@@ -1075,21 +1086,108 @@ class YouTubeStudioUploader:
             )
         return False
 
-    def _complete_after_transfer(self, page, done_button, video_id, visibility):
-        """Accept Save (+ optional confirmation) after the transfer gate.
+    def _close_published_confirmation(self, page, video_id):
+        """Only close a final success dialog, never the upload wizard/draft."""
+        success = re.compile(
+            r"\b(?:video (?:published|saved)|vidéo (?:publiée|enregistrée)|"
+            r"publication (?:terminée|réussie)|video has been published)\b", re.I
+        )
+        close_name = re.compile(r"^(?:close|fermer|done|terminé|ok)$", re.I)
+        for scope in ("ytcp-video-publish-dialog", "ytcp-video-published-dialog",
+                      "ytcp-uploads-still-processing-dialog", "tp-yt-paper-dialog"):
+            dialogs = page.locator(scope)
+            for index in range(dialogs.count()):
+                dialog = dialogs.nth(index)
+                if not dialog.is_visible():
+                    continue
+                message = dialog.inner_text(timeout=1000)
+                if not success.search(message) or re.search(
+                    r"\b(?:draft|brouillon|uploading|importation en cours)\b",
+                    message, re.I,
+                ):
+                    continue
+                # If a video link is displayed, it must belong to this upload.
+                links = dialog.locator('a[href*="youtu.be/"], a[href*="youtube.com/watch"]')
+                ids = {
+                    self._video_id(links.nth(n).get_attribute("href", timeout=500) or "")
+                    for n in range(links.count())
+                } - {""}
+                if ids and video_id not in ids:
+                    continue
+                button = dialog.get_by_role("button", name=close_name).first
+                if not button.count():
+                    button = dialog.locator(
+                        'ytcp-button#close-button, button[aria-label="Close"], '
+                        'button[aria-label="Fermer"]'
+                    ).first
+                if button.count() and button.is_visible() and button.is_enabled(timeout=500):
+                    try:
+                        button.click(timeout=1500)
+                        print("[YOUTUBE] Confirmation finale : bouton Fermer cliqué.")
+                    except PlaywrightError:
+                        # The success message was already read. The modal can
+                        # disappear itself while the Close action is dispatched.
+                        pass
+                print("[YOUTUBE] Confirmation finale de YouTube reçue.")
+                return True
+        return False
 
-        Normal completion deliberately does not open another Studio tab. A
-        prior interrupted receipt still requires independent reconciliation.
-        """
+    def _complete_after_transfer(self, page, done_button, video_id, visibility):
+        """Allow asynchronous Save/Publish/Close, without reopening Chrome."""
         if not self._wait_for_save_or_studio_confirmation(
             page, done_button, video_id, visibility
         ):
             return
         print("[YOUTUBE] Enregistrement de la vidéo…")
-        done_button.click(timeout=15000)
-        if not self._publish_anyway_if_prechecks_pending(page):
-            print("[YOUTUBE] Pas de confirmation supplémentaire à traiter.")
-        print("[YOUTUBE] Enregistrement demandé après transfert complet. Fin de la tâche.")
+        try:
+            done_button.click(timeout=15000)
+        except PlaywrightError as exc:
+            raise YouTubePostSaveUnconfirmed(
+                f"Enregistrement non confirmé : https://youtu.be/{video_id}"
+            ) from exc
+        clicked = False
+        deadline = time.monotonic() + 12
+        print("[YOUTUBE] Attente courte de la confirmation finale…")
+        while time.monotonic() < deadline:
+            try:
+                if page.is_closed():
+                    break
+                if self._close_published_confirmation(page, video_id):
+                    return
+                if not clicked:
+                    try:
+                        clicked = self._publish_anyway_if_prechecks_pending(page)
+                    except YouTubeUploadError:
+                        # The button may become enabled during this short window.
+                        pass
+                if self._close_published_confirmation(page, video_id):
+                    return
+                page.wait_for_timeout(500)
+            except PlaywrightError:
+                if page.is_closed():
+                    break
+                # Rerendering is normal; retry within the same short window.
+                time.sleep(0.25)
+        # No final popup: a single bounded check in the SAME tab is sufficient.
+        # Do not navigate while a save/confirmation wizard is still visible.
+        try:
+            if not page.is_closed():
+                active = page.locator(
+                    "ytcp-uploads-dialog, ytcp-video-upload-dialog, "
+                    "ytcp-prechecks-warning-dialog, ytcp-uploads-still-processing-dialog"
+                )
+                if not any(active.nth(n).is_visible() for n in range(active.count())):
+                    if self._video_is_published_in_studio(
+                        page.context, video_id, visibility, page=page
+                    ):
+                        return
+        except PlaywrightError:
+            pass
+        raise YouTubePostSaveUnconfirmed(
+            "Transfert terminé, publication non confirmée (brouillon possible). "
+            f"Lien conservé : https://youtu.be/{video_id}. "
+            "Vérifier ou publier la vidéo existante sans réimportation."
+        )
 
     def upload(self, job):
         video_path = self.resolve_video_path(job)
@@ -1245,7 +1343,7 @@ class YouTubeStudioUploader:
                     "private": "privée",
                 }[selected_visibility]
                 print(
-                    f"[YOUTUBE] Vidéo {visibility_label} envoyée : "
+                    f"[YOUTUBE] Vidéo {visibility_label} confirmée : "
                     f"{youtube_url}"
                 )
                 result = {

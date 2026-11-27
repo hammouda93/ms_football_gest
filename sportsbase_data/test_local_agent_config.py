@@ -53,5 +53,50 @@ class DailymotionLocalAgentConfigurationTests(unittest.TestCase):
             self.assertFalse(dailymotion_upload_enabled())
 
 
+class LocalAgentQueueTests(unittest.TestCase):
+    def _agent(self):
+        from unittest.mock import MagicMock
+        from .local_agent import SportsBaseAgentClient
+        agent = object.__new__(SportsBaseAgentClient)
+        agent.next_job = MagicMock(return_value=None)
+        agent.youtube_enabled = True
+        agent.dailymotion_enabled = True
+        agent.next_youtube_job = MagicMock(return_value=None)
+        agent.next_dailymotion_job = MagicMock(return_value=None)
+        agent.youtube_uploader = MagicMock()
+        agent.dailymotion_uploader = MagicMock()
+        agent.submit_youtube_result = MagicMock()
+        agent.submit_dailymotion_result = MagicMock()
+        return agent
+
+    def _job(self):
+        return {"job_id": 42, "player": {"name": "Test"}, "match": {"match_id": 1}}
+
+    def test_completed_transfer_unconfirmed_does_not_block_queue(self):
+        from .youtube_uploader import YouTubePostSaveUnconfirmed
+        agent = self._agent()
+        agent.next_youtube_job.return_value = self._job()
+        agent.youtube_uploader.upload.side_effect = YouTubePostSaveUnconfirmed("draft possible")
+        self.assertTrue(agent.process_once())
+        agent.submit_youtube_result.assert_called_once_with(42, {"status": "failed", "error": "draft possible"})
+
+    def test_incomplete_transfer_still_stops_queue(self):
+        from .youtube_uploader import YouTubeUploadError
+        agent = self._agent()
+        agent.next_youtube_job.return_value = self._job()
+        agent.youtube_uploader.upload.side_effect = YouTubeUploadError("transfer interrupted")
+        with self.assertRaises(YouTubeUploadError):
+            agent.process_once()
+
+    def test_missing_dailymotion_category_continues_queue(self):
+        from .dailymotion_uploader import DailymotionUploadError
+        agent = self._agent()
+        agent.next_dailymotion_job.return_value = self._job()
+        error = "Studio : élément category|cat[eé]gorie introuvable."
+        agent.dailymotion_uploader.upload.side_effect = DailymotionUploadError(error)
+        self.assertTrue(agent.process_once())
+        agent.submit_dailymotion_result.assert_called_once_with(42, {"status": "failed", "error": error})
+
+
 if __name__ == "__main__":
     unittest.main()

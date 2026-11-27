@@ -214,57 +214,90 @@ class YouTubeProgressRecoveryTests(unittest.TestCase):
         for call in button.click.call_args_list:
             self.assertEqual(call.kwargs, {"timeout": 1500})
 
-    def test_normal_save_without_prompt_skips_studio_verification(self):
+    def _ready_save(self):
+        save = MagicMock()
+        save.is_visible.return_value = True
+        save.is_enabled.return_value = True
+        save.get_attribute.return_value = None
+        return save
+
+    def test_final_confirmation_closes_without_studio_check(self):
         page, _, _ = self._optional_confirmation_page()
-        save = MagicMock()
-        save.is_visible.return_value = True
-        save.is_enabled.return_value = True
-        save.get_attribute.return_value = None
-        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+        save = self._ready_save()
+        with patch.object(self.uploader, "_close_published_confirmation", return_value=True), \
+             patch.object(self.uploader, "_video_is_published_in_studio") as verify:
             self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
         save.click.assert_called_once_with(timeout=15000)
         verify.assert_not_called()
-        page.wait_for_timeout.assert_not_called()
 
-    def test_normal_save_with_prompt_skips_studio_verification(self):
+    def test_late_publish_and_final_confirmation(self):
         page, _, button = self._optional_confirmation_page(present=True)
-        save = MagicMock()
-        save.is_visible.return_value = True
-        save.is_enabled.return_value = True
-        save.get_attribute.return_value = None
-        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
-            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
-        save.click.assert_called_once_with(timeout=15000)
+        with patch.object(self.uploader, "_close_published_confirmation", side_effect=[False, False, False, True]), \
+             patch.object(self.uploader, "_video_is_published_in_studio") as verify:
+            self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
         button.click.assert_called_once_with(timeout=1500)
+        page.wait_for_timeout.assert_called_once_with(500)
         verify.assert_not_called()
-        page.wait_for_timeout.assert_not_called()
 
-    def test_page_closed_after_save_does_not_trigger_studio_check(self):
+    def test_no_confirmation_and_no_draft_check_success_is_unconfirmed(self):
+        from .youtube_uploader import YouTubePostSaveUnconfirmed
+        page, dialog, _ = self._optional_confirmation_page()
+        dialog.count.return_value = 0
+        with patch.object(self.uploader, "_close_published_confirmation", return_value=False), \
+             patch.object(self.uploader, "_video_is_published_in_studio", return_value=False) as verify, \
+             patch("sportsbase_data.youtube_uploader.time.monotonic", side_effect=[0, 0, 0, 13]):
+            with self.assertRaisesRegex(YouTubePostSaveUnconfirmed, VIDEO_ID):
+                self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
+        verify.assert_called_once_with(page.context, VIDEO_ID, "unlisted", page=page)
+
+    def test_page_closed_after_save_is_not_success(self):
+        from .youtube_uploader import YouTubePostSaveUnconfirmed
         page, _, button = self._optional_confirmation_page()
         page.is_closed.return_value = True
-        save = MagicMock()
-        save.is_visible.return_value = True
-        save.is_enabled.return_value = True
-        save.get_attribute.return_value = None
         with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
-            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+            with self.assertRaises(YouTubePostSaveUnconfirmed):
+                self.uploader._complete_after_transfer(page, self._ready_save(), VIDEO_ID, "unlisted")
         button.click.assert_not_called()
-        page.locator.assert_not_called()
         verify.assert_not_called()
 
-    def test_failed_save_does_not_mark_completion(self):
+    def test_failed_save_is_unconfirmed(self):
         from playwright.sync_api import TimeoutError
+        from .youtube_uploader import YouTubePostSaveUnconfirmed
         page, _, button = self._optional_confirmation_page()
-        save = MagicMock()
-        save.is_visible.return_value = True
-        save.is_enabled.return_value = True
-        save.get_attribute.return_value = None
+        save = self._ready_save()
         save.click.side_effect = TimeoutError("save failed")
-        with patch.object(self.uploader, "_video_is_published_in_studio") as verify:
-            with self.assertRaises(TimeoutError):
-                self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
+        with self.assertRaises(YouTubePostSaveUnconfirmed):
+            self.uploader._complete_after_transfer(page, save, VIDEO_ID, "unlisted")
         button.click.assert_not_called()
-        verify.assert_not_called()
+
+    def test_same_tab_studio_check_never_opens_new_page(self):
+        context = self._studio_context()
+        page = context.new_page.return_value
+        self.assertTrue(self.uploader._video_is_published_in_studio(
+            context, VIDEO_ID, "unlisted", page=page
+        ))
+        context.new_page.assert_not_called()
+        page.close.assert_not_called()
+
+    def test_confirmed_popup_closes_only_matching_success_dialog(self):
+        page = MagicMock()
+        dialogs = MagicMock()
+        dialogs.count.return_value = 1
+        page.locator.return_value = dialogs
+        dialog = dialogs.nth.return_value
+        dialog.is_visible.return_value = True
+        dialog.inner_text.return_value = "Video published"
+        dialog.locator.return_value.count.return_value = 0
+        button = dialog.get_by_role.return_value.first
+        button.count.return_value = 1
+        button.is_visible.return_value = True
+        button.is_enabled.return_value = True
+        self.assertTrue(self.uploader._close_published_confirmation(page, VIDEO_ID))
+        button.click.assert_called_once_with(timeout=1500)
+        button.click.reset_mock()
+        dialog.inner_text.return_value = "Draft saved"
+        self.assertFalse(self.uploader._close_published_confirmation(page, VIDEO_ID))
+        button.click.assert_not_called()
 
 
 if __name__ == "__main__":

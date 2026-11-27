@@ -32,4 +32,4 @@ jobs:
       - name: Django system check
         run: python manage.py check --settings=ms_football_gest.test_settings
       - name: Pricing and Hermes regression
-        run: python manage.py test actions.test_elite_pricing gestion_joueurs.tests.VideoAcademyOrderTests actions.test_player_contracts actions.test_video_contracts actions.test_highlight_payment_contracts sportsbase_data.test_youtube_progress_recovery sportsbase_data.test_youtube_transfer_gate --settings=ms_football_gest.test_settings --verbosity 2
+        run: python manage.py test actions.test_elite_pricing gestion_joueurs.tests.VideoAcademyOrderTests actions.test_player_contracts actions.test_video_contracts actions.test_highlight_payment_contracts sportsbase_data.test_youtube_progress_recovery sportsbase_data.test_youtube_transfer_gate sportsbase_data.test_local_agent_config --settings=ms_football_gest.test_settings --verbosity 2
