@@ -157,7 +157,10 @@ class DailymotionRPATests(unittest.TestCase):
 
         title_field.fill.assert_called_once_with("Player — All Actions")
         description_field.fill.assert_called_once_with("MS Performance")
+        self.assertIn("category", self.uploader._wait_control.call_args_list[2].args[2])
+        self.assertEqual(self.uploader._wait_control.call_args_list[2].args[3], 2000)
         self.assertIn("language", self.uploader._wait_control.call_args_list[-1].args[2])
+        self.assertEqual(self.uploader._wait_control.call_args_list[-1].args[3], 30000)
         self.uploader._selection_confirmed.assert_called_once()
         self.uploader._advance_upload_wizard.assert_called_once_with(page)
         self.uploader._wait_save_button.return_value.click.assert_called_once()

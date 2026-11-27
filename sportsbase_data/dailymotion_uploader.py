@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-optional-category-v8-20261127"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-fast-category-v9-20261127"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|add(?: a| new)? video(?:s)?|"
@@ -589,9 +589,9 @@ class DailymotionStudioUploader:
             f"L’option « {option_pattern.pattern} » est introuvable dans la liste."
         )
 
-    def _select_option(self, page, label, selectors, values, option_pattern):
+    def _select_option(self, page, label, selectors, values, option_pattern, *, timeout_ms=30000):
         field = self._wait_control(
-            page, lambda: self._field(page, label, selectors), label.pattern
+            page, lambda: self._field(page, label, selectors), label.pattern, timeout_ms
         )
         if self._selection_confirmed(field, values, option_pattern):
             return
@@ -710,6 +710,7 @@ class DailymotionStudioUploader:
                 '[name="channel"] [role="combobox"], [role="combobox"][id="channel"]',
                 {"sport", "sports"},
                 re.compile(r"^sports?$", re.I),
+                timeout_ms=2000,
             )
             category_selected = True
         except DailymotionControlNotFound:
