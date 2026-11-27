@@ -12,6 +12,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 from .dailymotion_uploader import (
     CREATE_CONTENT_LABEL,
     DailymotionAuthenticationRequired,
+    DailymotionControlNotFound,
     DailymotionStudioUploader,
     DailymotionUploadError,
     UPLOAD_LABEL,
@@ -140,6 +141,50 @@ class DailymotionRPATests(unittest.TestCase):
         self.assertEqual(result["dailymotion_video_id"], "kPrivate123")
         self.assertEqual(result["content_sha256"], self.digest)
         context.close.assert_called_once()
+
+    def test_missing_category_keeps_same_upload_through_save_and_transfer(self):
+        page, context = self.browser_mock()
+        # Restore the real details step while the browser itself stays mocked.
+        self.uploader._fill_details = DailymotionStudioUploader._fill_details.__get__(self.uploader)
+        title_field, description_field, language_field = Mock(), Mock(), Mock()
+        self.uploader._wait_control = Mock(side_effect=[
+            title_field, description_field,
+            DailymotionControlNotFound("Category not found"), language_field,
+        ])
+        self.uploader._selection_confirmed = Mock(return_value=True)
+
+        result = self.uploader.upload(self.job)
+
+        title_field.fill.assert_called_once_with("Player — All Actions")
+        description_field.fill.assert_called_once_with("MS Performance")
+        self.assertIn("language", self.uploader._wait_control.call_args_list[-1].args[2])
+        self.uploader._selection_confirmed.assert_called_once()
+        self.uploader._advance_upload_wizard.assert_called_once_with(page)
+        self.uploader._wait_save_button.return_value.click.assert_called_once()
+        self.uploader._wait_upload_transfer_complete.assert_called_once()
+        self.uploader._open_upload_dialog.assert_called_once_with(page)
+        self.uploader._open_upload_dialog.return_value.set_input_files.assert_called_once()
+        self.assertEqual(result["status"], "uploaded")
+        context.close.assert_called_once()
+
+    def test_category_present_but_selection_failure_is_not_silently_ignored(self):
+        page = Mock()
+        self.uploader._wait_control = Mock(return_value=Mock())
+        self.uploader._select_option = Mock(side_effect=DailymotionUploadError("selection not confirmed"))
+        with self.assertRaisesRegex(DailymotionUploadError, "selection not confirmed"):
+            self.uploader._fill_details(page, "Title", "")
+        self.uploader._select_option.assert_called_once()
+
+    def test_missing_language_still_fails_instead_of_claiming_success(self):
+        page = Mock()
+        self.uploader._wait_control = Mock(return_value=Mock())
+        self.uploader._select_option = Mock(side_effect=[
+            DailymotionControlNotFound("Category missing"),
+            DailymotionControlNotFound("Language missing"),
+        ])
+        with self.assertRaisesRegex(DailymotionControlNotFound, "Language missing"):
+            self.uploader._fill_details(page, "Title", "")
+        self.assertEqual(self.uploader._select_option.call_count, 2)
 
     def test_completed_transfer_without_preview_link_is_not_uploaded_twice(self):
         _page, context = self.browser_mock()

@@ -17,7 +17,7 @@ from .dailymotion_links import canonical_dailymotion_url, extract_dailymotion_vi
 
 
 DEFAULT_PROFILE_ID = "x6445ea"
-DAILYMOTION_RPA_BUILD = "dailymotion-studio-unlimited-preview-wait-v7-20260908"
+DAILYMOTION_RPA_BUILD = "dailymotion-studio-optional-category-v8-20261127"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 UPLOAD_LABEL = re.compile(
     r"^(upload(?: a)? vid[eé]o(?:s)?|upload|add(?: a| new)? video(?:s)?|"
@@ -60,6 +60,10 @@ PREVIEW_LABEL = re.compile(r"^(preview|aper[çc]u)$", re.I)
 
 class DailymotionUploadError(RuntimeError):
     pass
+
+
+class DailymotionControlNotFound(DailymotionUploadError):
+    """A Studio control did not appear before its deadline."""
 
 
 class DailymotionAuthenticationRequired(DailymotionUploadError):
@@ -366,7 +370,7 @@ class DailymotionStudioUploader:
             if control is not None:
                 return control
             page.wait_for_timeout(500)
-        raise DailymotionUploadError(
+        raise DailymotionControlNotFound(
             f"Studio : élément « {label} » introuvable. Vérifiez l’interface."
         )
 
@@ -697,14 +701,24 @@ class DailymotionStudioUploader:
                 "Description",
             )
             box.fill(description)
-        self._select_option(
-            page,
-            re.compile(r"^(category|cat[eé]gorie)(?:\s*\*)?$", re.I),
-            'select[name="category"], [role="combobox"][name="category"], '
-            '[name="channel"] [role="combobox"], [role="combobox"][id="channel"]',
-            {"sport", "sports"},
-            re.compile(r"^sports?$", re.I),
-        )
+        category_selected = False
+        try:
+            self._select_option(
+                page,
+                re.compile(r"^(category|cat[eé]gorie)(?:\s*\*)?$", re.I),
+                'select[name="category"], [role="combobox"][name="category"], '
+                '[name="channel"] [role="combobox"], [role="combobox"][id="channel"]',
+                {"sport", "sports"},
+                re.compile(r"^sports?$", re.I),
+            )
+            category_selected = True
+        except DailymotionControlNotFound:
+            # Some versions of Studio no longer expose Category on this form.
+            # Skip only the absent control; keep the same page, file and job.
+            print(
+                "[DAILYMOTION] Catégorie introuvable : champ ignoré, "
+                "poursuite de la même vidéo (langue, audience, visibilité)."
+            )
         languages = {
             "fr": r"fran[çc]ais|french",
             "en": r"english|anglais",
@@ -720,7 +734,8 @@ class DailymotionStudioUploader:
             {self.language},
             re.compile(f"^(?:{language_pattern})$", re.I),
         )
-        print("[DAILYMOTION] Informations remplies — catégorie Sport, langue validée.")
+        category_status = "catégorie Sport" if category_selected else "catégorie ignorée"
+        print(f"[DAILYMOTION] Informations remplies — {category_status}, langue validée.")
 
     def _next_button(self, page):
         button = self._visible(page.get_by_role("button", name=NEXT_LABEL))
