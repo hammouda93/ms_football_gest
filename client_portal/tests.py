@@ -1256,7 +1256,8 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
         self.client.get(reverse("portal:magic_access", args=(legacy_raw_token,)))
         self.client.force_login(self.admin)
         response = self.client.post(
-            reverse("portal:account_credentials", args=(profile.pk,))
+            reverse("portal:account_credentials", args=(profile.pk,)),
+            {"action": "renew", "confirm_renew": "1"},
         )
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["temporary_password"])
@@ -1272,6 +1273,81 @@ class PortalAccountAndAgentTests(PortalFixtureMixin, TestCase):
             ).status_code,
             410,
         )
+
+    def test_permanent_link_resend_does_not_rotate_and_copy_does_not_email(self):
+        from .services import issue_reusable_portal_access_link
+        from .access_crypto import decrypt_token
+        profile = self.player_user.portal_profile
+        self.client.force_login(self.admin)
+        url = reverse("portal:account_credentials", args=(profile.pk,))
+        first = self.client.post(url, {"action": "copy"})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+        link = first.context["access_link"]
+        original = first.context["access_url"]
+        self.assertIsNone(link.expires_at)
+        self.assertTrue(link.encrypted_token)
+        self.assertNotIn(decrypt_token(link.encrypted_token), link.encrypted_token)
+        self.assertEqual(first["Cache-Control"], "no-store, private")
+        second = self.client.post(url, {"action": "email"})
+        self.assertEqual(second.context["access_url"], original)
+        self.assertEqual(second.context["access_link"].pk, link.pk)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(original, mail.outbox[0].body)
+        third = self.client.post(url, {"action": "whatsapp"})
+        self.assertEqual(third.context["access_url"], original)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(PortalAccessLink.objects.filter(user=profile.user).count(), 1)
+        link.refresh_from_db()
+        self.assertIsNone(link.revoked_at)
+
+    def test_legacy_hash_only_link_remains_usable_after_resend(self):
+        from .services import issue_reusable_portal_access_link
+        profile = self.player_user.portal_profile
+        old, raw = PortalAccessLink.issue(user=profile.user, created_by=self.admin)
+        old.encrypted_token = ""
+        old.save(update_fields=("encrypted_token",))
+        new, _ = issue_reusable_portal_access_link(profile, created_by=self.admin)
+        self.assertNotEqual(old.pk, new.pk)
+        old.refresh_from_db()
+        self.assertIsNone(old.revoked_at)
+        self.assertRedirects(self.client.get(reverse("portal:magic_access", args=(raw,))), reverse("portal:dashboard"))
+
+    def test_legacy_secret_is_recovered_on_use(self):
+        from .services import issue_reusable_portal_access_link
+        profile = self.player_user.portal_profile
+        old, raw = PortalAccessLink.issue(user=profile.user, created_by=self.admin)
+        old.encrypted_token = ""
+        old.save(update_fields=("encrypted_token",))
+        self.client.get(reverse("portal:magic_access", args=(raw,)))
+        recovered, secret = issue_reusable_portal_access_link(profile, created_by=self.admin)
+        self.assertEqual((recovered.pk, secret), (old.pk, raw))
+
+    def test_permanent_link_still_works_years_later(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+        link, raw = PortalAccessLink.issue(user=self.player_user, created_by=self.admin)
+        future = timezone.now() + timedelta(days=3650)
+        with patch("client_portal.models.timezone.now", return_value=future):
+            self.assertTrue(link.is_usable)
+        self.assertRedirects(self.client.get(reverse("portal:magic_access", args=(raw,))), reverse("portal:dashboard"))
+
+    def test_rotation_requires_confirmation_and_revokes_magic_session(self):
+        from django.test import Client
+        profile = self.player_user.portal_profile
+        link, raw = PortalAccessLink.issue(user=profile.user, created_by=self.admin)
+        customer = Client()
+        customer.get(reverse("portal:magic_access", args=(raw,)))
+        self.client.force_login(self.admin)
+        url = reverse("portal:account_credentials", args=(profile.pk,))
+        self.client.post(url, {"action": "renew"})
+        link.refresh_from_db()
+        self.assertIsNone(link.revoked_at)
+        self.client.post(url, {"action": "renew", "confirm_renew": "1"})
+        link.refresh_from_db()
+        self.assertIsNotNone(link.revoked_at)
+        self.assertEqual(customer.get(reverse("portal:dashboard")).status_code, 302)
+        self.assertEqual(customer.get(reverse("portal:magic_access", args=(raw,))).status_code, 410)
 
     def test_portal_login_accepts_a_fresh_https_csrf_token(self):
         self.player_user.set_password("Player-password-123")

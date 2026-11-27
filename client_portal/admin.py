@@ -87,6 +87,16 @@ class AgentPlayerRequestAdmin(admin.ModelAdmin):
 
 
 admin.site.register(PlayerAccess)
-admin.site.register(PortalAccessLink)
+@admin.register(PortalAccessLink)
+class PortalAccessLinkAdmin(admin.ModelAdmin):
+    list_display = ("user", "created_at", "used_at", "expires_at", "revoked_at")
+    readonly_fields = ("user", "created_at", "used_at", "expires_at", "revoked_at", "created_by")
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 admin.site.register(VideoActivity)
 admin.site.register(CommunicationLog)

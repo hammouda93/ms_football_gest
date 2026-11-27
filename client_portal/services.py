@@ -71,9 +71,6 @@ class ClientTimelineEvent:
     sort_at: datetime
 
 
-PORTAL_ACCESS_LINK_LIFETIME = timedelta(days=365)
-
-
 CLIENT_COMPLETED_COLLAB_LABEL = (
     "En cours de finition et classification des séquences"
 )
@@ -805,17 +802,36 @@ def ensure_player_portal_account(player, *, created_by):
 
 
 @transaction.atomic
-def issue_reusable_portal_access_link(profile, *, created_by):
-    """Issue one reusable, revocable link and retire older links for the account."""
-    PortalAccessLink.objects.filter(
-        user=profile.user,
-        revoked_at__isnull=True,
-    ).update(revoked_at=timezone.now())
-    return PortalAccessLink.issue(
-        user=profile.user,
-        created_by=created_by,
-        lifetime=PORTAL_ACCESS_LINK_LIFETIME,
+def issue_reusable_portal_access_link(profile, *, created_by, renew=False):
+    """Return the same permanent secret unless an administrator explicitly rotates it."""
+    from .access_crypto import decrypt_token, PortalTokenEncryptionError
+
+    # Serialize issuance and rotation for the same account.
+    profile = PortalProfile.objects.select_for_update().select_related("user").get(pk=profile.pk)
+    if not profile.access_enabled:
+        raise ValueError("Réactivez d’abord le compte client.")
+    links = PortalAccessLink.objects.filter(
+        user=profile.user, revoked_at__isnull=True,
     )
+    if renew:
+        links.update(revoked_at=timezone.now())
+    else:
+        saved = links.filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
+        ).exclude(encrypted_token="").first()
+        if saved:
+            raw_token = decrypt_token(saved.encrypted_token)
+            if PortalAccessLink.hash_token(raw_token) != saved.token_hash:
+                raise PortalTokenEncryptionError("Le lien sauvegardé ne correspond pas à son empreinte.")
+            if saved.expires_at is not None:
+                saved.expires_at = None
+                saved.save(update_fields=("expires_at",))
+            return saved, raw_token
+
+    # Legacy hash-only links remain usable. If their original secret is not
+    # recoverable, issue a new resendable link WITHOUT revoking the legacy one.
+    # Explicit rotation is the only operation that retires all old links.
+    return PortalAccessLink.issue(user=profile.user, created_by=created_by)
 
 
 def deliver_portal_credentials(
@@ -826,6 +842,8 @@ def deliver_portal_credentials(
     login_url,
     actor,
     player=None,
+    send_email=True,
+    prepare_whatsapp=True,
 ):
     recipient_name = profile.display_name
     email = (profile.user.email or "").strip()
@@ -838,8 +856,8 @@ def deliver_portal_credentials(
         "Votre espace client MS Football est prêt.",
         f"Ouvrir mon espace : {access_url}",
         (
-            "Ce lien est personnel et réutilisable tant que MS Football maintient "
-            "votre compte actif."
+            "Ce lien est personnel, permanent et réutilisable tant que MS Football "
+            "maintient votre compte actif. Conservez le message et ne partagez pas le lien."
         ),
     ]
     if temporary_password:
@@ -856,7 +874,7 @@ def deliver_portal_credentials(
 
     email_sent = False
     email_error = False
-    if email:
+    if email and send_email:
         try:
             email_sent = bool(
                 send_mail(
@@ -884,7 +902,7 @@ def deliver_portal_credentials(
         )
 
     whatsapp_url = ""
-    if phone:
+    if phone and prepare_whatsapp:
         whatsapp_url = f"https://wa.me/{phone}?text={quote(message, safe='')}"
         CommunicationLog.objects.create(
             player=player,

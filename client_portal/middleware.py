@@ -1,4 +1,7 @@
+from django.contrib.auth import logout
 from django.shortcuts import redirect
+
+from .models import PortalAccessLink
 
 
 class PortalAreaIsolationMiddleware:
@@ -9,6 +12,14 @@ class PortalAreaIsolationMiddleware:
 
     def __call__(self, request):
         user = request.user
+        link_id = request.session.get("portal_access_link_id")
+        if user.is_authenticated and link_id and request.path.startswith("/portal/"):
+            link = PortalAccessLink.objects.select_related("user", "user__portal_profile").filter(
+                pk=link_id, user_id=user.pk,
+            ).first()
+            if not link or not link.is_usable:
+                logout(request)
+                user = request.user
         internal_auth_paths = {
             "/gestion_joueurs/login/",
             "/gestion_joueurs/logout/",
@@ -30,5 +41,6 @@ class PortalAreaIsolationMiddleware:
             # YouTube embeds require an origin identity (otherwise player error 153).
             # This policy sends only the site origin cross-domain, never the portal path
             # or a reusable access token.
-            response["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            if not response.has_header("Referrer-Policy"):
+                response["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response

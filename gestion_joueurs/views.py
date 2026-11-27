@@ -148,7 +148,7 @@ def _prepare_player_portal_access(request, player):
     if not temporary_password:
         messages.info(
             request,
-            f"Le compte client de {player.name} existe déjà ; un nouveau lien sécurisé a été préparé.",
+            f"Le compte client de {player.name} existe déjà ; son lien sécurisé a été préparé sans révoquer l’ancien.",
         )
 
     access_link, raw_token = issue_reusable_portal_access_link(

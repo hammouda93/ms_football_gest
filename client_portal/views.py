@@ -26,6 +26,7 @@ from gestion_joueurs.video_status_whatsapp import (
     ensure_delivery_link_in_message,
 )
 
+from .access_crypto import encrypt_token, PortalTokenEncryptionError
 from .decorators import portal_admin_required, portal_required, production_required
 from .forms import (
     AgentPlayerRequestForm,
@@ -185,25 +186,39 @@ def portal_password_change(request):
 @never_cache
 def portal_magic_access(request, token):
     token_hash = PortalAccessLink.hash_token(token)
-    access_link = PortalAccessLink.objects.select_related(
-        "user",
-        "user__portal_profile",
-    ).filter(token_hash=token_hash).first()
-    if not access_link or not access_link.is_usable:
-        return render(
-            request,
-            "client_portal/access_invalid.html",
-            status=410,
-        )
-
-    login(
-        request,
-        access_link.user,
-        backend="django.contrib.auth.backends.ModelBackend",
-    )
-    access_link.used_at = timezone.now()
-    access_link.save(update_fields=("used_at",))
-    return redirect("portal:dashboard")
+    with transaction.atomic():
+        candidate = PortalAccessLink.objects.filter(token_hash=token_hash).first()
+        if candidate:
+            profile = PortalProfile.objects.select_for_update().filter(user_id=candidate.user_id).first()
+            access_link = PortalAccessLink.objects.select_related(
+                "user", "user__portal_profile",
+            ).filter(pk=candidate.pk).first()
+        else:
+            profile = access_link = None
+        if not profile or not access_link or not access_link.is_usable:
+            response = render(request, "client_portal/access_invalid.html", status=410)
+        else:
+            # Recover a pre-migration secret on its next legitimate use, if
+            # this account does not already have a resendable permanent link.
+            fields = ["used_at"]
+            if not access_link.encrypted_token and not PortalAccessLink.objects.filter(
+                user_id=access_link.user_id, revoked_at__isnull=True,
+                expires_at__isnull=True,
+            ).exclude(encrypted_token="").exists():
+                try:
+                    access_link.encrypted_token = encrypt_token(token)
+                    fields.append("encrypted_token")
+                except PortalTokenEncryptionError:
+                    # Existing hash-only access must not depend on encryption availability.
+                    pass
+            login(request, access_link.user, backend="django.contrib.auth.backends.ModelBackend")
+            request.session["portal_access_link_id"] = access_link.pk
+            request.session.set_expiry(90 * 24 * 60 * 60)
+            access_link.used_at = timezone.now()
+            access_link.save(update_fields=fields)
+            response = redirect("portal:dashboard")
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 def _apply_production_filters(request, queryset):
@@ -588,8 +603,20 @@ def portal_management(request):
         PortalProfile.objects.select_related("user").prefetch_related(
             "user__portal_player_accesses__player",
             "user__portal_memberships__organization",
+            "user__portal_access_links",
         )
     )
+    for profile in profiles:
+        active_links = [
+            link for link in profile.user.portal_access_links.all()
+            if link.revoked_at is None and (
+                link.expires_at is None or link.expires_at > timezone.now()
+            )
+        ]
+        profile.current_access_link = next(
+            (link for link in active_links if link.encrypted_token),
+            active_links[0] if active_links else None,
+        )
     return render(
         request,
         "client_portal/management.html",
@@ -817,11 +844,14 @@ def _account_player(profile):
     return access.player if access else None
 
 
-def _render_account_credentials(request, profile, temporary_password=None, *, player=None):
-    access_link, raw_token = issue_reusable_portal_access_link(
-        profile,
-        created_by=request.user,
-    )
+def _render_account_credentials(request, profile, temporary_password=None, *, player=None, action="send"):
+    try:
+        access_link, raw_token = issue_reusable_portal_access_link(
+            profile, created_by=request.user, renew=action == "renew",
+        )
+    except (PortalTokenEncryptionError, ValueError) as exc:
+        messages.error(request, str(exc))
+        return redirect("portal:management")
     access_url = request.build_absolute_uri(
         reverse("portal:magic_access", args=(raw_token,))
     )
@@ -833,8 +863,10 @@ def _render_account_credentials(request, profile, temporary_password=None, *, pl
         login_url=login_url,
         actor=request.user,
         player=player or _account_player(profile),
+        send_email=action in {"send", "email", "renew"},
+        prepare_whatsapp=action in {"send", "whatsapp", "renew"},
     )
-    return render(
+    response = render(
         request,
         "client_portal/access_link_created.html",
         {
@@ -845,8 +877,12 @@ def _render_account_credentials(request, profile, temporary_password=None, *, pl
             "login_email": profile.user.email,
             "temporary_password": temporary_password,
             "delivery": delivery,
+            "credential_action": action,
         },
     )
+    response["Cache-Control"] = "no-store, private"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @portal_admin_required
@@ -937,7 +973,14 @@ def portal_access_link_generate(request, profile_id):
             "Réactivez d’abord le compte avant de renouveler son lien sécurisé.",
         )
         return redirect("portal:management")
-    return _render_account_credentials(request, profile)
+    action = request.POST.get("action", "send")
+    if action not in {"send", "copy", "email", "whatsapp", "renew"}:
+        messages.error(request, "Action de lien inconnue.")
+        return redirect("portal:management")
+    if action == "renew" and request.POST.get("confirm_renew") != "1":
+        messages.error(request, "Confirmez le renouvellement : les anciens liens seront révoqués.")
+        return redirect("portal:management")
+    return _render_account_credentials(request, profile, action=action)
 
 
 @portal_admin_required
@@ -953,6 +996,7 @@ def portal_account_toggle(request, profile_id):
         return redirect("portal:management")
     activate = action == "activate"
     with transaction.atomic():
+        profile = PortalProfile.objects.select_for_update().select_related("user").get(pk=profile.pk)
         profile.is_active = activate
         profile.save(update_fields=("is_active", "updated_at"))
         profile.user.is_active = activate

@@ -1,5 +1,5 @@
 {% extends "client_portal/portal_base.html" %}
-{% block title %}Lien expiré{% endblock %}
+{% block title %}Lien indisponible{% endblock %}
 {% block portal_body_class %}portal-auth-page{% endblock %}
 {% block portal_content %}
 <div class="portal-auth-wrap">
@@ -7,7 +7,7 @@
         <span class="portal-state-icon" aria-hidden="true">!</span>
         <span class="eyebrow">Accès protégé</span>
         <h1>Ce lien n’est plus utilisable</h1>
-        <p>Il a déjà été utilisé, a expiré ou a été remplacé. Demandez un nouveau lien sécurisé à MS Football.</p>
+        <p>Ce lien est invalide, a été révoqué ou le compte est désactivé. Si votre compte est actif, demandez à MS Football de vérifier votre lien personnel.</p>
         <a class="portal-button secondary full-width" href="{% url 'portal:login' %}">Retour à la connexion</a>
     </section>
 </div>

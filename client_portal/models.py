@@ -245,7 +245,8 @@ class PortalAccessLink(models.Model):
         related_name="portal_access_links",
     )
     token_hash = models.CharField(max_length=64, unique=True, db_index=True)
-    expires_at = models.DateTimeField(db_index=True)
+    expires_at = models.DateTimeField(db_index=True, null=True, blank=True)
+    encrypted_token = models.TextField(blank=True, default="", editable=False)
     used_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -265,12 +266,14 @@ class PortalAccessLink(models.Model):
         return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
     @classmethod
-    def issue(cls, *, user, created_by, lifetime):
+    def issue(cls, *, user, created_by, lifetime=None):
+        from .access_crypto import encrypt_token
         raw_token = secrets.token_urlsafe(32)
         link = cls.objects.create(
             user=user,
             token_hash=cls.hash_token(raw_token),
-            expires_at=timezone.now() + lifetime,
+            expires_at=timezone.now() + lifetime if lifetime is not None else None,
+            encrypted_token=encrypt_token(raw_token),
             created_by=created_by,
         )
         return link, raw_token
@@ -283,7 +286,7 @@ class PortalAccessLink(models.Model):
             active_profile = False
         return (
             self.revoked_at is None
-            and self.expires_at > timezone.now()
+            and (self.expires_at is None or self.expires_at > timezone.now())
             and self.user.is_active
             and active_profile
         )
